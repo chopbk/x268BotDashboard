@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { canEditResource, ownsBot } from "../access";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -43,6 +44,11 @@ export default function HomePage() {
   const [newBotActive, setNewBotActive] = useState(true);
   const [scope, setScope] = useState("");
   const [activity, setActivity] = useState("on");
+  const [audience, setAudience] = useState("mine");
+  const [signalQuery, setSignalQuery] = useState("");
+  const [signalRows, setSignalRows] = useState(null);
+  const [signalError, setSignalError] = useState("");
+  const [signalBusy, setSignalBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -51,12 +57,19 @@ export default function HomePage() {
   const visibleBots = useMemo(
     () =>
       bots.filter((bot) => {
-        if (scope && (bot.visibility || "public") !== scope) return false;
-        if (activity === "on" && !isActive(bot)) return false;
-        if (activity === "off" && isActive(bot)) return false;
+        if (!isAdmin) {
+          if (audience === "all") {
+            if (!isActive(bot) || (bot.visibility || "public") === "private") return false;
+          } else if (!ownsBot(user, bot)) return false;
+        }
+        if (isAdmin || audience !== "all") {
+          if (scope && (bot.visibility || "public") !== scope) return false;
+          if (activity === "on" && !isActive(bot)) return false;
+          if (activity === "off" && isActive(bot)) return false;
+        }
         return matchesQuery(bot, normalizedQuery);
       }),
-    [activity, bots, normalizedQuery, scope]
+    [activity, audience, bots, isAdmin, normalizedQuery, scope, user]
   );
   const visibleNames = visibleBots.map((bot) => bot.username);
   const allVisiblePicked =
@@ -157,19 +170,29 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách. Mặc định chỉ hiện user đang active. Chọn nhiều user, đặt giá trị, rồi bấm Lưu.</p>
+          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu." : "Mặc định chỉ hiện user của bạn. Chọn Tất cả để xem user đang active và công khai."}</p>
         </div>
         <div className="bot-list-tools">
-          <select value={activity} onChange={(event) => setActivity(event.target.value)} aria-label="Lọc active">
-            <option value="on">Đang active</option>
-            <option value="off">Không active</option>
-            <option value="">Mọi trạng thái</option>
-          </select>
-          <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Lọc phạm vi">
-            <option value="">Mọi phạm vi</option>
-            <option value="public">Công khai</option>
-            <option value="private">Riêng tư</option>
-          </select>
+          {!isAdmin ? (
+            <select value={audience} onChange={(event) => setAudience(event.target.value)} aria-label="Phạm vi danh sách">
+              <option value="mine">Của tôi</option>
+              <option value="all">Tất cả</option>
+            </select>
+          ) : null}
+          {isAdmin || audience !== "all" ? (
+            <>
+              <select value={activity} onChange={(event) => setActivity(event.target.value)} aria-label="Lọc active">
+                <option value="on">Đang active</option>
+                <option value="off">Không active</option>
+                <option value="">Mọi trạng thái</option>
+              </select>
+              <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Lọc phạm vi">
+                <option value="">Mọi phạm vi</option>
+                <option value="public">Công khai</option>
+                <option value="private">Riêng tư</option>
+              </select>
+            </>
+          ) : null}
           <input
             className="user-search"
             value={query}
@@ -178,6 +201,72 @@ export default function HomePage() {
           />
         </div>
       </header>
+      {can(user, "config.view") ? (
+        <form
+          className="card signal-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const signal = signalQuery.trim();
+            if (!signal) return;
+            setSignalBusy(true);
+            setSignalError("");
+            api(`/api/bots/config-search?signal=${encodeURIComponent(signal)}`)
+              .then((data) => setSignalRows(data.rows || []))
+              .catch((err) => setSignalError(err.message || "Không tìm được signal"))
+              .finally(() => setSignalBusy(false));
+          }}
+        >
+          <label>
+            Tìm signal
+            <input value={signalQuery} placeholder="ROSE, BULL" onChange={(event) => setSignalQuery(event.target.value)} />
+          </label>
+          <button type="submit" disabled={signalBusy || !signalQuery.trim()}>Tìm</button>
+          {signalError ? <p className="form-error">{signalError}</p> : null}
+          {signalRows ? (
+            signalRows.length === 0 ? <p className="muted">Không có config khớp.</p> : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Config</th>
+                      <th>Signal</th>
+                      <th>Lệnh 30 ngày</th>
+                      <th>Profit</th>
+                      <th>Gần nhất</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {signalRows.map((row) => (
+                      <tr key={`${row.username}/${row.env}`}>
+                        <td>{row.username}</td>
+                        <td>{row.env}</td>
+                        <td>{row.matched.join(", ")}</td>
+                        <td>{row.trades}</td>
+                        <td>{Number(row.profit || 0).toFixed(2)}$</td>
+                        <td>{row.lastTime ? new Date(row.lastTime).toLocaleString("vi-VN") : "—"}</td>
+                        <td>
+                          <div className="row-actions">
+                            <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(row.username)}/accounts/${encodeURIComponent(row.env)}`}>
+                              {row.canEdit ? "Sửa" : "Xem"}
+                            </Link>
+                            {can(user, "statistics.view") ? (
+                              <Link className="ghost link-btn" to={`/signals?view=statics&username=${encodeURIComponent(row.username)}&env=${encodeURIComponent(row.env)}&signal=${encodeURIComponent(row.matched[0] || "")}`}>
+                                Static
+                              </Link>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : null}
+        </form>
+      ) : null}
       {canCreateBot ? (
         <form
           className="card inline-create"
@@ -463,7 +552,7 @@ export default function HomePage() {
                     <td>
                       <div className="row-actions">
                         <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(bot.username)}`}>
-                          Sửa
+                          {canEditResource(user, "config.edit", bot) ? "Sửa" : "Xem"}
                         </Link>
                         {canDeleteBot ? (
                           <button

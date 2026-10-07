@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { canEditResource } from "../access";
 
 const CONFIG_VIEW = "config.view";
 const CONFIG_EDIT = "config.edit";
@@ -79,12 +80,12 @@ export default function BotDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canViewConfig = can(user, CONFIG_VIEW);
-  const canEditConfig = can(user, CONFIG_EDIT);
   const canEditBot = can(user, BOTS_EDIT);
   const canDeleteBot = can(user, BOTS_DELETE);
   const canViewSignalHistory = can(user, SIGNALS_HISTORY);
   const canViewStatistics = can(user, STATISTICS_VIEW);
   const [bot, setBot] = useState(null);
+  const canEditConfig = canEditResource(user, CONFIG_EDIT, bot);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [editUserName, setEditUserName] = useState(username);
@@ -395,41 +396,45 @@ export default function BotDetailPage() {
                   <span className="chip">{account}</span>
                   {canViewConfig ? <span className="account-meta">{summaryText(summaries[account])}</span> : null}
                 </div>
-                {canEditConfig ? (
+                {canViewConfig || canEditConfig ? (
                   <div className="row-actions">
                     <Link
                       className="ghost link-btn"
                       to={`/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`}
                     >
-                      Sửa
+                      {canEditConfig ? "Sửa" : "Xem"}
                     </Link>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => {
-                        setEditEnv(account);
-                        setEnvDraft(account);
-                      }}
-                    >
-                      Đổi tên
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      disabled={busy}
-                      onClick={() => {
-                        if (!window.confirm(`Xoá config ${account} khỏi ${bot.username}?`)) return;
-                        run(async () => {
-                          const data = await api(
-                            `/api/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`,
-                            { method: "DELETE" }
-                          );
-                          setBot(data.bot);
-                        });
-                      }}
-                    >
-                      Xoá
-                    </button>
+                    {canEditConfig ? (
+                      <>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            setEditEnv(account);
+                            setEnvDraft(account);
+                          }}
+                        >
+                          Đổi tên
+                        </button>
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={busy}
+                          onClick={() => {
+                            if (!window.confirm(`Xoá config ${account} khỏi ${bot.username}?`)) return;
+                            run(async () => {
+                              const data = await api(
+                                `/api/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`,
+                                { method: "DELETE" }
+                              );
+                              setBot(data.bot);
+                            });
+                          }}
+                        >
+                          Xoá
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

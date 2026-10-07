@@ -1,4 +1,4 @@
-const { permissionsForUser, plainScopes } = require("../auth/access-control");
+const { permissionsForUser, plainScopes, scopeForPermission } = require("../auth/access-control");
 
 function publicUser(doc) {
     return {
@@ -19,8 +19,17 @@ function publicUser(doc) {
 }
 
 function sessionUser(doc) {
-    return {
+    const actor = {
         id: String(doc._id || doc.id),
+        role: doc.role,
+        customPermissions: doc.customPermissions,
+        permissionScopes: plainScopes(doc.permissionScopes),
+    };
+    const permissions = permissionsForUser(doc);
+    const scopes = {};
+    for (const permission of permissions) scopes[permission] = scopeForPermission(actor, permission);
+    return {
+        id: actor.id,
         email: doc.email,
         username: doc.username || null,
         telegramId: doc.telegramId || null,
@@ -28,8 +37,9 @@ function sessionUser(doc) {
         phone: doc.phone || null,
         name: doc.name,
         role: doc.role,
-        permissions: permissionsForUser(doc),
-        permissionScopes: plainScopes(doc.permissionScopes),
+        permissions,
+        scopes,
+        permissionScopes: actor.permissionScopes,
         botUsernames: doc.botUsernames || [],
     };
 }

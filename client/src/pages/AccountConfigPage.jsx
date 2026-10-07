@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { canEditResource } from "../access";
 
 const CONFIG_EDIT = "config.edit";
 const SIGNALS_HISTORY = "signals.history";
@@ -147,7 +148,8 @@ export default function AccountConfigPage() {
   const { username = "", env = "" } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canEdit = can(user, CONFIG_EDIT);
+  const [openedBot, setOpenedBot] = useState(null);
+  const canEdit = user?.role === "admin" ? can(user, CONFIG_EDIT) : canEditResource(user, CONFIG_EDIT, openedBot);
   const canViewSignalHistory = can(user, SIGNALS_HISTORY);
   const canViewStatistics = can(user, STATISTICS_VIEW);
   const [form, setForm] = useState(null);
@@ -199,6 +201,21 @@ export default function AccountConfigPage() {
       cancelled = true;
     };
   }, [username, env]);
+
+  useEffect(() => {
+    if (user?.role === "admin") return undefined;
+    let cancelled = false;
+    api("/api/bots")
+      .then((data) => {
+        if (!cancelled) setOpenedBot((data.bots || []).find((item) => item.username === username) || null);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenedBot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role, username]);
 
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -430,7 +447,7 @@ export default function AccountConfigPage() {
           <label>
             User nhận
             <select value={copyUser} onChange={(event) => setCopyUser(event.target.value)} disabled={busy}>
-              {(bots.some((bot) => bot.username === copyUser) ? bots : [{ username: copyUser }, ...bots]).map((bot) => (
+              {(bots.some((bot) => bot.username === copyUser) ? bots : [{ username: copyUser }, ...bots]).filter((bot) => canEditResource(user, CONFIG_EDIT, bot)).map((bot) => (
                 <option key={bot.username} value={bot.username}>
                   {bot.username}
                 </option>

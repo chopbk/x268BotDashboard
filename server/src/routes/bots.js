@@ -21,6 +21,7 @@ const {
     updateConfigSummary,
     AUDIT_FIELDS,
 } = require("../lib/account-config-view");
+const { searchConfigsBySignal } = require("../lib/config-search");
 
 const router = express.Router();
 
@@ -42,6 +43,15 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (re
         res.json({ bots });
     } catch (error) {
         sendError(res, error, "GET /api/bots");
+    }
+});
+
+router.get("/config-search", requireAuth, requirePermission(PERMISSIONS.CONFIG_VIEW), async (req, res) => {
+    try {
+        const rows = await searchConfigsBySignal(req.webUser, { signal: req.query.signal });
+        res.json({ rows });
+    } catch (error) {
+        sendError(res, error, "GET /api/bots/config-search");
     }
 });
 
