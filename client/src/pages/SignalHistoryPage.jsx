@@ -6,6 +6,25 @@ import { useAuth } from "../auth";
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 const fmtTime = (value) => value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value)) : "—";
 const fmt = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+function defaultFrom() {
+  return new Date(Date.now() - THREE_DAYS_MS).toISOString();
+}
+
+function toLocalInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromLocalInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
 
 export default function SignalHistoryPage() {
   const { user } = useAuth();
@@ -22,6 +41,9 @@ export default function SignalHistoryPage() {
   const env = params.get("env") || "";
   const q = params.get("q") || "";
   const side = params.get("side") || "";
+  const [fallbackFrom] = useState(defaultFrom);
+  const from = params.get("from") || "";
+  const to = params.get("to") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const selectedBot = useMemo(() => bots.find((bot) => bot.username === username), [bots, username]);
 
@@ -43,19 +65,20 @@ export default function SignalHistoryPage() {
   useEffect(() => {
     if (!username) { setLoading(false); return; }
     setLoading(true); setError(""); setData(null);
-    const query = new URLSearchParams({ username, page: String(page), limit: "50" });
+    const query = new URLSearchParams({ username, page: String(page), limit: "50", from: from || fallbackFrom });
+    if (to) query.set("to", to);
     if (env) query.set("env", env);
     if (q) query.set("q", q);
     if (side) query.set("side", side);
     const endpoint = view === "statics" ? "/api/account-statics" : "/api/signal-history";
     api(`${endpoint}?${query}`).then(setData).catch((err) => setError(err.message)).finally(() => setLoading(false));
-  }, [username, env, q, side, page, view]);
+  }, [username, env, q, side, from, to, page, view, fallbackFrom]);
 
   const signalStats = view === "signals" ? data?.stats : null;
   const tradeStats = view === "statics" ? data?.stats : null;
   return (
     <section>
-      <header className="page-head"><div><h1>Lịch sử & thống kê</h1><p className="muted">Signal nhận được đọc từ Signal_Infos; hiệu suất giao dịch đọc từ Account_Static.</p></div></header>
+      <header className="page-head"><div><h1>Lịch sử & thống kê</h1><p className="muted">Signal nhận được đọc từ Signal_Infos; hiệu suất giao dịch đọc từ Account_Static. Mặc định chỉ lấy 3 ngày gần nhất.</p></div></header>
       <div className="history-tabs">
         {signalAllowed ? <button className={view === "signals" ? "active" : "ghost"} onClick={() => update({ view: "signals" })}>Lịch sử signal</button> : null}
         {staticAllowed ? <button className={view === "statics" ? "active" : "ghost"} onClick={() => update({ view: "statics" })}>Account Static</button> : null}
@@ -65,6 +88,13 @@ export default function SignalHistoryPage() {
         <label>Account Config<select value={env} onChange={(e) => update({ env: e.target.value })}><option value="">Tất cả config</option>{(selectedBot?.accounts || []).map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
         <label>Symbol<input value={q} onChange={(e) => update({ q: e.target.value })} placeholder="BTCUSDT" /></label>
         <label>Side<select value={side} onChange={(e) => update({ side: e.target.value })}><option value="">Tất cả</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
+        <label>Từ<input type="datetime-local" value={toLocalInput(from || fallbackFrom)} onChange={(e) => update({ from: fromLocalInput(e.target.value) || fallbackFrom })} /></label>
+        <label>Đến<input type="datetime-local" value={toLocalInput(to)} onChange={(e) => update({ to: fromLocalInput(e.target.value) })} /></label>
+        <div className="history-range">
+          <button type="button" className="ghost" onClick={() => update({ from: defaultFrom(), to: "" })}>3 ngày</button>
+          <button type="button" className="ghost" onClick={() => update({ from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), to: "" })}>7 ngày</button>
+          <button type="button" className="ghost" onClick={() => update({ from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), to: "" })}>30 ngày</button>
+        </div>
       </div>
       {signalStats ? <div className="stats-grid signal-stats"><article className="card"><span className="muted">Tổng signal</span><strong>{signalStats.total}</strong></article><article className="card"><span className="muted">LONG</span><strong>{signalStats.long}</strong></article><article className="card"><span className="muted">SHORT</span><strong>{signalStats.short}</strong></article></div> : null}
       {tradeStats ? <div className="stats-grid signal-stats"><article className="card"><span className="muted">Số lệnh</span><strong>{tradeStats.total}</strong></article><article className="card"><span className="muted">Win rate</span><strong>{fmt(tradeStats.winRate, 1)}%</strong></article><article className="card"><span className="muted">Profit</span><strong>{fmt(tradeStats.profit)}$</strong></article><article className="card"><span className="muted">Volume</span><strong>{fmt(tradeStats.volume)}$</strong></article></div> : null}

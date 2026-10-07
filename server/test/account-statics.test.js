@@ -23,6 +23,8 @@ test("Account Static is scoped to the selected config and returns profit statist
     try {
         const result = await listAccountStatics({ role: "viewer", botUsernames: ["alpha"] }, { username: "alpha", env: "a1" });
         assert.deepEqual(rowFilter.env, { $in: ["a1"] });
+        const span = Date.now() - rowFilter.openTime.$gte.getTime();
+        assert.ok(span > 2.9 * 24 * 60 * 60 * 1000 && span < 3.1 * 24 * 60 * 60 * 1000);
         assert.equal(result.stats.profit, 12);
         assert.equal(result.stats.winRate, 100);
         assert.equal(result.rows[0].signal, "ROSE");

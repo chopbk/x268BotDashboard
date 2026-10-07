@@ -3,16 +3,10 @@ const SignalInfo = require("../models/signal-info");
 const { PERMISSIONS } = require("../auth/access-control");
 const { requireBot } = require("./bot-directory");
 const { httpError } = require("./http");
+const { openTimeFilter, openTimeRange } = require("./open-time-range");
 
 function escapeRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function parseDate(value, label) {
-    if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) throw httpError(400, `${label} không hợp lệ`);
-    return date;
 }
 
 async function signalNamesForBot(actor, username, env) {
@@ -31,13 +25,14 @@ async function listSignalHistory(actor, input = {}) {
     const { names, envs } = await signalNamesForBot(actor, username, env || null);
     const page = Math.max(1, Number.parseInt(input.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(input.limit, 10) || 50));
-    if (!names.length) return { rows: [], stats: { total: 0, long: 0, short: 0, bySignal: [] }, page, limit, total: 0, username, env: env || null, envs, signals: [] };
+    const range = openTimeRange(input);
+    if (!names.length) {
+        return { rows: [], stats: { total: 0, long: 0, short: 0, bySignal: [] }, page, limit, total: 0, username, env: env || null, envs, signals: [], from: range.from, to: range.to };
+    }
 
     const signalVariants = [...new Set(names.flatMap((name) => [name, String(name).toUpperCase(), String(name).toLowerCase()]))];
     const filter = { signal: { $in: signalVariants } };
-    const from = parseDate(input.from, "Ngày bắt đầu");
-    const to = parseDate(input.to, "Ngày kết thúc");
-    if (from || to) filter.openTime = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+    filter.openTime = openTimeFilter(range);
     if (["LONG", "SHORT"].includes(input.side)) filter.side = input.side;
     const query = String(input.q || "").trim();
     if (query) filter.symbol = new RegExp(escapeRegex(query), "i");
@@ -60,7 +55,7 @@ async function listSignalHistory(actor, input = {}) {
     return {
         rows: rows.map((row) => ({ id: String(row._id), signal: row.signal, status: row.status, side: row.side, symbol: row.symbol, type: row.type, openTime: row.openTime, createdAt: row.createdAt })),
         stats: { total, long, short, bySignal: [...bySignalMap].map(([signal, count]) => ({ signal, count })).sort((a, b) => b.count - a.count) },
-        page, limit, total, username, env: env || null, envs, signals: names,
+        page, limit, total, username, env: env || null, envs, signals: names, from: range.from, to: range.to,
     };
 }
 

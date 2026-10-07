@@ -2,14 +2,9 @@ const AccountStatic = require("../models/account-static");
 const { PERMISSIONS } = require("../auth/access-control");
 const { requireBot } = require("./bot-directory");
 const { httpError } = require("./http");
+const { openTimeFilter, openTimeRange } = require("./open-time-range");
 
 function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-function parseDate(value, label) {
-    if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) throw httpError(400, `${label} không hợp lệ`);
-    return date;
-}
 
 async function listAccountStatics(actor, input = {}) {
     const username = String(input.username || "").trim();
@@ -20,10 +15,8 @@ async function listAccountStatics(actor, input = {}) {
     if (env && !(bot.accounts || []).includes(env)) throw httpError(404, "Config không thuộc user bot này");
     const page = Math.max(1, Number.parseInt(input.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(input.limit, 10) || 50));
-    const filter = { env: { $in: envs } };
-    const from = parseDate(input.from, "Ngày bắt đầu");
-    const to = parseDate(input.to, "Ngày kết thúc");
-    if (from || to) filter.openTime = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+    const range = openTimeRange(input);
+    const filter = { env: { $in: envs }, openTime: openTimeFilter(range) };
     if (["LONG", "SHORT"].includes(input.side)) filter.side = input.side;
     const q = String(input.q || "").trim();
     if (q) filter.symbol = new RegExp(escapeRegex(q), "i");
@@ -38,7 +31,7 @@ async function listAccountStatics(actor, input = {}) {
     return {
         rows: rows.map((row) => ({ id: String(row._id), env: row.env, signal: row.typeSignal, symbol: row.symbol, side: row.side, entryPrice: row.entryPrice, closePrice: row.closePrice, leverage: row.futuresLeverage, cost: row.costAmount, volume: row.volume, openTime: row.openTime, closeTime: row.closeTime, status: row.status, roe: row.roe, profit: row.profit, copy: !!row.isCopy, paper: !!row.isPaper, closed: !!row.isClosed })),
         stats: { total, wins: sum.wins, losses: sum.losses, winRate: total ? (sum.wins / total) * 100 : 0, profit: sum.profit, roi: sum.roi, volume: sum.volume, bySignal: bySignal.map((row) => ({ signal: row._id || "UNKNOWN", count: row.count, profit: row.profit })) },
-        page, limit, total, username, env: env || null, envs,
+        page, limit, total, username, env: env || null, envs, from: range.from, to: range.to,
     };
 }
 
