@@ -1,0 +1,450 @@
+# Spec đăng ký, đăng nhập và phân quyền
+
+Trạng thái: **authoritative**  
+Phạm vi: `web-bot` client + server  
+Cập nhật: 2026-10-07
+
+Tài liệu này là nguồn chuẩn cho hành vi auth/RBAC. Code, UI và test phải cùng tuân thủ.
+Nếu thay đổi có chủ đích làm khác tài liệu này, phải cập nhật tài liệu và regression test
+trong cùng thay đổi.
+
+## 1. Mục tiêu và ranh giới tin cậy
+
+- Người dùng được tự đăng ký nhưng tài khoản mới không có quyền sử dụng bot.
+- Admin duyệt tài khoản bằng cách đổi role và gán phạm vi bot.
+- Server là nguồn quyết định quyền duy nhất. Client chỉ dùng permission để điều hướng và
+  ẩn/hiện UI; việc ẩn UI không thay thế authorization ở API.
+- Authentication trả lời câu hỏi “đây là ai”. Permission trả lời “được làm gì”.
+  `botUsernames` trả lời “được làm trên bot nào”. Cả ba lớp phải được kiểm tra độc lập.
+
+## 2. Dữ liệu user
+
+Collection MongoDB: `web_users`.
+
+| Field | Quy tắc |
+|---|---|
+| `email` | Bắt buộc, trim, lowercase, unique |
+| `username` | Unique khi có; đăng ký mới bắt buộc; legacy user có thể chưa có |
+| `telegramId` | Optional, unique khi có; ID Telegram ổn định dùng để link |
+| `telegramUsername` | Optional; username Telegram đã bỏ `@`, lowercase; không dùng làm khóa ổn định |
+| `phone` | Optional; số điện thoại đã bỏ khoảng trắng/ký tự phân cách |
+| `passwordHash` | Bắt buộc; bcrypt 12 rounds; không bao giờ trả cho client |
+| `name` | Bắt buộc, trim |
+| `role` | Một trong các role tại mục 3 |
+| `customPermissions` | Optional; danh sách quyền hiệu lực tùy chỉnh cho user thường |
+| `botUsernames` | Danh sách username bot được truy cập; mặc định `[]` |
+| `disabled` | Tài khoản bị khóa nếu `true`; mặc định `false` |
+| timestamps | `createdAt`, `updatedAt` do Mongoose quản lý |
+
+Model chuẩn: `server/src/models/web-user.js`. Danh sách role chuẩn không được khai báo
+lặp lại; model và validator phải lấy từ `server/src/auth/access-control.js`.
+
+## 3. Role và permission
+
+Nguồn chuẩn duy nhất: `server/src/auth/access-control.js`.
+
+### 3.1 Role lifecycle
+
+| Role | Ý nghĩa | Được gán khi |
+|---|---|---|
+| `pending` | Đã đăng ký, chưa được duyệt, có 0 permission | Tự đăng ký |
+| `viewer` | Chỉ xem dữ liệu được phép | Admin duyệt |
+| `operator` | Xem và vận hành bot được phép | Admin duyệt |
+| `admin` | Quản trị hệ thống và thấy mọi bot | Bootstrap hoặc admin khác cấp |
+| `user` | Legacy, quyền tương đương `viewer` | Không cấp mới; giữ đến khi có migration |
+
+Role không hợp lệ hoặc không xác định phải có 0 permission, không được fail-open.
+
+### 3.2 Permission matrix
+
+| Permission | pending | viewer / user | operator | admin |
+|---|:---:|:---:|:---:|:---:|
+| `bots.view` | | ✓ | ✓ | ✓ |
+| `bots.operate` | | | ✓ | ✓ |
+| `config.view` | | ✓ | ✓ | ✓ |
+| `config.edit` | | | ✓ | ✓ |
+| `positions.view` | | ✓ | ✓ | ✓ |
+| `positions.open` | | | ✓ | ✓ |
+| `positions.close` | | | ✓ | ✓ |
+| `signals.view` | | ✓ | ✓ | ✓ |
+| `signals.manage` | | | ✓ | ✓ |
+| `logs.view` | | | ✓ | ✓ |
+| `credentials.view` | | | | ✓ |
+| `users.manage` | | | | ✓ |
+| `credentials.manage` | | | | ✓ |
+
+Một permission được định nghĩa trước chưa có nghĩa là endpoint tương ứng đã tồn tại.
+Khi thêm endpoint mới, phải gắn `requireAuth` và `requirePermission(...)` ở server.
+
+### 3.3 Quyền tùy chỉnh theo user
+
+- Role là template mặc định. User không có field `customPermissions` kế thừa toàn bộ
+  permission của role.
+- Với `viewer`, `operator` và legacy `user`, nếu `customPermissions` là một mảng thì mảng
+  đó thay thế template role. Mảng rỗng có nghĩa là 0 quyền.
+- `pending` luôn có 0 quyền, kể cả database chứa custom permission do dữ liệu lỗi.
+- `admin` luôn có toàn bộ permission của template admin; không được hạ quyền admin bằng
+  custom permission vì sẽ phá invariant phục hồi/quản trị.
+- Permission không xác định phải bị loại bỏ/fail-closed.
+- Admin UI lấy catalog permission từ server, không duy trì một role map độc lập ở client.
+- Đổi role mà không gửi custom permission phải reset về template role mới.
+
+`credentials.view` và `credentials.manage` phải tách biệt. Quyền xem API/credential không
+tự động cho phép sửa/xóa; các API chứa secret còn phải che/mask dữ liệu theo thiết kế
+endpoint, không được hiểu permission xem là quyền trả raw secret mặc định.
+
+### 3.4 Phạm vi bot
+
+- `viewer`, legacy `user` và `operator` chỉ truy cập bot có username nằm trong
+  `webUser.botUsernames`.
+- Hiện tại `admin` thấy mọi bot vì có `users.manage`.
+- `pending` không có `bots.view`, nên không được gọi `/api/bots`, kể cả nếu dữ liệu lỗi
+  khiến `botUsernames` không rỗng.
+- Không được chỉ lọc bot ở client. Query và kết quả phải được giới hạn ở server.
+- Nếu sau này thêm scope account/env, scope mới phải được kiểm tra thêm, không thay thế
+  ngầm `botUsernames` nếu chưa có migration rõ ràng.
+
+## 4. Đăng ký
+
+### 4.1 Contract
+
+`POST /api/auth/register` là public.
+
+Request:
+
+```json
+{
+  "name": "Nguyen Van A",
+  "username": "nguyenvana",
+  "email": "user@example.com",
+  "password": "at-least-8-characters"
+}
+```
+
+Server phải:
+
+1. Trim `name`; normalize email và username bằng trim + lowercase.
+2. Validate email, tên không rỗng, username và password dài tối thiểu 8 ký tự.
+   Username dài 3-32 ký tự, bắt đầu bằng chữ/số và chỉ gồm `a-z`, `0-9`, `.`, `_`, `-`.
+3. Bỏ qua mọi `role`, `permissions`, `botUsernames`, `disabled` do client cố gửi.
+4. Hash password bằng bcrypt 12 rounds.
+5. Tạo user với email/username unique và cố định `role: "pending"`,
+   `botUsernames: []`, `disabled: false`.
+6. Tạo JWT/cookie và trả session user, không trả `passwordHash`.
+
+Đăng ký lần đầu thành công trả HTTP `201`.
+
+### 4.2 Retry và double-submit
+
+Đăng ký phải retry-safe đối với duplicate request:
+
+- Client phải có khóa submit đồng bộ, không chỉ dựa vào state/render của React.
+- Nếu insert gặp duplicate email hoặc username, server đọc chủ sở hữu của cả hai giá trị.
+- Nếu cùng một user sở hữu email/username, user vẫn là `pending`, không bị khóa và
+  password khớp, coi đây là retry
+  của request đã thành công: tạo cookie, trả session với HTTP `200`.
+- Với legacy pending account chưa có username, retry cùng email + đúng password được phép
+  gắn username nếu username đó chưa thuộc user khác.
+- Nếu email và username thuộc hai user khác nhau, password không khớp, user không còn
+  `pending`, hoặc đã bị khóa: trả HTTP `409` với lỗi
+  `Email hoặc username đã được sử dụng`.
+- Không được reset password, đổi tên, đổi role hoặc đổi scope trong nhánh retry.
+
+Đây là invariant đã có regression test. Không được đơn giản hóa mọi duplicate key thành
+`409`, vì request đầu có thể đã tạo user trong khi client chỉ nhận kết quả request lặp.
+
+### 4.3 UI sau đăng ký
+
+- Đăng ký thành công tự đăng nhập và điều hướng `/`.
+- User `pending` thấy `PendingPage`, không thấy menu bot/admin và không gọi `/api/bots`.
+- Trang chờ phải cho phép logout.
+
+## 5. Đăng nhập, session và logout
+
+### 5.1 Login
+
+`POST /api/auth/login` nhận `identifier`, `password`. `identifier` có thể là email hoặc
+username. Server vẫn chấp nhận field `email` cũ như compatibility input.
+
+- Identifier được trim + lowercase. Nếu đúng định dạng email thì tìm theo email; ngược
+  lại nếu đúng định dạng username thì tìm theo username.
+- Sai định dạng, user không tồn tại, sai password hoặc `disabled: true` đều trả HTTP
+  `401` với cùng thông báo `Email/username hoặc mật khẩu không đúng`.
+- Việc verify user không tồn tại phải dùng dummy bcrypt hash để giảm timing leak.
+- User `pending` được đăng nhập; trạng thái thiếu quyền do authorization xử lý.
+- Thành công trả session user và set auth cookie.
+
+### 5.2 JWT và cookie
+
+- JWT chỉ chứa `sub` là user id. Không nhét role, permissions hoặc bot scope vào JWT.
+- JWT hết hạn sau 12 giờ.
+- Cookie tên `wb_token`, `httpOnly`, `sameSite: "lax"`, `path: "/"`.
+- Cookie dùng `secure: true` khi `NODE_ENV=production`.
+- `WEB_JWT_SECRET` phải dài tối thiểu 16 ký tự khi server khởi động.
+
+Lý do JWT chỉ chứa `sub`: `requireAuth` phải đọc user mới nhất từ Mongo ở mọi request,
+nhờ đó đổi role, scope hoặc `disabled` có hiệu lực ở backend ngay lập tức. Không cache
+permission theo JWT trong 12 giờ.
+
+### 5.3 Session response
+
+`POST /login`, đăng ký thành công/retry và `GET /api/auth/me` trả:
+
+```json
+{
+  "id": "mongo-object-id",
+  "email": "user@example.com",
+  "username": "nguyenvana",
+  "telegramId": null,
+  "telegramUsername": null,
+  "phone": null,
+  "name": "Nguyen Van A",
+  "role": "pending",
+  "permissions": [],
+  "botUsernames": []
+}
+```
+
+`permissions` luôn được server tính từ role, không đọc từ document hay request client.
+Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
+
+### 5.4 Auth middleware và logout
+
+- `requireAuth` đọc cookie, verify JWT, lấy user mới nhất từ Mongo, loại password hash.
+- Thiếu/sai/hết hạn token, user không tồn tại hoặc bị khóa: HTTP `401`.
+- `POST /api/auth/logout` xóa cookie với cùng cookie options và trả `{ "ok": true }`.
+- Sau khi admin đổi role của một user đang đăng nhập, backend áp dụng ngay ở request kế;
+  client có thể cần gọi lại `/me` hoặc reload để menu phản ánh permission mới.
+
+## 6. Quản trị user
+
+Mọi route dưới `/api/admin/users` phải đi qua:
+
+```text
+requireAuth -> requirePermission(users.manage)
+```
+
+Không kiểm tra bằng chuỗi `role === "admin"` tại route. Role map sang permission tại
+`access-control.js`.
+
+Admin có thể:
+
+- xem danh sách user, không có password hash;
+- tạo user trực tiếp với username, mặc định `viewer` nếu không truyền role;
+- gán Telegram ID, Telegram username và số điện thoại để link với người dùng thật;
+- đổi tên, username, role, trạng thái khóa, password và `botUsernames`;
+- dùng template của role hoặc chọn từng permission riêng cho user thường;
+- duyệt đăng ký bằng cách đổi `pending` sang `viewer` hoặc `operator` và gán bot.
+
+Các invariant:
+
+- Role, login username và bot username phải được server validate; đây là hai loại
+  username khác nhau (`web_users.username` và bot `user_accounts.username`).
+- Telegram ID nếu có phải là 5-20 chữ số và unique. Telegram username nếu có dài 5-32
+  ký tự theo format Telegram; bỏ `@` và lowercase. Phone nếu có theo dạng quốc tế hợp lệ.
+- Không lưu bot username không tồn tại.
+- Phải luôn còn ít nhất một `admin` không bị khóa. Không được hạ role hoặc khóa admin
+  hoạt động cuối cùng.
+- UI không cho tự khóa chính mình, nhưng server invariant vẫn là lớp bảo vệ quyết định.
+- `pending` chỉ xuất hiện trong select khi đang sửa tài khoản pending; không phải role
+  mặc định khi admin chủ động tạo user.
+
+## 7. Endpoint authorization hiện tại
+
+| Endpoint | Auth | Permission/scope |
+|---|---|---|
+| `POST /api/auth/register` | Public | Luôn tạo `pending` |
+| `POST /api/auth/login` | Public | Không áp permission |
+| `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
+| `GET /api/auth/me` | `requireAuth` | Không áp permission |
+| `GET /api/bots` | `requireAuth` | `bots.view` + scope `botUsernames`; admin thấy tất cả |
+| `POST /api/bots` | `requireAuth` | `users.manage`; tạo `User_Account` rỗng |
+| `PATCH /api/bots/:username` | `requireAuth` | `users.manage` + scope; đổi tên user bot, kèm `User_Api.username` và `botUsernames` |
+| `DELETE /api/bots/:username` | `requireAuth` | `users.manage` + scope; xoá `User_Account` và gỡ `botUsernames`, không xoá API key hay account config |
+| `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; thêm env, tạo `Account_Config` nếu chưa có |
+| `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
+| `DELETE /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; gỡ env, xoá `Account_Config` nếu không user bot nào còn giữ |
+| `GET /api/user-apis` | `requireAuth` | `credentials.view`; admin (`users.manage`) thấy mọi bản ghi, user khác chỉ username nằm trong `botUsernames`. Response không có `api_key`, `api_secret`, `password` |
+| `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
+| `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |
+| `PATCH /api/user-apis/:username` | `requireAuth` | `credentials.manage` + scope; key/secret/passphrase để trống thì giữ giá trị cũ |
+| `DELETE /api/user-apis/:username` | `requireAuth` | `credentials.manage` + scope; xoá document `user_apis`, không xoá user bot hay account config |
+| `/api/admin/users/*` | `requireAuth` | `users.manage` |
+| `GET /api/admin/users/access-control` | `requireAuth` | `users.manage`; trả catalog/template quyền |
+| `GET /api/audit-logs` | `requireAuth` | `logs.view`; tìm kiếm và phân trang audit log |
+
+Quy ước HTTP:
+
+- `400`: input không hợp lệ.
+- `401`: chưa/xác thực không thành công.
+- `403`: đã xác thực nhưng thiếu permission.
+- `409`: xung đột email/username không thể coi là retry hợp lệ.
+- `500`: lỗi nội bộ, không lộ chi tiết nhạy cảm.
+
+## 8. Bootstrap admin
+
+Khi server khởi động, `bootstrapAdmin` kiểm tra admin đang hoạt động:
+
+- Nếu đã có ít nhất một active admin: không làm gì.
+- Nếu chưa có: dùng `WEB_ADMIN_EMAIL` và `WEB_ADMIN_PASSWORD`.
+- Nếu email bootstrap đã tồn tại, kích hoạt lại, đặt role `admin` và cập nhật password.
+- Password bootstrap phải dài tối thiểu 8 ký tự.
+- Không commit `.env` hoặc log password/secret.
+
+Hành vi bootstrap là đường phục hồi quyền quản trị; không được xóa nếu chưa có cơ chế
+recovery thay thế.
+
+## 9. File ownership và luồng gọi
+
+```text
+RegisterPage/LoginPage
+  -> client/src/auth.jsx
+  -> /api/auth/*
+  -> routes/auth.js
+  -> password.js + token.js + WebUser
+  -> sessionUser()
+  -> AuthProvider user state
+  -> App route/menu gating
+
+Protected API
+  -> requireAuth (cookie -> JWT sub -> Mongo user)
+  -> requirePermission (server-side role -> permissions)
+  -> optional resource scope via canAccessBot
+  -> route handler
+
+AdminUsersPage
+  -> /api/admin/users
+  -> requireAuth -> users.manage
+  -> load permission catalog từ /api/admin/users/access-control
+  -> validate profile/role/custom permissions/bots/last-active-admin
+  -> WebUser
+
+UserApisPage / UserApiDetailPage
+  -> /api/user-apis
+  -> requireAuth -> credentials.view hoặc credentials.manage
+  -> scope botUsernames (admin qua users.manage thấy tất cả)
+  -> user_apis, không trả raw secret
+```
+
+File chuẩn:
+
+- Role/permission map: `server/src/auth/access-control.js`
+- Password hashing: `server/src/auth/password.js`
+- JWT/cookie: `server/src/auth/token.js`
+- Authentication/authorization middleware: `server/src/middleware/auth.js`
+- Public auth API: `server/src/routes/auth.js`
+- Admin user API: `server/src/routes/admin-users.js`
+- Audit writer/redaction: `server/src/lib/audit.js`
+- Audit model/API: `server/src/models/audit-log.js`, `server/src/routes/audit-logs.js`
+- Bot scope API: `server/src/routes/bots.js`
+- User API: `server/src/routes/user-apis.js`, `server/src/lib/user-api-directory.js`
+- Safe response shape: `server/src/lib/public-user.js`
+- Client session state: `client/src/auth.jsx`
+- Client route/menu gating: `client/src/App.jsx`
+
+## 10. Quy tắc khi mở rộng
+
+Khi thêm tính năng được bảo vệ:
+
+1. Thêm permission vào `PERMISSIONS` nếu chưa có.
+2. Gán permission cho role rõ ràng trong `ROLE_PERMISSIONS`.
+3. Gắn `requireAuth` + `requirePermission` vào server route.
+4. Kiểm tra resource scope riêng (`botUsernames`, và account/env nếu sau này có).
+5. Client dùng permission từ session để hiển thị UI, nhưng không được coi đó là bảo mật.
+6. Thêm test cho allow và deny, bao gồm `pending`, `disabled` và ngoài scope.
+7. Cập nhật bảng endpoint/permission trong tài liệu này.
+
+Không được:
+
+- nhận permission trực tiếp từ client;
+- chấp nhận permission client gửi mà không kiểm tra với catalog server;
+- hard-code quyền chỉ ở JSX;
+- dùng `role === ...` thay cho permission ở endpoint nghiệp vụ;
+- cho admin toàn quyền bằng cách bỏ qua mọi middleware;
+- tự động nâng `pending` lên `viewer` khi login;
+- xóa legacy `user` trước khi migrate toàn bộ document và kiểm chứng;
+- thay đổi retry duplicate registration mà không chạy regression test;
+- trả toàn bộ Mongoose document ra API.
+
+## 11. Test bắt buộc
+
+Sau mọi thay đổi auth/RBAC:
+
+```sh
+npm --prefix server test
+npm --prefix client run build
+```
+
+Tối thiểu phải giữ các case:
+
+- đăng ký mới tạo `pending`, username/email unique, scope rỗng, cookie/session hợp lệ;
+- double-submit cùng email + username + password đăng nhập lại được;
+- legacy pending account có thể nhận username qua retry an toàn;
+- duplicate email/username nhưng sai password, khác owner, user không pending hoặc user
+  disabled trả `409`;
+- login bằng email và username; login sai/disabled/không tồn tại;
+- user không có custom permission kế thừa role template;
+- custom permission thay thế template cho viewer/operator;
+- pending luôn 0 quyền và admin luôn đủ quyền dù document chứa override sai;
+- profile Telegram/phone được normalize/validate và Telegram ID không trùng;
+- `pending` bị `403` khi gọi `/api/bots`;
+- viewer/operator chỉ thấy bot được gán;
+- admin thấy mọi bot và quản lý user;
+- `credentials.view` / `credentials.manage` từ chối viewer và operator theo template;
+- response user API không chứa raw `api_key`, `api_secret`, `password`;
+- user không có `users.manage` chỉ thấy user API của `botUsernames`;
+- non-admin bị `403` ở `/api/admin/users`;
+- không thể khóa/hạ role active admin cuối cùng;
+- response không chứa `passwordHash`;
+- client build thành công và pending page không gọi API bot.
+
+Nếu chưa có test integration cho một case, phải kiểm tra thủ công luồng UI -> API -> Mongo
+và ghi rõ phần chưa được tự động hóa trong phần bàn giao.
+
+## 12. Audit log và lịch sử chỉnh sửa
+
+Collection MongoDB: `web_audit_logs`.
+
+Mọi thay đổi user quan trọng phải được ghi ở server sau khi mutation thành công:
+
+- `user.registered`: user tự đăng ký;
+- `user.created`: admin tạo user;
+- `user.updated`: admin sửa profile, role, permission, bot scope, trạng thái hoặc password;
+- `user.username_linked`: pending legacy user được gắn username trong registration retry.
+- `bot.created`, `bot.renamed`, `bot.deleted`: thay đổi user bot;
+- `bot.account_added`, `bot.account_renamed`, `bot.account_deleted`: thay đổi config/env
+  được gắn vào bot;
+- `credential.created`, `credential.updated`, `credential.deleted`: thay đổi cấu hình API.
+
+Mỗi record gồm:
+
+- `action`;
+- `actor`: id/email/username/name của người thực hiện hoặc system;
+- `targetType` và `target`: đối tượng bị thay đổi;
+- `changes`: diff `{ field: { from, to } }` đã sanitize;
+- `createdAt`.
+
+Invariant bảo mật:
+
+- Không bao giờ ghi password, `passwordHash`, JWT/token, secret, API key hoặc API secret.
+- Đổi password chỉ ghi `{ "changed": true }`, không ghi giá trị trước/sau.
+- Đổi API key, API secret hoặc passphrase chỉ ghi `{ "changed": true }`; audit chỉ được
+  dùng các boolean public `hasApiKey`, `hasApiSecret`, `hasPassword`, không đọc raw secret.
+- Phone trong diff phải mask, chỉ giữ 4 số cuối.
+- Không ghi nguyên request body hoặc nguyên Mongoose document vào audit log.
+- Lỗi ghi audit phải được log ở server nhưng không được trả secret hoặc làm client hiểu
+  mutation chưa xảy ra sau khi database chính đã lưu thành công.
+- API đọc audit bắt buộc `requireAuth` + `logs.view`; client ẩn menu nếu thiếu quyền,
+  nhưng server middleware mới là lớp bảo vệ quyết định.
+- Audit log là append-only qua application: không cung cấp API sửa/xóa log.
+
+Client có route `/logs`, hỗ trợ tìm theo action/actor/target, phân trang, thời gian và mở
+chi tiết diff. Client chỉ render dữ liệu audit đã sanitize từ server.
+
+Test bắt buộc thêm:
+
+- identity audit không chứa password hash/phone ngoài ý muốn;
+- secret fields bị loại bỏ khỏi diff;
+- phone trong diff bị mask;
+- user thiếu `logs.view` nhận `403` ở audit API;
+- create/update/register tạo đúng action và actor/target.

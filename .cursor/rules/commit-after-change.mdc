@@ -1,0 +1,16 @@
+---
+description: Sau khi sửa xong trong web-bot thì commit
+alwaysApply: true
+---
+
+# Commit sau khi sửa xong
+
+Repo này là `web-bot`. Chưa có `.git` thì `git init` trước commit đầu tiên.
+
+Sau khi hoàn thành một việc user yêu cầu (sửa, thêm, xoá code hoặc rule), commit ngay trong repo này. Không chờ user nhắc lại.
+
+- Chỉ commit khi có thay đổi. Không tạo commit rỗng.
+- Không commit `.env`, API key, secret, token. `.env.example` thì được.
+- Message ngắn, 1–2 câu, nói vì sao đổi.
+- Không push, không force, không `--no-verify`, không amend trừ khi user yêu cầu đúng điều kiện an toàn.
+- Không đổi git config.
