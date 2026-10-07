@@ -44,6 +44,7 @@ test("toSummary reports on, sides, signals and volume as cost times leverage", (
     assert.deepEqual(row.signals, ["ROSE", "BULL"]);
     assert.equal(row.mode, "FIX");
     assert.equal(row.volume, 2000);
+    assert.equal(row.openType, "MARKET");
 });
 
 test("toDetail keeps the stoploss, take profit, open and copy groups", () => {

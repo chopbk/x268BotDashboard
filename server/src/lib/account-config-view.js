@@ -150,6 +150,7 @@ function toSummary(doc) {
         fixloss: num(trade.MARGIN?.FIXLOSS),
         risk: num(trade.OPEN?.RISK),
         volume: cost != null && leverage != null ? cost * leverage : null,
+        openType: upper(trade.OPEN?.TYPE || "MARKET"),
     };
 }
 
@@ -242,6 +243,7 @@ function missingSummary(env) {
         fixloss: null,
         risk: null,
         volume: null,
+        openType: null,
     };
 }
 

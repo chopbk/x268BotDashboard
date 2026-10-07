@@ -41,7 +41,28 @@ function summaryText(row) {
   if ((row.mode === "LOSS" || row.mode === "RR") && row.fixloss != null) parts.push(`fixloss ${money(row.fixloss)}`);
   if (row.mode === "RISK" && row.risk != null) parts.push(`risk ${row.risk}`);
   parts.push(`vol ${money(row.volume)}`);
+  if (row.openType) parts.push(row.openType);
   return parts.join(" · ");
+}
+
+function uniqueSorted(values, numeric) {
+  const items = [...new Set(values.filter((value) => value != null && value !== ""))];
+  if (numeric) return items.sort((a, b) => Number(a) - Number(b));
+  return items.sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function matchesConfig(row, filters) {
+  const active = filters.signal || filters.long || filters.on || filters.volume || filters.mode || filters.type;
+  if (!row || row.missing) return !active;
+  if (filters.signal && !(row.signals || []).some((name) => String(name).toUpperCase() === filters.signal.toUpperCase())) return false;
+  if (filters.long === "on" && row.long !== true) return false;
+  if (filters.long === "off" && row.long !== false) return false;
+  if (filters.on === "on" && row.on !== true) return false;
+  if (filters.on === "off" && row.on !== false) return false;
+  if (filters.volume !== "" && String(row.volume) !== filters.volume) return false;
+  if (filters.mode && row.mode !== filters.mode) return false;
+  if (filters.type && row.openType !== filters.type) return false;
+  return true;
 }
 
 export default function BotDetailPage() {
@@ -66,9 +87,15 @@ export default function BotDetailPage() {
   const [envDraft, setEnvDraft] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [summaries, setSummaries] = useState({});
+  const [filters, setFilters] = useState({ signal: "", long: "", on: "", volume: "", mode: "", type: "" });
   const [busy, setBusy] = useState(false);
   const accounts = bot?.accounts || [];
-  const allPicked = accounts.length > 0 && accounts.every((account) => picked.has(account));
+  const visibleAccounts = accounts.filter((account) => account === editEnv || matchesConfig(summaries[account], filters));
+  const allPicked = visibleAccounts.length > 0 && visibleAccounts.every((account) => picked.has(account));
+  const signalOptions = uniqueSorted(accounts.flatMap((account) => summaries[account]?.signals || []));
+  const volumeOptions = uniqueSorted(accounts.map((account) => summaries[account]?.volume).filter((value) => value != null).map(String), true);
+  const modeOptions = uniqueSorted(accounts.map((account) => summaries[account]?.mode));
+  const typeOptions = uniqueSorted(accounts.map((account) => summaries[account]?.openType));
 
   useEffect(() => {
     let cancelled = false;
@@ -241,20 +268,69 @@ export default function BotDetailPage() {
               </button>
             ) : null}
           </div>
-          {canEditConfig && accounts.length > 0 ? (
+          {accounts.length > 0 ? (
+            <div className="account-filters">
+              <label>
+                Signal
+                <select value={filters.signal} onChange={(event) => setFilters((prev) => ({ ...prev, signal: event.target.value }))}>
+                  <option value="">Tất cả</option>
+                  {signalOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </label>
+              <label>
+                Long
+                <select value={filters.long} onChange={(event) => setFilters((prev) => ({ ...prev, long: event.target.value }))}>
+                  <option value="">Tất cả</option>
+                  <option value="on">Bật</option>
+                  <option value="off">Tắt</option>
+                </select>
+              </label>
+              <label>
+                On
+                <select value={filters.on} onChange={(event) => setFilters((prev) => ({ ...prev, on: event.target.value }))}>
+                  <option value="">Tất cả</option>
+                  <option value="on">Bật</option>
+                  <option value="off">Tắt</option>
+                </select>
+              </label>
+              <label>
+                Volume
+                <select value={filters.volume} onChange={(event) => setFilters((prev) => ({ ...prev, volume: event.target.value }))}>
+                  <option value="">Tất cả</option>
+                  {volumeOptions.map((value) => <option key={value} value={value}>{money(value)}</option>)}
+                </select>
+              </label>
+              <label>
+                Mode
+                <select value={filters.mode} onChange={(event) => setFilters((prev) => ({ ...prev, mode: event.target.value }))}>
+                  <option value="">Tất cả</option>
+                  {modeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </label>
+              <label>
+                Type
+                <select aria-label="Lọc theo open type" value={filters.type} onChange={(event) => setFilters((prev) => ({ ...prev, type: event.target.value }))}>
+                  <option value="">Tất cả</option>
+                  {typeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </label>
+            </div>
+          ) : null}
+          {canEditConfig && visibleAccounts.length > 0 ? (
             <label className="check">
               <input
                 type="checkbox"
                 checked={allPicked}
                 onChange={() => {
-                  setPicked(allPicked ? new Set() : new Set(accounts));
+                  setPicked(allPicked ? new Set() : new Set(visibleAccounts));
                 }}
               />
               Chọn tất cả
             </label>
           ) : null}
           {(bot.accounts || []).length === 0 ? <p className="muted">Không có config</p> : null}
-          {(bot.accounts || []).map((account) =>
+          {accounts.length > 0 && visibleAccounts.length === 0 ? <p className="muted">Không có config khớp bộ lọc.</p> : null}
+          {visibleAccounts.map((account) =>
             editEnv === account ? (
               <form
                 className="inline-edit"
