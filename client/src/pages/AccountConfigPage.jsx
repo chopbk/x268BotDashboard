@@ -267,6 +267,10 @@ export default function AccountConfigPage() {
     setCopyOpen(false);
   }
 
+  function onSave() {
+    document.getElementById("config-form")?.requestSubmit();
+  }
+
   function cancelEdit() {
     if (snapshot) {
       setForm(snapshot.form);
@@ -335,11 +339,11 @@ export default function AccountConfigPage() {
         {canEdit ? (
           <div className="config-toolbar">
             {editing ? (
-              <button type="submit" form="config-form" disabled={busy}>
+              <button type="button" key="save" onClick={onSave} disabled={busy}>
                 Lưu
               </button>
             ) : (
-              <button type="button" onClick={startEdit} disabled={busy || !form}>
+              <button type="button" key="edit" onClick={startEdit} disabled={busy || !form}>
                 Sửa
               </button>
             )}
