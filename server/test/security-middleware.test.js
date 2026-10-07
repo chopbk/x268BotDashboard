@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const config = require("../src/config");
 const { requireCsrf, sameToken } = require("../src/middleware/csrf");
 const { createRateLimit } = require("../src/middleware/rate-limit");
+const { createConcurrencyLimit, sessionIdentity } = require("../src/middleware/request-guards");
+const { EventEmitter } = require("node:events");
 
 function response() {
     return {
@@ -41,4 +43,28 @@ test("rate limiter isolates identifiers and returns retry metadata", () => {
     let bobPassed = false;
     middleware(request("bob"), response(), () => { bobPassed = true; });
     assert.equal(bobPassed, true);
+});
+
+test("concurrency limiter releases capacity when a response finishes", () => {
+    const middleware = createConcurrencyLimit({ max: 1 });
+    const first = Object.assign(new EventEmitter(), response());
+    let firstPassed = false;
+    middleware({}, first, () => { firstPassed = true; });
+    assert.equal(firstPassed, true);
+    const blocked = Object.assign(new EventEmitter(), response());
+    middleware({}, blocked, () => assert.fail("must be limited"));
+    assert.equal(blocked.statusCode, 503);
+    first.emit("finish");
+    const next = Object.assign(new EventEmitter(), response());
+    let nextPassed = false;
+    middleware({}, next, () => { nextPassed = true; });
+    assert.equal(nextPassed, true);
+});
+
+test("session limiter identity hashes auth cookies and never exposes the token", () => {
+    const token = "secret-jwt-value";
+    const identity = sessionIdentity({ cookies: { wb_token: token } }, "wb_token");
+    assert.match(identity, /^session:[a-f\d]{24}$/);
+    assert.equal(identity.includes(token), false);
+    assert.equal(sessionIdentity({ webUser: { id: "user-1" } }, "wb_token"), "user:user-1");
 });

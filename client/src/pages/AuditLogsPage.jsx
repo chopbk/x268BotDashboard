@@ -60,11 +60,12 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError("");
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (appliedQuery) params.set("q", appliedQuery);
-    api(`/api/audit-logs?${params}`)
+    api(`/api/audit-logs?${params}`, { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
         setLogs(data.logs || []);
@@ -78,6 +79,7 @@ export default function AuditLogsPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [appliedQuery, page]);
 

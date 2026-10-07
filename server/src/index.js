@@ -5,7 +5,8 @@ const config = require("./config");
 const { connect } = require("./db");
 const { bootstrapAdmin } = require("./auth/bootstrap");
 const { requireCsrf } = require("./middleware/csrf");
-const { createRateLimit } = require("./middleware/rate-limit");
+const { createRateLimit, endpointKey, requestIp } = require("./middleware/rate-limit");
+const { createConcurrencyLimit, requestTimeout, sessionIdentity } = require("./middleware/request-guards");
 const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
 
 async function main() {
@@ -23,6 +24,7 @@ async function main() {
         await startSummarySnapshotJob();
 
         const app = express();
+        if (config.trustProxy) app.set("trust proxy", 1);
         app.use(
             cors({
                 origin: config.clientOrigin,
@@ -31,6 +33,22 @@ async function main() {
         );
         app.use(express.json({ limit: "100kb" }));
         app.use(cookieParser());
+        app.use("/api", requestTimeout(30_000));
+        app.use("/api", createConcurrencyLimit({ max: 40 }));
+        app.use("/api", createConcurrencyLimit({
+            max: 8,
+            identify: (req) => {
+                const identity = sessionIdentity(req, config.cookieName);
+                return identity === "anonymous" ? `anonymous:${requestIp(req)}` : identity;
+            },
+        }));
+        app.use("/api", createRateLimit({ windowMs: 5 * 60 * 1000, max: 300, prefix: "global" }));
+        app.use("/api", createRateLimit({
+            windowMs: 60 * 1000,
+            max: 60,
+            prefix: "endpoint",
+            identify: (req) => `${sessionIdentity(req, config.cookieName)}:${endpointKey(req)}`,
+        }));
         app.use(requireCsrf);
 
         const sensitiveMutationLimit = createRateLimit({
@@ -53,6 +71,9 @@ async function main() {
         app.use("/api/account-statics", require("./routes/account-statics"));
 
         app.use((err, req, res, next) => {
+            if (err.type === "entity.too.large") {
+                return res.status(413).json({ error: "Request vượt quá kích thước cho phép" });
+            }
             if (err.type === "entity.parse.failed") {
                 return res.status(400).json({ error: "JSON không hợp lệ" });
             }
@@ -60,9 +81,12 @@ async function main() {
             res.status(500).json({ error: "Internal error" });
         });
 
-        app.listen(config.port, () => {
+        const server = app.listen(config.port, () => {
             console.log("[main] listen", config.port);
         });
+        server.requestTimeout = 35_000;
+        server.headersTimeout = 10_000;
+        server.keepAliveTimeout = 5_000;
     } catch (error) {
         console.error("[main]", error.message || error);
         process.exit(1);

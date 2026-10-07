@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import Pager from "../components/Pager";
 import { canEditResource, ownsBot } from "../access";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -52,6 +53,7 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageLimit = 50;
+  const debouncedQuery = useDebouncedValue(query);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleBots = useMemo(
@@ -132,10 +134,11 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
-    if (query.trim()) params.set("q", query.trim());
+    if (debouncedQuery.trim()) params.set("q", debouncedQuery.trim());
     if (scope) params.set("visibility", scope);
     if (activity) params.set("active", activity === "on" ? "true" : "false");
-    api(`/api/bots?${params}`)
+    const controller = new AbortController();
+    api(`/api/bots?${params}`, { signal: controller.signal })
       .then((data) => {
         if (!cancelled) { rememberBots(data.bots || []); setTotal(data.total || 0); }
       })
@@ -147,8 +150,9 @@ export default function HomePage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [page, query, scope, activity]);
+  }, [page, debouncedQuery, scope, activity]);
 
   useEffect(() => {
     if (!isAdmin) return;

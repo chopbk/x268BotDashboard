@@ -257,6 +257,20 @@ Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
 - Mutation Bot, User và User API có thêm rate limit 60 request/phút theo IP + session;
   endpoint test credential/import/restore sau này phải dùng cùng lớp giới hạn này.
 
+### 5.6 Giới hạn tải và request trùng
+
+- Mọi `/api` bị giới hạn 300 request trong 5 phút theo IP.
+- Mỗi endpoint bị giới hạn 60 request/phút theo IP + session; login/register vẫn giữ
+  bucket nghiêm ngặt riêng theo identifier tại mục 4 và 5.1.
+- Server chỉ nhận tối đa 40 request đồng thời toàn process và 8 request đồng thời cho
+  một session; vượt ngưỡng trả `503` kèm `Retry-After`.
+- API timeout sau 30 giây, JSON body tối đa 100 KB. Reverse proxy chỉ được tin khi đặt
+  `WEB_TRUST_PROXY=true`; không bật nếu Node còn được truy cập trực tiếp từ Internet.
+- Client debounce ô tìm kiếm, abort request cũ khi filter đổi và deduplicate request có
+  cùng method, URL và payload trong thời gian request trước còn chạy.
+- Rate-limit store hiện dùng memory vì project chưa có Redis. Khi chạy nhiều instance,
+  phải thay bằng shared Redis store trước khi coi quota là giới hạn toàn cụm.
+
 ## 6. Quản trị user
 
 Mọi route dưới `/api/admin/users` đi qua `requireAuth`, sau đó kiểm tra permission cụ thể:

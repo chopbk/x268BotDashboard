@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import Pager from "../components/Pager";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 
 const CREDENTIALS_MANAGE = "credentials.manage";
 
@@ -33,6 +34,7 @@ export default function UserApisPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageLimit = 50;
+  const debouncedQuery = useDebouncedValue(query);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visible = useMemo(
@@ -63,8 +65,9 @@ export default function UserApisPage() {
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
-    if (query.trim()) params.set("q", query.trim());
-    api(`/api/user-apis?${params}`)
+    if (debouncedQuery.trim()) params.set("q", debouncedQuery.trim());
+    const controller = new AbortController();
+    api(`/api/user-apis?${params}`, { signal: controller.signal })
       .then((data) => {
         if (!cancelled) { setRows(data.apis || []); setTotal(data.total || 0); }
       })
@@ -76,8 +79,9 @@ export default function UserApisPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [page, query]);
+  }, [page, debouncedQuery]);
 
   async function run(action) {
     setBusy(true);

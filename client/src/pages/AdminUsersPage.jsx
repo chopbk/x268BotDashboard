@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import Pager from "../components/Pager";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 
 const emptyForm = {
   email: "",
@@ -40,12 +41,13 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageLimit = 50;
+  const debouncedUserFilter = useDebouncedValue(userFilter);
 
-  async function load() {
+  async function load(signal) {
     const [userData, accessData, botData] = await Promise.all([
-      api(`/api/admin/users?page=${page}&limit=${pageLimit}&q=${encodeURIComponent(userFilter.trim())}`),
-      api("/api/admin/users/access-control"),
-      canListBots ? api("/api/bots?limit=100") : Promise.resolve({ bots: [] }),
+      api(`/api/admin/users?page=${page}&limit=${pageLimit}&q=${encodeURIComponent(debouncedUserFilter.trim())}`, { signal }),
+      api("/api/admin/users/access-control", { signal }),
+      canListBots ? api("/api/bots?limit=100", { signal }) : Promise.resolve({ bots: [] }),
     ]);
     setUsers(userData.users || []);
     setTotal(userData.total || 0);
@@ -57,10 +59,12 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
+    const controller = new AbortController();
+    load(controller.signal)
+      .catch((err) => { if (!controller.signal.aborted) setError(err.message); })
       .finally(() => setLoading(false));
-  }, [page, userFilter]);
+    return () => controller.abort();
+  }, [page, debouncedUserFilter]);
 
   const visibleBots = useMemo(() => {
     const query = filter.trim().toLowerCase();

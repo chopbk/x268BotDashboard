@@ -6,6 +6,16 @@ function requestIp(req) {
     return normalizeKeyPart(req.ip || req.socket?.remoteAddress || "unknown");
 }
 
+function endpointKey(req) {
+    const parts = String(req.path || req.originalUrl || "")
+        .split("?")[0]
+        .split("/")
+        .filter(Boolean)
+        .slice(0, 3)
+        .map((part) => (/^[a-f\d]{24}$/i.test(part) || /^\d+$/.test(part) ? ":id" : part));
+    return `${String(req.method || "GET").toUpperCase()}:/${parts.join("/")}`;
+}
+
 function createRateLimit({ windowMs, max, prefix, identify }) {
     const buckets = new Map();
     let operations = 0;
@@ -39,4 +49,4 @@ function createRateLimit({ windowMs, max, prefix, identify }) {
     };
 }
 
-module.exports = { createRateLimit, normalizeKeyPart, requestIp };
+module.exports = { createRateLimit, normalizeKeyPart, requestIp, endpointKey };
