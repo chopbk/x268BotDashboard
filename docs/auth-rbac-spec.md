@@ -286,7 +286,7 @@ Các invariant:
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
-| `GET /api/summary` | `requireAuth` | `summary.view`; mặc định 3 ngày, hỗ trợ `range=3d\|7d\|30d\|90d\|all` và cache server 60 giây; trả tổng bot public/private, config bật/tắt, signal, position và hiệu suất giao dịch, không trả tên bot/config/user |
+| `GET /api/summary` | `requireAuth` | `summary.view`; mặc định 3 ngày, hỗ trợ `range=today\|3d\|7d\|30d\|90d\|all` và cache MongoDB 60 giây; position mở lấy `monitor_positions`; profit, profit hôm nay, volume, win rate và xếp hạng lấy `account_statics` với `isPaper=false`, theo thời điểm đóng (`closeTime`, thiếu thì `openTime`), chỉ account config thuộc user bot, không lấy từ `signal_infos`; trả tên tín hiệu, user bot và symbol đứng đầu, không trả danh sách bot/config |
 | `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
 | `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
