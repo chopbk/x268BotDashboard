@@ -23,6 +23,29 @@ function optionalNumber(value, label) {
     return n;
 }
 
+function finite(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function briefConfig(doc) {
+    const trade = doc.trade_config || {};
+    const cost = finite(trade.FIX_COST_AMOUNT);
+    const leverage = finite(trade.LONG_LEVERAGE);
+    const tp = Array.isArray(trade.TP?.PERCENT) ? trade.TP.PERCENT.map(finite).filter((item) => item != null) : [];
+    return {
+        on: trade.ON !== false,
+        long: trade.LONG !== false,
+        short: trade.SHORT === true,
+        mode: String(trade.MARGIN?.MODE || "FIX").trim().toUpperCase() || "FIX",
+        volume: cost != null && leverage != null ? cost * leverage : null,
+        openType: String(trade.OPEN?.TYPE || "MARKET").trim().toUpperCase() || "MARKET",
+        sl: finite(trade.SL?.SL_PERCENT),
+        tp,
+        syncFrom: doc.sync_from || "",
+    };
+}
+
 function searchRange(input, now = new Date()) {
     if (!input.from && !input.to) {
         const days = Number(input.days || 30);
@@ -58,7 +81,7 @@ async function searchConfigsBySignal(actor, input = {}) {
     const envs = [...envOwners.keys()];
     if (!envs.length) return { rows: [], from: range.from, to: range.to };
 
-    const configs = await AccountConfig.find({ env: { $in: envs } }).select("env signals").lean();
+    const configs = await AccountConfig.find({ env: { $in: envs } }).select("env signals trade_config sync_from").lean();
     const matched = [];
     const wantedSet = new Set(wanted);
     for (const doc of configs) {
@@ -72,6 +95,7 @@ async function searchConfigsBySignal(actor, input = {}) {
                 signals,
                 matched: hit,
                 canEdit: canAccessBot(actor, bot, PERMISSIONS.CONFIG_EDIT),
+                config: briefConfig(doc),
             });
         }
     }
@@ -113,6 +137,7 @@ async function searchConfigsBySignal(actor, input = {}) {
             };
         })
         .filter((row) => {
+            if (row.trades < 1) return false;
             if (text && !`${row.username} ${row.env}`.toLowerCase().includes(text)) return false;
             if (minTrades != null && row.trades < minTrades) return false;
             if (minWinRate != null && row.winRate < minWinRate) return false;

@@ -31,11 +31,13 @@ test("searchConfigsBySignal keeps viewable configs and sorts by the latest trade
         { username: "mine", ownerUserId: "me", visibility: "private", active: true, accounts: ["m1"] },
         { username: "open", ownerUserId: "other", visibility: "public", active: true, accounts: ["o1"] },
         { username: "secret", ownerUserId: "other", visibility: "private", active: true, accounts: ["s1"] },
+        { username: "idle", ownerUserId: "other", visibility: "public", active: true, accounts: ["i1"] },
     ]);
     AccountConfig.find = () => query([
-        { env: "m1", signals: ["rose"] },
+        { env: "m1", signals: ["rose"], trade_config: { ON: true, LONG: true, FIX_COST_AMOUNT: 10, LONG_LEVERAGE: 5, MARGIN: { MODE: "FIX" }, OPEN: { TYPE: "LIMIT" } } },
         { env: "o1", signals: ["BULL", "ROSE"] },
         { env: "s1", signals: ["ROSE"] },
+        { env: "i1", signals: ["ROSE"] },
     ]);
     AccountStatic.aggregate = async () => [
         { _id: "m1", trades: 2, profit: 10, wins: 1, lastTime: older },
@@ -49,6 +51,9 @@ test("searchConfigsBySignal keeps viewable configs and sorts by the latest trade
         assert.equal(result.rows[0].trades, 4);
         assert.equal(result.rows[1].winRate, 50);
         assert.deepEqual(result.rows[0].matched, ["ROSE"]);
+        assert.equal(result.rows.some((row) => row.env === "i1" || row.trades === 0), false);
+        assert.equal(result.rows[1].config.volume, 50);
+        assert.equal(result.rows[1].config.openType, "LIMIT");
         const filtered = await searchConfigsBySignal(supervisor, { signal: "ROSE", days: 30, minWinRate: 40, profit: 0, profitOp: "gt" });
         assert.deepEqual(filtered.rows.map((row) => row.env), ["m1"]);
     } finally {
