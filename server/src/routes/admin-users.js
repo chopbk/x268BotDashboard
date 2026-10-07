@@ -31,6 +31,7 @@ const { publicUser } = require("../lib/public-user");
 const { buildChanges, safeRecordAudit } = require("../lib/audit");
 const { unknownBotUsernames } = require("../lib/bots");
 const { httpError, sendError } = require("../lib/http");
+const { hasAccessAssignmentFields } = require("../lib/user-permission-fields");
 
 const router = express.Router();
 const AUDITED_USER_FIELDS = [
@@ -131,6 +132,9 @@ router.get("/access-control", requirePermission(PERMISSIONS.USERS_VIEW), (req, r
 
 router.post("/", requirePermission(PERMISSIONS.USERS_CREATE), requireAllScope(PERMISSIONS.USERS_CREATE), async (req, res) => {
     try {
+        if (hasAccessAssignmentFields(req.body) && scopeForPermission(req.webUser, PERMISSIONS.USERS_PERMISSIONS) !== "all") {
+            throw httpError(403, "Không có quyền cấp quyền người dùng");
+        }
         const email = normalizeEmail(req.body?.email);
         const username = normalizeUsername(req.body?.username);
         const name = String(req.body?.name || "").trim();

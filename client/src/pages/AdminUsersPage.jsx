@@ -19,6 +19,10 @@ const emptyForm = {
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
+  const permissions = currentUser?.permissions || [];
+  const can = (permission) => permissions.includes(permission);
+  const canCreateUser = can("users.create");
+  const canListBots = can("users.permissions") && can("bots.view");
   const [users, setUsers] = useState([]);
   const [bots, setBots] = useState([]);
   const [permissionOptions, setPermissionOptions] = useState([]);
@@ -32,10 +36,10 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
 
   async function load() {
-    const [userData, botData, accessData] = await Promise.all([
+    const [userData, accessData, botData] = await Promise.all([
       api("/api/admin/users"),
-      api("/api/bots"),
       api("/api/admin/users/access-control"),
+      canListBots ? api("/api/bots") : Promise.resolve({ bots: [] }),
     ]);
     setUsers(userData.users || []);
     setBots(botData.bots || []);
@@ -90,9 +94,23 @@ export default function AdminUsersPage() {
   }
 
   function startCreate() {
+    if (!canCreateUser) return;
     setEditingId(null);
     setForm(emptyForm);
     setError("");
+  }
+
+  function canActOn(permission, userId) {
+    if (!can(permission)) return false;
+    if (currentUser?.role === "admin") return true;
+    const scope = currentUser?.permissionScopes?.[permission];
+    if (scope === "all" || ["users.permissions", "users.disable"].includes(permission)) return true;
+    return userId === currentUser?.id;
+  }
+
+  function canChangeUser(row) {
+    return ["users.edit", "users.permissions", "users.disable", "users.reset_password"]
+      .some((permission) => canActOn(permission, row.id));
   }
 
   function startEdit(row) {
@@ -118,6 +136,13 @@ export default function AdminUsersPage() {
     () => form.customPermissions ?? rolePermissions[form.role] ?? [],
     [form.customPermissions, form.role, rolePermissions]
   );
+  const canEditProfile = editingId ? canActOn("users.edit", editingId) : canCreateUser;
+  const canEditPermissions = editingId ? canActOn("users.permissions", editingId) : can("users.permissions");
+  const canDisableUser = editingId ? canActOn("users.disable", editingId) : false;
+  const canResetPassword = editingId ? canActOn("users.reset_password", editingId) : canCreateUser;
+  const canSave = editingId
+    ? canEditProfile || canEditPermissions || canDisableUser || canResetPassword
+    : canCreateUser;
 
   function togglePermission(permission) {
     if (form.role === "admin" || form.role === "pending") return;
@@ -138,23 +163,16 @@ export default function AdminUsersPage() {
 
   async function onSubmit(event) {
     event.preventDefault();
+    if (!canSave) return;
     setSaving(true);
     setError("");
     try {
       if (editingId) {
-        const body = {
-          name: form.name,
-          role: form.role,
-          botUsernames: form.botUsernames,
-          telegramId: form.telegramId,
-          telegramUsername: form.telegramUsername,
-          phone: form.phone,
-          customPermissions: form.customPermissions,
-          permissionScopes: form.permissionScopes,
-          disabled: form.disabled,
-        };
-        if (form.username) body.username = form.username;
-        if (form.password) body.password = form.password;
+        const body = {};
+        if (canEditProfile) Object.assign(body, { name: form.name, username: form.username, telegramId: form.telegramId, telegramUsername: form.telegramUsername, phone: form.phone });
+        if (canEditPermissions) Object.assign(body, { role: form.role, botUsernames: form.botUsernames, customPermissions: form.customPermissions, permissionScopes: form.permissionScopes });
+        if (canDisableUser) body.disabled = form.disabled;
+        if (canResetPassword && form.password) body.password = form.password;
         await api(`/api/admin/users/${editingId}`, { method: "PATCH", body });
       } else {
         await api("/api/admin/users", {
@@ -167,10 +185,7 @@ export default function AdminUsersPage() {
             phone: form.phone,
             password: form.password,
             name: form.name,
-            role: form.role,
-            botUsernames: form.botUsernames,
-            customPermissions: form.customPermissions,
-            permissionScopes: form.permissionScopes,
+            ...(canEditPermissions ? { role: form.role, botUsernames: form.botUsernames, customPermissions: form.customPermissions, permissionScopes: form.permissionScopes } : {}),
           },
         });
       }
@@ -233,7 +248,7 @@ export default function AdminUsersPage() {
                   <td>{row.disabled ? "Khóa" : "Hoạt động"}</td>
                   <td>
                     <button type="button" className="ghost" onClick={() => startEdit(row)}>
-                      Sửa
+                      {canChangeUser(row) ? "Sửa" : "Xem"}
                     </button>
                   </td>
                 </tr>
@@ -248,10 +263,15 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      <form className="card admin-form" onSubmit={onSubmit}>
+      {!editingId && !canCreateUser ? (
+        <div className="card readonly-user-note">
+          <h2>Chỉ xem người dùng</h2>
+          <p className="muted">Chọn “Xem” trong danh sách để xem thông tin. Tài khoản này không có quyền tạo người dùng.</p>
+        </div>
+      ) : <form className="card admin-form" onSubmit={onSubmit}>
         <div className="form-title">
           <h2>{editingId ? "Sửa user" : "Tạo user"}</h2>
-          {editingId ? (
+          {editingId && canCreateUser ? (
             <button type="button" className="ghost" onClick={startCreate}>
               Tạo mới
             </button>
@@ -263,6 +283,7 @@ export default function AdminUsersPage() {
             value={form.name}
             onChange={(event) => setForm({ ...form, name: event.target.value })}
             required
+            disabled={!canEditProfile}
           />
         </label>
         <label>
@@ -274,6 +295,7 @@ export default function AdminUsersPage() {
             maxLength={32}
             pattern="[a-z0-9][a-z0-9._-]{2,31}"
             required={!editingId}
+            disabled={!canEditProfile}
           />
         </label>
         <label>
@@ -293,6 +315,7 @@ export default function AdminUsersPage() {
             value={form.telegramId}
             onChange={(event) => setForm({ ...form, telegramId: event.target.value })}
             placeholder="123456789"
+            disabled={!canEditProfile}
           />
         </label>
         <label>
@@ -303,6 +326,7 @@ export default function AdminUsersPage() {
               setForm({ ...form, telegramUsername: event.target.value.toLowerCase() })
             }
             placeholder="@username"
+            disabled={!canEditProfile}
           />
         </label>
         <label>
@@ -312,6 +336,7 @@ export default function AdminUsersPage() {
             value={form.phone}
             onChange={(event) => setForm({ ...form, phone: event.target.value })}
             placeholder="+84901234567"
+            disabled={!canEditProfile}
           />
         </label>
         <label>
@@ -324,6 +349,7 @@ export default function AdminUsersPage() {
             minLength={form.password ? 8 : undefined}
             placeholder={editingId ? "Để trống nếu không đổi" : "Tối thiểu 8 ký tự"}
             autoComplete="new-password"
+            disabled={!canResetPassword}
           />
         </label>
         <label>
@@ -333,6 +359,7 @@ export default function AdminUsersPage() {
             onChange={(event) =>
               setForm({ ...form, role: event.target.value, customPermissions: null, permissionScopes: {} })
             }
+            disabled={!canEditPermissions}
           >
             {form.role === "user" ? <option value="user">user (legacy, như viewer)</option> : null}
             {form.role === "pending" ? <option value="pending">pending (chờ cấp quyền)</option> : null}
@@ -341,7 +368,7 @@ export default function AdminUsersPage() {
             <option value="admin">admin</option>
           </select>
         </label>
-        <fieldset className="permission-picker">
+        {canEditPermissions ? <fieldset className="permission-picker">
           <legend>Phân quyền chi tiết</legend>
           {permissionOptions.map((permission) => {
             const enabled = selectedPermissions.includes(permission.key);
@@ -374,8 +401,8 @@ export default function AdminUsersPage() {
               Dùng quyền mặc định của role
             </button>
           ) : null}
-        </fieldset>
-        {editingId && currentUser?.id !== editingId ? (
+        </fieldset> : null}
+        {editingId && currentUser?.id !== editingId && canDisableUser ? (
           <label className="check">
             <input
               type="checkbox"
@@ -385,15 +412,15 @@ export default function AdminUsersPage() {
             Khóa đăng nhập
           </label>
         ) : null}
-        <label>
+        {canEditPermissions ? <label>
           Bot được gán (áp dụng cho quyền có phạm vi “Bot được gán”)
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="username"
           />
-        </label>
-        <div className="bot-picker">
+        </label> : null}
+        {canEditPermissions ? <div className="bot-picker">
           {visibleBots.length === 0 ? <p className="muted">Không có bot khớp.</p> : null}
           {visibleBots.map((bot) => (
             <label className="check" key={bot.username}>
@@ -408,8 +435,8 @@ export default function AdminUsersPage() {
               </span>
             </label>
           ))}
-        </div>
-        {staleBots.length > 0 ? (
+        </div> : null}
+        {canEditPermissions && staleBots.length > 0 ? (
           <div className="chips">
             {staleBots.map((name) => (
               <button
@@ -423,14 +450,15 @@ export default function AdminUsersPage() {
             ))}
           </div>
         ) : null}
-        {form.botUsernames.length > 0 ? (
+        {canEditPermissions && form.botUsernames.length > 0 ? (
           <p className="muted">Đã chọn: {form.botUsernames.join(", ")}</p>
         ) : null}
         {error ? <p className="form-error">{error}</p> : null}
-        <button type="submit" disabled={saving}>
+        {canSave ? <button type="submit" disabled={saving}>
           {saving ? "Đang lưu…" : "Lưu"}
-        </button>
+        </button> : <p className="muted">Bạn chỉ có quyền xem thông tin người dùng này.</p>}
       </form>
+      }
     </section>
   );
 }

@@ -244,6 +244,13 @@ Admin có thể:
 - dùng template của role hoặc chọn từng permission riêng cho user thường;
 - duyệt đăng ký bằng cách đổi `pending` sang `viewer` hoặc `operator` và gán bot.
 
+UI phải phản ánh từng quyền hành động: `users.view` chỉ hiển thị danh sách và chi tiết
+read-only; không hiển thị form tạo nếu thiếu `users.create`, và không cho tương tác role,
+permission, scope hay bot assignment nếu thiếu `users.permissions`. Tương tự, profile,
+khóa tài khoản và đổi mật khẩu chỉ mở khi có permission tương ứng. Server vẫn là lớp
+bảo vệ quyết định. `users.create` không tự bao gồm `users.permissions`: người chỉ có
+quyền tạo chỉ được tạo user theo role mặc định, không được tự gửi role/quyền/scope.
+
 Các invariant:
 
 - Role, login username và bot username phải được server validate; đây là hai loại
