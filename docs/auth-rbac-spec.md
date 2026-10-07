@@ -254,7 +254,8 @@ Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
   `wb_csrf` và header `X-CSRF-Token` khớp nhau.
 - Token được so sánh constant-time. Sai origin/token trả `403`; client phải lấy token
   trước mutation, kể cả login/register/logout.
-- Mutation User API có thêm rate limit 60 request/phút theo IP + session.
+- Mutation Bot, User và User API có thêm rate limit 60 request/phút theo IP + session;
+  endpoint test credential/import/restore sau này phải dùng cùng lớp giới hạn này.
 
 ## 6. Quản trị user
 

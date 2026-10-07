@@ -42,9 +42,9 @@ async function main() {
             res.json({ ok: true });
         });
         app.use("/api/auth", require("./routes/auth"));
-        app.use("/api/bots", require("./routes/bots"));
+        app.use("/api/bots", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/bots"));
         app.use("/api/user-apis", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/user-apis"));
-        app.use("/api/admin/users", require("./routes/admin-users"));
+        app.use("/api/admin/users", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/admin-users"));
         app.use("/api/audit-logs", require("./routes/audit-logs"));
         app.use("/api/summary", require("./routes/summary"));
         app.use("/api/signal-history", require("./routes/signal-history"));
