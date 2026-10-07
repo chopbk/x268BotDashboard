@@ -10,6 +10,7 @@ const {
     isValidUsername,
 } = require("../lib/validate");
 const { sessionUser } = require("../lib/public-user");
+const { updateSelfProfile } = require("../lib/self-profile");
 const { safeRecordAudit } = require("../lib/audit");
 const { sendError } = require("../lib/http");
 const { issueCsrfToken } = require("../middleware/csrf");
@@ -18,6 +19,7 @@ const { createRateLimit } = require("../middleware/rate-limit");
 const router = express.Router();
 const LOGIN_ERROR = "Email/username hoặc mật khẩu không đúng";
 const loginLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 10, prefix: "login", identify: (req) => req.body?.identifier ?? req.body?.email });
+const profileLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 10, prefix: "profile" });
 const registerLimit = createRateLimit({ windowMs: 60 * 60 * 1000, max: 5, prefix: "register", identify: (req) => `${req.body?.email || ""}:${req.body?.username || ""}` });
 
 router.get("/csrf", issueCsrfToken);
@@ -140,6 +142,15 @@ router.get("/me", requireAuth, (req, res) => {
         res.json(sessionUser(req.webUser));
     } catch (error) {
         sendError(res, error, "GET /api/auth/me");
+    }
+});
+
+router.patch("/me", requireAuth, profileLimit, async (req, res) => {
+    try {
+        const user = await updateSelfProfile(req.webUser, req.body);
+        res.json(user);
+    } catch (error) {
+        sendError(res, error, "PATCH /api/auth/me");
     }
 });
 

@@ -34,12 +34,18 @@ const PERMISSION_LABELS = Object.freeze(Object.fromEntries(DEFINITIONS.map(({ ke
 const LEGACY_USER_PERMISSIONS = [PERMISSIONS.USERS_VIEW, PERMISSIONS.USERS_CREATE, PERMISSIONS.USERS_EDIT, PERMISSIONS.USERS_PERMISSIONS, PERMISSIONS.USERS_DISABLE, PERMISSIONS.USERS_RESET_PASSWORD];
 const VIEWER_PERMISSIONS = [PERMISSIONS.BOTS_VIEW, PERMISSIONS.CONFIG_VIEW, PERMISSIONS.SIGNALS_HISTORY, PERMISSIONS.STATISTICS_VIEW, PERMISSIONS.POSITIONS_VIEW];
 const OPERATOR_PERMISSIONS = [...VIEWER_PERMISSIONS, PERMISSIONS.BOTS_OPERATE, PERMISSIONS.CONFIG_EDIT, PERMISSIONS.POSITIONS_OPEN, PERMISSIONS.POSITIONS_CLOSE, PERMISSIONS.LOGS_VIEW];
+const SELF_PROFILE_PERMISSIONS = [PERMISSIONS.USERS_EDIT, PERMISSIONS.USERS_RESET_PASSWORD];
+function withSelfProfile(items) {
+    const result = new Set(items);
+    SELF_PROFILE_PERMISSIONS.forEach((item) => result.add(item));
+    return [...result];
+}
 const ROLE_PERMISSIONS = Object.freeze({
     admin: Object.freeze([...Object.keys(PERMISSION_DEFINITIONS), PERMISSIONS.USERS_MANAGE]),
-    supervisor: Object.freeze(OPERATOR_PERMISSIONS), auditor: Object.freeze([...VIEWER_PERMISSIONS, PERMISSIONS.LOGS_VIEW]),
-    operator: Object.freeze(OPERATOR_PERMISSIONS), collaborator: Object.freeze(OPERATOR_PERMISSIONS), trader: Object.freeze(OPERATOR_PERMISSIONS),
-    member: Object.freeze(VIEWER_PERMISSIONS), summary_viewer: Object.freeze([PERMISSIONS.SUMMARY_VIEW]),
-    viewer: Object.freeze(VIEWER_PERMISSIONS), user: Object.freeze(VIEWER_PERMISSIONS), pending: Object.freeze([]),
+    supervisor: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)), auditor: Object.freeze(withSelfProfile([...VIEWER_PERMISSIONS, PERMISSIONS.LOGS_VIEW])),
+    operator: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)), collaborator: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)), trader: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)),
+    member: Object.freeze(withSelfProfile(VIEWER_PERMISSIONS)), summary_viewer: Object.freeze(withSelfProfile([PERMISSIONS.SUMMARY_VIEW])),
+    viewer: Object.freeze(withSelfProfile(VIEWER_PERMISSIONS)), user: Object.freeze(withSelfProfile(VIEWER_PERMISSIONS)), pending: Object.freeze([]),
 });
 const ROLE_LABELS = Object.freeze({ pending: "Chờ duyệt", summary_viewer: "Chỉ xem tổng kết", member: "Xem dữ liệu của mình", trader: "Vận hành dữ liệu của mình", collaborator: "Sửa của mình, xem user được gán", operator: "Sửa của mình và user được gán", supervisor: "Sửa của mình, xem tất cả", auditor: "Kiểm toán - xem tất cả", admin: "Quản trị hệ thống", viewer: "Viewer (legacy)", user: "User (legacy)" });
 const scopeMap = (permissions, scope) => Object.freeze(Object.fromEntries(permissions.map((permission) => [permission, scope])));
@@ -65,7 +71,7 @@ function expandLegacy(items) {
 function permissionsForUser(user) {
     if (!user || user.role === "pending") return [];
     if (user.role === "admin") return permissionsForRole("admin");
-    return expandLegacy(Array.isArray(user.customPermissions) ? user.customPermissions.filter(isPermission) : permissionsForRole(user.role));
+    return withSelfProfile(expandLegacy(Array.isArray(user.customPermissions) ? user.customPermissions.filter(isPermission) : permissionsForRole(user.role)));
 }
 function hasPermission(user, permission) {
     const effective = permissionsForUser(user);
@@ -91,6 +97,9 @@ function resourceIdentity(resource) {
     if (resource && typeof resource === "object") return { username: resource.username, ownerUserId: resource.ownerUserId ? String(resource.ownerUserId) : null, visibility: resource.visibility || "public" };
     return { username: resource, ownerUserId: null, visibility: "public" };
 }
+function canManageWebUser(user, permission) {
+    return scopeForPermission(user, permission) === SCOPES.ALL;
+}
 function canAccessResource(user, permission, resource) {
     const scope = scopeForPermission(user, permission);
     const { username, ownerUserId, visibility } = resourceIdentity(resource);
@@ -112,4 +121,4 @@ function normalizePermissionScopes(value, permissions) {
     }
     return result;
 }
-module.exports = { SCOPES, PERMISSIONS, PERMISSION_DEFINITIONS, PERMISSION_LABELS, ROLE_PERMISSIONS, ROLE_SCOPES, ROLE_LABELS, ROLES, permissionsForRole, permissionsForUser, isPermission, hasPermission, scopeForPermission, canAccessResource, normalizePermissionScopes, plainScopes };
+module.exports = { SCOPES, PERMISSIONS, PERMISSION_DEFINITIONS, PERMISSION_LABELS, ROLE_PERMISSIONS, ROLE_SCOPES, ROLE_LABELS, ROLES, permissionsForRole, permissionsForUser, isPermission, hasPermission, scopeForPermission, canManageWebUser, canAccessResource, normalizePermissionScopes, plainScopes };

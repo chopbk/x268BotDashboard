@@ -94,6 +94,9 @@ Khi thêm endpoint mới, phải gắn `requireAuth` và `requirePermission(...)
 - Với `viewer`, `operator` và legacy `user`, nếu `customPermissions` là một mảng thì mảng
   đó thay thế template role. Mảng rỗng có nghĩa là 0 quyền.
 - `pending` luôn có 0 quyền, kể cả database chứa custom permission do dữ liệu lỗi.
+- Mọi role khác `pending` luôn có `users.edit` và `users.reset_password` với scope `own`,
+  kể cả khi `customPermissions` thay template. Hai quyền này chỉ đủ để sửa hồ sơ và
+  mật khẩu của chính mình qua `PATCH /api/auth/me`, không mở trang quản trị user.
 - `admin` luôn có toàn bộ permission của template admin; không được hạ quyền admin bằng
   custom permission vì sẽ phá invariant phục hồi/quản trị.
 - Permission không xác định phải bị loại bỏ/fail-closed.
@@ -277,7 +280,8 @@ Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
 Mọi route dưới `/api/admin/users` đi qua `requireAuth`, sau đó kiểm tra permission cụ thể:
 list/catalog dùng `users.view`, tạo dùng `users.create`, sửa profile dùng `users.edit`,
 đổi role/quyền/bot scope dùng `users.permissions`, khóa dùng `users.disable`, đổi password
-dùng `users.reset_password`. Mỗi thao tác tiếp tục kiểm tra scope `all` hoặc `own`.
+dùng `users.reset_password`. Route quản trị chỉ nhận scope `all`. Scope `own` không so với
+username bot và chỉ đủ để gọi `PATCH /api/auth/me`.
 
 Không kiểm tra bằng chuỗi `role === "admin"` tại route. Role map sang permission tại
 `access-control.js`.
@@ -320,6 +324,7 @@ Các invariant:
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
+| `PATCH /api/auth/me` | `requireAuth` | `users.edit` cho tên, Telegram ID, Telegram username và số điện thoại. `users.reset_password` cho mật khẩu mới, bắt buộc đúng mật khẩu hiện tại. Không đổi email, username, role hay quyền. Không trả `passwordHash` |
 | `GET /api/summary` | `requireAuth` | `summary.view` (admin và role `summary_viewer`); mặc định 3 ngày, hỗ trợ `range=today\|3d\|7d\|30d\|90d\|all`. Request chỉ đọc materialized snapshot trong `web_summary_snapshots`; snapshot quá hạn vẫn được trả ngay và được refresh nền. Dashboard nhận `snapshot.generatedAt`, `snapshot.status` và `snapshot.formulaVersion`. Chỉ user bot `active !== false`. Position mở lấy `monitor_positions`; profit, profit hôm nay, volume, win rate và xếp hạng lấy `account_statics` với `isPaper=false`, theo thời điểm đóng (`closeTime`, thiếu thì `openTime`), chỉ account config của user đang active, không lấy từ `signal_infos`. Thẻ đầu chỉ trả tín hiệu, user và symbol đứng đầu. `userRanks` xếp mọi user active theo profit, kèm volume, số lệnh và win rate |
 | `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |
 | `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, số lượng, status, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` (một hoặc nhiều tên cách nhau bởi dấu phẩy), `status`, `profit=win\|loss\|flat` lọc danh sách và số tổng; breakdown signal/status giữ theo user, config, symbol, side và thời gian |

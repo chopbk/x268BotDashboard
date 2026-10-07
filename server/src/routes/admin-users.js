@@ -11,7 +11,7 @@ const {
     ROLE_LABELS,
     isPermission,
     normalizePermissionScopes,
-    canAccessResource,
+    canManageWebUser,
     scopeForPermission,
 } = require("../auth/access-control");
 const { hashPassword } = require("../auth/password");
@@ -252,7 +252,7 @@ router.patch("/:id", async (req, res) => {
         if (hasDisabled) required.add(PERMISSIONS.USERS_DISABLE);
         if (hasPassword && body.password) required.add(PERMISSIONS.USERS_RESET_PASSWORD);
         for (const permission of required) {
-            if (!canAccessResource(req.webUser, permission, String(target._id))) {
+            if (!canManageWebUser(req.webUser, permission)) {
                 throw httpError(403, `Không có quyền ${permission} với user này`);
             }
         }

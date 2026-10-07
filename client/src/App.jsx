@@ -13,12 +13,14 @@ import AuditLogsPage from "./pages/AuditLogsPage";
 import SummaryPage from "./pages/SummaryPage";
 import SignalHistoryPage from "./pages/SignalHistoryPage";
 import SignalSearchPage from "./pages/SignalSearchPage";
+import ProfilePage from "./pages/ProfilePage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
 const CONFIG_VIEW = "config.view";
 const CREDENTIALS_VIEW = "credentials.view";
 const LOGS_VIEW = "logs.view";
+const USERS_EDIT = "users.edit";
 const SUMMARY_VIEW = "summary.view";
 const SIGNALS_HISTORY = "signals.history";
 const STATISTICS_VIEW = "statistics.view";
@@ -81,7 +83,7 @@ function Shell({ children }) {
           </nav>
         </div>
         <div className="who">
-          <span>{user?.name}</span>
+          {hasPermission(user, USERS_EDIT) ? <NavLink to="/profile">{user?.name}</NavLink> : <span>{user?.name}</span>}
           <span className="role">{user?.role}</span>
           <button type="button" className="ghost" onClick={onLogout}>
             Đăng xuất
@@ -188,6 +190,16 @@ function AppRoutes() {
           <Protected permission={USERS_MANAGE}>
             <Shell>
               <AdminUsersPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <Protected permission={USERS_EDIT}>
+            <Shell>
+              <ProfilePage />
             </Shell>
           </Protected>
         }

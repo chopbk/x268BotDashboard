@@ -8,6 +8,7 @@ const {
     hasPermission,
     scopeForPermission,
     canAccessResource,
+    canManageWebUser,
 } = require("../src/auth/access-control");
 
 test("a user without custom permissions inherits the role template", () => {
@@ -25,6 +26,8 @@ test("custom permissions replace the role template", () => {
     assert.deepEqual(permissionsForUser(user), [
         PERMISSIONS.POSITIONS_VIEW,
         PERMISSIONS.CREDENTIALS_VIEW,
+        PERMISSIONS.USERS_EDIT,
+        PERMISSIONS.USERS_RESET_PASSWORD,
     ]);
     assert.equal(hasPermission(user, PERMISSIONS.BOTS_VIEW), false);
     assert.equal(hasPermission(user, PERMISSIONS.CREDENTIALS_VIEW), true);
@@ -50,7 +53,7 @@ test("admin always has the full template even if custom permissions are empty", 
 test("unknown custom permissions fail closed", () => {
     assert.deepEqual(
         permissionsForUser({ role: "viewer", customPermissions: ["unknown.permission"] }),
-        []
+        [PERMISSIONS.USERS_EDIT, PERMISSIONS.USERS_RESET_PASSWORD]
     );
 });
 
@@ -87,6 +90,11 @@ test("new role templates map own, assigned and all scopes independently", () => 
     assert.equal(scopeForPermission({ role: "supervisor" }, PERMISSIONS.CONFIG_VIEW), "all");
     assert.equal(scopeForPermission({ role: "supervisor" }, PERMISSIONS.CONFIG_EDIT), "own");
     assert.equal(hasPermission({ role: "summary_viewer" }, PERMISSIONS.SUMMARY_VIEW), true);
+    assert.equal(scopeForPermission({ role: "viewer" }, PERMISSIONS.USERS_EDIT), "own");
+    assert.equal(scopeForPermission({ role: "member" }, PERMISSIONS.USERS_RESET_PASSWORD), "own");
+    assert.equal(hasPermission({ role: "pending" }, PERMISSIONS.USERS_EDIT), false);
+    assert.equal(canManageWebUser({ role: "member", id: "member-id", username: "507f1f77bcf86cd799439011" }, PERMISSIONS.USERS_EDIT), false);
+    assert.equal(canManageWebUser({ role: "admin" }, PERMISSIONS.USERS_RESET_PASSWORD), true);
 });
 
 test("private admin bot is hidden from ordinary all-scope users unless explicitly assigned", () => {

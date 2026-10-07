@@ -50,6 +50,11 @@ export function AuthProvider({ children }) {
         await api("/api/auth/logout", { method: "POST" });
         setUser(null);
       },
+      async saveProfile(body) {
+        const me = await api("/api/auth/me", { method: "PATCH", body });
+        setUser(me);
+        return me;
+      },
     }),
     [user, loading]
   );
