@@ -1,5 +1,5 @@
 const UserApi = require("../models/user-api");
-const { PERMISSIONS, hasPermission } = require("../auth/access-control");
+const { PERMISSIONS, canAccessResource, scopeForPermission } = require("../auth/access-control");
 const { httpError } = require("./http");
 const { normalizeName } = require("./bot-directory");
 
@@ -26,18 +26,12 @@ function assertName(name) {
     }
 }
 
-function canSeeAll(user) {
-    return hasPermission(user, PERMISSIONS.USERS_MANAGE);
+function canAccessApi(user, username, permission = PERMISSIONS.CREDENTIALS_VIEW) {
+    return canAccessResource(user, permission, username);
 }
 
-function canAccessApi(user, username) {
-    if (!user || !username) return false;
-    if (canSeeAll(user)) return true;
-    return (user.botUsernames || []).includes(username);
-}
-
-function assertAccess(user, username) {
-    if (!canAccessApi(user, username)) {
+function assertAccess(user, username, permission) {
+    if (!canAccessApi(user, username, permission)) {
         throw httpError(403, "Không có quyền với User API này");
     }
 }
@@ -88,8 +82,8 @@ function toPublicApi(doc) {
     };
 }
 
-function scopeFilter(user) {
-    if (canSeeAll(user)) return {};
+function scopeFilter(user, permission) {
+    if (scopeForPermission(user, permission) === "all") return {};
     return { username: { $in: user?.botUsernames || [] } };
 }
 
@@ -153,7 +147,7 @@ async function findPublic(username) {
 
 async function listUserApis(actor) {
     const rows = await UserApi.aggregate([
-        { $match: scopeFilter(actor) },
+        { $match: scopeFilter(actor, PERMISSIONS.CREDENTIALS_VIEW) },
         { $project: PUBLIC_PROJECT },
         { $sort: { username: 1 } },
     ]);
@@ -162,7 +156,7 @@ async function listUserApis(actor) {
 
 async function getUserApi(actor, username) {
     assertName(username);
-    assertAccess(actor, username);
+    assertAccess(actor, username, PERMISSIONS.CREDENTIALS_VIEW);
     const row = await findPublic(username);
     if (!row) throw httpError(404, "Không tìm thấy User API");
     return row;
@@ -172,7 +166,7 @@ async function createUserApi(actor, body) {
     const input = body || {};
     const username = normalizeName(input.username);
     assertName(username);
-    assertAccess(actor, username);
+    assertAccess(actor, username, PERMISSIONS.CREDENTIALS_MANAGE);
 
     const exchange = readExchange(input.exchange, true);
     const apiKey = secretValue(input, "apiKey", "api_key", "API key", SECRET_MAX, true);
@@ -204,12 +198,13 @@ async function createUserApi(actor, body) {
         if (error?.code === 11000) throw httpError(409, "User API đã tồn tại");
         throw error;
     }
-    return getUserApi(actor, username);
+    const row = await findPublic(username);
+    return row;
 }
 
 async function updateUserApi(actor, username, body) {
     assertName(username);
-    assertAccess(actor, username);
+    assertAccess(actor, username, PERMISSIONS.CREDENTIALS_MANAGE);
     const input = body || {};
     const current = await UserApi.findOne({ username }).select("username").lean();
     if (!current) throw httpError(404, "Không tìm thấy User API");
@@ -219,7 +214,7 @@ async function updateUserApi(actor, username, body) {
         const nextName = normalizeName(input.username);
         assertName(nextName);
         if (nextName !== username) {
-            assertAccess(actor, nextName);
+            assertAccess(actor, nextName, PERMISSIONS.CREDENTIALS_MANAGE);
             const taken = await UserApi.findOne({ username: nextName }).select("username").lean();
             if (taken) throw httpError(409, "User API đã tồn tại");
             patch.username = nextName;
@@ -253,12 +248,12 @@ async function updateUserApi(actor, username, body) {
             throw error;
         }
     }
-    return getUserApi(actor, patch.username || username);
+    return findPublic(patch.username || username);
 }
 
 async function deleteUserApi(actor, username) {
     assertName(username);
-    assertAccess(actor, username);
+    assertAccess(actor, username, PERMISSIONS.CREDENTIALS_MANAGE);
     const current = await UserApi.findOne({ username }).select("username").lean();
     if (!current) throw httpError(404, "Không tìm thấy User API");
     await UserApi.deleteOne({ username });

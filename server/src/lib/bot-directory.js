@@ -3,6 +3,7 @@ const AccountConfig = require("../models/account-config");
 const UserApi = require("../models/user-api");
 const WebUser = require("../models/web-user");
 const { canAccessBot } = require("../middleware/auth");
+const { PERMISSIONS } = require("../auth/access-control");
 const { httpError } = require("./http");
 const { defaultTradeConfig } = require("./default-trade-config");
 
@@ -23,8 +24,8 @@ function toBot(doc) {
     };
 }
 
-function assertCanAccess(user, username) {
-    if (!canAccessBot(user, username)) {
+function assertCanAccess(user, username, permission) {
+    if (!canAccessBot(user, username, permission)) {
         throw httpError(403, "Không có quyền với bot này");
     }
 }
@@ -33,8 +34,8 @@ async function findBot(username) {
     return UserAccount.findOne({ username });
 }
 
-async function requireBot(user, username) {
-    assertCanAccess(user, username);
+async function requireBot(user, username, permission) {
+    assertCanAccess(user, username, permission);
     const bot = await findBot(username);
     if (!bot) throw httpError(404, "Không tìm thấy user bot");
     return bot;
@@ -59,9 +60,9 @@ async function createBot(username) {
     }
 }
 
-async function renameBot(actor, username, nextName) {
+async function renameBot(actor, username, nextName, permission = PERMISSIONS.BOTS_EDIT) {
     assertName(nextName, "Tên user bot");
-    const bot = await requireBot(actor, username);
+    const bot = await requireBot(actor, username, permission);
     if (nextName === username) return toBot(bot);
     const taken = await findBot(nextName);
     if (taken) throw httpError(409, "User bot đã tồn tại");
@@ -83,8 +84,8 @@ async function renameBot(actor, username, nextName) {
     return toBot(bot);
 }
 
-async function deleteBot(actor, username) {
-    const bot = await requireBot(actor, username);
+async function deleteBot(actor, username, permission = PERMISSIONS.BOTS_DELETE) {
+    const bot = await requireBot(actor, username, permission);
     await UserAccount.deleteOne({ _id: bot._id });
     await WebUser.updateMany({ botUsernames: username }, { $pull: { botUsernames: username } });
     return { ok: true };
@@ -128,9 +129,9 @@ async function ensureAccountConfig(env, siblingEnv) {
     }
 }
 
-async function addAccount(actor, username, env) {
+async function addAccount(actor, username, env, permission = PERMISSIONS.CONFIG_EDIT) {
     assertName(env, "Tên config");
-    const bot = await requireBot(actor, username);
+    const bot = await requireBot(actor, username, permission);
     const accounts = bot.accounts || [];
     if (accounts.includes(env)) throw httpError(409, "Config đã có trong user bot này");
     const owner = await envOwner(env, username);
@@ -142,9 +143,9 @@ async function addAccount(actor, username, env) {
     return toBot(bot);
 }
 
-async function renameAccount(actor, username, env, nextEnv) {
+async function renameAccount(actor, username, env, nextEnv, permission = PERMISSIONS.CONFIG_EDIT) {
     assertName(nextEnv, "Tên config");
-    const bot = await requireBot(actor, username);
+    const bot = await requireBot(actor, username, permission);
     const accounts = [...(bot.accounts || [])];
     const index = accounts.indexOf(env);
     if (index < 0) throw httpError(404, "Không tìm thấy config");
@@ -160,8 +161,8 @@ async function renameAccount(actor, username, env, nextEnv) {
     return toBot(bot);
 }
 
-async function deleteAccount(actor, username, env) {
-    const bot = await requireBot(actor, username);
+async function deleteAccount(actor, username, env, permission = PERMISSIONS.CONFIG_EDIT) {
+    const bot = await requireBot(actor, username, permission);
     const accounts = bot.accounts || [];
     if (!accounts.includes(env)) throw httpError(404, "Không tìm thấy config");
     bot.accounts = accounts.filter((name) => name !== env);
@@ -173,6 +174,7 @@ async function deleteAccount(actor, username, env) {
 
 module.exports = {
     normalizeName,
+    requireBot,
     createBot,
     renameBot,
     deleteBot,

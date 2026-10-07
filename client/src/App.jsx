@@ -10,7 +10,7 @@ import UserApiDetailPage from "./pages/UserApiDetailPage";
 import PendingPage from "./pages/PendingPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 
-const USERS_MANAGE = "users.manage";
+const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
 const CREDENTIALS_VIEW = "credentials.view";
 const LOGS_VIEW = "logs.view";

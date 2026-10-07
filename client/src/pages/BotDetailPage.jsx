@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
+const CONFIG_VIEW = "config.view";
 const CONFIG_EDIT = "config.edit";
-const USERS_MANAGE = "users.manage";
+const USERS_MANAGE = "bots.edit";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -14,6 +15,7 @@ export default function BotDetailPage() {
   const { username = "" } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canViewConfig = can(user, CONFIG_VIEW);
   const canEditConfig = can(user, CONFIG_EDIT);
   const canManageUsers = can(user, USERS_MANAGE);
   const [bot, setBot] = useState(null);
@@ -24,6 +26,7 @@ export default function BotDetailPage() {
   const [editEnv, setEditEnv] = useState(null);
   const [envDraft, setEnvDraft] = useState("");
   const [picked, setPicked] = useState(() => new Set());
+  const [summaries, setSummaries] = useState({});
   const [busy, setBusy] = useState(false);
   const accounts = bot?.accounts || [];
   const allPicked = accounts.length > 0 && accounts.every((account) => picked.has(account));
@@ -49,6 +52,25 @@ export default function BotDetailPage() {
       cancelled = true;
     };
   }, [username]);
+
+  const accountKey = accounts.join("|");
+  useEffect(() => {
+    if (!canViewConfig || !bot) return undefined;
+    let cancelled = false;
+    api(`/api/bots/${encodeURIComponent(bot.username)}/configs`)
+      .then((data) => {
+        if (cancelled) return;
+        const next = {};
+        for (const row of data.configs || []) next[row.env] = row;
+        setSummaries(next);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewConfig, bot, accountKey]);
 
   async function run(action) {
     setBusy(true);
@@ -212,9 +234,18 @@ export default function BotDetailPage() {
                     aria-label={`Chọn ${account}`}
                   />
                 ) : null}
-                <span className="chip">{account}</span>
+                <div className="account-main">
+                  <span className="chip">{account}</span>
+                  {canViewConfig ? <span className="account-meta">{summaryText(summaries[account])}</span> : null}
+                </div>
                 {canEditConfig ? (
                   <div className="row-actions">
+                    <Link
+                      className="ghost link-btn"
+                      to={`/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`}
+                    >
+                      Sửa
+                    </Link>
                     <button
                       type="button"
                       className="ghost"
@@ -223,7 +254,7 @@ export default function BotDetailPage() {
                         setEnvDraft(account);
                       }}
                     >
-                      Sửa
+                      Đổi tên
                     </button>
                     <button
                       type="button"

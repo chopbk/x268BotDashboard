@@ -1,13 +1,26 @@
 const WebUser = require("../models/web-user");
 const config = require("../config");
 const { verifyToken } = require("../auth/token");
-const { PERMISSIONS, hasPermission, permissionsForUser } = require("../auth/access-control");
+const { PERMISSIONS, hasPermission, permissionsForUser, canAccessResource, plainScopes, scopeForPermission } = require("../auth/access-control");
 
-function canAccessBot(user, botUsername) {
-    if (!user || !botUsername) return false;
-    if (!hasPermission(user, PERMISSIONS.BOTS_VIEW)) return false;
-    if (hasPermission(user, PERMISSIONS.USERS_MANAGE)) return true;
-    return (user.botUsernames || []).includes(botUsername);
+function canAccessBot(user, botUsername, permission = PERMISSIONS.BOTS_VIEW) {
+    return canAccessResource(user, permission, botUsername);
+}
+
+function requireResourcePermission(permission, getResource = (req) => req.params.username) {
+    return function resourcePermissionMiddleware(req, res, next) {
+        if (!canAccessResource(req.webUser, permission, getResource(req))) {
+            return res.status(403).json({ error: "Không có quyền với tài nguyên này" });
+        }
+        next();
+    };
+}
+
+function requireAllScope(permission) {
+    return function allScopeMiddleware(req, res, next) {
+        if (scopeForPermission(req.webUser, permission) !== "all") return res.status(403).json({ error: "Cần phạm vi tất cả" });
+        next();
+    };
 }
 
 function requirePermission(permission) {
@@ -44,6 +57,7 @@ async function requireAuth(req, res, next) {
             name: user.name,
             role: user.role,
             customPermissions: user.customPermissions,
+            permissionScopes: plainScopes(user.permissionScopes),
             permissions: permissionsForUser(user),
             botUsernames: user.botUsernames || [],
             disabled: !!user.disabled,
@@ -55,4 +69,4 @@ async function requireAuth(req, res, next) {
     }
 }
 
-module.exports = { requireAuth, requirePermission, canAccessBot };
+module.exports = { requireAuth, requirePermission, requireResourcePermission, requireAllScope, canAccessBot };

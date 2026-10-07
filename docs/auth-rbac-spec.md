@@ -57,21 +57,23 @@ Role không hợp lệ hoặc không xác định phải có 0 permission, khôn
 
 ### 3.2 Permission matrix
 
-| Permission | pending | viewer / user | operator | admin |
-|---|:---:|:---:|:---:|:---:|
-| `bots.view` | | ✓ | ✓ | ✓ |
-| `bots.operate` | | | ✓ | ✓ |
-| `config.view` | | ✓ | ✓ | ✓ |
-| `config.edit` | | | ✓ | ✓ |
-| `positions.view` | | ✓ | ✓ | ✓ |
-| `positions.open` | | | ✓ | ✓ |
-| `positions.close` | | | ✓ | ✓ |
-| `signals.view` | | ✓ | ✓ | ✓ |
-| `signals.manage` | | | ✓ | ✓ |
-| `logs.view` | | | ✓ | ✓ |
-| `credentials.view` | | | | ✓ |
-| `users.manage` | | | | ✓ |
-| `credentials.manage` | | | | ✓ |
+Permission được chia theo domain, không gắn trực tiếp vào màn hình:
+
+| Domain | Permission |
+|---|---|
+| Bot | `bots.view`, `bots.create`, `bots.edit`, `bots.delete`, `bots.operate` |
+| Config | `config.view`, `config.edit` |
+| Position | `positions.view`, `positions.open`, `positions.close` |
+| API | `credentials.view`, `credentials.manage` |
+| User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
+| Log | `logs.view` |
+
+`config.*` bao trọn `Account_Config`: signal, trade config, symbol blacklist/whitelist và
+các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
+legacy để đọc dữ liệu cũ; không cấp mới qua UI.
+
+Viewer mặc định có quyền xem Bot/Config/Position. Operator thêm vận hành bot, sửa Config,
+mở/đóng Position và xem Log. Admin luôn có toàn bộ quyền. Pending luôn có 0 quyền.
 
 Một permission được định nghĩa trước chưa có nghĩa là endpoint tương ứng đã tồn tại.
 Khi thêm endpoint mới, phải gắn `requireAuth` và `requirePermission(...)` ở server.
@@ -95,9 +97,16 @@ endpoint, không được hiểu permission xem là quyền trả raw secret m�
 
 ### 3.4 Phạm vi bot
 
-- `viewer`, legacy `user` và `operator` chỉ truy cập bot có username nằm trong
-  `webUser.botUsernames`.
-- Hiện tại `admin` thấy mọi bot vì có `users.manage`.
+- Mỗi permission có scope độc lập trong `permissionScopes[permission]`:
+  `all`, `assigned`, hoặc `own` tùy catalog server cho phép.
+- `permissionScopes` phải lưu bằng object/Mongoose `Mixed`, không dùng Mongoose `Map`, vì
+  permission key chứa dấu chấm như `config.view` và Map sẽ từ chối khi validate.
+- `assigned` đối chiếu username tài nguyên với `webUser.botUsernames`; `own` đối chiếu
+  user id/username/email của chính actor. Admin luôn có scope `all`.
+- Permission có scope tài nguyên nhưng document cũ chưa có `permissionScopes` mặc định
+  về `assigned`; đây là tương thích ngược an toàn, không fail-open.
+- Quyền xem không suy ra quyền sửa và scope xem không dùng thay scope sửa. Ví dụ hợp lệ:
+  `config.view=all`, `config.edit=assigned`.
 - `pending` không có `bots.view`, nên không được gọi `/api/bots`, kể cả nếu dữ liệu lỗi
   khiến `botUsernames` không rỗng.
 - Không được chỉ lọc bot ở client. Query và kết quả phải được giới hạn ở server.
@@ -218,11 +227,10 @@ Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
 
 ## 6. Quản trị user
 
-Mọi route dưới `/api/admin/users` phải đi qua:
-
-```text
-requireAuth -> requirePermission(users.manage)
-```
+Mọi route dưới `/api/admin/users` đi qua `requireAuth`, sau đó kiểm tra permission cụ thể:
+list/catalog dùng `users.view`, tạo dùng `users.create`, sửa profile dùng `users.edit`,
+đổi role/quyền/bot scope dùng `users.permissions`, khóa dùng `users.disable`, đổi password
+dùng `users.reset_password`. Mỗi thao tác tiếp tục kiểm tra scope `all` hoặc `own`.
 
 Không kiểm tra bằng chuỗi `role === "admin"` tại route. Role map sang permission tại
 `access-control.js`.
@@ -257,21 +265,21 @@ Các invariant:
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
-| `GET /api/bots` | `requireAuth` | `bots.view` + scope `botUsernames`; admin thấy tất cả |
-| `POST /api/bots` | `requireAuth` | `users.manage`; tạo `User_Account` rỗng |
-| `PATCH /api/bots/:username` | `requireAuth` | `users.manage` + scope; đổi tên user bot, kèm `User_Api.username` và `botUsernames` |
-| `DELETE /api/bots/:username` | `requireAuth` | `users.manage` + scope; xoá `User_Account` và gỡ `botUsernames`, không xoá API key hay account config |
+| `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
+| `POST /api/bots` | `requireAuth` | `bots.create=all`; tạo `User_Account` rỗng |
+| `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope riêng |
+| `DELETE /api/bots/:username` | `requireAuth` | `bots.delete` + scope riêng |
 | `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; thêm env, tạo `Account_Config` nếu chưa có |
 | `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
 | `DELETE /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; gỡ env, xoá `Account_Config` nếu không user bot nào còn giữ |
-| `GET /api/user-apis` | `requireAuth` | `credentials.view`; admin (`users.manage`) thấy mọi bản ghi, user khác chỉ username nằm trong `botUsernames`. Response không có `api_key`, `api_secret`, `password` |
+| `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
 | `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |
 | `PATCH /api/user-apis/:username` | `requireAuth` | `credentials.manage` + scope; key/secret/passphrase để trống thì giữ giá trị cũ |
 | `DELETE /api/user-apis/:username` | `requireAuth` | `credentials.manage` + scope; xoá document `user_apis`, không xoá user bot hay account config |
-| `/api/admin/users/*` | `requireAuth` | `users.manage` |
-| `GET /api/admin/users/access-control` | `requireAuth` | `users.manage`; trả catalog/template quyền |
-| `GET /api/audit-logs` | `requireAuth` | `logs.view`; tìm kiếm và phân trang audit log |
+| `/api/admin/users/*` | `requireAuth` | permission `users.*` theo field/action và scope |
+| `GET /api/admin/users/access-control` | `requireAuth` | `users.view`; trả catalog gồm group + allowedScopes và template role |
+| `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server |
 
 Quy ước HTTP:
 
@@ -348,8 +356,8 @@ Khi thêm tính năng được bảo vệ:
 
 1. Thêm permission vào `PERMISSIONS` nếu chưa có.
 2. Gán permission cho role rõ ràng trong `ROLE_PERMISSIONS`.
-3. Gắn `requireAuth` + `requirePermission` vào server route.
-4. Kiểm tra resource scope riêng (`botUsernames`, và account/env nếu sau này có).
+3. Khai báo group và `allowedScopes` trong catalog server.
+4. Gắn `requireAuth` + permission cụ thể và kiểm tra scope của chính permission đó.
 5. Client dùng permission từ session để hiển thị UI, nhưng không được coi đó là bảo mật.
 6. Thêm test cho allow và deny, bao gồm `pending`, `disabled` và ngoài scope.
 7. Cập nhật bảng endpoint/permission trong tài liệu này.
@@ -390,6 +398,9 @@ Tối thiểu phải giữ các case:
 - `pending` bị `403` khi gọi `/api/bots`;
 - viewer/operator chỉ thấy bot được gán;
 - admin thấy mọi bot và quản lý user;
+- `config.view=all` được xem config bot khác nhưng `config.edit=assigned` không được sửa;
+- `credentials.view` và `credentials.manage` có scope độc lập;
+- document cũ chưa có `permissionScopes` mặc định về `assigned`;
 - `credentials.view` / `credentials.manage` từ chối viewer và operator theo template;
 - response user API không chứa raw `api_key`, `api_secret`, `password`;
 - user không có `users.manage` chỉ thấy user API của `botUsernames`;

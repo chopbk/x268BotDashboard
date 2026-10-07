@@ -55,6 +55,12 @@ const WebUserSchema = new mongoose.Schema(
             enum: Object.values(PERMISSIONS),
             default: undefined,
         },
+        permissionScopes: {
+            // Permission keys contain dots (for example "config.view"). Mongoose Map
+            // rejects dotted keys, so this must remain a plain embedded object.
+            type: mongoose.Schema.Types.Mixed,
+            default: {},
+        },
         botUsernames: {
             type: [String],
             default: [],

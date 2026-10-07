@@ -1,7 +1,7 @@
 const express = require("express");
 const AuditLog = require("../models/audit-log");
 const { requireAuth, requirePermission } = require("../middleware/auth");
-const { PERMISSIONS } = require("../auth/access-control");
+const { PERMISSIONS, scopeForPermission } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 
 const router = express.Router();
@@ -17,10 +17,16 @@ router.get("/", async (req, res) => {
         const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
         const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit, 10) || 50));
         const query = String(req.query.q || "").trim();
-        const filter = {};
+        const filters = [];
+        const scope = scopeForPermission(req.webUser, PERMISSIONS.LOGS_VIEW);
+        if (scope === "own") filters.push({ "actor.id": req.webUser.id });
+        if (scope === "assigned") filters.push({ $or: [
+            { "actor.id": req.webUser.id },
+            { "target.username": { $in: req.webUser.botUsernames || [] } },
+        ] });
         if (query) {
             const pattern = new RegExp(escapeRegex(query), "i");
-            filter.$or = [
+            filters.push({ $or: [
                 { action: pattern },
                 { "actor.email": pattern },
                 { "actor.username": pattern },
@@ -28,8 +34,9 @@ router.get("/", async (req, res) => {
                 { "target.email": pattern },
                 { "target.username": pattern },
                 { "target.name": pattern },
-            ];
+            ] });
         }
+        const filter = filters.length > 1 ? { $and: filters } : (filters[0] || {});
 
         const [logs, total] = await Promise.all([
             AuditLog.find(filter)

@@ -31,3 +31,12 @@ Sau thay đổi auth/RBAC, tối thiểu chạy:
 npm --prefix server test
 npm --prefix client run build
 ```
+
+## Quy tắc hoàn tất công việc
+
+- Sau khi hoàn thành và kiểm tra xong mỗi prompt sửa lỗi hoặc phát triển tính năng, phải
+  tạo một Git commit riêng trước khi bàn giao cho user.
+- Commit message phải mô tả đúng thay đổi vừa làm. Không gom thay đổi không liên quan và
+  không commit `.env`, secret hoặc file tạm.
+- Nếu worktree có thay đổi sẵn của user hoặc tiến trình khác, phải giữ nguyên và chỉ
+  commit phần thuộc prompt hiện tại; nếu không thể tách an toàn thì báo rõ trước khi commit.

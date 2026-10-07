@@ -1,12 +1,16 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const WebUser = require("../models/web-user");
-const { requireAuth, requirePermission } = require("../middleware/auth");
+const { requireAuth, requirePermission, requireAllScope } = require("../middleware/auth");
 const {
     PERMISSIONS,
     PERMISSION_LABELS,
+    PERMISSION_DEFINITIONS,
     ROLE_PERMISSIONS,
     isPermission,
+    normalizePermissionScopes,
+    canAccessResource,
+    scopeForPermission,
 } = require("../auth/access-control");
 const { hashPassword } = require("../auth/password");
 const {
@@ -38,11 +42,12 @@ const AUDITED_USER_FIELDS = [
     "phone",
     "role",
     "customPermissions",
+    "permissionScopes",
     "botUsernames",
     "disabled",
 ];
 
-router.use(requireAuth, requirePermission(PERMISSIONS.USERS_MANAGE));
+router.use(requireAuth);
 
 function isObjectId(id) {
     return mongoose.Types.ObjectId.isValid(id) && String(new mongoose.Types.ObjectId(id)) === id;
@@ -63,6 +68,13 @@ function parseCustomPermissions(value) {
         return { error: "Có permission không hợp lệ" };
     }
     return { permissions };
+}
+
+function parsePermissionScopes(value, permissions) {
+    if (value == null) return { scopes: {} };
+    if (typeof value !== "object" || Array.isArray(value)) return { error: "permissionScopes phải là object" };
+    try { return { scopes: normalizePermissionScopes(value, permissions) }; }
+    catch (error) { return { error: error.message }; }
 }
 
 function parseProfile(body) {
@@ -100,23 +112,24 @@ async function ensureAdminRemains(target, next) {
     }
 }
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission(PERMISSIONS.USERS_VIEW), async (req, res) => {
     try {
-        const users = await WebUser.find().select("-passwordHash").sort({ createdAt: 1 }).lean();
+        const filter = scopeForPermission(req.webUser, PERMISSIONS.USERS_VIEW) === "own" ? { _id: req.webUser.id } : {};
+        const users = await WebUser.find(filter).select("-passwordHash").sort({ createdAt: 1 }).lean();
         res.json({ users: users.map(publicUser) });
     } catch (error) {
         sendError(res, error, "GET /api/admin/users");
     }
 });
 
-router.get("/access-control", (req, res) => {
+router.get("/access-control", requirePermission(PERMISSIONS.USERS_VIEW), (req, res) => {
     res.json({
-        permissions: Object.values(PERMISSIONS).map((key) => ({ key, label: PERMISSION_LABELS[key] })),
+        permissions: Object.values(PERMISSION_DEFINITIONS),
         rolePermissions: ROLE_PERMISSIONS,
     });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission(PERMISSIONS.USERS_CREATE), requireAllScope(PERMISSIONS.USERS_CREATE), async (req, res) => {
     try {
         const email = normalizeEmail(req.body?.email);
         const username = normalizeUsername(req.body?.username);
@@ -137,6 +150,9 @@ router.post("/", async (req, res) => {
         if (parsedBots.error) throw httpError(400, parsedBots.error);
         if (parsedProfile.error) throw httpError(400, parsedProfile.error);
         if (parsedPermissions.error) throw httpError(400, parsedPermissions.error);
+        const effectivePermissions = parsedPermissions.permissions || ROLE_PERMISSIONS[role] || [];
+        const parsedScopes = parsePermissionScopes(req.body?.permissionScopes, effectivePermissions);
+        if (parsedScopes.error) throw httpError(400, parsedScopes.error);
 
         await assertBotsExist(parsedBots.names);
         const passwordHash = await hashPassword(password);
@@ -149,6 +165,7 @@ router.post("/", async (req, res) => {
             ...parsedProfile.profile,
             customPermissions:
                 role === "admin" || role === "pending" ? undefined : parsedPermissions.permissions,
+            permissionScopes: role === "admin" || role === "pending" ? {} : parsedScopes.scopes,
             botUsernames: parsedBots.names,
             disabled: false,
         });
@@ -192,6 +209,7 @@ router.patch("/:id", async (req, res) => {
         const hasTelegramUsername = Object.prototype.hasOwnProperty.call(body, "telegramUsername");
         const hasPhone = Object.prototype.hasOwnProperty.call(body, "phone");
         const hasPermissions = Object.prototype.hasOwnProperty.call(body, "customPermissions");
+        const hasPermissionScopes = Object.prototype.hasOwnProperty.call(body, "permissionScopes");
         if (
             !hasName &&
             !hasUsername &&
@@ -202,9 +220,21 @@ router.patch("/:id", async (req, res) => {
             !hasTelegramId &&
             !hasTelegramUsername &&
             !hasPhone &&
-            !hasPermissions
+            !hasPermissions &&
+            !hasPermissionScopes
         ) {
             throw httpError(400, "Không có dữ liệu để cập nhật");
+        }
+
+        const required = new Set();
+        if (hasName || hasUsername || hasTelegramId || hasTelegramUsername || hasPhone) required.add(PERMISSIONS.USERS_EDIT);
+        if (hasRole || hasBots || hasPermissions || hasPermissionScopes) required.add(PERMISSIONS.USERS_PERMISSIONS);
+        if (hasDisabled) required.add(PERMISSIONS.USERS_DISABLE);
+        if (hasPassword && body.password) required.add(PERMISSIONS.USERS_RESET_PASSWORD);
+        for (const permission of required) {
+            if (!canAccessResource(req.webUser, permission, String(target._id))) {
+                throw httpError(403, `Không có quyền ${permission} với user này`);
+            }
         }
 
         if (hasName) {
@@ -244,9 +274,16 @@ router.patch("/:id", async (req, res) => {
         } else if (hasRole && body.role !== target.role) {
             next.customPermissions = undefined;
         }
+        if (hasPermissionScopes || hasPermissions || hasRole) {
+            const scopePermissions = next.customPermissions || target.customPermissions || ROLE_PERMISSIONS[next.role || target.role] || [];
+            const parsedScopes = parsePermissionScopes(hasPermissionScopes ? body.permissionScopes : target.permissionScopes, scopePermissions);
+            if (parsedScopes.error) throw httpError(400, parsedScopes.error);
+            next.permissionScopes = parsedScopes.scopes;
+        }
         const effectiveRole = next.role ?? target.role;
         if (effectiveRole === "admin" || effectiveRole === "pending") {
             next.customPermissions = undefined;
+            next.permissionScopes = {};
         }
         if (hasDisabled) {
             if (typeof body.disabled !== "boolean") throw httpError(400, "disabled phải là boolean");

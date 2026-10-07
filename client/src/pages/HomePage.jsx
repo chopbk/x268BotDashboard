@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
-const USERS_MANAGE = "users.manage";
+const USERS_MANAGE = "users.view";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);

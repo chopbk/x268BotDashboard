@@ -352,6 +352,9 @@ th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
 
 .permission-picker legend { color: var(--muted); padding: 0 6px; }
 
+.permission-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; align-items: center; }
+.permission-row > select { min-width: 0; padding: 7px 8px; }
+
 .permission-picker > button,
 .permission-picker > small {
   grid-column: 1 / -1;

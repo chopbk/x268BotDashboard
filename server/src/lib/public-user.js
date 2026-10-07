@@ -1,4 +1,4 @@
-const { permissionsForUser } = require("../auth/access-control");
+const { permissionsForUser, plainScopes } = require("../auth/access-control");
 
 function publicUser(doc) {
     return {
@@ -12,6 +12,7 @@ function publicUser(doc) {
         role: doc.role,
         permissions: permissionsForUser(doc),
         customPermissions: Array.isArray(doc.customPermissions) ? doc.customPermissions : null,
+        permissionScopes: plainScopes(doc.permissionScopes),
         botUsernames: doc.botUsernames || [],
         disabled: !!doc.disabled,
     };
@@ -28,6 +29,7 @@ function sessionUser(doc) {
         name: doc.name,
         role: doc.role,
         permissions: permissionsForUser(doc),
+        permissionScopes: plainScopes(doc.permissionScopes),
         botUsernames: doc.botUsernames || [],
     };
 }

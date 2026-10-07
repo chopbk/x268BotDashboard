@@ -13,6 +13,7 @@ const emptyForm = {
   role: "viewer",
   botUsernames: [],
   customPermissions: null,
+  permissionScopes: {},
   disabled: false,
 };
 
@@ -107,6 +108,7 @@ export default function AdminUsersPage() {
       role: row.role,
       botUsernames: row.botUsernames || [],
       customPermissions: row.customPermissions,
+      permissionScopes: row.permissionScopes || {},
       disabled: !!row.disabled,
     });
     setError("");
@@ -130,6 +132,10 @@ export default function AdminUsersPage() {
     });
   }
 
+  function setPermissionScope(permission, scope) {
+    setForm((prev) => ({ ...prev, permissionScopes: { ...prev.permissionScopes, [permission]: scope } }));
+  }
+
   async function onSubmit(event) {
     event.preventDefault();
     setSaving(true);
@@ -144,6 +150,7 @@ export default function AdminUsersPage() {
           telegramUsername: form.telegramUsername,
           phone: form.phone,
           customPermissions: form.customPermissions,
+          permissionScopes: form.permissionScopes,
           disabled: form.disabled,
         };
         if (form.username) body.username = form.username;
@@ -163,6 +170,7 @@ export default function AdminUsersPage() {
             role: form.role,
             botUsernames: form.botUsernames,
             customPermissions: form.customPermissions,
+            permissionScopes: form.permissionScopes,
           },
         });
       }
@@ -323,7 +331,7 @@ export default function AdminUsersPage() {
           <select
             value={form.role}
             onChange={(event) =>
-              setForm({ ...form, role: event.target.value, customPermissions: null })
+              setForm({ ...form, role: event.target.value, customPermissions: null, permissionScopes: {} })
             }
           >
             {form.role === "user" ? <option value="user">user (legacy, như viewer)</option> : null}
@@ -335,20 +343,26 @@ export default function AdminUsersPage() {
         </label>
         <fieldset className="permission-picker">
           <legend>Phân quyền chi tiết</legend>
-          {permissionOptions.map((permission) => (
-            <label className="check" key={permission.key}>
-              <input
-                type="checkbox"
-                checked={selectedPermissions.includes(permission.key)}
-                disabled={form.role === "admin" || form.role === "pending"}
-                onChange={() => togglePermission(permission.key)}
-              />
-              <span>
-                {permission.label}
-                <small>{permission.key}</small>
-              </span>
-            </label>
-          ))}
+          {permissionOptions.map((permission) => {
+            const enabled = selectedPermissions.includes(permission.key);
+            const scopes = permission.allowedScopes || [];
+            const fallback = scopes.includes("assigned") ? "assigned" : scopes.includes("own") ? "own" : "all";
+            return (
+              <div className="permission-row" key={permission.key}>
+                <label className="check">
+                  <input type="checkbox" checked={enabled} disabled={form.role === "admin" || form.role === "pending"} onChange={() => togglePermission(permission.key)} />
+                  <span>{permission.label}<small>{permission.key}</small></span>
+                </label>
+                {enabled && scopes.length > 1 && form.role !== "admin" ? (
+                  <select aria-label={`Phạm vi ${permission.label}`} value={form.permissionScopes[permission.key] || fallback} onChange={(event) => setPermissionScope(permission.key, event.target.value)}>
+                    {scopes.includes("all") ? <option value="all">Tất cả</option> : null}
+                    {scopes.includes("assigned") ? <option value="assigned">Bot được gán</option> : null}
+                    {scopes.includes("own") ? <option value="own">Chính mình</option> : null}
+                  </select>
+                ) : null}
+              </div>
+            );
+          })}
           {form.role === "admin" ? <small className="muted">Admin luôn có toàn bộ quyền.</small> : null}
           {form.role === "pending" ? <small className="muted">Pending luôn có 0 quyền.</small> : null}
           {form.customPermissions !== null && form.role !== "admin" && form.role !== "pending" ? (
@@ -372,7 +386,7 @@ export default function AdminUsersPage() {
           </label>
         ) : null}
         <label>
-          Lọc bot
+          Bot được gán (áp dụng cho quyền có phạm vi “Bot được gán”)
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
