@@ -67,7 +67,7 @@ function Shell({ children }) {
                 Bot
               </NavLink>
             ) : null}
-            {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/">Tổng kết</NavLink> : null}
+            {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
             {hasPermission(user, SIGNALS_HISTORY) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Signal & Static</NavLink> : null}
             {hasPermission(user, CREDENTIALS_VIEW) ? (
               <NavLink to="/user-apis" className={onApis ? "active" : ""}>
@@ -112,6 +112,16 @@ function AppRoutes() {
           <Protected permission={CONFIG_VIEW}>
             <Shell>
               <AccountConfigPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/summary"
+        element={
+          <Protected permission={SUMMARY_VIEW}>
+            <Shell>
+              <SummaryPage />
             </Shell>
           </Protected>
         }
@@ -188,7 +198,7 @@ function AppRoutes() {
 function AccessHome() {
   const { user } = useAuth();
   if (hasPermission(user, BOTS_VIEW)) return <HomePage />;
-  if (hasPermission(user, SUMMARY_VIEW)) return <SummaryPage />;
+  if (hasPermission(user, SUMMARY_VIEW)) return <Navigate to="/summary" replace />;
   return <PendingPage />;
 }
 
