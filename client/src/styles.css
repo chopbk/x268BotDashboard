@@ -432,6 +432,8 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .stats-grid strong { font-size: 2rem; }
 
 .summary-section-title { margin: 22px 0 12px; }
+.summary-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; }
+.summary-head label { width: min(220px, 100%); }
 .summary-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 .summary-stat small { min-height: 1.4em; }
 .summary-stat.positive strong { color: var(--ok); }
