@@ -22,15 +22,20 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState("");
-  const [newBotPrivate, setNewBotPrivate] = useState(false);
+  const [newBotVisibility, setNewBotVisibility] = useState("public");
+  const [scope, setScope] = useState("");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleBots = useMemo(
-    () => bots.filter((bot) => matchesQuery(bot, normalizedQuery)),
-    [bots, normalizedQuery]
+    () =>
+      bots.filter((bot) => {
+        if (scope && (bot.visibility || "public") !== scope) return false;
+        return matchesQuery(bot, normalizedQuery);
+      }),
+    [bots, normalizedQuery, scope]
   );
   const visibleNames = visibleBots.map((bot) => bot.username);
   const allVisiblePicked =
@@ -90,12 +95,19 @@ export default function HomePage() {
           <h1>Bot được phép xem</h1>
           <p className="muted">Tìm theo tên user bot hoặc tên config. Bấm Sửa để mở trang config.</p>
         </div>
-        <input
-          className="user-search"
-          value={query}
-          placeholder="Tên user hoặc config"
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="bot-list-tools">
+          <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Lọc phạm vi">
+            <option value="">Mọi phạm vi</option>
+            <option value="public">Công khai</option>
+            <option value="private">Riêng tư</option>
+          </select>
+          <input
+            className="user-search"
+            value={query}
+            placeholder="Tên user hoặc config"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
       </header>
       {canCreateBot ? (
         <form
@@ -105,7 +117,7 @@ export default function HomePage() {
             run(async () => {
               const data = await api("/api/bots", {
                 method: "POST",
-                body: { username: newUser, visibility: newBotPrivate ? "private" : "public" },
+                body: { username: newUser, visibility: newBotVisibility },
               });
               setBots((prev) =>
                 [...prev.filter((bot) => bot.username !== data.bot.username), data.bot].sort((a, b) =>
@@ -113,7 +125,7 @@ export default function HomePage() {
                 )
               );
               setNewUser("");
-              setNewBotPrivate(false);
+              setNewBotVisibility("public");
             });
           }}
         >
@@ -121,9 +133,17 @@ export default function HomePage() {
             User bot mới
             <input value={newUser} onChange={(event) => setNewUser(event.target.value)} required />
           </label>
-          <label className="check">
-            <input type="checkbox" checked={newBotPrivate} onChange={(event) => setNewBotPrivate(event.target.checked)} />
-            Riêng tư — chỉ chủ sở hữu, admin và người được gán
+          <label>
+            Phạm vi
+            <select value={newBotVisibility} onChange={(event) => setNewBotVisibility(event.target.value)} aria-label="Phạm vi bot mới">
+              <option value="public">Công khai</option>
+              <option value="private">Riêng tư</option>
+            </select>
+            <small className="muted">
+              {newBotVisibility === "private"
+                ? "Chỉ chủ sở hữu, admin và người được gán."
+                : "Người có quyền xem tất cả vẫn thấy."}
+            </small>
           </label>
           <button type="submit" disabled={busy}>
             Thêm

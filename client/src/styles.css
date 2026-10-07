@@ -418,6 +418,8 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 
 .user-list-head > div { display: grid; gap: 6px; }
 .user-search { width: min(360px, 100%); }
+.bot-list-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bot-list-tools select { width: 160px; }
 
 .table-wrap {
   overflow: auto;
