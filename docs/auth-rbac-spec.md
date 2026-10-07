@@ -49,7 +49,13 @@ Nguồn chuẩn duy nhất: `server/src/auth/access-control.js`.
 |---|---|---|
 | `pending` | Đã đăng ký, chưa được duyệt, có 0 permission | Tự đăng ký |
 | `viewer` | Chỉ xem dữ liệu được phép | Admin duyệt |
-| `operator` | Xem và vận hành bot được phép | Admin duyệt |
+| `summary_viewer` | Chỉ xem số liệu tổng kết, không có danh sách chi tiết | Admin cấp |
+| `member` | Xem bot/config/position do mình sở hữu | Admin cấp |
+| `trader` | Xem và vận hành bot/config/position do mình sở hữu | Admin cấp |
+| `collaborator` | Sửa của mình, xem tài nguyên được gán | Admin cấp |
+| `operator` | Xem và sửa tài nguyên của mình hoặc được gán | Admin cấp |
+| `supervisor` | Xem toàn hệ thống, chỉ sửa tài nguyên của mình | Admin cấp |
+| `auditor` | Xem chi tiết toàn hệ thống, không sửa | Admin cấp |
 | `admin` | Quản trị hệ thống và thấy mọi bot | Bootstrap hoặc admin khác cấp |
 | `user` | Legacy, quyền tương đương `viewer` | Không cấp mới; giữ đến khi có migration |
 
@@ -61,6 +67,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 
 | Domain | Permission |
 |---|---|
+| Tổng kết | `summary.view` |
 | Bot | `bots.view`, `bots.create`, `bots.edit`, `bots.delete`, `bots.operate` |
 | Config | `config.view`, `config.edit` |
 | Position | `positions.view`, `positions.open`, `positions.close` |
@@ -72,8 +79,9 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
 legacy để đọc dữ liệu cũ; không cấp mới qua UI.
 
-Viewer mặc định có quyền xem Bot/Config/Position. Operator thêm vận hành bot, sửa Config,
-mở/đóng Position và xem Log. Admin luôn có toàn bộ quyền. Pending luôn có 0 quyền.
+Role chỉ là template permission + scope. Các role mới dùng quan hệ chủ sở hữu và được gán;
+`viewer`/`user` giữ lại làm legacy với scope `assigned`. Admin luôn có toàn bộ quyền và
+scope `all`. Pending luôn có 0 quyền.
 
 Một permission được định nghĩa trước chưa có nghĩa là endpoint tương ứng đã tồn tại.
 Khi thêm endpoint mới, phải gắn `requireAuth` và `requirePermission(...)` ở server.
@@ -98,7 +106,7 @@ endpoint, không được hiểu permission xem là quyền trả raw secret m�
 ### 3.4 Phạm vi bot
 
 - Mỗi permission có scope độc lập trong `permissionScopes[permission]`:
-  `all`, `assigned`, hoặc `own` tùy catalog server cho phép.
+  `all`, `assigned`, `own`, hoặc `own_assigned` tùy catalog server cho phép.
 - `permissionScopes` phải lưu bằng object/Mongoose `Mixed`, không dùng Mongoose `Map`, vì
   permission key chứa dấu chấm như `config.view` và Map sẽ từ chối khi validate.
 - `assigned` đối chiếu username tài nguyên với `webUser.botUsernames`; `own` đối chiếu
@@ -107,6 +115,11 @@ endpoint, không được hiểu permission xem là quyền trả raw secret m�
   về `assigned`; đây là tương thích ngược an toàn, không fail-open.
 - Quyền xem không suy ra quyền sửa và scope xem không dùng thay scope sửa. Ví dụ hợp lệ:
   `config.view=all`, `config.edit=assigned`.
+- Với tài nguyên bot, `own` đối chiếu `user_accounts.ownerUserId`; `assigned` đối chiếu
+  `web_users.botUsernames`; `own_assigned` là hợp của hai tập này.
+- `user_accounts.visibility=private` là lớp bảo vệ bổ sung nằm trên permission scope.
+  User thường có scope `all` vẫn không thấy tài nguyên private, trừ khi là owner hoặc
+  được gán đích danh. Admin luôn thấy. Document cũ thiếu field được coi là `public`.
 - `pending` không có `bots.view`, nên không được gọi `/api/bots`, kể cả nếu dữ liệu lỗi
   khiến `botUsernames` không rỗng.
 - Không được chỉ lọc bot ở client. Query và kết quả phải được giới hạn ở server.
@@ -272,9 +285,10 @@ Các invariant:
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
+| `GET /api/summary` | `requireAuth` | `summary.view`; chỉ trả số tổng hợp, không trả tên bot/config |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
-| `POST /api/bots` | `requireAuth` | `bots.create=all`; tạo `User_Account` rỗng |
-| `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope riêng |
+| `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
+| `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility, chỉ admin đổi owner |
 | `DELETE /api/bots/:username` | `requireAuth` | `bots.delete` + scope riêng |
 | `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; thêm env, tạo `Account_Config` nếu chưa có |
 | `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
@@ -282,6 +296,7 @@ Các invariant:
 | `GET /api/bots/:username/configs` | `requireAuth` | `config.view` + scope; tóm tắt On, Long/Short, signal, mode, volume của từng account |
 | `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; đủ field lệnh `/sc` (on, volume, open, tp, sl, trailing, copy, signal, blacklist, sync), không trả nguyên document |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
+| `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.edit` trên user nguồn và user đích; tạo `Account_Config` mới và gắn vào user đích |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
 | `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |
@@ -410,6 +425,8 @@ Tối thiểu phải giữ các case:
 - viewer/operator chỉ thấy bot được gán;
 - admin thấy mọi bot và quản lý user;
 - `config.view=all` được xem config bot khác nhưng `config.edit=assigned` không được sửa;
+- member chỉ xem tài nguyên có `ownerUserId` của mình; operator truy cập hợp own+assigned;
+- bot private của admin bị ẩn với user thường có scope all, nhưng user được gán vẫn xem được;
 - `credentials.view` và `credentials.manage` có scope độc lập;
 - document cũ chưa có `permissionScopes` mặc định về `assigned`;
 - `credentials.view` / `credentials.manage` từ chối viewer và operator theo template;
@@ -434,6 +451,7 @@ Mọi thay đổi user quan trọng phải được ghi ở server sau khi mutat
 - `user.updated`: admin sửa profile, role, permission, bot scope, trạng thái hoặc password;
 - `user.username_linked`: pending legacy user được gắn username trong registration retry.
 - `bot.created`, `bot.renamed`, `bot.deleted`: thay đổi user bot;
+- `bot.access_updated`: thay đổi owner hoặc trạng thái public/private của bot;
 - `bot.account_added`, `bot.account_renamed`, `bot.account_deleted`: thay đổi config/env
   được gắn vào bot;
 - `credential.created`, `credential.updated`, `credential.deleted`: thay đổi cấu hình API.

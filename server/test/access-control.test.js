@@ -78,3 +78,28 @@ test("API view scope can be all without granting API management", () => {
     assert.equal(canAccessResource(user, PERMISSIONS.CREDENTIALS_VIEW, "any-bot"), true);
     assert.equal(canAccessResource(user, PERMISSIONS.CREDENTIALS_MANAGE, "any-bot"), false);
 });
+
+test("new role templates map own, assigned and all scopes independently", () => {
+    assert.equal(scopeForPermission({ role: "member" }, PERMISSIONS.CONFIG_VIEW), "own");
+    assert.equal(scopeForPermission({ role: "collaborator" }, PERMISSIONS.CONFIG_VIEW), "own_assigned");
+    assert.equal(scopeForPermission({ role: "collaborator" }, PERMISSIONS.CONFIG_EDIT), "own");
+    assert.equal(scopeForPermission({ role: "operator" }, PERMISSIONS.CONFIG_EDIT), "own_assigned");
+    assert.equal(scopeForPermission({ role: "supervisor" }, PERMISSIONS.CONFIG_VIEW), "all");
+    assert.equal(scopeForPermission({ role: "supervisor" }, PERMISSIONS.CONFIG_EDIT), "own");
+    assert.equal(hasPermission({ role: "summary_viewer" }, PERMISSIONS.SUMMARY_VIEW), true);
+});
+
+test("private admin bot is hidden from ordinary all-scope users unless explicitly assigned", () => {
+    const privateBot = { username: "admin-secret", ownerUserId: "admin-id", visibility: "private" };
+    const supervisor = { id: "user-id", role: "supervisor", botUsernames: [] };
+    assert.equal(canAccessResource(supervisor, PERMISSIONS.BOTS_VIEW, privateBot), false);
+    supervisor.botUsernames.push("admin-secret");
+    assert.equal(canAccessResource(supervisor, PERMISSIONS.BOTS_VIEW, privateBot), true);
+    assert.equal(canAccessResource({ id: "admin-id", role: "admin" }, PERMISSIONS.BOTS_VIEW, privateBot), true);
+});
+
+test("own scope uses the bot owner relationship instead of its username", () => {
+    const member = { id: "member-id", role: "member", botUsernames: [] };
+    assert.equal(canAccessResource(member, PERMISSIONS.CONFIG_VIEW, { username: "strategy-a", ownerUserId: "member-id" }), true);
+    assert.equal(canAccessResource(member, PERMISSIONS.CONFIG_VIEW, { username: "strategy-b", ownerUserId: "other-id" }), false);
+});

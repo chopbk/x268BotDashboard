@@ -8,6 +8,16 @@ const UserAccountSchema = new mongoose.Schema(
             index: true,
         },
         accounts: [{ type: String }],
+        ownerUserId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Web_User",
+            default: null,
+        },
+        visibility: {
+            type: String,
+            enum: ["public", "private"],
+            default: "public",
+        },
     },
     {
         versionKey: false,

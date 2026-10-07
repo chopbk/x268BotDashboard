@@ -335,6 +335,9 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 }
 
 .user-table-wrap { max-height: 360px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.stats-grid .card { display: grid; gap: 8px; }
+.stats-grid strong { font-size: 2rem; }
 
 .user-table-wrap thead {
   position: sticky;

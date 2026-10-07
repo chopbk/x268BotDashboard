@@ -7,6 +7,8 @@ const {
     PERMISSION_LABELS,
     PERMISSION_DEFINITIONS,
     ROLE_PERMISSIONS,
+    ROLE_SCOPES,
+    ROLE_LABELS,
     isPermission,
     normalizePermissionScopes,
     canAccessResource,
@@ -127,6 +129,8 @@ router.get("/access-control", requirePermission(PERMISSIONS.USERS_VIEW), (req, r
     res.json({
         permissions: Object.values(PERMISSION_DEFINITIONS),
         rolePermissions: ROLE_PERMISSIONS,
+        roleScopes: ROLE_SCOPES,
+        roleLabels: ROLE_LABELS,
     });
 });
 

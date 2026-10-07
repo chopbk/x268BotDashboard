@@ -5,7 +5,8 @@ import { useAuth } from "../auth";
 
 const CONFIG_VIEW = "config.view";
 const CONFIG_EDIT = "config.edit";
-const USERS_MANAGE = "bots.edit";
+const BOTS_EDIT = "bots.edit";
+const BOTS_DELETE = "bots.delete";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -47,11 +48,15 @@ export default function BotDetailPage() {
   const { user } = useAuth();
   const canViewConfig = can(user, CONFIG_VIEW);
   const canEditConfig = can(user, CONFIG_EDIT);
-  const canManageUsers = can(user, USERS_MANAGE);
+  const canEditBot = can(user, BOTS_EDIT);
+  const canDeleteBot = can(user, BOTS_DELETE);
   const [bot, setBot] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [editUserName, setEditUserName] = useState(username);
+  const [visibility, setVisibility] = useState("public");
+  const [ownerUserId, setOwnerUserId] = useState("");
+  const [webUsers, setWebUsers] = useState([]);
   const [draft, setDraft] = useState("");
   const [editEnv, setEditEnv] = useState(null);
   const [envDraft, setEnvDraft] = useState("");
@@ -70,6 +75,8 @@ export default function BotDetailPage() {
         const found = (data.bots || []).find((item) => item.username === username) || null;
         setBot(found);
         setEditUserName(found?.username || username);
+        setVisibility(found?.visibility || "public");
+        setOwnerUserId(found?.ownerUserId || "");
         if (!found) setError("Không tìm thấy user bot");
       })
       .catch((err) => {
@@ -82,6 +89,11 @@ export default function BotDetailPage() {
       cancelled = true;
     };
   }, [username]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    api("/api/admin/users").then((data) => setWebUsers(data.users || [])).catch(() => {});
+  }, [user?.role]);
 
   const accountKey = accounts.join("|");
   useEffect(() => {
@@ -127,7 +139,7 @@ export default function BotDetailPage() {
       {error ? <p className="form-error">{error}</p> : null}
       {bot ? (
         <article className="card bot-detail">
-          {canManageUsers ? (
+          {canEditBot ? (
             <form
               className="inline-edit"
               onSubmit={(event) => {
@@ -135,7 +147,7 @@ export default function BotDetailPage() {
                 run(async () => {
                   const data = await api(`/api/bots/${encodeURIComponent(bot.username)}`, {
                     method: "PATCH",
-                    body: { username: editUserName },
+                    body: { username: editUserName, visibility, ...(user?.role === "admin" ? { ownerUserId: ownerUserId || null } : {}) },
                   });
                   const next = data.bot.username;
                   setBot(data.bot);
@@ -151,8 +163,19 @@ export default function BotDetailPage() {
                 required
               />
               <button type="submit" disabled={busy}>
-                Đổi tên
+                Lưu thông tin bot
               </button>
+              <label className="check">
+                <input type="checkbox" checked={visibility === "private"} onChange={(event) => setVisibility(event.target.checked ? "private" : "public")} />
+                Riêng tư
+              </label>
+              {user?.role === "admin" ? (
+                <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} aria-label="Chủ sở hữu bot">
+                  <option value="">Chưa có chủ sở hữu</option>
+                  {webUsers.map((row) => <option key={row.id} value={row.id}>{row.name} ({row.username || row.email})</option>)}
+                </select>
+              ) : null}
+              {canDeleteBot ? (
               <button
                 type="button"
                 className="danger"
@@ -167,6 +190,7 @@ export default function BotDetailPage() {
               >
                 Xoá user
               </button>
+              ) : null}
             </form>
           ) : null}
           <div className="bulk-bar">

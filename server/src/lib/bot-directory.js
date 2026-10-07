@@ -3,7 +3,7 @@ const AccountConfig = require("../models/account-config");
 const UserApi = require("../models/user-api");
 const WebUser = require("../models/web-user");
 const { canAccessBot } = require("../middleware/auth");
-const { PERMISSIONS } = require("../auth/access-control");
+const { PERMISSIONS, scopeForPermission } = require("../auth/access-control");
 const { httpError } = require("./http");
 const { defaultTradeConfig } = require("./default-trade-config");
 
@@ -21,13 +21,9 @@ function toBot(doc) {
     return {
         username: doc.username,
         accounts: doc.accounts || [],
+        ownerUserId: doc.ownerUserId ? String(doc.ownerUserId) : null,
+        visibility: doc.visibility || "public",
     };
-}
-
-function assertCanAccess(user, username, permission) {
-    if (!canAccessBot(user, username, permission)) {
-        throw httpError(403, "Không có quyền với bot này");
-    }
 }
 
 async function findBot(username) {
@@ -35,9 +31,12 @@ async function findBot(username) {
 }
 
 async function requireBot(user, username, permission) {
-    assertCanAccess(user, username, permission);
+    const scope = scopeForPermission(user, permission);
+    if (scope === "assigned" && !canAccessBot(user, username, permission)) throw httpError(403, "Không có quyền với bot này");
+    if (scope === "own_assigned" && !user?.id && !canAccessBot(user, username, permission)) throw httpError(403, "Không có quyền với bot này");
     const bot = await findBot(username);
     if (!bot) throw httpError(404, "Không tìm thấy user bot");
+    if (!canAccessBot(user, bot, permission)) throw httpError(403, "Không có quyền với bot này");
     return bot;
 }
 
@@ -47,12 +46,13 @@ async function envOwner(env, exceptUsername) {
     return UserAccount.findOne(filter).select("username").lean();
 }
 
-async function createBot(username) {
+async function createBot(actor, username, visibility = "public") {
     assertName(username, "Tên user bot");
+    if (!["public", "private"].includes(visibility)) throw httpError(400, "Visibility không hợp lệ");
     const existing = await findBot(username);
     if (existing) throw httpError(409, "User bot đã tồn tại");
     try {
-        const created = await UserAccount.create({ username, accounts: [] });
+        const created = await UserAccount.create({ username, accounts: [], ownerUserId: actor?.id || null, visibility });
         return toBot(created);
     } catch (error) {
         if (error?.code === 11000) throw httpError(409, "User bot đã tồn tại");
@@ -81,6 +81,22 @@ async function renameBot(actor, username, nextName, permission = PERMISSIONS.BOT
         { $set: { "botUsernames.$[name]": nextName } },
         { arrayFilters: [{ name: username }] }
     );
+    return toBot(bot);
+}
+
+async function updateBotAccess(actor, username, { visibility, ownerUserId }) {
+    const bot = await requireBot(actor, username, PERMISSIONS.BOTS_EDIT);
+    if (visibility !== undefined) {
+        if (!["public", "private"].includes(visibility)) throw httpError(400, "Visibility không hợp lệ");
+        bot.visibility = visibility;
+    }
+    if (ownerUserId !== undefined) {
+        if (actor?.role !== "admin") throw httpError(403, "Chỉ admin được đổi chủ sở hữu");
+        if (ownerUserId && !WebUser.db.base.Types.ObjectId.isValid(ownerUserId)) throw httpError(400, "Chủ sở hữu không hợp lệ");
+        if (ownerUserId && !(await WebUser.findById(ownerUserId).select("_id").lean())) throw httpError(400, "Không tìm thấy chủ sở hữu");
+        bot.ownerUserId = ownerUserId || null;
+    }
+    await bot.save();
     return toBot(bot);
 }
 
@@ -177,6 +193,7 @@ module.exports = {
     requireBot,
     createBot,
     renameBot,
+    updateBotAccess,
     deleteBot,
     addAccount,
     renameAccount,

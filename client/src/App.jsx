@@ -10,12 +10,14 @@ import UserApisPage from "./pages/UserApisPage";
 import UserApiDetailPage from "./pages/UserApiDetailPage";
 import PendingPage from "./pages/PendingPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
+import SummaryPage from "./pages/SummaryPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
 const CONFIG_VIEW = "config.view";
 const CREDENTIALS_VIEW = "credentials.view";
 const LOGS_VIEW = "logs.view";
+const SUMMARY_VIEW = "summary.view";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -54,6 +56,7 @@ function Shell({ children }) {
                 Bot
               </NavLink>
             ) : null}
+            {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/">Tổng kết</NavLink> : null}
             {hasPermission(user, CREDENTIALS_VIEW) ? (
               <NavLink to="/user-apis" className={onApis ? "active" : ""}>
                 User API
@@ -168,7 +171,9 @@ function AppRoutes() {
 
 function AccessHome() {
   const { user } = useAuth();
-  return hasPermission(user, BOTS_VIEW) ? <HomePage /> : <PendingPage />;
+  if (hasPermission(user, BOTS_VIEW)) return <HomePage />;
+  if (hasPermission(user, SUMMARY_VIEW)) return <SummaryPage />;
+  return <PendingPage />;
 }
 
 export default function App() {

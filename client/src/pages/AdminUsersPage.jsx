@@ -27,6 +27,8 @@ export default function AdminUsersPage() {
   const [bots, setBots] = useState([]);
   const [permissionOptions, setPermissionOptions] = useState([]);
   const [rolePermissions, setRolePermissions] = useState({});
+  const [roleScopes, setRoleScopes] = useState({});
+  const [roleLabels, setRoleLabels] = useState({});
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState("");
@@ -45,6 +47,8 @@ export default function AdminUsersPage() {
     setBots(botData.bots || []);
     setPermissionOptions(accessData.permissions || []);
     setRolePermissions(accessData.rolePermissions || {});
+    setRoleScopes(accessData.roleScopes || {});
+    setRoleLabels(accessData.roleLabels || {});
   }
 
   useEffect(() => {
@@ -361,11 +365,9 @@ export default function AdminUsersPage() {
             }
             disabled={!canEditPermissions}
           >
-            {form.role === "user" ? <option value="user">user (legacy, như viewer)</option> : null}
-            {form.role === "pending" ? <option value="pending">pending (chờ cấp quyền)</option> : null}
-            <option value="viewer">viewer</option>
-            <option value="operator">operator</option>
-            <option value="admin">admin</option>
+            {Object.keys(rolePermissions).map((role) => (
+              <option key={role} value={role}>{roleLabels[role] || role}</option>
+            ))}
           </select>
         </label>
         {canEditPermissions ? <fieldset className="permission-picker">
@@ -373,7 +375,7 @@ export default function AdminUsersPage() {
           {permissionOptions.map((permission) => {
             const enabled = selectedPermissions.includes(permission.key);
             const scopes = permission.allowedScopes || [];
-            const fallback = scopes.includes("assigned") ? "assigned" : scopes.includes("own") ? "own" : "all";
+            const fallback = roleScopes[form.role]?.[permission.key] || (scopes.includes("assigned") ? "assigned" : scopes.includes("own") ? "own" : "all");
             return (
               <div className="permission-row" key={permission.key}>
                 <label className="check">
@@ -385,6 +387,7 @@ export default function AdminUsersPage() {
                     {scopes.includes("all") ? <option value="all">Tất cả</option> : null}
                     {scopes.includes("assigned") ? <option value="assigned">Bot được gán</option> : null}
                     {scopes.includes("own") ? <option value="own">Chính mình</option> : null}
+                    {scopes.includes("own_assigned") ? <option value="own_assigned">Của mình + được gán</option> : null}
                   </select>
                 ) : null}
               </div>

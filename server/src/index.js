@@ -36,6 +36,7 @@ async function main() {
         app.use("/api/user-apis", require("./routes/user-apis"));
         app.use("/api/admin/users", require("./routes/admin-users"));
         app.use("/api/audit-logs", require("./routes/audit-logs"));
+        app.use("/api/summary", require("./routes/summary"));
 
         app.use((err, req, res, next) => {
             if (err.type === "entity.parse.failed") {

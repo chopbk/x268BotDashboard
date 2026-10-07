@@ -138,7 +138,7 @@ test("createBot rejects a duplicate username", async () => {
     const originalFind = UserAccount.findOne;
     UserAccount.findOne = () => query({ username: "alpha", accounts: [] });
     try {
-        await assert.rejects(() => createBot("alpha"), (error) => {
+        await assert.rejects(() => createBot(operator, "alpha"), (error) => {
             assert.equal(error.status, 409);
             return true;
         });

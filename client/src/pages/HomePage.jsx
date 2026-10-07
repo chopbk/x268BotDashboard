@@ -3,8 +3,6 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
-const USERS_MANAGE = "users.view";
-
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
 }
@@ -18,11 +16,13 @@ function matchesQuery(bot, query) {
 
 export default function HomePage() {
   const { user } = useAuth();
-  const canManageUsers = can(user, USERS_MANAGE);
+  const canCreateBot = can(user, "bots.create");
+  const canDeleteBot = can(user, "bots.delete");
   const [bots, setBots] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState("");
+  const [newBotPrivate, setNewBotPrivate] = useState(false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -97,7 +97,7 @@ export default function HomePage() {
           onChange={(event) => setQuery(event.target.value)}
         />
       </header>
-      {canManageUsers ? (
+      {canCreateBot ? (
         <form
           className="card inline-create"
           onSubmit={(event) => {
@@ -105,7 +105,7 @@ export default function HomePage() {
             run(async () => {
               const data = await api("/api/bots", {
                 method: "POST",
-                body: { username: newUser },
+                body: { username: newUser, visibility: newBotPrivate ? "private" : "public" },
               });
               setBots((prev) =>
                 [...prev.filter((bot) => bot.username !== data.bot.username), data.bot].sort((a, b) =>
@@ -113,12 +113,17 @@ export default function HomePage() {
                 )
               );
               setNewUser("");
+              setNewBotPrivate(false);
             });
           }}
         >
           <label>
             User bot mới
             <input value={newUser} onChange={(event) => setNewUser(event.target.value)} required />
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={newBotPrivate} onChange={(event) => setNewBotPrivate(event.target.checked)} />
+            Riêng tư — chỉ chủ sở hữu, admin và người được gán
           </label>
           <button type="submit" disabled={busy}>
             Thêm
@@ -131,7 +136,7 @@ export default function HomePage() {
       {!loading && bots.length > 0 && visibleBots.length === 0 ? (
         <div className="card empty">Không có user khớp bộ lọc.</div>
       ) : null}
-      {canManageUsers && picked.size > 0 ? (
+      {canDeleteBot && picked.size > 0 ? (
         <div className="bulk-bar">
           <span className="muted">Đã chọn {picked.size} user</span>
           <button
@@ -170,7 +175,7 @@ export default function HomePage() {
           <table>
             <thead>
               <tr>
-                {canManageUsers ? (
+                {canDeleteBot ? (
                   <th className="check-col">
                     <input
                       type="checkbox"
@@ -181,6 +186,7 @@ export default function HomePage() {
                   </th>
                 ) : null}
                 <th>User bot</th>
+                <th>Phạm vi</th>
                 <th>Số config</th>
                 <th>Khớp</th>
                 <th></th>
@@ -193,7 +199,7 @@ export default function HomePage() {
                   : [];
                 return (
                   <tr key={bot.username}>
-                    {canManageUsers ? (
+                    {canDeleteBot ? (
                       <td className="check-col">
                         <input
                           type="checkbox"
@@ -204,6 +210,7 @@ export default function HomePage() {
                       </td>
                     ) : null}
                     <td>{bot.username}</td>
+                    <td>{bot.visibility === "private" ? "Riêng tư" : "Công khai"}</td>
                     <td>{(bot.accounts || []).length}</td>
                     <td className="muted">{matchedAccounts.join(", ")}</td>
                     <td>
@@ -211,7 +218,7 @@ export default function HomePage() {
                         <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(bot.username)}`}>
                           Sửa
                         </Link>
-                        {canManageUsers ? (
+                        {canDeleteBot ? (
                           <button
                             type="button"
                             className="danger"

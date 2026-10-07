@@ -1,13 +1,14 @@
 const express = require("express");
 const UserAccount = require("../models/user-account");
 const { requireAuth, requirePermission, requireAllScope, canAccessBot } = require("../middleware/auth");
-const { PERMISSIONS, scopeForPermission } = require("../auth/access-control");
+const { PERMISSIONS } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 const { buildChanges, safeRecordAudit } = require("../lib/audit");
 const {
     normalizeName,
     createBot,
     renameBot,
+    updateBotAccess,
     deleteBot,
     addAccount,
     renameAccount,
@@ -24,17 +25,17 @@ const router = express.Router();
 
 router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (req, res) => {
     try {
-        const filter = scopeForPermission(req.webUser, PERMISSIONS.BOTS_VIEW) === "all"
-            ? {} : { username: { $in: req.webUser.botUsernames } };
-        const rows = await UserAccount.find(filter)
-            .select("username accounts")
+        const rows = await UserAccount.find()
+            .select("username accounts ownerUserId visibility")
             .sort({ username: 1 })
             .lean();
         const bots = rows
-            .filter((row) => canAccessBot(req.webUser, row.username))
+            .filter((row) => canAccessBot(req.webUser, row, PERMISSIONS.BOTS_VIEW))
             .map((row) => ({
                 username: row.username,
                 accounts: row.accounts || [],
+                ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null,
+                visibility: row.visibility || "public",
             }));
         res.json({ bots });
     } catch (error) {
@@ -103,7 +104,7 @@ router.patch(
 
 router.post("/", requireAuth, requirePermission(PERMISSIONS.BOTS_CREATE), requireAllScope(PERMISSIONS.BOTS_CREATE), async (req, res) => {
     try {
-        const bot = await createBot(normalizeName(req.body?.username));
+        const bot = await createBot(req.webUser, normalizeName(req.body?.username), req.body?.visibility || "public");
         await safeRecordAudit({ action: "bot.created", actor: req.webUser, targetType: "bot", target: bot, changes: { username: { from: null, to: bot.username } } });
         res.status(201).json({ bot });
     } catch (error) {
@@ -114,12 +115,21 @@ router.post("/", requireAuth, requirePermission(PERMISSIONS.BOTS_CREATE), requir
 router.patch("/:username", requireAuth, requirePermission(PERMISSIONS.BOTS_EDIT), async (req, res) => {
     try {
         const previousName = normalizeName(req.params.username);
-        const bot = await renameBot(
-            req.webUser,
-            previousName,
-            normalizeName(req.body?.username), PERMISSIONS.BOTS_EDIT
-        );
+        const beforeAccess = await UserAccount.findOne({ username: previousName }).select("username ownerUserId visibility").lean();
+        const hasUsername = Object.prototype.hasOwnProperty.call(req.body || {}, "username");
+        let bot = hasUsername ? await renameBot(req.webUser, previousName, normalizeName(req.body.username), PERMISSIONS.BOTS_EDIT) : null;
+        const currentName = bot?.username || previousName;
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "visibility") || Object.prototype.hasOwnProperty.call(req.body || {}, "ownerUserId")) {
+            bot = await updateBotAccess(req.webUser, currentName, { visibility: req.body.visibility, ownerUserId: req.body.ownerUserId });
+        }
+        if (!bot) throw Object.assign(new Error("Không có dữ liệu để cập nhật"), { status: 400 });
         if (previousName !== bot.username) await safeRecordAudit({ action: "bot.renamed", actor: req.webUser, targetType: "bot", target: bot, changes: { username: { from: previousName, to: bot.username } } });
+        const accessChanges = buildChanges(
+            { ownerUserId: beforeAccess?.ownerUserId ? String(beforeAccess.ownerUserId) : null, visibility: beforeAccess?.visibility || "public" },
+            bot,
+            ["ownerUserId", "visibility"]
+        );
+        if (Object.keys(accessChanges).length) await safeRecordAudit({ action: "bot.access_updated", actor: req.webUser, targetType: "bot", target: bot, changes: accessChanges });
         res.json({ bot });
     } catch (error) {
         sendError(res, error, "PATCH /api/bots/:username");
