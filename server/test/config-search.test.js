@@ -34,7 +34,7 @@ test("searchConfigsBySignal keeps viewable configs and sorts by the latest trade
         { username: "idle", ownerUserId: "other", visibility: "public", active: true, accounts: ["i1"] },
     ]);
     AccountConfig.find = () => query([
-        { env: "m1", signals: ["rose"], trade_config: { ON: true, LONG: true, FIX_COST_AMOUNT: 10, LONG_LEVERAGE: 5, MARGIN: { MODE: "FIX" }, OPEN: { TYPE: "LIMIT" } } },
+        { env: "m1", signals: ["rose"], trade_config: { ON: true, LONG: true, FIX_COST_AMOUNT: 10, LONG_LEVERAGE: 5, MARGIN: { MODE: "FIX" }, OPEN: { TYPE: "LIMIT" }, TP: { TYPE: "FIX", PERCENT: [0.2, 0.4] }, SL: { TYPE: "MARKET", SL_PERCENT: -0.3 }, TRAILING: { ON: true, TYPE: "FIX", SP_PERCENT: 0.01, TRIGGER_PERCENT: 0.05 } } },
         { env: "o1", signals: ["BULL", "ROSE"] },
         { env: "s1", signals: ["ROSE"] },
         { env: "i1", signals: ["ROSE"] },
@@ -53,7 +53,11 @@ test("searchConfigsBySignal keeps viewable configs and sorts by the latest trade
         assert.deepEqual(result.rows[0].matched, ["ROSE"]);
         assert.equal(result.rows.some((row) => row.env === "i1" || row.trades === 0), false);
         assert.equal(result.rows[1].config.volume, 50);
-        assert.equal(result.rows[1].config.openType, "LIMIT");
+        assert.equal(result.rows[1].config.mode, "FIX");
+        assert.deepEqual(result.rows[1].config.tp, [0.2, 0.4]);
+        assert.equal(result.rows[1].config.sl, -0.3);
+        assert.equal(result.rows[1].config.trailing, true);
+        assert.equal(result.rows[1].config.sp, 0.01);
         const filtered = await searchConfigsBySignal(supervisor, { signal: "ROSE", days: 30, minWinRate: 40, profit: 0, profitOp: "gt" });
         assert.deepEqual(filtered.rows.map((row) => row.env), ["m1"]);
     } finally {

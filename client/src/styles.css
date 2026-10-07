@@ -512,7 +512,7 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .signal-filters > button { align-self: end; }
 button.sort-col { background: none; border: 0; color: inherit; font: inherit; font-weight: 650; padding: 0; cursor: pointer; }
-.config-brief { display: block; max-width: 280px; font-size: 0.78rem; line-height: 1.35; }
+.config-brief { display: block; max-width: 420px; font-size: 0.78rem; line-height: 1.35; }
 .action-form { display: grid; gap: 10px; max-width: 420px; margin-top: 8px; }
 .history-range { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 button.symbol-chip {

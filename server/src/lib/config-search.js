@@ -33,6 +33,7 @@ function briefConfig(doc) {
     const cost = finite(trade.FIX_COST_AMOUNT);
     const leverage = finite(trade.LONG_LEVERAGE);
     const tp = Array.isArray(trade.TP?.PERCENT) ? trade.TP.PERCENT.map(finite).filter((item) => item != null) : [];
+    const trailing = trade.TRAILING || {};
     return {
         on: trade.ON !== false,
         long: trade.LONG !== false,
@@ -40,8 +41,14 @@ function briefConfig(doc) {
         mode: String(trade.MARGIN?.MODE || "FIX").trim().toUpperCase() || "FIX",
         volume: cost != null && leverage != null ? cost * leverage : null,
         openType: String(trade.OPEN?.TYPE || "MARKET").trim().toUpperCase() || "MARKET",
-        sl: finite(trade.SL?.SL_PERCENT),
+        tpType: String(trade.TP?.TYPE || "FIX").trim().toUpperCase() || "FIX",
         tp,
+        slType: String(trade.SL?.TYPE || "MARKET").trim().toUpperCase() || "MARKET",
+        sl: finite(trade.SL?.SL_PERCENT),
+        trailing: trailing.ON !== false,
+        trailingType: String(trailing.TYPE || "FIX").trim().toUpperCase() || "FIX",
+        sp: finite(trailing.SP_PERCENT),
+        trigger: finite(trailing.TRIGGER_PERCENT),
         syncFrom: doc.sync_from || "",
     };
 }

@@ -31,13 +31,27 @@ function applyDatePick(currentIso, localValue) {
   return next.toISOString();
 }
 
+function numText(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "";
+  return String(Math.round(Number(value) * 10000) / 10000);
+}
+
 function configLine(row) {
   const config = row.config;
   if (!config) return "—";
-  const side = [config.long ? "Long" : null, config.short ? "Short" : null].filter(Boolean).join("/") || "không side";
-  const volume = config.volume == null ? "" : ` · vol ${fmt(config.volume, 0)}$`;
-  const sync = config.syncFrom ? ` · sync ${config.syncFrom}` : "";
-  return `${config.on ? "On" : "Tắt"} · ${side} · ${config.mode}${volume} · ${config.openType}${sync}`;
+  const volume = config.volume == null ? "vol —" : `vol ${fmt(config.volume, 0)}$`;
+  const tpNums = (config.tp || []).map(numText).filter(Boolean).join(", ");
+  const slNum = numText(config.sl);
+  const trail = config.trailing
+    ? `Trail ${config.trailingType || "FIX"}${numText(config.sp) ? ` sp ${numText(config.sp)}` : ""}${numText(config.trigger) ? ` trg ${numText(config.trigger)}` : ""}`
+    : "Trail tắt";
+  return [
+    volume,
+    config.mode || "—",
+    `TP ${config.tpType || "—"}${tpNums ? ` ${tpNums}` : ""}`,
+    `SL ${config.slType || "—"}${slNum ? ` ${slNum}` : ""}`,
+    trail,
+  ].join(" · ");
 }
 
 function sortValue(row, key) {
@@ -429,6 +443,7 @@ export default function SignalSearchPage() {
                 <DetailItem label="Mở" value={detail.openType} />
                 <DetailItem label="TP" value={`${detail.tpType || "—"} ${(detail.tpPercent || []).join(", ")}`.trim()} />
                 <DetailItem label="SL" value={`${detail.slType || "—"} ${detail.sl ?? ""}`.trim()} />
+                <DetailItem label="Trailing" value={detail.trailing ? `${detail.trailingType || "FIX"} SP ${detail.sp ?? "—"} / Trigger ${detail.trigger ?? "—"}` : "Tắt"} />
                 <DetailItem label="Signal" value={(detail.signals || []).join(", ") || "—"} />
                 <DetailItem label="Sync from" value={detail.syncFrom || "—"} />
               </dl>
