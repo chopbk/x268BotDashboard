@@ -377,6 +377,12 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
 .stats-grid .card { display: grid; gap: 8px; }
 .stats-grid strong { font-size: 2rem; }
+.signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.signal-stats { margin-bottom: 12px; }
+.signal-chips { margin: 0 0 12px; }
+.signal-table { max-height: 620px; }
+.history-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.history-tabs button.active { background: var(--accent); color: #081018; }
 
 .user-table-wrap thead {
   position: sticky;

@@ -103,3 +103,11 @@ test("own scope uses the bot owner relationship instead of its username", () => 
     assert.equal(canAccessResource(member, PERMISSIONS.CONFIG_VIEW, { username: "strategy-a", ownerUserId: "member-id" }), true);
     assert.equal(canAccessResource(member, PERMISSIONS.CONFIG_VIEW, { username: "strategy-b", ownerUserId: "other-id" }), false);
 });
+
+test("roles that can inspect config also receive scoped signal history", () => {
+    assert.equal(hasPermission({ role: "member" }, PERMISSIONS.SIGNALS_HISTORY), true);
+    assert.equal(scopeForPermission({ role: "member" }, PERMISSIONS.SIGNALS_HISTORY), "own");
+    assert.equal(scopeForPermission({ role: "operator" }, PERMISSIONS.SIGNALS_HISTORY), "own_assigned");
+    assert.equal(scopeForPermission({ role: "auditor" }, PERMISSIONS.SIGNALS_HISTORY), "all");
+    assert.equal(scopeForPermission({ role: "member" }, PERMISSIONS.STATISTICS_VIEW), "own");
+});

@@ -7,6 +7,8 @@ const CONFIG_VIEW = "config.view";
 const CONFIG_EDIT = "config.edit";
 const BOTS_EDIT = "bots.edit";
 const BOTS_DELETE = "bots.delete";
+const SIGNALS_HISTORY = "signals.history";
+const STATISTICS_VIEW = "statistics.view";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -50,6 +52,8 @@ export default function BotDetailPage() {
   const canEditConfig = can(user, CONFIG_EDIT);
   const canEditBot = can(user, BOTS_EDIT);
   const canDeleteBot = can(user, BOTS_DELETE);
+  const canViewSignalHistory = can(user, SIGNALS_HISTORY);
+  const canViewStatistics = can(user, STATISTICS_VIEW);
   const [bot, setBot] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -134,6 +138,8 @@ export default function BotDetailPage() {
         </p>
         <h1>{bot?.username || username}</h1>
         <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Bấm Sửa để đổi các mục đó.</p>
+        {canViewSignalHistory ? <p><Link to={`/signals?username=${encodeURIComponent(username)}`}>Xem lịch sử signal của User bot</Link></p> : null}
+        {canViewStatistics ? <p><Link to={`/signals?view=statics&username=${encodeURIComponent(username)}`}>Xem Account Static của User bot</Link></p> : null}
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}

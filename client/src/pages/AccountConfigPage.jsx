@@ -4,6 +4,8 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 
 const CONFIG_EDIT = "config.edit";
+const SIGNALS_HISTORY = "signals.history";
+const STATISTICS_VIEW = "statistics.view";
 const MODES = ["FIX", "RATIO", "RISK", "RR", "LOSS"];
 const OPEN_TYPES = ["MARKET", "LIMIT", "STOPMARKET", "STOPLIMIT", "FOLLOWSIGNAL"];
 const SL_TYPES = ["MARKET", "LIMIT", "CANDLE", "EMA", "ATR", "FOLLOWSIGNAL", "HYBRID", "ENTRY_STYLE", "ROSE"];
@@ -105,6 +107,8 @@ export default function AccountConfigPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = can(user, CONFIG_EDIT);
+  const canViewSignalHistory = can(user, SIGNALS_HISTORY);
+  const canViewStatistics = can(user, STATISTICS_VIEW);
   const [form, setForm] = useState(null);
   const [lists, setLists] = useState({});
   const [snapshot, setSnapshot] = useState(null);
@@ -359,6 +363,16 @@ export default function AccountConfigPage() {
               Xoá
             </button>
           </div>
+        ) : null}
+        {canViewSignalHistory ? (
+          <Link className="ghost link-btn" to={`/signals?username=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`}>
+            Lịch sử signal
+          </Link>
+        ) : null}
+        {canViewStatistics ? (
+          <Link className="ghost link-btn" to={`/signals?view=statics&username=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`}>
+            Account Static
+          </Link>
         ) : null}
       </header>
       {copyOpen && canEdit ? (

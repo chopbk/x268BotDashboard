@@ -70,6 +70,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | Tổng kết | `summary.view` |
 | Bot | `bots.view`, `bots.create`, `bots.edit`, `bots.delete`, `bots.operate` |
 | Config | `config.view`, `config.edit` |
+| Signal/hiệu suất | `signals.history`, `statistics.view` |
 | Position | `positions.view`, `positions.open`, `positions.close` |
 | API | `credentials.view`, `credentials.manage` |
 | User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
@@ -286,6 +287,8 @@ Các invariant:
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
 | `GET /api/summary` | `requireAuth` | `summary.view`; chỉ trả số tổng hợp, không trả tên bot/config |
+| `GET /api/signal-history` | `requireAuth` | `signals.history` + scope bot; lịch sử theo signal được cấu hình của User bot/Account Config từ `signal_infos` |
+| `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, profit, ROE và volume từ `account_statics` |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
 | `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
 | `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility, chỉ admin đổi owner |
@@ -358,6 +361,13 @@ UserApisPage / UserApiDetailPage
   -> scope botUsernames (admin qua users.manage thấy tất cả)
   -> user_apis, không trả raw secret
 ```
+
+SignalHistoryPage dùng hai nguồn tách biệt: `signal_infos` là lịch sử signal nhận được;
+`account_statics` là kết quả giao dịch thực tế của từng `env`. Không suy diễn profit từ
+SignalInfo và không dùng `Signal_History` legacy làm nguồn chuẩn. Khi query theo User bot,
+server lấy hợp các env thuộc `user_accounts.accounts`; khi query theo Account Config,
+server bắt buộc env đó thuộc User bot đã được authorize. UI có tab riêng để lọc/phân trang,
+đồng thời trang Config đặt link sâu tới đúng user/env.
 
 File chuẩn:
 

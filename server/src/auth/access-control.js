@@ -3,6 +3,8 @@ const PERMISSIONS = Object.freeze({
     SUMMARY_VIEW: "summary.view",
     BOTS_VIEW: "bots.view", BOTS_CREATE: "bots.create", BOTS_EDIT: "bots.edit", BOTS_DELETE: "bots.delete", BOTS_OPERATE: "bots.operate",
     CONFIG_VIEW: "config.view", CONFIG_EDIT: "config.edit",
+    SIGNALS_HISTORY: "signals.history",
+    STATISTICS_VIEW: "statistics.view",
     POSITIONS_VIEW: "positions.view", POSITIONS_OPEN: "positions.open", POSITIONS_CLOSE: "positions.close",
     CREDENTIALS_VIEW: "credentials.view", CREDENTIALS_MANAGE: "credentials.manage",
     USERS_VIEW: "users.view", USERS_CREATE: "users.create", USERS_EDIT: "users.edit", USERS_PERMISSIONS: "users.permissions",
@@ -16,6 +18,8 @@ const DEFINITIONS = [
     [PERMISSIONS.BOTS_DELETE, "Xóa bot", "bot", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]], [PERMISSIONS.BOTS_OPERATE, "Vận hành bot", "bot", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
     [PERMISSIONS.CONFIG_VIEW, "Xem config (gồm signal, cấu hình và blacklist)", "config", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
     [PERMISSIONS.CONFIG_EDIT, "Sửa config (gồm signal, cấu hình và blacklist)", "config", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
+    [PERMISSIONS.SIGNALS_HISTORY, "Xem lịch sử signal", "signal", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
+    [PERMISSIONS.STATISTICS_VIEW, "Xem Account Static/lãi lỗ", "statistic", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
     [PERMISSIONS.POSITIONS_VIEW, "Xem position", "position", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
     [PERMISSIONS.POSITIONS_OPEN, "Mở position", "position", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]], [PERMISSIONS.POSITIONS_CLOSE, "Đóng position", "position", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
     [PERMISSIONS.CREDENTIALS_VIEW, "Xem API/credential", "api", [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN]],
@@ -28,7 +32,7 @@ const DEFINITIONS = [
 const PERMISSION_DEFINITIONS = Object.freeze(Object.fromEntries(DEFINITIONS.map((item) => [item.key, item])));
 const PERMISSION_LABELS = Object.freeze(Object.fromEntries(DEFINITIONS.map(({ key, label }) => [key, label])));
 const LEGACY_USER_PERMISSIONS = [PERMISSIONS.USERS_VIEW, PERMISSIONS.USERS_CREATE, PERMISSIONS.USERS_EDIT, PERMISSIONS.USERS_PERMISSIONS, PERMISSIONS.USERS_DISABLE, PERMISSIONS.USERS_RESET_PASSWORD];
-const VIEWER_PERMISSIONS = [PERMISSIONS.BOTS_VIEW, PERMISSIONS.CONFIG_VIEW, PERMISSIONS.POSITIONS_VIEW];
+const VIEWER_PERMISSIONS = [PERMISSIONS.BOTS_VIEW, PERMISSIONS.CONFIG_VIEW, PERMISSIONS.SIGNALS_HISTORY, PERMISSIONS.STATISTICS_VIEW, PERMISSIONS.POSITIONS_VIEW];
 const OPERATOR_PERMISSIONS = [...VIEWER_PERMISSIONS, PERMISSIONS.BOTS_OPERATE, PERMISSIONS.CONFIG_EDIT, PERMISSIONS.POSITIONS_OPEN, PERMISSIONS.POSITIONS_CLOSE, PERMISSIONS.LOGS_VIEW];
 const ROLE_PERMISSIONS = Object.freeze({
     admin: Object.freeze([...Object.keys(PERMISSION_DEFINITIONS), PERMISSIONS.USERS_MANAGE]),
@@ -54,7 +58,7 @@ function isPermission(permission) { return !!PERMISSION_DEFINITIONS[permission] 
 function expandLegacy(items) {
     const result = new Set(items);
     if (result.has(PERMISSIONS.USERS_MANAGE)) LEGACY_USER_PERMISSIONS.forEach((item) => result.add(item));
-    if (result.has(PERMISSIONS.SIGNALS_VIEW)) result.add(PERMISSIONS.CONFIG_VIEW);
+    if (result.has(PERMISSIONS.SIGNALS_VIEW)) { result.add(PERMISSIONS.CONFIG_VIEW); result.add(PERMISSIONS.SIGNALS_HISTORY); }
     if (result.has(PERMISSIONS.SIGNALS_MANAGE)) result.add(PERMISSIONS.CONFIG_EDIT);
     return [...result].filter((item) => !!PERMISSION_DEFINITIONS[item]);
 }
@@ -66,7 +70,7 @@ function permissionsForUser(user) {
 function hasPermission(user, permission) {
     const effective = permissionsForUser(user);
     if (permission === PERMISSIONS.USERS_MANAGE) return LEGACY_USER_PERMISSIONS.every((item) => effective.includes(item));
-    if (permission === PERMISSIONS.SIGNALS_VIEW) return effective.includes(PERMISSIONS.CONFIG_VIEW);
+    if (permission === PERMISSIONS.SIGNALS_VIEW) return effective.includes(PERMISSIONS.CONFIG_VIEW) && effective.includes(PERMISSIONS.SIGNALS_HISTORY);
     if (permission === PERMISSIONS.SIGNALS_MANAGE) return effective.includes(PERMISSIONS.CONFIG_EDIT);
     return effective.includes(permission);
 }

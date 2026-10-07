@@ -11,6 +11,7 @@ import UserApiDetailPage from "./pages/UserApiDetailPage";
 import PendingPage from "./pages/PendingPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import SummaryPage from "./pages/SummaryPage";
+import SignalHistoryPage from "./pages/SignalHistoryPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -18,6 +19,8 @@ const CONFIG_VIEW = "config.view";
 const CREDENTIALS_VIEW = "credentials.view";
 const LOGS_VIEW = "logs.view";
 const SUMMARY_VIEW = "summary.view";
+const SIGNALS_HISTORY = "signals.history";
+const STATISTICS_VIEW = "statistics.view";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -28,6 +31,14 @@ function Protected({ children, permission }) {
   if (loading) return <div className="screen muted">Đang tải…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (permission && !hasPermission(user, permission)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function ProtectedAny({ children, permissions }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="screen muted">Đang tải…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!permissions.some((permission) => hasPermission(user, permission))) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -57,6 +68,7 @@ function Shell({ children }) {
               </NavLink>
             ) : null}
             {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/">Tổng kết</NavLink> : null}
+            {hasPermission(user, SIGNALS_HISTORY) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Signal & Static</NavLink> : null}
             {hasPermission(user, CREDENTIALS_VIEW) ? (
               <NavLink to="/user-apis" className={onApis ? "active" : ""}>
                 User API
@@ -113,6 +125,10 @@ function AppRoutes() {
             </Shell>
           </Protected>
         }
+      />
+      <Route
+        path="/signals"
+        element={<ProtectedAny permissions={[SIGNALS_HISTORY, STATISTICS_VIEW]}><Shell><SignalHistoryPage /></Shell></ProtectedAny>}
       />
       <Route
         path="/user-apis"
