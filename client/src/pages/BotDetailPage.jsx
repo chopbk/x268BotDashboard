@@ -173,7 +173,7 @@ export default function BotDetailPage() {
         </p>
         <h1>{bot?.username || username}</h1>
         <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Bấm Sửa để đổi các mục đó.</p>
-        {canViewSignalHistory ? <p><Link to="/signals">Xem lịch sử signal hệ thống</Link></p> : null}
+        {canViewSignalHistory ? <p><Link to="/signals?view=signals">Xem lịch sử signal hệ thống</Link></p> : null}
         {canViewStatistics ? <p><Link to={`/signals?view=statics&username=${encodeURIComponent(username)}`}>Xem Account Static của User bot</Link></p> : null}
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}

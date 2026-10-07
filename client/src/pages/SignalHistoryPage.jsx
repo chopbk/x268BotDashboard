@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 const fmtTime = (value) => value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value)) : "—";
-const fmt = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+const fmt = (value, digits = 2) => value == null || value === "" || !Number.isFinite(Number(value)) ? "—" : Number(value).toFixed(digits);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function daysAgo(days) {
@@ -34,6 +34,41 @@ function applyDatePick(currentIso, localValue) {
   return next.toISOString();
 }
 
+function DetailItem({ label, value }) {
+  return <div><dt>{label}</dt><dd>{value ?? "—"}</dd></div>;
+}
+
+function TradeDetail({ row, onClose }) {
+  return (
+    <article className="card trade-detail">
+      <header>
+        <h2>{row.symbol || "Giao dịch"} · {row.side || "—"}</h2>
+        <button type="button" className="ghost" onClick={onClose}>Đóng</button>
+      </header>
+      <dl>
+        <DetailItem label="Config" value={row.env} />
+        <DetailItem label="Signal" value={row.signal} />
+        <DetailItem label="Status" value={row.status} />
+        <DetailItem label="Profit" value={`${fmt(row.profit)} $`} />
+        <DetailItem label="ROE" value={`${fmt(row.roe)} %`} />
+        <DetailItem label="Volume" value={`${fmt(row.volume)} $`} />
+        <DetailItem label="Giá vào" value={fmt(row.entryPrice)} />
+        <DetailItem label="Giá đóng" value={fmt(row.closePrice)} />
+        <DetailItem label="Đòn bẩy" value={fmt(row.leverage, 0)} />
+        <DetailItem label="Cost" value={fmt(row.cost)} />
+        <DetailItem label="Khối lượng" value={fmt(row.positionAmt, 4)} />
+        <DetailItem label="Mở" value={fmtTime(row.openTime)} />
+        <DetailItem label="Đóng" value={fmtTime(row.closeTime)} />
+        <DetailItem label="TP" value={row.tps?.length ? row.tps.map((price) => fmt(price)).join(", ") : "—"} />
+        <DetailItem label="Copy" value={row.copy ? "Có" : "Không"} />
+        <DetailItem label="Limit" value={row.limit ? "Có" : "Không"} />
+        <DetailItem label="Paper" value={row.paper ? "Có" : "Không"} />
+        <DetailItem label="Đã đóng" value={row.closed ? "Có" : "Không"} />
+      </dl>
+    </article>
+  );
+}
+
 export default function SignalHistoryPage() {
   const { user } = useAuth();
   const signalAllowed = can(user, "signals.history");
@@ -41,14 +76,19 @@ export default function SignalHistoryPage() {
   const [params, setParams] = useSearchParams();
   const [bots, setBots] = useState([]);
   const [data, setData] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const requestedView = params.get("view") || "signals";
-  const view = requestedView === "statics" && staticAllowed ? "statics" : signalAllowed ? "signals" : "statics";
+  const requestedView = params.get("view");
+  const view = requestedView === "signals" && signalAllowed ? "signals" : requestedView === "statics" && staticAllowed ? "statics" : staticAllowed ? "statics" : "signals";
   const username = params.get("username") || "";
   const env = params.get("env") || "";
   const q = params.get("q") || "";
   const side = params.get("side") || "";
+  const signal = params.get("signal") || "";
+  const status = params.get("status") || "";
+  const profit = params.get("profit") || "";
+  const trade = params.get("trade") || "";
   const [fallbackFrom] = useState(() => daysAgo(3));
   const from = params.get("from") || "";
   const to = params.get("to") || "";
@@ -59,7 +99,7 @@ export default function SignalHistoryPage() {
   function update(values) {
     const next = new URLSearchParams(params);
     Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
-    if (!Object.hasOwn(values, "page")) next.set("page", "1");
+    if (!Object.hasOwn(values, "page") && !Object.hasOwn(values, "trade")) next.set("page", "1");
     setParams(next);
   }
 
@@ -85,9 +125,12 @@ export default function SignalHistoryPage() {
     if (to) query.set("to", to);
     if (q) query.set("q", q);
     if (side) query.set("side", side);
+    if (signal) query.set("signal", signal);
     if (view === "statics") {
       query.set("username", username);
       if (env) query.set("env", env);
+      if (status) query.set("status", status);
+      if (profit) query.set("profit", profit);
     }
     const endpoint = view === "statics" ? "/api/account-statics" : "/api/signal-history";
     api(`${endpoint}?${query}`).then((result) => {
@@ -98,7 +141,25 @@ export default function SignalHistoryPage() {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [view, username, env, q, side, activeFrom, to, page]);
+  }, [view, username, env, q, side, signal, status, profit, activeFrom, to, page]);
+
+  useEffect(() => {
+    if (view !== "statics" || !trade || !username) {
+      setDetail(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setDetail(null);
+    api(`/api/account-statics/${encodeURIComponent(trade)}?username=${encodeURIComponent(username)}`).then((row) => {
+      if (!cancelled) setDetail(row);
+    }).catch((err) => {
+      if (!cancelled) {
+        setDetail(null);
+        setError(err.message);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [view, trade, username]);
 
   const signalStats = view === "signals" ? data?.stats : null;
   const tradeStats = view === "statics" ? data?.stats : null;
@@ -110,13 +171,13 @@ export default function SignalHistoryPage() {
           <p className="muted">
             {view === "signals"
               ? "Lịch sử signal của cả hệ thống, đọc từ Signal_Infos. Mặc định 3 ngày gần nhất."
-              : "Account Static là kết quả lệnh của từng config. Mặc định 3 ngày gần nhất."}
+              : "Account Static là kết quả lệnh của từng config. Mặc định 3 ngày gần nhất. Bấm một dòng để xem chi tiết."}
           </p>
         </div>
       </header>
       <div className="history-tabs">
-        {signalAllowed ? <button type="button" className={view === "signals" ? "active" : "ghost"} onClick={() => update({ view: "signals" })}>Lịch sử signal</button> : null}
         {staticAllowed ? <button type="button" className={view === "statics" ? "active" : "ghost"} onClick={() => update({ view: "statics" })}>Account Static</button> : null}
+        {signalAllowed ? <button type="button" className={view === "signals" ? "active" : "ghost"} onClick={() => update({ view: "signals" })}>Lịch sử signal</button> : null}
       </div>
       <div className="card signal-filters">
         {view === "statics" ? (
@@ -126,7 +187,14 @@ export default function SignalHistoryPage() {
           </>
         ) : null}
         <label>Symbol<input value={q} onChange={(e) => update({ q: e.target.value })} placeholder="BTCUSDT" /></label>
+        <label>Signal<select value={signal} onChange={(e) => update({ signal: e.target.value })}><option value="">Tất cả</option>{(data?.stats?.bySignal || []).map((item) => <option key={item.signal} value={item.signal}>{item.signal}</option>)}{signal && !(data?.stats?.bySignal || []).some((item) => item.signal === signal) ? <option value={signal}>{signal}</option> : null}</select></label>
         <label>Side<select value={side} onChange={(e) => update({ side: e.target.value })}><option value="">Tất cả</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
+        {view === "statics" ? (
+          <>
+            <label>Status<select value={status} onChange={(e) => update({ status: e.target.value })}><option value="">Tất cả</option><option value="WIN">WIN</option><option value="LOSS">LOSS</option>{(data?.stats?.byStatus || []).filter((item) => item.status && item.status !== "WIN" && item.status !== "LOSS").map((item) => <option key={item.status} value={item.status}>{item.status}</option>)}</select></label>
+            <label>Profit<select value={profit} onChange={(e) => update({ profit: e.target.value })}><option value="">Tất cả</option><option value="win">Lãi</option><option value="loss">Lỗ</option><option value="flat">Hòa</option></select></label>
+          </>
+        ) : null}
         <label>Từ<input type="datetime-local" value={toLocalInput(activeFrom)} onChange={(e) => update({ from: applyDatePick(activeFrom, e.target.value) || fallbackFrom })} /></label>
         <label>Đến<input type="datetime-local" value={toLocalInput(to)} onChange={(e) => update({ to: applyDatePick(to, e.target.value) })} /></label>
         <div className="history-range">
@@ -155,15 +223,17 @@ export default function SignalHistoryPage() {
               ))}
             </div>
           ) : null}
-          {signalStats.bySignal?.length ? <div className="chips signal-chips"><span className="muted">Signal</span>{signalStats.bySignal.map((item) => <span className="chip" key={item.signal}>{item.signal}: {item.count}</span>)}</div> : null}
+          {signalStats.bySignal?.length ? <div className="chips signal-chips"><span className="muted">Signal</span>{signalStats.bySignal.map((item) => <button type="button" className={signal === item.signal ? "symbol-chip active" : "symbol-chip"} key={item.signal} onClick={() => update({ signal: signal === item.signal ? "" : item.signal })}>{item.signal}: {item.count}</button>)}</div> : null}
         </>
       ) : null}
-      {tradeStats ? <div className="stats-grid signal-stats"><article className="card"><span className="muted">Số lệnh</span><strong>{tradeStats.total}</strong></article><article className="card"><span className="muted">Win rate</span><strong>{fmt(tradeStats.winRate, 1)}%</strong></article><article className="card"><span className="muted">Profit</span><strong>{fmt(tradeStats.profit)}$</strong></article><article className="card"><span className="muted">Volume</span><strong>{fmt(tradeStats.volume)}$</strong></article></div> : null}
-      {view === "statics" && data?.stats?.bySignal?.length ? <div className="chips signal-chips">{data.stats.bySignal.map((item) => <span className="chip" key={item.signal}>{item.signal}: {item.count} · {fmt(item.profit)}$</span>)}</div> : null}
+      {tradeStats ? <div className="stats-grid signal-stats"><article className="card"><span className="muted">Số lượng giao dịch</span><strong>{tradeStats.total}</strong><small className="muted">{tradeStats.wins} thắng · {tradeStats.losses} thua</small></article><article className="card"><span className="muted">Win rate</span><strong>{fmt(tradeStats.winRate, 1)}%</strong></article><article className="card"><span className="muted">Profit</span><strong>{fmt(tradeStats.profit)}$</strong></article><article className="card"><span className="muted">Volume</span><strong>{fmt(tradeStats.volume)}$</strong></article></div> : null}
+      {view === "statics" && data?.stats?.byStatus?.length ? <div className="chips signal-chips"><span className="muted">Status</span>{data.stats.byStatus.map((item) => <button type="button" className={status === item.status ? "symbol-chip active" : "symbol-chip"} key={item.status} onClick={() => update({ status: status === item.status ? "" : item.status })}>{item.status}: {item.count} · {fmt(item.profit)}$</button>)}</div> : null}
+      {view === "statics" && data?.stats?.bySignal?.length ? <div className="chips signal-chips"><span className="muted">Signal</span>{data.stats.bySignal.map((item) => <button type="button" className={signal === item.signal ? "symbol-chip active" : "symbol-chip"} key={item.signal} onClick={() => update({ signal: signal === item.signal ? "" : item.signal })}>{item.signal}: {item.count} lệnh · WR {fmt(item.winRate, 1)}% · {fmt(item.profit)}$</button>)}</div> : null}
+      {detail ? <TradeDetail row={detail} onClose={() => update({ trade: "" })} /> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}{error ? <p className="form-error">{error}</p> : null}
       {!loading && data?.rows?.length === 0 ? <div className="card empty">Không có dữ liệu trong khoảng thời gian này.</div> : null}
       {view === "signals" && data?.rows?.length ? <div className="table-wrap signal-table"><table><thead><tr><th>Thời gian</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Loại</th><th>Trạng thái</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td>{fmtTime(row.openTime)}</td><td>{row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.type}</td><td>{row.status}</td></tr>)}</tbody></table></div> : null}
-      {view === "statics" && data?.rows?.length ? <div className="table-wrap signal-table"><table><thead><tr><th>Thời gian</th><th>Config</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Status</th><th>Profit</th><th>ROE</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td>{fmtTime(row.openTime)}</td><td>{row.env}</td><td>{row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.status}</td><td>{fmt(row.profit)}$</td><td>{fmt(row.roe)}%</td></tr>)}</tbody></table></div> : null}
+      {view === "statics" && data?.rows?.length ? <div className="table-wrap signal-table"><table><thead><tr><th>Thời gian</th><th>Config</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Status</th><th>Profit</th><th>ROE</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id} className={trade === row.id ? "trade-row active" : "trade-row"} tabIndex={0} onClick={() => update({ trade: trade === row.id ? "" : row.id })} onKeyDown={(event) => { if (event.key === "Enter") update({ trade: trade === row.id ? "" : row.id }); }}><td>{fmtTime(row.openTime)}</td><td>{row.env}</td><td>{row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.status}</td><td>{fmt(row.profit)}$</td><td>{fmt(row.roe)}%</td></tr>)}</tbody></table></div> : null}
       {data?.total > data?.limit ? <div className="audit-pagination"><span className="muted">Trang {data.page} · {data.total} bản ghi</span><div><button type="button" className="ghost" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Trước</button><button type="button" className="ghost" disabled={page * data.limit >= data.total} onClick={() => update({ page: String(page + 1) })}>Sau</button></div></div> : null}
       {view === "statics" && username ? <p className="muted"><Link to={`/bots/${encodeURIComponent(username)}`}>Mở User bot {username}</Link></p> : null}
     </section>

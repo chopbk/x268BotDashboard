@@ -287,8 +287,9 @@ Các invariant:
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
 | `GET /api/summary` | `requireAuth` | `summary.view`; mặc định 3 ngày, hỗ trợ `range=today\|3d\|7d\|30d\|90d\|all` và cache MongoDB 60 giây; position mở lấy `monitor_positions`; profit, profit hôm nay, volume, win rate và xếp hạng lấy `account_statics` với `isPaper=false`, theo thời điểm đóng (`closeTime`, thiếu thì `openTime`), chỉ account config thuộc user bot, không lấy từ `signal_infos`; trả tên tín hiệu, user bot và symbol đứng đầu, không trả danh sách bot/config |
-| `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
-| `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
+| `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |
+| `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, số lượng, status, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal`, `status`, `profit=win\|loss\|flat` lọc danh sách và số tổng; breakdown signal/status giữ theo user, config, symbol, side và thời gian |
+| `GET /api/account-statics/:id` | `requireAuth` | `statistics.view` + scope bot; chi tiết một lệnh `account_statics`. Query `username` bắt buộc; lệnh phải thuộc account config của user bot đó |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
 | `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
 | `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility, chỉ admin đổi owner |
@@ -367,7 +368,7 @@ không lọc theo user bot hay account config; `account_statics` là kết quả
 của từng `env`. Không suy diễn profit từ SignalInfo và không dùng `Signal_History` legacy
 làm nguồn chuẩn. Tab Account Static query theo User bot thì lấy hợp các env thuộc
 `user_accounts.accounts`; query theo Account Config thì env đó phải thuộc User bot đã được
-authorize. UI có tab riêng để lọc/phân trang.
+authorize. UI mở tab Account Static trước. Bấm một dòng để xem chi tiết lệnh. UI có tab riêng để lọc/phân trang.
 
 File chuẩn:
 

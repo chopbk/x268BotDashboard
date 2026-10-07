@@ -18,6 +18,14 @@ function sessionId(hour) {
     return "Mỹ";
 }
 
+function signalChoices(options, bySignalMap) {
+    const named = (options || [])
+        .map((row) => ({ signal: String(row._id || "").trim(), count: row.count || 0 }))
+        .filter((row) => row.signal);
+    if (named.length) return named;
+    return [...bySignalMap].map(([signal, count]) => ({ signal, count })).sort((a, b) => b.count - a.count);
+}
+
 function sessionSummary(rows) {
     const counts = Object.fromEntries(SESSIONS.map((item) => [item.id, 0]));
     for (const row of rows || []) counts[row._id] = row.count || 0;
@@ -26,26 +34,39 @@ function sessionSummary(rows) {
     return { sessions, topSession: topSession.count ? topSession : null };
 }
 
+function signalMatcher(value) {
+    const name = String(value || "").trim();
+    if (!name) return null;
+    return new RegExp(`^${escapeRegex(name)}$`, "i");
+}
+
+function withSignal(stages, matcher) {
+    return matcher ? [{ $match: { signal: matcher } }, ...stages] : stages;
+}
+
 async function listSignalHistory(_actor, input = {}) {
     const page = Math.max(1, Number.parseInt(input.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(input.limit, 10) || 50));
     const range = openTimeRange(input);
-    const filter = { openTime: openTimeFilter(range) };
-    if (["LONG", "SHORT"].includes(input.side)) filter.side = input.side;
+    const scope = { openTime: openTimeFilter(range) };
+    if (["LONG", "SHORT"].includes(input.side)) scope.side = input.side;
     const query = String(input.q || "").trim();
-    if (query) filter.symbol = new RegExp(escapeRegex(query), "i");
+    if (query) scope.symbol = new RegExp(escapeRegex(query), "i");
+    const matcher = signalMatcher(input.signal);
+    const filter = matcher ? { ...scope, signal: matcher } : scope;
 
     const [rows, total, grouped] = await Promise.all([
         SignalInfo.find(filter).select("signal status side symbol type openTime createdAt").sort({ openTime: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
         SignalInfo.countDocuments(filter),
         SignalInfo.aggregate([
-            { $match: filter },
+            { $match: scope },
             {
                 $facet: {
-                    bySignalSide: [{ $group: { _id: { signal: "$signal", side: "$side" }, count: { $sum: 1 } } }],
-                    byType: [{ $group: { _id: { $ifNull: ["$type", "SCALP"] }, count: { $sum: 1 } } }],
-                    bySymbol: [{ $group: { _id: "$symbol", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }],
-                    bySession: [
+                    bySignalSide: withSignal([{ $group: { _id: { signal: "$signal", side: "$side" }, count: { $sum: 1 } } }], matcher),
+                    byType: withSignal([{ $group: { _id: { $ifNull: ["$type", "SCALP"] }, count: { $sum: 1 } } }], matcher),
+                    bySymbol: withSignal([{ $group: { _id: "$symbol", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }], matcher),
+                    signalOptions: [{ $group: { _id: { $ifNull: ["$signal", ""] }, count: { $sum: 1 } } }, { $sort: { count: -1 } }],
+                    bySession: withSignal([
                         { $project: { hour: { $hour: { date: "$openTime", timezone: "Asia/Ho_Chi_Minh" } } } },
                         {
                             $group: {
@@ -61,7 +82,7 @@ async function listSignalHistory(_actor, input = {}) {
                                 count: { $sum: 1 },
                             },
                         },
-                    ],
+                    ], matcher),
                 },
             },
         ]),
@@ -84,7 +105,7 @@ async function listSignalHistory(_actor, input = {}) {
             total,
             long,
             short,
-            bySignal: [...bySignalMap].map(([signal, count]) => ({ signal, count })).sort((a, b) => b.count - a.count),
+            bySignal: signalChoices(facet.signalOptions, bySignalMap),
             byType: (facet.byType || []).map((row) => ({ type: row._id || "SCALP", count: row.count })).sort((a, b) => b.count - a.count),
             bySymbol: (facet.bySymbol || []).map((row) => ({ symbol: row._id || "—", count: row.count })),
             sessions,

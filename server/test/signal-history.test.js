@@ -67,6 +67,27 @@ test("signal history uses the requested time range and symbol", async () => {
     }
 });
 
+test("signal history filters one signal without hiding the other signal choices", async () => {
+    const originals = { signal: SignalInfo.find, count: SignalInfo.countDocuments, aggregate: SignalInfo.aggregate };
+    let signalFilter;
+    let pipeline;
+    SignalInfo.find = (filter) => { signalFilter = filter; return query([]); };
+    SignalInfo.countDocuments = async () => 0;
+    SignalInfo.aggregate = async (stages) => { pipeline = stages; return [{ bySignalSide: [], byType: [], bySymbol: [], bySession: [], signalOptions: [{ _id: "ROSE", count: 2 }, { _id: "BULL", count: 1 }] }]; };
+    try {
+        const result = await listSignalHistory({}, { signal: "rose+" });
+        assert.equal(signalFilter.signal.source, "^rose\\+$");
+        assert.equal(pipeline[0].$match.signal, undefined);
+        assert.equal(pipeline[1].$facet.signalOptions[0].$match, undefined);
+        assert.equal(pipeline[1].$facet.bySignalSide[0].$match.signal.source, "^rose\\+$");
+        assert.deepEqual(result.stats.bySignal.map((item) => item.signal), ["ROSE", "BULL"]);
+    } finally {
+        SignalInfo.find = originals.signal;
+        SignalInfo.countDocuments = originals.count;
+        SignalInfo.aggregate = originals.aggregate;
+    }
+});
+
 test("session hours follow Vietnam time", () => {
     assert.equal(sessionId(7), "Á");
     assert.equal(sessionId(14), "Á");

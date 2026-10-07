@@ -415,7 +415,7 @@ export default function AccountConfigPage() {
           ) : null}
         </div>
         {canViewSignalHistory ? (
-          <Link className="ghost link-btn" to="/signals">
+          <Link className="ghost link-btn" to="/signals?view=signals">
             Lịch sử signal
           </Link>
         ) : null}
