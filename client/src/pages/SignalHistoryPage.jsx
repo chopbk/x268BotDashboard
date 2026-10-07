@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
@@ -95,6 +96,7 @@ export default function SignalHistoryPage() {
   const page = Math.max(1, Number(params.get("page")) || 1);
   const selectedBot = useMemo(() => bots.find((bot) => bot.username === username), [bots, username]);
   const activeFrom = from || fallbackFrom;
+  const debouncedQ = useDebouncedValue(q);
 
   function update(values) {
     const next = new URLSearchParams(params);
@@ -120,10 +122,11 @@ export default function SignalHistoryPage() {
   useEffect(() => {
     if (view === "statics" && !username) { setLoading(false); return undefined; }
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true); setError(""); setData(null);
     const query = new URLSearchParams({ page: String(page), limit: "50", from: activeFrom });
     if (to) query.set("to", to);
-    if (q) query.set("q", q);
+    if (debouncedQ) query.set("q", debouncedQ);
     if (side) query.set("side", side);
     if (signal) query.set("signal", signal);
     if (view === "statics") {
@@ -133,15 +136,15 @@ export default function SignalHistoryPage() {
       if (profit) query.set("profit", profit);
     }
     const endpoint = view === "statics" ? "/api/account-statics" : "/api/signal-history";
-    api(`${endpoint}?${query}`).then((result) => {
+    api(`${endpoint}?${query}`, { signal: controller.signal }).then((result) => {
       if (!cancelled) setData(result);
     }).catch((err) => {
       if (!cancelled) setError(err.message);
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
-    return () => { cancelled = true; };
-  }, [view, username, env, q, side, signal, status, profit, activeFrom, to, page]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [view, username, env, debouncedQ, side, signal, status, profit, activeFrom, to, page]);
 
   useEffect(() => {
     if (view !== "statics" || !trade || !username) {
@@ -149,8 +152,9 @@ export default function SignalHistoryPage() {
       return undefined;
     }
     let cancelled = false;
+    const controller = new AbortController();
     setDetail(null);
-    api(`/api/account-statics/${encodeURIComponent(trade)}?username=${encodeURIComponent(username)}`).then((row) => {
+    api(`/api/account-statics/${encodeURIComponent(trade)}?username=${encodeURIComponent(username)}`, { signal: controller.signal }).then((row) => {
       if (!cancelled) setDetail(row);
     }).catch((err) => {
       if (!cancelled) {
@@ -158,7 +162,7 @@ export default function SignalHistoryPage() {
         setError(err.message);
       }
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [view, trade, username]);
 
   const signalStats = view === "signals" ? data?.stats : null;

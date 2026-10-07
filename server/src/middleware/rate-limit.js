@@ -1,3 +1,6 @@
+const crypto = require("crypto");
+const { consumeRateLimit } = require("../lib/rate-limit-store");
+
 function normalizeKeyPart(value) {
     return String(value || "").trim().toLowerCase().slice(0, 160);
 }
@@ -17,16 +20,17 @@ function endpointKey(req) {
 }
 
 function createRateLimit({ windowMs, max, prefix, identify }) {
-    const buckets = new Map();
-    let operations = 0;
-    return function rateLimit(req, res, next) {
+    return async function rateLimit(req, res, next) {
         const now = Date.now();
         const identity = normalizeKeyPart(identify?.(req));
-        const key = `${prefix}:${requestIp(req)}:${identity}`;
-        let bucket = buckets.get(key);
-        if (!bucket || bucket.resetAt <= now) bucket = { count: 0, resetAt: now + windowMs };
-        bucket.count += 1;
-        buckets.set(key, bucket);
+        const digest = crypto.createHash("sha256").update(`${requestIp(req)}:${identity}`).digest("hex");
+        const key = `web-rate:${prefix}:${digest}`;
+        let bucket;
+        try {
+            bucket = await consumeRateLimit(key, windowMs, now);
+        } catch (error) {
+            return next(error);
+        }
 
         const setHeader = (name, value) => {
             if (typeof res.set === "function") res.set(name, value);
@@ -39,11 +43,6 @@ function createRateLimit({ windowMs, max, prefix, identify }) {
             const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
             setHeader("Retry-After", String(retryAfter));
             return res.status(429).json({ error: "Thử quá nhiều lần, vui lòng đợi rồi thử lại", retryAfter });
-        }
-
-        operations += 1;
-        if (operations % 500 === 0) {
-            for (const [storedKey, stored] of buckets) if (stored.resetAt <= now) buckets.delete(storedKey);
         }
         next();
     };

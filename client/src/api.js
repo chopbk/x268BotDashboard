@@ -59,6 +59,7 @@ async function perform(path, { method = "GET", body, signal, timeoutMs = 20_000 
 }
 
 export function api(path, options = {}) {
+  if (options.signal) return perform(path, options);
   const method = String(options.method || "GET").toUpperCase();
   const key = `${method}:${path}:${options.body === undefined ? "" : JSON.stringify(options.body)}`;
   const existing = pendingRequests.get(key);

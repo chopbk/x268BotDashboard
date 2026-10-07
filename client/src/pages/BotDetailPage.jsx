@@ -108,8 +108,9 @@ export default function BotDetailPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
-    api("/api/bots")
+    api("/api/bots", { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
         const found = (data.bots || []).find((item) => item.username === username) || null;
@@ -127,19 +128,23 @@ export default function BotDetailPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [username]);
 
   useEffect(() => {
     if (user?.role !== "admin") return;
-    api("/api/admin/users").then((data) => setWebUsers(data.users || [])).catch(() => {});
+    const controller = new AbortController();
+    api("/api/admin/users", { signal: controller.signal }).then((data) => setWebUsers(data.users || [])).catch(() => {});
+    return () => controller.abort();
   }, [user?.role]);
 
   const accountKey = accounts.join("|");
   useEffect(() => {
     if (!canViewConfig || !bot) return undefined;
     let cancelled = false;
-    api(`/api/bots/${encodeURIComponent(bot.username)}/configs`)
+    const controller = new AbortController();
+    api(`/api/bots/${encodeURIComponent(bot.username)}/configs`, { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
         const next = {};
@@ -151,6 +156,7 @@ export default function BotDetailPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [canViewConfig, bot, accountKey]);
 

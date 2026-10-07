@@ -268,8 +268,9 @@ Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
   `WEB_TRUST_PROXY=true`; không bật nếu Node còn được truy cập trực tiếp từ Internet.
 - Client debounce ô tìm kiếm, abort request cũ khi filter đổi và deduplicate request có
   cùng method, URL và payload trong thời gian request trước còn chạy.
-- Rate-limit store hiện dùng memory vì project chưa có Redis. Khi chạy nhiều instance,
-  phải thay bằng shared Redis store trước khi coi quota là giới hạn toàn cụm.
+- Có `REDIS_URL` thì rate limit dùng atomic counter + TTL trên Redis để mọi instance chia
+  sẻ quota. Không cấu hình hoặc Redis tạm lỗi thì tự fallback về memory để giữ availability;
+  `/api/health.rateLimitStore` cho biết store đang thực sự dùng là `redis` hay `memory`.
 
 ## 6. Quản trị user
 

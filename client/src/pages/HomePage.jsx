@@ -156,9 +156,11 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    api("/api/admin/users?limit=100")
+    const controller = new AbortController();
+    api("/api/admin/users?limit=100", { signal: controller.signal })
       .then((data) => setWebUsers(data.users || []))
       .catch(() => setWebUsers([]));
+    return () => controller.abort();
   }, [isAdmin]);
 
   async function run(action) {

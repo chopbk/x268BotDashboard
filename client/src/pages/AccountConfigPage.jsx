@@ -183,11 +183,12 @@ export default function AccountConfigPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setEditing(false);
     setCopyOpen(false);
     setBusy(false);
-    api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}`)
+    api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}`, { signal: controller.signal })
       .then((data) => {
         if (!cancelled) applyConfig(data.config);
       })
@@ -199,13 +200,15 @@ export default function AccountConfigPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [username, env]);
 
   useEffect(() => {
     if (user?.role === "admin") return undefined;
     let cancelled = false;
-    api("/api/bots")
+    const controller = new AbortController();
+    api("/api/bots", { signal: controller.signal })
       .then((data) => {
         if (!cancelled) setOpenedBot((data.bots || []).find((item) => item.username === username) || null);
       })
@@ -214,6 +217,7 @@ export default function AccountConfigPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [user?.role, username]);
 

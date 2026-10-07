@@ -47,8 +47,9 @@ export default function UserApiDetailPage() {
   useEffect(() => {
     if (isNew) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
-    api(`/api/user-apis/${encodeURIComponent(username)}`)
+    api(`/api/user-apis/${encodeURIComponent(username)}`, { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
         const row = data.api;
@@ -76,6 +77,7 @@ export default function UserApiDetailPage() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [isNew, username]);
 

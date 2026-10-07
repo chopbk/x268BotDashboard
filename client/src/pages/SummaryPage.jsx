@@ -34,10 +34,11 @@ export default function SummaryPage() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     setSummary(null);
     setError("");
-    api(`/api/summary?range=${range}`).then((data) => active && setSummary(data)).catch((err) => active && setError(err.message));
-    return () => { active = false; };
+    api(`/api/summary?range=${range}`, { signal: controller.signal }).then((data) => active && setSummary(data)).catch((err) => active && setError(err.message));
+    return () => { active = false; controller.abort(); };
   }, [range]);
 
   return (

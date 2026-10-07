@@ -8,6 +8,7 @@ const { requireCsrf } = require("./middleware/csrf");
 const { createRateLimit, endpointKey, requestIp } = require("./middleware/rate-limit");
 const { createConcurrencyLimit, requestTimeout, sessionIdentity } = require("./middleware/request-guards");
 const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
+const { connectRateLimitStore, rateLimitStoreStatus } = require("./lib/rate-limit-store");
 
 async function main() {
     try {
@@ -20,6 +21,7 @@ async function main() {
         }
 
         await connect(config.mongodb);
+        await connectRateLimitStore(config.redisUrl);
         await bootstrapAdmin();
         await startSummarySnapshotJob();
 
@@ -59,7 +61,7 @@ async function main() {
         });
 
         app.get("/api/health", (req, res) => {
-            res.json({ ok: true });
+            res.json({ ok: true, rateLimitStore: rateLimitStoreStatus() });
         });
         app.use("/api/auth", require("./routes/auth"));
         app.use("/api/bots", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/bots"));

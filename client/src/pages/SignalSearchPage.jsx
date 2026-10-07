@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { canEditResource } from "../access";
@@ -112,6 +112,14 @@ export default function SignalSearchPage() {
   const [notice, setNotice] = useState("");
   const [popupError, setPopupError] = useState("");
   const [popupBusy, setPopupBusy] = useState(false);
+  const searchController = useRef(null);
+  const popupController = useRef(null);
+
+  function renewController(ref) {
+    ref.current?.abort();
+    ref.current = new AbortController();
+    return ref.current;
+  }
 
   const shown = useMemo(() => {
     if (!rows) return null;
@@ -151,16 +159,18 @@ export default function SignalSearchPage() {
     setBusy(true);
     setError("");
     setOrder(null);
-    api(`/api/bots/config-search?${searchParams()}`)
+    const controller = renewController(searchController);
+    api(`/api/bots/config-search?${searchParams()}`, { signal: controller.signal })
       .then((data) => {
         setRows(data.rows || []);
         setRange({ from: data.from, to: data.to });
       })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         setRows(null);
         setError(err.message || "Không tìm được signal");
       })
-      .finally(() => setBusy(false));
+      .finally(() => { if (!controller.signal.aborted) setBusy(false); });
   }
 
   function toggleSort(key) {
@@ -172,6 +182,7 @@ export default function SignalSearchPage() {
   }
 
   function closePanel() {
+    popupController.current?.abort();
     setPanel(null);
     setTrades(null);
     setTrade(null);
@@ -197,10 +208,11 @@ export default function SignalSearchPage() {
     setPopupError("");
     setNotice("");
     setPopupBusy(true);
-    api(`/api/account-statics?${params}`)
+    const controller = renewController(popupController);
+    api(`/api/account-statics?${params}`, { signal: controller.signal })
       .then((data) => setTrades(data))
-      .catch((err) => setPopupError(err.message || "Không tải được static"))
-      .finally(() => setPopupBusy(false));
+      .catch((err) => { if (!controller.signal.aborted) setPopupError(err.message || "Không tải được static"); })
+      .finally(() => { if (!controller.signal.aborted) setPopupBusy(false); });
   }
 
   function openConfig(row) {
@@ -209,14 +221,15 @@ export default function SignalSearchPage() {
     setPopupError("");
     setNotice("");
     setPopupBusy(true);
-    api(`/api/bots/${encodeURIComponent(row.username)}/configs/${encodeURIComponent(row.env)}`)
+    const controller = renewController(popupController);
+    api(`/api/bots/${encodeURIComponent(row.username)}/configs/${encodeURIComponent(row.env)}`, { signal: controller.signal })
       .then((data) => setDetail(data.config))
-      .catch((err) => setPopupError(err.message || "Không tải được config"))
-      .finally(() => setPopupBusy(false));
+      .catch((err) => { if (!controller.signal.aborted) setPopupError(err.message || "Không tải được config"); })
+      .finally(() => { if (!controller.signal.aborted) setPopupBusy(false); });
   }
 
-  async function loadTargets() {
-    const data = await api("/api/bots?limit=100");
+  async function loadTargets(signal) {
+    const data = await api("/api/bots?limit=100", { signal });
     return (data.bots || []).filter((bot) => canEditResource(user, CONFIG_EDIT, bot));
   }
 
@@ -227,14 +240,15 @@ export default function SignalSearchPage() {
     setNotice("");
     setPopupError("");
     setPopupBusy(true);
+    const controller = renewController(popupController);
     try {
-      const bots = await loadTargets();
+      const bots = await loadTargets(controller.signal);
       setTargets(bots);
       setTargetUser(bots[0]?.username || "");
     } catch (err) {
-      setPopupError(err.message || "Không tải được user");
+      if (!controller.signal.aborted) setPopupError(err.message || "Không tải được user");
     } finally {
-      setPopupBusy(false);
+      if (!controller.signal.aborted) setPopupBusy(false);
     }
   }
 
@@ -245,21 +259,22 @@ export default function SignalSearchPage() {
     setNotice("");
     setPopupError("");
     setPopupBusy(true);
+    const controller = renewController(popupController);
     try {
-      const bots = await loadTargets();
+      const bots = await loadTargets(controller.signal);
       setTargets(bots);
       const first = bots[0]?.username || "";
       setTargetUser(first);
-      if (first) await loadTargetConfigs(first, row);
+      if (first) await loadTargetConfigs(first, row, controller.signal);
     } catch (err) {
-      setPopupError(err.message || "Không tải được user");
+      if (!controller.signal.aborted) setPopupError(err.message || "Không tải được user");
     } finally {
-      setPopupBusy(false);
+      if (!controller.signal.aborted) setPopupBusy(false);
     }
   }
 
-  async function loadTargetConfigs(username, row = panel?.row) {
-    const data = await api(`/api/bots/${encodeURIComponent(username)}/configs`);
+  async function loadTargetConfigs(username, row = panel?.row, signal) {
+    const data = await api(`/api/bots/${encodeURIComponent(username)}/configs`, { signal });
     const configs = (data.configs || []).filter((item) => !(username === row?.username && item.env === row?.env));
     setTargetConfigs(configs);
     setTargetEnv(configs[0]?.env || "");
@@ -271,9 +286,10 @@ export default function SignalSearchPage() {
       return;
     }
     setPopupError("");
-    api(`/api/account-statics/${encodeURIComponent(row.id)}?username=${encodeURIComponent(panel.row.username)}`)
+    const controller = renewController(popupController);
+    api(`/api/account-statics/${encodeURIComponent(row.id)}?username=${encodeURIComponent(panel.row.username)}`, { signal: controller.signal })
       .then((next) => setTrade(next))
-      .catch((err) => setPopupError(err.message || "Không tải được lệnh"));
+      .catch((err) => { if (!controller.signal.aborted) setPopupError(err.message || "Không tải được lệnh"); });
   }
 
   async function onCopy(event) {

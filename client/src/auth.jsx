@@ -9,7 +9,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
-    api("/api/auth/me")
+    const controller = new AbortController();
+    api("/api/auth/me", { signal: controller.signal })
       .then((me) => {
         if (!cancelled) setUser(me);
       })
@@ -21,6 +22,7 @@ export function AuthProvider({ children }) {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 

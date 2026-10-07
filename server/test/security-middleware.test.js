@@ -32,16 +32,16 @@ test("CSRF rejects a foreign origin before mutation", () => {
     assert.equal(res.body.code, "CSRF_ORIGIN");
 });
 
-test("rate limiter isolates identifiers and returns retry metadata", () => {
+test("rate limiter isolates identifiers and returns retry metadata", async () => {
     const middleware = createRateLimit({ windowMs: 60_000, max: 2, prefix: "test", identify: (req) => req.body.identifier });
     const request = (identifier) => ({ ip: "127.0.0.1", body: { identifier } });
-    for (let i = 0; i < 2; i += 1) middleware(request("alice"), response(), () => {});
+    for (let i = 0; i < 2; i += 1) await middleware(request("alice"), response(), () => {});
     const blocked = response();
-    middleware(request("alice"), blocked, () => assert.fail("must be limited"));
+    await middleware(request("alice"), blocked, () => assert.fail("must be limited"));
     assert.equal(blocked.statusCode, 429);
     assert.ok(Number(blocked.headers["Retry-After"]) >= 1);
     let bobPassed = false;
-    middleware(request("bob"), response(), () => { bobPassed = true; });
+    await middleware(request("bob"), response(), () => { bobPassed = true; });
     assert.equal(bobPassed, true);
 });
 
