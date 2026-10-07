@@ -5,7 +5,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 
 const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
-const { toSummary, listConfigSummaries, updateConfigSummary } = require("../src/lib/account-config-view");
+const { toSummary, toDetail, listConfigSummaries, updateConfigSummary } = require("../src/lib/account-config-view");
 
 const admin = { role: "admin", botUsernames: [] };
 const viewer = {
@@ -44,6 +44,31 @@ test("toSummary reports on, sides, signals and volume as cost times leverage", (
     assert.deepEqual(row.signals, ["ROSE", "BULL"]);
     assert.equal(row.mode, "FIX");
     assert.equal(row.volume, 2000);
+});
+
+test("toDetail keeps the stoploss, take profit, open and copy groups", () => {
+    const row = toDetail({
+        env: "a1",
+        signals: ["ROSE"],
+        blacklist: ["BTCUSDT"],
+        trade_config: {
+            ON: true,
+            FIX_COST_AMOUNT: 50,
+            LONG_LEVERAGE: 10,
+            OPEN: { TYPE: "limit", RISK: 4, FILTERS: { ON: true, LIST: ["FOMO"] } },
+            TP: { TYPE: "FIX", PERCENT: [0.1, 0.2], CLOSE: 1, HOLD: false },
+            SL: { TYPE: "atr", SL_CANDLE: "15m", SL_PERCENT: -0.3 },
+            COPY: { ON: true, RATE: 0.1 },
+            MARGIN: { MODE: "FIX" },
+        },
+    });
+    assert.equal(row.openType, "LIMIT");
+    assert.equal(row.slType, "ATR");
+    assert.equal(row.slCandle, "15M");
+    assert.deepEqual(row.tpPercent, [0.1, 0.2]);
+    assert.equal(row.copy, true);
+    assert.deepEqual(row.blacklist, ["BTCUSDT"]);
+    assert.deepEqual(row.filters, ["FOMO"]);
 });
 
 test("listConfigSummaries rejects a bot outside scope before reading configs", async () => {

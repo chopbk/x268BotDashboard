@@ -251,6 +251,32 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
 .account-main { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .account-meta { color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
 
+.config-section {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.config-section legend { padding: 0 6px; font-weight: 650; }
+
+.config-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.config-fields .span-2 { grid-column: span 2; }
+
+.config-json {
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .row-actions { display: flex; gap: 6px; }
 .row-actions button, .inline-edit button { padding: 6px 10px; }
 
@@ -398,6 +424,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
 
 @media (max-width: 900px) {
   .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .config-fields { grid-template-columns: 1fr 1fr; }
   .topbar { flex-direction: column; align-items: flex-start; }
   .bot-workspace { grid-template-columns: 1fr; }
   .bot-detail { order: -1; position: static; max-height: none; }
@@ -406,6 +433,8 @@ th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
 
 @media (max-width: 640px) {
   .admin-form { grid-template-columns: 1fr; }
+  .config-fields { grid-template-columns: 1fr; }
+  .config-fields .span-2 { grid-column: auto; }
   .admin-form > .bot-picker,
   .admin-form > .permission-picker,
   .admin-form > .chips,

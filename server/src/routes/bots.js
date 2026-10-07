@@ -15,8 +15,9 @@ const {
 } = require("../lib/bot-directory");
 const {
     listConfigSummaries,
-    getConfigSummary,
+    getConfigDetail,
     updateConfigSummary,
+    AUDIT_FIELDS,
 } = require("../lib/account-config-view");
 
 const router = express.Router();
@@ -61,7 +62,7 @@ router.get(
     requirePermission(PERMISSIONS.CONFIG_VIEW),
     async (req, res) => {
         try {
-            const config = await getConfigSummary(
+            const config = await getConfigDetail(
                 req.webUser,
                 normalizeName(req.params.username),
                 normalizeName(req.params.env)
@@ -81,21 +82,9 @@ router.patch(
         try {
             const username = normalizeName(req.params.username);
             const env = normalizeName(req.params.env);
-            const before = await getConfigSummary(req.webUser, username, env, PERMISSIONS.CONFIG_EDIT);
+            const before = await getConfigDetail(req.webUser, username, env, PERMISSIONS.CONFIG_EDIT);
             const config = await updateConfigSummary(req.webUser, username, env, req.body);
-            const changes = buildChanges(before, config, [
-                "on",
-                "long",
-                "short",
-                "signals",
-                "mode",
-                "cost",
-                "leverage",
-                "ratio",
-                "fixloss",
-                "risk",
-                "volume",
-            ]);
+            const changes = buildChanges(before, config, AUDIT_FIELDS);
             if (Object.keys(changes).length) {
                 await safeRecordAudit({
                     action: "config.updated",

@@ -280,7 +280,7 @@ Các invariant:
 | `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
 | `DELETE /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; gỡ env, xoá `Account_Config` nếu không user bot nào còn giữ |
 | `GET /api/bots/:username/configs` | `requireAuth` | `config.view` + scope; tóm tắt On, Long/Short, signal, mode, volume của từng account |
-| `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; cùng các field, không trả nguyên `trade_config` |
+| `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; đủ field lệnh `/sc` (on, volume, open, tp, sl, trailing, copy, signal, blacklist, sync), không trả nguyên document |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
