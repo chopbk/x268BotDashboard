@@ -70,6 +70,137 @@ function DetailItem({ label, value }) {
   return <div><dt>{label}</dt><dd>{value ?? "—"}</dd></div>;
 }
 
+function yesNo(value) {
+  return value ? "Bật" : "Tắt";
+}
+
+function show(value) {
+  if (value == null || value === "") return "—";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
+  return String(value);
+}
+
+function objectText(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "—";
+  const keys = Object.keys(value);
+  if (!keys.length) return "—";
+  return keys.map((key) => `${key}: ${show(value[key])}`).join(", ");
+}
+
+function volumeHint(config) {
+  if (config.mode === "RATIO") return `RATIO lấy cost theo ratio ${show(config.ratio)} của ví.`;
+  if (config.mode === "RISK") return `RISK size theo risk ${show(config.risk)}.`;
+  if (config.mode === "LOSS" || config.mode === "RR") return `${config.mode} size để khi chạm SL thì lỗ khoảng ${show(config.fixloss)}$.`;
+  return `FIX: volume = cost ${show(config.cost)} × đòn bẩy long ${show(config.leverage)} = ${config.volume == null ? "—" : `${fmt(config.volume, 0)}$`}.`;
+}
+
+function Glance({ title, note, items }) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      {note ? <p className="muted mode-note">{note}</p> : null}
+      <dl>
+        {items.map(([label, value]) => <DetailItem key={label} label={label} value={value} />)}
+      </dl>
+    </section>
+  );
+}
+
+function ConfigGlance({ config }) {
+  return (
+    <div className="config-glance">
+      <Glance title="Bật tắt" items={[
+        ["On", yesNo(config.on)],
+        ["Long", yesNo(config.long)],
+        ["Short", yesNo(config.short)],
+        ["Invert", yesNo(config.invert)],
+        ["Paper", yesNo(config.paper)],
+        ["Monitor", yesNo(config.monitor)],
+        ["Whitelist mode", yesNo(config.wl)],
+        ["Auto config", yesNo(config.autoConfig)],
+        ["Report profit", yesNo(config.reportProfit)],
+      ]} />
+      <Glance title="Danh sách" items={[
+        ["Signal", show(config.signals)],
+        ["Blacklist", show(config.blacklist)],
+        ["Whitelist", show(config.whitelist)],
+      ]} />
+      <Glance title="Volume" note={volumeHint(config)} items={[
+        ["Mode", show(config.mode)],
+        ["Cost ($)", show(config.cost)],
+        ["Đòn bẩy long", show(config.leverage)],
+        ["Đòn bẩy short", show(config.shortLeverage)],
+        ["Level", show(config.level)],
+        ["Ratio", show(config.ratio)],
+        ["Fix loss ($)", show(config.fixloss)],
+        ["Volume ($)", config.volume == null ? "—" : fmt(config.volume, 0)],
+      ]} />
+      <Glance title="Mở lệnh" items={[
+        ["Open type", show(config.openType)],
+        ["Spread", show(config.spread)],
+        ["Wait (phút)", show(config.wait)],
+        ["Risk", show(config.risk)],
+        ["Mark", show(config.mark)],
+        ["Max position", show(config.maxPosition)],
+        ["Symbol types", show(config.symbolTypes)],
+        ["Symbol types deny", show(config.symbolTypesDeny)],
+        ["Filter", yesNo(config.filterOn)],
+        ["Filters", show(config.filters)],
+        ["Chase %", show(config.chasePct)],
+        ["Blow ATR", show(config.blowAtr)],
+        ["Fomo ATR", show(config.fomoAtr)],
+      ]} />
+      <Glance title="Chốt lời" note={config.tpType === "FIX" ? "FIX: số TP là tỷ lệ lãi. 0.2 = 20%." : config.tpType === "ATR" || config.tpType === "ROSE" ? `${config.tpType}: số TP là số lần ATR.` : null} items={[
+        ["TP type", show(config.tpType)],
+        ["TP percent", show(config.tpPercent)],
+        ["Close", show(config.tpClose)],
+        ["TP time (giây)", show(config.tpTime)],
+        ["Hold", yesNo(config.tpHold)],
+        ["TP hybrid", objectText(config.tpHybrid)],
+      ]} />
+      <Glance title="Cắt lỗ" items={[
+        ["SL type", show(config.slType)],
+        ["SL candle", show(config.slCandle)],
+        ["Period", show(config.slPeriod)],
+        ["SL", show(config.sl)],
+        ["SLI", show(config.sli)],
+        ["SL2", show(config.sl2)],
+        ["SL time (giây)", show(config.slTime)],
+        ["Max loss", show(config.maxLoss)],
+        ["SL theo position", yesNo(config.slPosition)],
+        ["SL hybrid", objectText(config.slHybrid)],
+      ]} />
+      <Glance title="Trailing" note={config.trailing ? "Bật thì dời SL theo lời. SP là khoảng cách, Trigger là ngưỡng bắt đầu gồng." : "Trailing đang tắt."} items={[
+        ["Trailing", yesNo(config.trailing)],
+        ["Type", show(config.trailingType)],
+        ["SP", show(config.sp)],
+        ["Trigger", show(config.trigger)],
+        ["R", show(config.r)],
+        ["HP", yesNo(config.hp)],
+        ["HP trigger", show(config.hpTrigger)],
+        ["RHSL", show(config.rhsl)],
+        ["RH", show(config.rh)],
+      ]} />
+      <Glance title="Copy" items={[
+        ["Copy", yesNo(config.copy)],
+        ["Fix cost", yesNo(config.copyFix)],
+        ["DCA", yesNo(config.copyDca)],
+        ["Follow", yesNo(config.copyFollow)],
+        ["Max volume ($)", show(config.maxVolume)],
+        ["Rate", show(config.copyRate)],
+      ]} />
+      <Glance title="Sync" items={[
+        ["Interval (giây)", show(config.interval)],
+        ["Sync from", show(config.syncFrom)],
+        ["Sync except", show(config.syncExcept)],
+        ["Sync scale", yesNo(config.syncScale)],
+        ["Sync margin ratio", show(config.syncMarginRatio)],
+        ["Sync wallet", show(config.syncWalletBal)],
+      ]} />
+    </div>
+  );
+}
+
 function SortHead({ label, name, order, onSort }) {
   const active = order?.key === name;
   return (
@@ -109,6 +240,7 @@ export default function SignalSearchPage() {
   const [targetConfigs, setTargetConfigs] = useState([]);
   const [targetEnv, setTargetEnv] = useState("");
   const [copyName, setCopyName] = useState("");
+  const [copyMode, setCopyMode] = useState("new");
   const [notice, setNotice] = useState("");
   const [popupError, setPopupError] = useState("");
   const [popupBusy, setPopupBusy] = useState(false);
@@ -236,6 +368,7 @@ export default function SignalSearchPage() {
   async function openCopy(row) {
     setPanel({ kind: "copy", row });
     setCopyName("");
+    setCopyMode("new");
     setTargetUser("");
     setNotice("");
     setPopupError("");
@@ -294,16 +427,19 @@ export default function SignalSearchPage() {
 
   async function onCopy(event) {
     event.preventDefault();
-    if (!panel?.row || !targetUser || !copyName.trim()) return;
+    const env = copyMode === "replace" ? targetEnv : copyName.trim();
+    if (!panel?.row || !targetUser || !env) return;
     setPopupBusy(true);
     setPopupError("");
     setNotice("");
     try {
       const data = await api(`/api/bots/${encodeURIComponent(panel.row.username)}/configs/${encodeURIComponent(panel.row.env)}/copy`, {
         method: "POST",
-        body: { username: targetUser, env: copyName.trim() },
+        body: { username: targetUser, env, mode: copyMode === "replace" ? "replace" : "new" },
       });
-      setNotice(`Đã copy sang ${data.username}/${data.env}. Bot nhận bản mới sau khi restart.`);
+      setNotice(data.replaced
+        ? `Đã ghi đè ${data.username}/${data.env}. Sync của config đích đã được gỡ. Bot nhận bản mới sau khi restart.`
+        : `Đã tạo ${data.username}/${data.env}. Bot nhận bản mới sau khi restart.`);
     } catch (err) {
       setPopupError(err.message || "Không copy được");
     } finally {
@@ -428,7 +564,7 @@ export default function SignalSearchPage() {
                       <div className="row-actions">
                         <button type="button" className="ghost" onClick={() => openConfig(row)}>Xem</button>
                         {staticAllowed ? <button type="button" className="ghost" onClick={() => openStatic(row)}>Static</button> : null}
-                        {editAllowed && row.canEdit ? <button type="button" className="ghost" onClick={() => openCopy(row)}>Copy</button> : null}
+                        {editAllowed ? <button type="button" className="ghost" onClick={() => openCopy(row)}>Copy</button> : null}
                         {editAllowed ? <button type="button" className="ghost" onClick={() => openSync(row)}>Sync</button> : null}
                       </div>
                     </td>
@@ -449,36 +585,46 @@ export default function SignalSearchPage() {
             {popupError ? <p className="form-error">{popupError}</p> : null}
             {notice ? <p className="muted">{notice}</p> : null}
             {popupBusy ? <p className="muted">Đang tải…</p> : null}
-            {panel.kind === "config" && detail ? (
-              <dl>
-                <DetailItem label="On" value={detail.on ? "Bật" : "Tắt"} />
-                <DetailItem label="Long" value={detail.long ? "Bật" : "Tắt"} />
-                <DetailItem label="Short" value={detail.short ? "Bật" : "Tắt"} />
-                <DetailItem label="Mode" value={detail.mode} />
-                <DetailItem label="Volume" value={detail.volume == null ? "—" : `${fmt(detail.volume)} $`} />
-                <DetailItem label="Mở" value={detail.openType} />
-                <DetailItem label="TP" value={`${detail.tpType || "—"} ${(detail.tpPercent || []).join(", ")}`.trim()} />
-                <DetailItem label="SL" value={`${detail.slType || "—"} ${detail.sl ?? ""}`.trim()} />
-                <DetailItem label="Trailing" value={detail.trailing ? `${detail.trailingType || "FIX"} SP ${detail.sp ?? "—"} / Trigger ${detail.trigger ?? "—"}` : "Tắt"} />
-                <DetailItem label="Signal" value={(detail.signals || []).join(", ") || "—"} />
-                <DetailItem label="Sync from" value={detail.syncFrom || "—"} />
-              </dl>
-            ) : null}
+            {panel.kind === "config" && detail ? <ConfigGlance config={detail} /> : null}
             {panel.kind === "copy" && !popupBusy ? (
               <form className="action-form" onSubmit={onCopy}>
-                <p className="muted">Tạo config mới từ bản này. Cần quyền sửa cả user nguồn và user đích.</p>
+                <p className="muted">{copyMode === "replace" ? "Ghi đè signal, volume, TP, SL và các mục lệnh vào config có sẵn. Sync của config đích sẽ được gỡ." : "Tạo account config mới từ bản này. Cần quyền sửa user đích."}</p>
+                <label>
+                  Cách copy
+                  <select value={copyMode} onChange={(event) => {
+                    const mode = event.target.value;
+                    setCopyMode(mode);
+                    if (mode === "replace" && targetUser) loadTargetConfigs(targetUser).catch((err) => setPopupError(err.message || "Không tải được config"));
+                  }}>
+                    <option value="new">Tạo config mới</option>
+                    <option value="replace">Ghi vào config có sẵn</option>
+                  </select>
+                </label>
                 <label>
                   User đích
-                  <select value={targetUser} onChange={(event) => setTargetUser(event.target.value)}>
+                  <select value={targetUser} onChange={(event) => {
+                    setTargetUser(event.target.value);
+                    if (copyMode === "replace" && event.target.value) loadTargetConfigs(event.target.value).catch((err) => setPopupError(err.message || "Không tải được config"));
+                  }}>
                     {targets.length === 0 ? <option value="">Không có user bạn được sửa</option> : null}
                     {targets.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
                   </select>
                 </label>
-                <label>
-                  Tên config mới
-                  <input value={copyName} onChange={(event) => setCopyName(event.target.value)} required />
-                </label>
-                <button type="submit" disabled={popupBusy || !targetUser || !copyName.trim()}>Copy</button>
+                {copyMode === "replace" ? (
+                  <label>
+                    Config nhận bản copy
+                    <select value={targetEnv} onChange={(event) => setTargetEnv(event.target.value)}>
+                      {targetConfigs.length === 0 ? <option value="">Không có config</option> : null}
+                      {targetConfigs.map((item) => <option key={item.env} value={item.env}>{item.env}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    Tên config mới
+                    <input value={copyName} onChange={(event) => setCopyName(event.target.value)} required />
+                  </label>
+                )}
+                <button type="submit" disabled={popupBusy || !targetUser || (copyMode === "replace" ? !targetEnv : !copyName.trim())}>Copy</button>
               </form>
             ) : null}
             {panel.kind === "sync" && !popupBusy ? (

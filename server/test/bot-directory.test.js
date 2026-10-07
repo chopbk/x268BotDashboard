@@ -189,6 +189,47 @@ test("copyAccount clones the config onto the chosen user", async () => {
     }
 });
 
+test("copyAccount overwrites an existing config and clears its sync", async () => {
+    const originalFind = UserAccount.findOne;
+    const originalConfigFind = AccountConfig.findOne;
+    const originalUpdate = AccountConfig.updateOne;
+    const admin = { role: "admin", id: "admin" };
+    const target = { username: "beta", accounts: ["keep"] };
+    let updated = null;
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["a1"] });
+        if (filter.username === "beta") return query(target);
+        return query(null);
+    };
+    AccountConfig.findOne = (filter) => query(filter.env === "a1" ? {
+        env: "a1",
+        signals: ["ROSE"],
+        blacklist: ["BTC"],
+        whitelist: ["ETH"],
+        trade_config: { ON: true },
+        sync_from: "old",
+    } : null);
+    AccountConfig.updateOne = async (filter, doc) => {
+        updated = { filter, doc };
+        return { matchedCount: 1 };
+    };
+    try {
+        const result = await copyAccount(admin, "alpha", "a1", "beta", "keep", { replace: true });
+        assert.deepEqual(result, { username: "beta", env: "keep", replaced: true });
+        assert.equal(updated.filter.env, "keep");
+        assert.deepEqual(updated.doc.$set.signals, ["ROSE"]);
+        assert.deepEqual(updated.doc.$set.whitelist, ["ETH"]);
+        assert.equal(updated.doc.$set.trade_config.ON, true);
+        assert.equal(updated.doc.$set.sync_from, null);
+        assert.deepEqual(target.accounts, ["keep"]);
+        await assert.rejects(() => copyAccount(admin, "alpha", "a1", "beta", "a1", { replace: true }), (error) => error.status === 400);
+    } finally {
+        UserAccount.findOne = originalFind;
+        AccountConfig.findOne = originalConfigFind;
+        AccountConfig.updateOne = originalUpdate;
+    }
+});
+
 test("copyAccount rejects a target outside scope before writing", async () => {
     const originalFind = UserAccount.findOne;
     const originalCreate = AccountConfig.create;

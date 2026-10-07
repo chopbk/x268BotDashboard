@@ -335,7 +335,7 @@ Các invariant:
 | `GET /api/bots/:username/configs` | `requireAuth` | `config.view` + scope; tóm tắt On, Long/Short, signal, mode, volume của từng account |
 | `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; đủ field lệnh `/sc` (on, volume, open, tp, sl, trailing, copy, signal, blacklist, sync), không trả nguyên document |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
-| `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.edit` trên user nguồn và user đích; tạo `Account_Config` mới và gắn vào user đích |
+| `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.view` trên nguồn, `config.edit` trên đích. `mode=new` tạo `Account_Config` mới. `mode=replace` ghi đè config đích đã có và gỡ sync của đích |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng; phân trang server bằng `page`, `limit`, tìm bằng `q`. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
 | `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |

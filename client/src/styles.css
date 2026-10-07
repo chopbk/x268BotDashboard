@@ -513,6 +513,12 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .signal-filters > button { align-self: end; }
 button.sort-col { background: none; border: 0; color: inherit; font: inherit; font-weight: 650; padding: 0; cursor: pointer; }
 .config-brief { display: block; max-width: 420px; font-size: 0.78rem; line-height: 1.35; }
+.config-glance { display: grid; gap: 14px; }
+.config-glance section h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.config-glance .mode-note { margin: 0 0 8px; }
+.config-glance dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; margin: 0; }
+.config-glance dt { color: var(--muted); font-size: 0.75rem; }
+.config-glance dd { margin: 2px 0 0; }
 .action-form { display: grid; gap: 10px; max-width: 420px; margin-top: 8px; }
 .history-range { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 button.symbol-chip {

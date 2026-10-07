@@ -183,11 +183,34 @@ async function renameAccount(actor, username, env, nextEnv, permission = PERMISS
     return toBot(bot);
 }
 
-async function copyAccount(actor, sourceUsername, sourceEnv, targetUsername, nextEnv) {
+async function copyAccount(actor, sourceUsername, sourceEnv, targetUsername, nextEnv, options = {}) {
+    const replace = options.replace === true;
     assertName(nextEnv, "Tên config");
-    const sourceBot = await requireBot(actor, sourceUsername, PERMISSIONS.CONFIG_EDIT);
+    const sourceBot = await requireBot(actor, sourceUsername, PERMISSIONS.CONFIG_VIEW);
     if (!(sourceBot.accounts || []).includes(sourceEnv)) throw httpError(404, "Không tìm thấy config");
     const targetBot = await requireBot(actor, targetUsername, PERMISSIONS.CONFIG_EDIT);
+    if (replace) {
+        if (nextEnv === sourceEnv) throw httpError(400, "Không copy một config vào chính nó");
+        if (!(targetBot.accounts || []).includes(nextEnv)) throw httpError(404, "Không tìm thấy config đích");
+        const source = await AccountConfig.findOne({ env: sourceEnv }).lean();
+        if (!source) throw httpError(404, "Không tìm thấy config");
+        const updated = await AccountConfig.updateOne({ env: nextEnv }, {
+            $set: {
+                signals: source.signals || [],
+                blacklist: source.blacklist || [],
+                whitelist: source.whitelist || [],
+                trade_config: source.trade_config || {},
+                sync_from: null,
+                sync_except: [],
+                sync_scale: false,
+                sync_margin_ratio: 0,
+                sync_wallet_bal: 0,
+                sync_size: null,
+            },
+        });
+        if (!updated.matchedCount) throw httpError(404, "Không tìm thấy config đích");
+        return { username: targetBot.username, env: nextEnv, replaced: true };
+    }
     if ((targetBot.accounts || []).includes(nextEnv)) throw httpError(409, "Config đã có trong user bot này");
     const owner = await envOwner(nextEnv);
     if (owner) throw httpError(409, "Config đang thuộc user bot khác");
