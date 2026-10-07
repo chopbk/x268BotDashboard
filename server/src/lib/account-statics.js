@@ -56,8 +56,13 @@ function staticScope(input, envs, range) {
     const q = String(input.q || "").trim();
     if (q) scope.symbol = new RegExp(escapeRegex(q), "i");
     const filter = { ...scope };
-    const matcher = signalMatcher(input.signal);
-    if (matcher) filter.typeSignal = matcher;
+    const signalNames = String(input.signal || "").split(",").map((item) => item.trim()).filter(Boolean);
+    if (signalNames.length === 1) {
+        const matcher = signalMatcher(signalNames[0]);
+        if (matcher) filter.typeSignal = matcher;
+    } else if (signalNames.length > 1) {
+        filter.$or = signalNames.map((name) => ({ typeSignal: signalMatcher(name) }));
+    }
     const status = String(input.status || "").trim().toUpperCase();
     if (/^[A-Z0-9_]{1,16}$/.test(status)) filter.status = status;
     const profit = profitFilter(input.profit);

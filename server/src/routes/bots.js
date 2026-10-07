@@ -57,8 +57,8 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (re
 
 router.get("/config-search", requireAuth, requirePermission(PERMISSIONS.CONFIG_VIEW), async (req, res) => {
     try {
-        const rows = await searchConfigsBySignal(req.webUser, { signal: req.query.signal });
-        res.json({ rows });
+        const result = await searchConfigsBySignal(req.webUser, req.query);
+        res.json(result);
     } catch (error) {
         sendError(res, error, "GET /api/bots/config-search");
     }

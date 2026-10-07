@@ -12,6 +12,7 @@ import PendingPage from "./pages/PendingPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import SummaryPage from "./pages/SummaryPage";
 import SignalHistoryPage from "./pages/SignalHistoryPage";
+import SignalSearchPage from "./pages/SignalSearchPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -67,6 +68,7 @@ function Shell({ children }) {
                 Bot
               </NavLink>
             ) : null}
+            {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/signal-search">Tìm signal</NavLink> : null}
             {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
             {hasPermission(user, SIGNALS_HISTORY) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Signal & Static</NavLink> : null}
             {hasPermission(user, CREDENTIALS_VIEW) ? (
@@ -132,6 +134,16 @@ function AppRoutes() {
           <Protected permission={BOTS_VIEW}>
             <Shell>
               <BotDetailPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/signal-search"
+        element={
+          <Protected permission={CONFIG_VIEW}>
+            <Shell>
+              <SignalSearchPage />
             </Shell>
           </Protected>
         }

@@ -42,12 +42,15 @@ test("searchConfigsBySignal keeps viewable configs and sorts by the latest trade
         { _id: "o1", trades: 4, profit: -3, wins: 1, lastTime: newer },
     ];
     try {
-        const rows = await searchConfigsBySignal(supervisor, { signal: "rose, missing" });
-        assert.deepEqual(rows.map((row) => row.env), ["o1", "m1"]);
-        assert.equal(rows[0].canEdit, false);
-        assert.equal(rows[1].canEdit, true);
-        assert.equal(rows[0].trades, 4);
-        assert.deepEqual(rows[0].matched, ["ROSE"]);
+        const result = await searchConfigsBySignal(supervisor, { signal: "rose, missing", days: 30 });
+        assert.deepEqual(result.rows.map((row) => row.env), ["o1", "m1"]);
+        assert.equal(result.rows[0].canEdit, false);
+        assert.equal(result.rows[1].canEdit, true);
+        assert.equal(result.rows[0].trades, 4);
+        assert.equal(result.rows[1].winRate, 50);
+        assert.deepEqual(result.rows[0].matched, ["ROSE"]);
+        const filtered = await searchConfigsBySignal(supervisor, { signal: "ROSE", days: 30, minWinRate: 40, profit: 0, profitOp: "gt" });
+        assert.deepEqual(filtered.rows.map((row) => row.env), ["m1"]);
     } finally {
         UserAccount.find = originalUsers;
         AccountConfig.find = originalConfigs;

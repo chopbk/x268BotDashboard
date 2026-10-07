@@ -46,10 +46,6 @@ export default function HomePage() {
   const [scope, setScope] = useState("");
   const [activity, setActivity] = useState("on");
   const [audience, setAudience] = useState("mine");
-  const [signalQuery, setSignalQuery] = useState("");
-  const [signalRows, setSignalRows] = useState(null);
-  const [signalError, setSignalError] = useState("");
-  const [signalBusy, setSignalBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -209,72 +205,6 @@ export default function HomePage() {
           />
         </div>
       </header>
-      {can(user, "config.view") ? (
-        <form
-          className="card signal-search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const signal = signalQuery.trim();
-            if (!signal) return;
-            setSignalBusy(true);
-            setSignalError("");
-            api(`/api/bots/config-search?signal=${encodeURIComponent(signal)}`)
-              .then((data) => setSignalRows(data.rows || []))
-              .catch((err) => setSignalError(err.message || "Không tìm được signal"))
-              .finally(() => setSignalBusy(false));
-          }}
-        >
-          <label>
-            Tìm signal
-            <input value={signalQuery} placeholder="ROSE, BULL" onChange={(event) => setSignalQuery(event.target.value)} />
-          </label>
-          <button type="submit" disabled={signalBusy || !signalQuery.trim()}>Tìm</button>
-          {signalError ? <p className="form-error">{signalError}</p> : null}
-          {signalRows ? (
-            signalRows.length === 0 ? <p className="muted">Không có config khớp.</p> : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Config</th>
-                      <th>Signal</th>
-                      <th>Lệnh 30 ngày</th>
-                      <th>Profit</th>
-                      <th>Gần nhất</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {signalRows.map((row) => (
-                      <tr key={`${row.username}/${row.env}`}>
-                        <td>{row.username}</td>
-                        <td>{row.env}</td>
-                        <td>{row.matched.join(", ")}</td>
-                        <td>{row.trades}</td>
-                        <td>{Number(row.profit || 0).toFixed(2)}$</td>
-                        <td>{row.lastTime ? new Date(row.lastTime).toLocaleString("vi-VN") : "—"}</td>
-                        <td>
-                          <div className="row-actions">
-                            <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(row.username)}/accounts/${encodeURIComponent(row.env)}`}>
-                              {row.canEdit ? "Sửa" : "Xem"}
-                            </Link>
-                            {can(user, "statistics.view") ? (
-                              <Link className="ghost link-btn" to={`/signals?view=statics&username=${encodeURIComponent(row.username)}&env=${encodeURIComponent(row.env)}&signal=${encodeURIComponent(row.matched[0] || "")}`}>
-                                Static
-                              </Link>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          ) : null}
-        </form>
-      ) : null}
       {canCreateBot ? (
         <form
           className="card inline-create"
