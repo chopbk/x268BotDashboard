@@ -110,10 +110,10 @@ export default function BotDetailPage() {
     let cancelled = false;
     const controller = new AbortController();
     setLoading(true);
-    api("/api/bots", { signal: controller.signal })
+    api(`/api/bots/${encodeURIComponent(username)}`, { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
-        const found = (data.bots || []).find((item) => item.username === username) || null;
+        const found = data.bot || null;
         setBot(found);
         setEditUserName(found?.username || username);
         setVisibility(found?.visibility || "public");

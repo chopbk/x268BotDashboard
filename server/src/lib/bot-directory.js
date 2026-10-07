@@ -31,6 +31,10 @@ async function findBot(username) {
     return UserAccount.findOne({ username });
 }
 
+async function getBot(actor, username) {
+    return toBot(await requireBot(actor, username, PERMISSIONS.BOTS_VIEW));
+}
+
 async function requireBot(user, username, permission) {
     const scope = scopeForPermission(user, permission);
     if (scope === "assigned" && !canAccessBot(user, username, permission)) throw httpError(403, "Không có quyền với bot này");
@@ -256,6 +260,7 @@ async function deleteAccount(actor, username, env, permission = PERMISSIONS.CONF
 
 module.exports = {
     normalizeName,
+    getBot,
     requireBot,
     createBot,
     renameBot,

@@ -7,7 +7,7 @@ const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
 const { requirePermission } = require("../src/middleware/auth");
 const { PERMISSIONS } = require("../src/auth/access-control");
-const { addAccount, copyAccount, createBot, deleteAccount, updateBotAccess } = require("../src/lib/bot-directory");
+const { addAccount, copyAccount, createBot, deleteAccount, getBot, updateBotAccess } = require("../src/lib/bot-directory");
 
 function response() {
     return {
@@ -67,6 +67,26 @@ test("viewer is denied config.edit and operator is denied users.manage", () => {
     });
     assert.equal(allowedNext, true);
     assert.equal(allowed.statusCode, 200);
+});
+
+test("getBot loads one user by exact name even when the list is paged", async () => {
+    const originalFind = UserAccount.findOne;
+    UserAccount.findOne = (filter) => query(filter.username === "V" ? {
+        username: "V",
+        accounts: ["v1"],
+        visibility: "public",
+        active: true,
+        ownerUserId: "owner",
+    } : null);
+    try {
+        const bot = await getBot({ role: "supervisor", id: "vx268", botUsernames: [] }, "V");
+        assert.equal(bot.username, "V");
+        assert.deepEqual(bot.accounts, ["v1"]);
+        await assert.rejects(() => getBot({ role: "member", id: "other", botUsernames: [] }, "V"), (error) => error.status === 403);
+        await assert.rejects(() => getBot({ role: "admin", id: "admin" }, "missing"), (error) => error.status === 404);
+    } finally {
+        UserAccount.findOne = originalFind;
+    }
 });
 
 test("operator cannot add a config on a bot outside scope", async () => {

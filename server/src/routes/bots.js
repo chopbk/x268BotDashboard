@@ -6,6 +6,7 @@ const { sendError } = require("../lib/http");
 const { buildChanges, safeRecordAudit } = require("../lib/audit");
 const {
     normalizeName,
+    getBot,
     createBot,
     renameBot,
     updateBotAccess,
@@ -61,6 +62,15 @@ router.get("/config-search", requireAuth, requirePermission(PERMISSIONS.CONFIG_V
         res.json(result);
     } catch (error) {
         sendError(res, error, "GET /api/bots/config-search");
+    }
+});
+
+router.get("/:username", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (req, res) => {
+    try {
+        const bot = await getBot(req.webUser, normalizeName(req.params.username));
+        res.json({ bot });
+    } catch (error) {
+        sendError(res, error, "GET /api/bots/:username");
     }
 });
 

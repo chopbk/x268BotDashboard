@@ -208,9 +208,9 @@ export default function AccountConfigPage() {
     if (user?.role === "admin") return undefined;
     let cancelled = false;
     const controller = new AbortController();
-    api("/api/bots", { signal: controller.signal })
+    api(`/api/bots/${encodeURIComponent(username)}`, { signal: controller.signal })
       .then((data) => {
-        if (!cancelled) setOpenedBot((data.bots || []).find((item) => item.username === username) || null);
+        if (!cancelled) setOpenedBot(data.bot || null);
       })
       .catch(() => {
         if (!cancelled) setOpenedBot(null);
