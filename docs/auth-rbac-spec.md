@@ -131,6 +131,9 @@ endpoint, không được hiểu permission xem là quyền trả raw secret m�
 
 ## 4. Đăng ký
 
+`POST /api/auth/register` áp dụng rate limit theo IP + email/username: tối đa 5 lần
+trong một giờ. Request vượt ngưỡng trả `429` và `Retry-After`.
+
 ### 4.1 Contract
 
 `POST /api/auth/register` là public.
@@ -191,6 +194,9 @@ Server phải:
 `POST /api/auth/login` nhận `identifier`, `password`. `identifier` có thể là email hoặc
 username. Server vẫn chấp nhận field `email` cũ như compatibility input.
 
+Login áp dụng rate limit theo IP + identifier: tối đa 10 lần trong 15 phút. Các identifier
+khác nhau có bucket riêng nhưng vẫn gắn với IP gửi request.
+
 - Identifier được trim + lowercase. Nếu đúng định dạng email thì tìm theo email; ngược
   lại nếu đúng định dạng username thì tìm theo username.
 - Sai định dạng, user không tồn tại, sai password hoặc `disabled: true` đều trả HTTP
@@ -241,6 +247,15 @@ Không trả `passwordHash`, `disabled`, token hoặc secret trong JSON.
 - Sau khi admin đổi role của một user đang đăng nhập, backend áp dụng ngay ở request kế;
   client có thể cần gọi lại `/me` hoặc reload để menu phản ánh permission mới.
 
+### 5.5 CSRF
+
+- `GET /api/auth/csrf` cấp cookie `wb_csrf` không `httpOnly` và trả token tương ứng.
+- Mọi `POST`, `PATCH`, `PUT`, `DELETE` phải có `Origin` đúng `CLIENT_ORIGIN`, cookie
+  `wb_csrf` và header `X-CSRF-Token` khớp nhau.
+- Token được so sánh constant-time. Sai origin/token trả `403`; client phải lấy token
+  trước mutation, kể cả login/register/logout.
+- Mutation User API có thêm rate limit 60 request/phút theo IP + session.
+
 ## 6. Quản trị user
 
 Mọi route dưới `/api/admin/users` đi qua `requireAuth`, sau đó kiểm tra permission cụ thể:
@@ -285,6 +300,7 @@ Các invariant:
 | Endpoint | Auth | Permission/scope |
 |---|---|---|
 | `POST /api/auth/register` | Public | Luôn tạo `pending` |
+| `GET /api/auth/csrf` | Public | Cấp token/cookie CSRF; không tạo session |
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
@@ -450,6 +466,9 @@ Tối thiểu phải giữ các case:
 - không thể khóa/hạ role active admin cuối cùng;
 - response không chứa `passwordHash`;
 - client build thành công và pending page không gọi API bot.
+- mutation thiếu/sai CSRF token hoặc sai Origin bị từ chối;
+- login/register và mutation nhạy cảm trả `429` khi vượt rate limit nhưng không khóa
+  identifier khác cùng IP trước khi bucket riêng của identifier đó đầy;
 
 Nếu chưa có test integration cho một case, phải kiểm tra thủ công luồng UI -> API -> Mongo
 và ghi rõ phần chưa được tự động hóa trong phần bàn giao.

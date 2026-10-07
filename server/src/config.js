@@ -11,6 +11,7 @@ const config = {
     adminPassword: process.env.WEB_ADMIN_PASSWORD || "",
     clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
     cookieName: "wb_token",
+    csrfCookieName: "wb_csrf",
     jwtExpiresIn: "12h",
     cookieMaxAgeMs: 12 * 60 * 60 * 1000,
 };

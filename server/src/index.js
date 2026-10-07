@@ -4,6 +4,8 @@ const cors = require("cors");
 const config = require("./config");
 const { connect } = require("./db");
 const { bootstrapAdmin } = require("./auth/bootstrap");
+const { requireCsrf } = require("./middleware/csrf");
+const { createRateLimit } = require("./middleware/rate-limit");
 
 async function main() {
     try {
@@ -27,13 +29,21 @@ async function main() {
         );
         app.use(express.json({ limit: "100kb" }));
         app.use(cookieParser());
+        app.use(requireCsrf);
+
+        const sensitiveMutationLimit = createRateLimit({
+            prefix: "sensitive",
+            windowMs: 60 * 1000,
+            max: 60,
+            identify: (req) => req.cookies?.[config.cookieName],
+        });
 
         app.get("/api/health", (req, res) => {
             res.json({ ok: true });
         });
         app.use("/api/auth", require("./routes/auth"));
         app.use("/api/bots", require("./routes/bots"));
-        app.use("/api/user-apis", require("./routes/user-apis"));
+        app.use("/api/user-apis", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/user-apis"));
         app.use("/api/admin/users", require("./routes/admin-users"));
         app.use("/api/audit-logs", require("./routes/audit-logs"));
         app.use("/api/summary", require("./routes/summary"));

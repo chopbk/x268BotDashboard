@@ -1,6 +1,27 @@
+let csrfToken = "";
+let csrfRequest = null;
+
+async function getCsrfToken() {
+  if (csrfToken) return csrfToken;
+  if (!csrfRequest) {
+    csrfRequest = fetch("/api/auth/csrf", { credentials: "include" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.csrfToken) throw new Error(data.error || "Không lấy được CSRF token");
+        csrfToken = data.csrfToken;
+        return csrfToken;
+      })
+      .finally(() => { csrfRequest = null; });
+  }
+  return csrfRequest;
+}
+
 export async function api(path, { method = "GET", body } = {}) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (!["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) {
+    headers["X-CSRF-Token"] = await getCsrfToken();
+  }
 
   let res;
   try {

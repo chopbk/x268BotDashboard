@@ -12,9 +12,17 @@ const {
 const { sessionUser } = require("../lib/public-user");
 const { safeRecordAudit } = require("../lib/audit");
 const { sendError } = require("../lib/http");
+const { issueCsrfToken } = require("../middleware/csrf");
+const { createRateLimit } = require("../middleware/rate-limit");
 
 const router = express.Router();
 const LOGIN_ERROR = "Email/username hoặc mật khẩu không đúng";
+const loginLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 10, prefix: "login", identify: (req) => req.body?.identifier ?? req.body?.email });
+const registerLimit = createRateLimit({ windowMs: 60 * 60 * 1000, max: 5, prefix: "register", identify: (req) => `${req.body?.email || ""}:${req.body?.username || ""}` });
+
+router.get("/csrf", issueCsrfToken);
+router.use("/register", registerLimit);
+router.use("/login", loginLimit);
 
 router.post("/register", async (req, res) => {
     const email = normalizeEmail(req.body?.email);
