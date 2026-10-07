@@ -106,8 +106,8 @@ router.post(
             const env = normalizeName(req.params.env);
             const targetUsername = normalizeName(req.body?.username);
             const nextEnv = normalizeName(req.body?.env);
-            const replace = req.body?.mode === "replace";
-            const copied = await copyAccount(req.webUser, username, env, targetUsername, nextEnv, { replace });
+            const mode = req.body?.mode === "replace" ? "replace" : req.body?.mode === "sync" ? "sync" : "new";
+            const copied = await copyAccount(req.webUser, username, env, targetUsername, nextEnv, { replace: mode === "replace", sync: mode === "sync" });
             await safeRecordAudit({
                 action: "config.copied",
                 actor: req.webUser,
@@ -116,7 +116,7 @@ router.post(
                 changes: {
                     from: { from: null, to: `${username}/${env}` },
                     account: { from: null, to: copied.env },
-                    mode: { from: null, to: replace ? "replace" : "new" },
+                    mode: { from: null, to: mode },
                 },
             });
             res.status(201).json(copied);

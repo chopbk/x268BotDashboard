@@ -185,6 +185,8 @@ async function renameAccount(actor, username, env, nextEnv, permission = PERMISS
 
 async function copyAccount(actor, sourceUsername, sourceEnv, targetUsername, nextEnv, options = {}) {
     const replace = options.replace === true;
+    const sync = options.sync === true;
+    if (replace && sync) throw httpError(400, "Không hợp lệ");
     assertName(nextEnv, "Tên config");
     const sourceBot = await requireBot(actor, sourceUsername, PERMISSIONS.CONFIG_VIEW);
     if (!(sourceBot.accounts || []).includes(sourceEnv)) throw httpError(404, "Không tìm thấy config");
@@ -224,7 +226,7 @@ async function copyAccount(actor, sourceUsername, sourceEnv, targetUsername, nex
     delete copy.createdAt;
     delete copy.updatedAt;
     copy.env = nextEnv;
-    copy.sync_from = null;
+    copy.sync_from = sync ? sourceEnv : null;
     copy.sync_except = [];
     copy.sync_scale = false;
     copy.sync_margin_ratio = 0;

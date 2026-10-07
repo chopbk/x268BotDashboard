@@ -230,6 +230,47 @@ test("copyAccount overwrites an existing config and clears its sync", async () =
     }
 });
 
+test("copyAccount can create a new config that stays synced to the source", async () => {
+    const originalFind = UserAccount.findOne;
+    const originalConfigFind = AccountConfig.findOne;
+    const originalCreate = AccountConfig.create;
+    const admin = { role: "admin", id: "admin" };
+    const target = {
+        username: "beta",
+        accounts: [],
+        async save() {
+            this.saved = true;
+        },
+    };
+    let created = null;
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["a1"] });
+        if (filter.username === "beta") return query(target);
+        return query(null);
+    };
+    AccountConfig.findOne = (filter) => query(filter.env === "a1" ? {
+        env: "a1",
+        signals: ["ROSE"],
+        trade_config: { ON: true },
+        sync_from: "other",
+    } : null);
+    AccountConfig.create = async (doc) => {
+        created = doc;
+    };
+    try {
+        const result = await copyAccount(admin, "alpha", "a1", "beta", "branch", { sync: true });
+        assert.deepEqual(result, { username: "beta", env: "branch" });
+        assert.equal(created.env, "branch");
+        assert.equal(created.sync_from, "a1");
+        assert.deepEqual(created.signals, ["ROSE"]);
+        assert.deepEqual(target.accounts, ["branch"]);
+    } finally {
+        UserAccount.findOne = originalFind;
+        AccountConfig.findOne = originalConfigFind;
+        AccountConfig.create = originalCreate;
+    }
+});
+
 test("copyAccount rejects a target outside scope before writing", async () => {
     const originalFind = UserAccount.findOne;
     const originalCreate = AccountConfig.create;

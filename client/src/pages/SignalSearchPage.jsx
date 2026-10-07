@@ -241,6 +241,7 @@ export default function SignalSearchPage() {
   const [targetEnv, setTargetEnv] = useState("");
   const [copyName, setCopyName] = useState("");
   const [copyMode, setCopyMode] = useState("new");
+  const [syncMode, setSyncMode] = useState("existing");
   const [notice, setNotice] = useState("");
   const [popupError, setPopupError] = useState("");
   const [popupBusy, setPopupBusy] = useState(false);
@@ -387,6 +388,8 @@ export default function SignalSearchPage() {
 
   async function openSync(row) {
     setPanel({ kind: "sync", row });
+    setSyncMode("existing");
+    setCopyName("");
     setTargetEnv("");
     setTargetConfigs([]);
     setNotice("");
@@ -449,16 +452,26 @@ export default function SignalSearchPage() {
 
   async function onSync(event) {
     event.preventDefault();
-    if (!panel?.row || !targetUser || !targetEnv) return;
+    const creating = syncMode === "new";
+    const env = creating ? copyName.trim() : targetEnv;
+    if (!panel?.row || !targetUser || !env) return;
     setPopupBusy(true);
     setPopupError("");
     setNotice("");
     try {
-      await api(`/api/bots/${encodeURIComponent(targetUser)}/configs/${encodeURIComponent(targetEnv)}`, {
-        method: "PATCH",
-        body: { syncFrom: panel.row.env },
-      });
-      setNotice(`Đã gắn ${targetUser}/${targetEnv} sync từ ${panel.row.env}. Bot nhận bản mới sau khi restart.`);
+      if (creating) {
+        const data = await api(`/api/bots/${encodeURIComponent(panel.row.username)}/configs/${encodeURIComponent(panel.row.env)}/copy`, {
+          method: "POST",
+          body: { username: targetUser, env, mode: "sync" },
+        });
+        setNotice(`Đã tạo ${data.username}/${data.env} và gắn sync từ ${panel.row.env}. Bot nhận bản mới sau khi restart.`);
+      } else {
+        await api(`/api/bots/${encodeURIComponent(targetUser)}/configs/${encodeURIComponent(env)}`, {
+          method: "PATCH",
+          body: { syncFrom: panel.row.env },
+        });
+        setNotice(`Đã gắn ${targetUser}/${env} sync từ ${panel.row.env}. Bot nhận bản mới sau khi restart.`);
+      }
     } catch (err) {
       setPopupError(err.message || "Không sync được");
     } finally {
@@ -629,22 +642,39 @@ export default function SignalSearchPage() {
             ) : null}
             {panel.kind === "sync" && !popupBusy ? (
               <form className="action-form" onSubmit={onSync}>
-                <p className="muted">Gắn một config của bạn theo bản này. Nhánh bị ghi đè khi gốc đổi, trừ nhóm trong Sync except.</p>
+                <p className="muted">{syncMode === "new" ? "Tạo config mới, chép nội dung bản này và để nó theo gốc. Gốc đổi thì nhánh bị ghi đè." : "Gắn một config của bạn theo bản này. Nhánh bị ghi đè khi gốc đổi, trừ nhóm trong Sync except."}</p>
+                <label>
+                  Cách sync
+                  <select value={syncMode} onChange={(event) => setSyncMode(event.target.value)}>
+                    <option value="existing">Config có sẵn</option>
+                    <option value="new">Config mới</option>
+                  </select>
+                </label>
                 <label>
                   User của bạn
-                  <select value={targetUser} onChange={(event) => { setTargetUser(event.target.value); if (event.target.value) loadTargetConfigs(event.target.value).catch((err) => setPopupError(err.message || "Không tải được config")); }}>
+                  <select value={targetUser} onChange={(event) => {
+                    setTargetUser(event.target.value);
+                    if (syncMode === "existing" && event.target.value) loadTargetConfigs(event.target.value).catch((err) => setPopupError(err.message || "Không tải được config"));
+                  }}>
                     {targets.length === 0 ? <option value="">Không có user bạn được sửa</option> : null}
                     {targets.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
                   </select>
                 </label>
-                <label>
-                  Config nhận sync
-                  <select value={targetEnv} onChange={(event) => setTargetEnv(event.target.value)}>
-                    {targetConfigs.length === 0 ? <option value="">Không có config</option> : null}
-                    {targetConfigs.map((item) => <option key={item.env} value={item.env}>{item.env}</option>)}
-                  </select>
-                </label>
-                <button type="submit" disabled={popupBusy || !targetUser || !targetEnv}>Sync</button>
+                {syncMode === "new" ? (
+                  <label>
+                    Tên config mới
+                    <input value={copyName} onChange={(event) => setCopyName(event.target.value)} required />
+                  </label>
+                ) : (
+                  <label>
+                    Config nhận sync
+                    <select value={targetEnv} onChange={(event) => setTargetEnv(event.target.value)}>
+                      {targetConfigs.length === 0 ? <option value="">Không có config</option> : null}
+                      {targetConfigs.map((item) => <option key={item.env} value={item.env}>{item.env}</option>)}
+                    </select>
+                  </label>
+                )}
+                <button type="submit" disabled={popupBusy || !targetUser || (syncMode === "new" ? !copyName.trim() : !targetEnv)}>Sync</button>
               </form>
             ) : null}
             {panel.kind === "static" && trades?.stats ? <p className="muted">{trades.stats.total} lệnh · lãi {fmt(trades.stats.profit)}$ · win rate {fmt(trades.stats.winRate, 1)}%</p> : null}
