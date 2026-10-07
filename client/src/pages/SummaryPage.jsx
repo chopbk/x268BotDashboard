@@ -70,7 +70,7 @@ export default function SummaryPage() {
           <Stat rank label="User hiệu suất tốt nhất" value={rankValue(summary.bestUser)} note={rankNote(summary.bestUser)} tone={rankTone(summary.bestUser)} />
           <Stat rank label="Symbol lãi nhất" value={rankValue(summary.bestSymbol)} note={rankNote(summary.bestSymbol)} tone={rankTone(summary.bestSymbol)} />
         </div>
-        <p className="summary-updated muted">Cập nhật: {new Date(summary.generatedAt).toLocaleString("vi-VN")}{summary.cached ? " · dữ liệu cache" : ""}</p>
+        <p className="summary-updated muted">Dữ liệu được tính lúc: {new Date(summary.snapshot?.generatedAt || summary.generatedAt).toLocaleString("vi-VN")}{summary.snapshot?.status === "refreshing" ? " · đang làm mới nền" : summary.cached ? " · snapshot MongoDB" : ""}</p>
       </> : null}
     </section>
   );

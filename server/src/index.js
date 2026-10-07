@@ -6,6 +6,7 @@ const { connect } = require("./db");
 const { bootstrapAdmin } = require("./auth/bootstrap");
 const { requireCsrf } = require("./middleware/csrf");
 const { createRateLimit } = require("./middleware/rate-limit");
+const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
 
 async function main() {
     try {
@@ -19,6 +20,7 @@ async function main() {
 
         await connect(config.mongodb);
         await bootstrapAdmin();
+        await startSummarySnapshotJob();
 
         const app = express();
         app.use(
