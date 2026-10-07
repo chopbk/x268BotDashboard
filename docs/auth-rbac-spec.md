@@ -308,7 +308,7 @@ Các invariant:
 | `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |
 | `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, số lượng, status, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal`, `status`, `profit=win\|loss\|flat` lọc danh sách và số tổng; breakdown signal/status giữ theo user, config, symbol, side và thời gian |
 | `GET /api/account-statics/:id` | `requireAuth` | `statistics.view` + scope bot; chi tiết một lệnh `account_statics`. Query `username` bắt buộc; lệnh phải thuộc account config của user bot đó |
-| `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
+| `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng; phân trang server bằng `page`, `limit`, hỗ trợ `q`, `visibility`, `active` |
 | `GET /api/bots/config-search` | `requireAuth` | `config.view`; `signal` là một hoặc nhiều tên cách nhau bởi dấu phẩy. Chỉ config của bot actor được xem. Hiệu suất lấy `account_statics` 30 ngày, không tính paper, xếp lệnh gần nhất trước |
 | `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
 | `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility/active, chỉ admin đổi owner |
@@ -320,12 +320,13 @@ Các invariant:
 | `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; đủ field lệnh `/sc` (on, volume, open, tp, sl, trailing, copy, signal, blacklist, sync), không trả nguyên document |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.edit` trên user nguồn và user đích; tạo `Account_Config` mới và gắn vào user đích |
-| `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng. Response không có raw secret |
+| `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng; phân trang server bằng `page`, `limit`, tìm bằng `q`. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
 | `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |
 | `PATCH /api/user-apis/:username` | `requireAuth` | `credentials.manage` + scope; key/secret/passphrase để trống thì giữ giá trị cũ |
 | `DELETE /api/user-apis/:username` | `requireAuth` | `credentials.manage` + scope; xoá document `user_apis`, không xoá user bot hay account config |
-| `/api/admin/users/*` | `requireAuth` | permission `users.*` theo field/action và scope |
+| `GET /api/admin/users` | `requireAuth` | `users.view` + scope; phân trang server bằng `page`, `limit`, tìm bằng `q` |
+| Các `/api/admin/users/*` còn lại | `requireAuth` | permission `users.*` theo field/action và scope |
 | `GET /api/admin/users/access-control` | `requireAuth` | `users.view`; trả catalog gồm group + allowedScopes và template role |
 | `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server |
 

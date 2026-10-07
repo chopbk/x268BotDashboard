@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import Pager from "../components/Pager";
 import { canEditResource, ownsBot } from "../access";
 
 function can(user, permission) {
@@ -52,6 +53,9 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageLimit = 50;
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleBots = useMemo(
@@ -131,9 +135,13 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    api("/api/bots")
+    const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
+    if (query.trim()) params.set("q", query.trim());
+    if (scope) params.set("visibility", scope);
+    if (activity) params.set("active", activity === "on" ? "true" : "false");
+    api(`/api/bots?${params}`)
       .then((data) => {
-        if (!cancelled) rememberBots(data.bots || []);
+        if (!cancelled) { rememberBots(data.bots || []); setTotal(data.total || 0); }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -144,11 +152,11 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [page, query, scope, activity]);
 
   useEffect(() => {
     if (!isAdmin) return;
-    api("/api/admin/users")
+    api("/api/admin/users?limit=100")
       .then((data) => setWebUsers(data.users || []))
       .catch(() => setWebUsers([]));
   }, [isAdmin]);
@@ -181,12 +189,12 @@ export default function HomePage() {
           ) : null}
           {isAdmin || audience !== "all" ? (
             <>
-              <select value={activity} onChange={(event) => setActivity(event.target.value)} aria-label="Lọc active">
+          <select value={activity} onChange={(event) => { setActivity(event.target.value); setPage(1); }} aria-label="Lọc active">
                 <option value="on">Đang active</option>
                 <option value="off">Không active</option>
                 <option value="">Mọi trạng thái</option>
               </select>
-              <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Lọc phạm vi">
+          <select value={scope} onChange={(event) => { setScope(event.target.value); setPage(1); }} aria-label="Lọc phạm vi">
                 <option value="">Mọi phạm vi</option>
                 <option value="public">Công khai</option>
                 <option value="private">Riêng tư</option>
@@ -197,7 +205,7 @@ export default function HomePage() {
             className="user-search"
             value={query}
             placeholder="Tên user hoặc config"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); setPage(1); }}
           />
         </div>
       </header>
@@ -584,6 +592,7 @@ export default function HomePage() {
           </table>
         </div>
       ) : null}
+      <Pager page={page} total={total} limit={pageLimit} onChange={setPage} />
     </section>
   );
 }

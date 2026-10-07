@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import Pager from "../components/Pager";
 
 const emptyForm = {
   email: "",
@@ -36,14 +37,18 @@ export default function AdminUsersPage() {
   const [userFilter, setUserFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageLimit = 50;
 
   async function load() {
     const [userData, accessData, botData] = await Promise.all([
-      api("/api/admin/users"),
+      api(`/api/admin/users?page=${page}&limit=${pageLimit}&q=${encodeURIComponent(userFilter.trim())}`),
       api("/api/admin/users/access-control"),
-      canListBots ? api("/api/bots") : Promise.resolve({ bots: [] }),
+      canListBots ? api("/api/bots?limit=100") : Promise.resolve({ bots: [] }),
     ]);
     setUsers(userData.users || []);
+    setTotal(userData.total || 0);
     setBots(botData.bots || []);
     setPermissionOptions(accessData.permissions || []);
     setRolePermissions(accessData.rolePermissions || {});
@@ -55,7 +60,7 @@ export default function AdminUsersPage() {
     load()
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page, userFilter]);
 
   const visibleBots = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -216,7 +221,7 @@ export default function AdminUsersPage() {
             <input
               type="search"
               value={userFilter}
-              onChange={(event) => setUserFilter(event.target.value)}
+              onChange={(event) => { setUserFilter(event.target.value); setPage(1); }}
               placeholder="Tên, email, username, Telegram…"
             />
           </label>
@@ -265,6 +270,7 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+        <Pager page={page} total={total} limit={pageLimit} onChange={setPage} />
       </div>
 
       {!editingId && !canCreateUser ? (

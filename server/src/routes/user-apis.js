@@ -12,6 +12,7 @@ const {
     updateUserApi,
     deleteUserApi,
 } = require("../lib/user-api-directory");
+const { pagination } = require("../lib/pagination");
 
 const router = express.Router();
 const PUBLIC_FIELDS = [
@@ -32,7 +33,10 @@ function auditTarget(username) {
 router.get("/", requireAuth, requirePermission(PERMISSIONS.CREDENTIALS_VIEW), async (req, res) => {
     try {
         const apis = await listUserApis(req.webUser);
-        res.json({ apis, exchanges: EXCHANGES });
+        const { page, limit, skip } = pagination(req.query);
+        const q = String(req.query.q || "").trim().toLowerCase();
+        const filtered = q ? apis.filter((row) => [row.username, row.exchange, row.subAccount].some((value) => String(value || "").toLowerCase().includes(q))) : apis;
+        res.json({ apis: filtered.slice(skip, skip + limit), exchanges: EXCHANGES, page, limit, total: filtered.length });
     } catch (error) {
         sendError(res, error, "GET /api/user-apis");
     }

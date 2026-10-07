@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import Pager from "../components/Pager";
 
 const CREDENTIALS_MANAGE = "credentials.manage";
 
@@ -29,6 +30,9 @@ export default function UserApisPage() {
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageLimit = 50;
 
   const normalizedQuery = query.trim().toLowerCase();
   const visible = useMemo(
@@ -58,9 +62,11 @@ export default function UserApisPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api("/api/user-apis")
+    const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
+    if (query.trim()) params.set("q", query.trim());
+    api(`/api/user-apis?${params}`)
       .then((data) => {
-        if (!cancelled) setRows(data.apis || []);
+        if (!cancelled) { setRows(data.apis || []); setTotal(data.total || 0); }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -71,7 +77,7 @@ export default function UserApisPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [page, query]);
 
   async function run(action) {
     setBusy(true);
@@ -98,7 +104,7 @@ export default function UserApisPage() {
           className="user-search"
           value={query}
           placeholder="Tên user, sàn hoặc sub account"
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => { setQuery(event.target.value); setPage(1); }}
         />
       </header>
       {canManage ? (
@@ -243,6 +249,7 @@ export default function UserApisPage() {
           </table>
         </div>
       ) : null}
+      <Pager page={page} total={total} limit={pageLimit} onChange={setPage} />
     </section>
   );
 }

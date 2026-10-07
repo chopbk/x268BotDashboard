@@ -463,6 +463,7 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 
 .user-list-head > div { display: grid; gap: 6px; }
 .user-search { width: min(360px, 100%); }
+.pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; }
 .signal-search { display: grid; gap: 10px; margin-bottom: 14px; }
 .signal-search > label { max-width: 360px; }
 .signal-search .table-wrap { margin-top: 4px; }

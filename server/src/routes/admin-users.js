@@ -34,6 +34,7 @@ const { buildChanges, safeRecordAudit } = require("../lib/audit");
 const { unknownBotUsernames } = require("../lib/bots");
 const { httpError, sendError } = require("../lib/http");
 const { hasAccessAssignmentFields } = require("../lib/user-permission-fields");
+const { pagination, escapeRegex } = require("../lib/pagination");
 
 const router = express.Router();
 const AUDITED_USER_FIELDS = [
@@ -117,9 +118,20 @@ async function ensureAdminRemains(target, next) {
 
 router.get("/", requirePermission(PERMISSIONS.USERS_VIEW), async (req, res) => {
     try {
-        const filter = scopeForPermission(req.webUser, PERMISSIONS.USERS_VIEW) === "own" ? { _id: req.webUser.id } : {};
-        const users = await WebUser.find(filter).select("-passwordHash").sort({ createdAt: 1 }).lean();
-        res.json({ users: users.map(publicUser) });
+        const { page, limit, skip } = pagination(req.query);
+        const filters = [];
+        if (scopeForPermission(req.webUser, PERMISSIONS.USERS_VIEW) === "own") filters.push({ _id: req.webUser.id });
+        const q = String(req.query.q || "").trim();
+        if (q) {
+            const pattern = new RegExp(escapeRegex(q), "i");
+            filters.push({ $or: [{ name: pattern }, { email: pattern }, { username: pattern }, { telegramId: pattern }, { telegramUsername: pattern }, { phone: pattern }, { role: pattern }] });
+        }
+        const filter = filters.length > 1 ? { $and: filters } : (filters[0] || {});
+        const [users, total] = await Promise.all([
+            WebUser.find(filter).select("-passwordHash").sort({ createdAt: 1, _id: 1 }).skip(skip).limit(limit).lean(),
+            WebUser.countDocuments(filter),
+        ]);
+        res.json({ users: users.map(publicUser), page, limit, total });
     } catch (error) {
         sendError(res, error, "GET /api/admin/users");
     }

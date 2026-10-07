@@ -21,17 +21,21 @@ const {
     updateConfigSummary,
     AUDIT_FIELDS,
 } = require("../lib/account-config-view");
+const { pagination, escapeRegex } = require("../lib/pagination");
 const { searchConfigsBySignal } = require("../lib/config-search");
 
 const router = express.Router();
 
 router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (req, res) => {
     try {
-        const rows = await UserAccount.find()
+        const { page, limit } = pagination(req.query);
+        const q = String(req.query.q || "").trim();
+        const query = q ? { $or: [{ username: new RegExp(escapeRegex(q), "i") }, { accounts: new RegExp(escapeRegex(q), "i") }] } : {};
+        const rows = await UserAccount.find(query)
             .select("username accounts ownerUserId visibility active")
             .sort({ username: 1 })
             .lean();
-        const bots = rows
+        let bots = rows
             .filter((row) => canAccessBot(req.webUser, row, PERMISSIONS.BOTS_VIEW))
             .map((row) => ({
                 username: row.username,
@@ -40,7 +44,12 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (re
                 visibility: row.visibility || "public",
                 active: row.active !== false,
             }));
-        res.json({ bots });
+        if (["public", "private"].includes(req.query.visibility)) bots = bots.filter((bot) => bot.visibility === req.query.visibility);
+        if (req.query.active === "true") bots = bots.filter((bot) => bot.active);
+        if (req.query.active === "false") bots = bots.filter((bot) => !bot.active);
+        const total = bots.length;
+        const start = (page - 1) * limit;
+        res.json({ bots: bots.slice(start, start + limit), page, limit, total });
     } catch (error) {
         sendError(res, error, "GET /api/bots");
     }
