@@ -286,7 +286,7 @@ Các invariant:
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
-| `GET /api/summary` | `requireAuth` | `summary.view`; chỉ trả số tổng hợp, không trả tên bot/config |
+| `GET /api/summary` | `requireAuth` | `summary.view`; trả tổng bot public/private, config bật/tắt, signal, position và hiệu suất giao dịch; không trả tên bot/config/user |
 | `GET /api/signal-history` | `requireAuth` | `signals.history` + scope bot; lịch sử theo signal được cấu hình của User bot/Account Config từ `signal_infos` |
 | `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, profit, ROE và volume từ `account_statics` |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |

@@ -430,6 +430,13 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
 .stats-grid .card { display: grid; gap: 8px; }
 .stats-grid strong { font-size: 2rem; }
+
+.summary-section-title { margin: 22px 0 12px; }
+.summary-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.summary-stat small { min-height: 1.4em; }
+.summary-stat.positive strong { color: var(--ok); }
+.summary-stat.negative strong { color: var(--danger); }
+.summary-updated { margin-top: 18px; text-align: right; font-size: 0.82rem; }
 .signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .signal-stats { margin-bottom: 12px; }
 .signal-chips { margin: 0 0 12px; }
