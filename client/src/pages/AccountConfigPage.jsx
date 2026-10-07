@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -43,11 +43,51 @@ function withCurrent(options, current) {
   return [current, ...options];
 }
 
-function Check({ label, checked, onChange, disabled }) {
+const ShowHint = createContext(false);
+
+function Hint({ text }) {
+  if (!text) return null;
+  return (
+    <button
+      type="button"
+      className="hint-mark"
+      data-hint={text}
+      aria-label={text}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      ?
+    </button>
+  );
+}
+
+function HintText({ text }) {
+  const open = useContext(ShowHint);
+  if (!open || !text) return null;
+  return <small className="field-hint">{text}</small>;
+}
+
+function FieldName({ label, hint }) {
+  const open = useContext(ShowHint);
+  return (
+    <span className="field-name" data-hint={open ? undefined : hint || undefined}>
+      {label}
+      <Hint text={hint} />
+    </span>
+  );
+}
+
+function Check({ label, checked, onChange, disabled, hint }) {
   return (
     <label className="check">
       <input type="checkbox" checked={!!checked} onChange={(event) => onChange(event.target.checked)} disabled={disabled} />
-      <span>{label}</span>
+      <span>
+        <FieldName label={label} hint={hint} />
+        <HintText text={hint} />
+      </span>
     </label>
   );
 }
@@ -55,18 +95,18 @@ function Check({ label, checked, onChange, disabled }) {
 function Num({ label, value, onChange, disabled, hint }) {
   return (
     <label>
-      {label}
+      <FieldName label={label} hint={hint} />
       <input type="number" step="any" value={value ?? ""} onChange={(event) => onChange(event.target.value)} disabled={disabled} />
-      {hint ? <small className="muted">{hint}</small> : null}
+      <HintText text={hint} />
     </label>
   );
 }
 
-function Select({ label, value, options, onChange, disabled }) {
+function Select({ label, value, options, onChange, disabled, hint }) {
   const choices = withCurrent(options, value);
   return (
     <label>
-      {label}
+      <FieldName label={label} hint={hint} />
       <select value={value || ""} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
         {choices.map((option) => (
           <option key={option} value={option}>
@@ -74,6 +114,7 @@ function Select({ label, value, options, onChange, disabled }) {
           </option>
         ))}
       </select>
+      <HintText text={hint} />
     </label>
   );
 }
@@ -81,9 +122,9 @@ function Select({ label, value, options, onChange, disabled }) {
 function Text({ label, value, onChange, disabled, placeholder, hint }) {
   return (
     <label className="span-2">
-      {label}
+      <FieldName label={label} hint={hint} />
       <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} disabled={disabled} />
-      {hint ? <small className="muted">{hint}</small> : null}
+      <HintText text={hint} />
     </label>
   );
 }
@@ -338,7 +379,7 @@ export default function AccountConfigPage() {
             <Link to={`/bots/${encodeURIComponent(username)}`}>← {username}</Link>
           </p>
           <h1>{env}</h1>
-          <p className="muted">Bấm Sửa để đổi thông tin. Volume = cost × đòn bẩy long. Bot nhận bản mới sau khi restart.</p>
+          <p className="muted">Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Volume = cost × đòn bẩy long. Bot nhận bản mới sau khi restart.</p>
         </div>
         {canEdit ? (
           <div className="config-toolbar">
@@ -403,95 +444,97 @@ export default function AccountConfigPage() {
       {error ? <p className="form-error">{error}</p> : null}
       {saved ? <p className="muted">{saved}</p> : null}
       {form ? (
+        <ShowHint.Provider value={editing}>
         <form id="config-form" className="card config-form" onSubmit={onSubmit}>
           <Section title="Bật tắt">
-            <Check label="On" checked={form.on} onChange={(value) => setField("on", value)} disabled={disabled} />
-            <Check label="Long" checked={form.long} onChange={(value) => setField("long", value)} disabled={disabled} />
-            <Check label="Short" checked={form.short} onChange={(value) => setField("short", value)} disabled={disabled} />
-            <Check label="Invert" checked={form.invert} onChange={(value) => setField("invert", value)} disabled={disabled} />
-            <Check label="Paper" checked={form.paper} onChange={(value) => setField("paper", value)} disabled={disabled} />
-            <Check label="Monitor" checked={form.monitor} onChange={(value) => setField("monitor", value)} disabled={disabled} />
-            <Check label="Whitelist mode" checked={form.wl} onChange={(value) => setField("wl", value)} disabled={disabled} />
-            <Check label="Auto config" checked={form.autoConfig} onChange={(value) => setField("autoConfig", value)} disabled={disabled} />
-            <Check label="Report profit" checked={form.reportProfit} onChange={(value) => setField("reportProfit", value)} disabled={disabled} />
+            <Check label="On" checked={form.on} onChange={(value) => setField("on", value)} disabled={disabled} hint="Bật thì account nhận signal mới. Tắt thì bỏ qua." />
+            <Check label="Long" checked={form.long} onChange={(value) => setField("long", value)} disabled={disabled} hint="Cho phép vào lệnh LONG." />
+            <Check label="Short" checked={form.short} onChange={(value) => setField("short", value)} disabled={disabled} hint="Cho phép vào lệnh SHORT." />
+            <Check label="Invert" checked={form.invert} onChange={(value) => setField("invert", value)} disabled={disabled} hint="Đảo chiều signal: LONG thành SHORT và ngược lại." />
+            <Check label="Paper" checked={form.paper} onChange={(value) => setField("paper", value)} disabled={disabled} hint="Đánh giấy. Không gửi lệnh lên sàn." />
+            <Check label="Monitor" checked={form.monitor} onChange={(value) => setField("monitor", value)} disabled={disabled} hint="Theo dõi SL, TP và trailing sau khi mở lệnh." />
+            <Check label="Whitelist mode" checked={form.wl} onChange={(value) => setField("wl", value)} disabled={disabled} hint="Tắt: symbol trong Blacklist bị chặn. Bật: Blacklist thành danh sách được phép, symbol không có trong đó bị bỏ." />
+            <Check label="Auto config" checked={form.autoConfig} onChange={(value) => setField("autoConfig", value)} disabled={disabled} hint="Job định kỳ chạy backtest và ghi đè TP/SL của account này." />
+            <Check label="Report profit" checked={form.reportProfit} onChange={(value) => setField("reportProfit", value)} disabled={disabled} hint="Monitor gửi báo cáo lãi khi cập nhật lời." />
           </Section>
           <Section title="Danh sách">
-            <Text label="Signal" value={lists.signals || ""} onChange={(value) => setList("signals", value)} disabled={disabled} placeholder="ROSE, BULL" />
-            <Text label="Blacklist" value={lists.blacklist || ""} onChange={(value) => setList("blacklist", value)} disabled={disabled} placeholder="BTCUSDT, ETHUSDT" />
-            <Text label="Whitelist" value={lists.whitelist || ""} onChange={(value) => setList("whitelist", value)} disabled={disabled} />
+            <Text label="Signal" value={lists.signals || ""} onChange={(value) => setList("signals", value)} disabled={disabled} placeholder="ROSE, BULL" hint="Kênh signal được nhận, cách nhau bằng dấu phẩy. Rỗng thì không nhận kênh nào." />
+            <Text label="Blacklist" value={lists.blacklist || ""} onChange={(value) => setList("blacklist", value)} disabled={disabled} placeholder="BTCUSDT, ETHUSDT" hint="Danh sách symbol bot thực sự xét. Whitelist mode tắt thì đây là danh sách cấm. Bật thì đây là danh sách được vào." />
+            <Text label="Whitelist" value={lists.whitelist || ""} onChange={(value) => setList("whitelist", value)} disabled={disabled} hint="Mảng whitelist lưu riêng. Bot đang dùng Blacklist cùng cờ Whitelist mode, không đọc mảng này khi lọc lệnh." />
           </Section>
           <Section title="Volume">
-            <Select label="Mode" value={form.mode} options={MODES} onChange={(value) => setField("mode", value)} disabled={disabled} />
-            <Num label="Cost ($)" value={form.cost} onChange={(value) => setField("cost", value)} disabled={disabled} />
-            <Num label="Đòn bẩy long" value={form.leverage} onChange={(value) => setField("leverage", value)} disabled={disabled} />
-            <Num label="Đòn bẩy short" value={form.shortLeverage} onChange={(value) => setField("shortLeverage", value)} disabled={disabled} />
-            <Num label="Level" value={form.level} onChange={(value) => setField("level", value)} disabled={disabled} />
-            <Num label="Ratio" value={form.ratio} onChange={(value) => setField("ratio", value)} disabled={disabled} />
-            <Num label="Fix loss ($)" value={form.fixloss} onChange={(value) => setField("fixloss", value)} disabled={disabled} />
-            <Num label="Margin period" value={form.marginPeriod} onChange={(value) => setField("marginPeriod", value)} disabled={disabled} />
+            <Select label="Mode" value={form.mode} options={MODES} onChange={(value) => setField("mode", value)} disabled={disabled} hint="FIX: volume = cost × đòn bẩy. RATIO: cost lấy theo tỷ lệ ví. RISK: theo risk lệnh. LOSS và RR: size để chạm SL lỗ khoảng Fix loss. sl chỉ đặt giá cắt lỗ." />
+            <Num label="Cost ($)" value={form.cost} onChange={(value) => setField("cost", value)} disabled={disabled} hint="USD ký quỹ khi mode FIX. Volume hiển thị = cost × đòn bẩy long." />
+            <Num label="Đòn bẩy long" value={form.leverage} onChange={(value) => setField("leverage", value)} disabled={disabled} hint="LONG_LEVERAGE dùng khi vào LONG." />
+            <Num label="Đòn bẩy short" value={form.shortLeverage} onChange={(value) => setField("shortLeverage", value)} disabled={disabled} hint="SHORT_LEVERAGE dùng khi vào SHORT." />
+            <Num label="Level" value={form.level} onChange={(value) => setField("level", value)} disabled={disabled} hint="FIX_LEVERAGE, đòn bẩy mặc định khi lệnh không chỉ định level." />
+            <Num label="Ratio" value={form.ratio} onChange={(value) => setField("ratio", value)} disabled={disabled} hint="Tỷ lệ ví khi mode RATIO. Cost ≈ ví × ratio / đòn bẩy long." />
+            <Num label="Fix loss ($)" value={form.fixloss} onChange={(value) => setField("fixloss", value)} disabled={disabled} hint="USD lỗ mục tiêu khi chạm SL, cho mode LOSS và RR. Để 0 thì bot lấy Max loss." />
+            <Num label="Margin period" value={form.marginPeriod} onChange={(value) => setField("marginPeriod", value)} disabled={disabled} hint="MARGIN.PERIOD, mặc định 50. Bot không dùng số này để tính volume." />
             <p className="muted">Volume vào lệnh: {money(volume)}</p>
           </Section>
           <Section title="Mở lệnh">
-            <Select label="Open type" value={form.openType} options={OPEN_TYPES} onChange={(value) => setField("openType", value)} disabled={disabled} />
-            <Num label="Spread" value={form.spread} onChange={(value) => setField("spread", value)} disabled={disabled} hint="0.05 = 5%" />
-            <Num label="Wait (phút)" value={form.wait} onChange={(value) => setField("wait", value)} disabled={disabled} />
-            <Num label="Risk" value={form.risk} onChange={(value) => setField("risk", value)} disabled={disabled} />
-            <Num label="Mark" value={form.mark} onChange={(value) => setField("mark", value)} disabled={disabled} />
-            <Num label="Max position" value={form.maxPosition} onChange={(value) => setField("maxPosition", value)} disabled={disabled} />
-            <Text label="Symbol types" value={lists.symbolTypes || ""} onChange={(value) => setList("symbolTypes", value)} disabled={disabled} placeholder={SYMBOL_TYPES.join(", ")} hint="Để trống = tất cả" />
-            <Text label="Symbol types deny" value={lists.symbolTypesDeny || ""} onChange={(value) => setList("symbolTypesDeny", value)} disabled={disabled} placeholder={SYMBOL_TYPES.join(", ")} />
-            <Check label="Filter on" checked={form.filterOn} onChange={(value) => setField("filterOn", value)} disabled={disabled} />
-            <Text label="Filters" value={lists.filters || ""} onChange={(value) => setList("filters", value)} disabled={disabled} placeholder={FILTERS.join(", ")} />
-            <Num label="Chase %" value={form.chasePct} onChange={(value) => setField("chasePct", value)} disabled={disabled} />
-            <Num label="Blow ATR" value={form.blowAtr} onChange={(value) => setField("blowAtr", value)} disabled={disabled} />
-            <Num label="Fomo ATR" value={form.fomoAtr} onChange={(value) => setField("fomoAtr", value)} disabled={disabled} />
+            <Select label="Open type" value={form.openType} options={OPEN_TYPES} onChange={(value) => setField("openType", value)} disabled={disabled} hint="MARKET vào ngay. LIMIT và STOP chờ giá. FOLLOWSIGNAL theo kiểu của signal." />
+            <Num label="Spread" value={form.spread} onChange={(value) => setField("spread", value)} disabled={disabled} hint="Khoảng giá chấp nhận khi vào. 0.05 = 5%." />
+            <Num label="Wait (phút)" value={form.wait} onChange={(value) => setField("wait", value)} disabled={disabled} hint="Số phút chờ lệnh limit. Bot đổi thành giây bằng cách nhân 60." />
+            <Num label="Risk" value={form.risk} onChange={(value) => setField("risk", value)} disabled={disabled} hint="Ngưỡng risk của signal. LONG bị chặn nếu risk signal nhỏ hơn số này. SHORT bị chặn nếu risk signal lớn hơn. 0 là tắt." />
+            <Num label="Mark" value={form.mark} onChange={(value) => setField("mark", value)} disabled={disabled} hint="Mốc nhân volume. Lệnh truyền mark thì cost nhân mark rồi chia mốc này." />
+            <Num label="Max position" value={form.maxPosition} onChange={(value) => setField("maxPosition", value)} disabled={disabled} hint="Số lệnh đang mở tối đa. Đủ rồi thì bỏ signal mới." />
+            <Text label="Symbol types" value={lists.symbolTypes || ""} onChange={(value) => setList("symbolTypes", value)} disabled={disabled} placeholder={SYMBOL_TYPES.join(", ")} hint="Chỉ nhận nhóm vốn hoá. Rỗng = tất cả. MEGA ≥10B, BLUECHIP ≥1B, LARGE ≥500M, MIDCAP ≥150M, SMALLCAP ≥50M, MICRO ≥20M, SHIT <20M." />
+            <Text label="Symbol types deny" value={lists.symbolTypesDeny || ""} onChange={(value) => setList("symbolTypesDeny", value)} disabled={disabled} placeholder={SYMBOL_TYPES.join(", ")} hint="Cấm nhóm này. Trùng với danh sách cho phép thì lệnh cấm thắng." />
+            <Check label="Filter on" checked={form.filterOn} onChange={(value) => setField("filterOn", value)} disabled={disabled} hint="Sau khi đặt TP, dính một bộ lọc: đang lãi thì kéo SL về entry, chưa lãi thì đóng market." />
+            <Text label="Filters" value={lists.filters || ""} onChange={(value) => setList("filters", value)} disabled={disabled} placeholder={FILTERS.join(", ")} hint="Dính một bộ lọc là đủ. EMA15_REVERSE bỏ qua nếu 15m, 1h hoặc 4h vẫn cùng chiều lệnh." />
+            <Num label="Chase %" value={form.chasePct} onChange={(value) => setField("chasePct", value)} disabled={disabled} hint="Ngưỡng đuổi giá của bộ lọc, filter_chase." />
+            <Num label="Blow ATR" value={form.blowAtr} onChange={(value) => setField("blowAtr", value)} disabled={disabled} hint="Ngưỡng nến blow-off, tính bằng số lần ATR." />
+            <Num label="Fomo ATR" value={form.fomoAtr} onChange={(value) => setField("fomoAtr", value)} disabled={disabled} hint="Ngưỡng fomo, tính bằng số lần ATR." />
           </Section>
           <Section title="Chốt lời">
-            <Select label="TP type" value={form.tpType} options={TP_TYPES} onChange={(value) => setField("tpType", value)} disabled={disabled} />
-            <Text label="TP percent" value={lists.tpPercent || ""} onChange={(value) => setList("tpPercent", value)} disabled={disabled} placeholder="0.1, 0.2" />
-            <Num label="Close" value={form.tpClose} onChange={(value) => setField("tpClose", value)} disabled={disabled} />
-            <Num label="TP time (giây)" value={form.tpTime} onChange={(value) => setField("tpTime", value)} disabled={disabled} />
-            <Check label="Hold" checked={form.tpHold} onChange={(value) => setField("tpHold", value)} disabled={disabled} />
+            <Select label="TP type" value={form.tpType} options={TP_TYPES} onChange={(value) => setField("tpType", value)} disabled={disabled} hint="FIX là % lãi. ATR và ROSE là số lần ATR. TRAILING gồng. FOLLOWSIGNAL theo TP của signal. STOPLOSS lấy theo SL. HYBRID và ENTRY_STYLE dùng mẫu riêng." />
+            <Text label="TP percent" value={lists.tpPercent || ""} onChange={(value) => setList("tpPercent", value)} disabled={disabled} placeholder="0.1, 0.2" hint="Các mốc chốt, cách nhau bằng dấu phẩy. FIX: 0.2 = 20% lãi. ATR: 1.2, 2, 3 là số lần ATR." />
+            <Num label="Close" value={form.tpClose} onChange={(value) => setField("tpClose", value)} disabled={disabled} hint="Tỷ lệ volume chốt mỗi TP. 0.4 = 40%. Muốn Hold gồng phần dư thì để nhỏ hơn 1." />
+            <Num label="TP time (giây)" value={form.tpTime} onChange={(value) => setField("tpTime", value)} disabled={disabled} hint="Số giây chờ trước khi xử lý TP." />
+            <Check label="Hold" checked={form.tpHold} onChange={(value) => setField("tpHold", value)} disabled={disabled} hint="Từ 2 TP: TP cuối chỉ chốt Close × phần còn lại, phần dư gồng. Đúng 1 TP thì luôn chốt hết." />
           </Section>
           <Section title="Cắt lỗ">
-            <Select label="SL type" value={form.slType} options={SL_TYPES} onChange={(value) => setField("slType", value)} disabled={disabled} />
-            <Select label="SL candle" value={form.slCandle} options={CANDLES} onChange={(value) => setField("slCandle", value)} disabled={disabled} />
-            <Num label="Period" value={form.slPeriod} onChange={(value) => setField("slPeriod", value)} disabled={disabled} />
-            <Num label="SL" value={form.sl} onChange={(value) => setField("sl", value)} disabled={disabled} />
-            <Num label="SLI" value={form.sli} onChange={(value) => setField("sli", value)} disabled={disabled} />
-            <Num label="SL2" value={form.sl2} onChange={(value) => setField("sl2", value)} disabled={disabled} />
-            <Num label="SL time (giây)" value={form.slTime} onChange={(value) => setField("slTime", value)} disabled={disabled} />
-            <Num label="Max loss" value={form.maxLoss} onChange={(value) => setField("maxLoss", value)} disabled={disabled} hint="Dưới 1 là tỷ lệ ví, từ 1 là USD" />
-            <Check label="SL theo position" checked={form.slPosition} onChange={(value) => setField("slPosition", value)} disabled={disabled} />
+            <Select label="SL type" value={form.slType} options={SL_TYPES} onChange={(value) => setField("slType", value)} disabled={disabled} hint="Cách đặt giá cắt lỗ. ATR = hệ số × ATR. ROSE neo EMA gần hoặc entry trừ 2 ATR. HYBRID và ENTRY_STYLE dùng SL candle với Period." />
+            <Select label="SL candle" value={form.slCandle} options={CANDLES} onChange={(value) => setField("slCandle", value)} disabled={disabled} hint="Khung nến cho ATR, EMA, ROSE, HYBRID và ENTRY_STYLE." />
+            <Num label="Period" value={form.slPeriod} onChange={(value) => setField("slPeriod", value)} disabled={disabled} hint="Số nến tính ATR hoặc EMA. ATR và ROSE dùng chung số này." />
+            <Num label="SL" value={form.sl} onChange={(value) => setField("sl", value)} disabled={disabled} hint="Mốc cắt lỗ chính. % ROI thì số âm là lỗ, ví dụ -0.3. ATR thì là số lần ATR, ví dụ 1.5." />
+            <Num label="SLI" value={form.sli} onChange={(value) => setField("sli", value)} disabled={disabled} hint="Mốc cắt lỗ phụ, bot dùng làm stopPrice." />
+            <Num label="SL2" value={form.sl2} onChange={(value) => setField("sl2", value)} disabled={disabled} hint="Mốc cắt lỗ thứ hai. Khi SL type là ATR thì giá SL2 lấy cùng SL chính." />
+            <Num label="SL time (giây)" value={form.slTime} onChange={(value) => setField("slTime", value)} disabled={disabled} hint="Số giây sau khi mở lệnh, monitor mới được dời hoặc gửi lại SL." />
+            <Num label="Max loss" value={form.maxLoss} onChange={(value) => setField("maxLoss", value)} disabled={disabled} hint="Trần lỗ. Nhỏ hơn 1 là tỷ lệ ví, từ 1 là USD. Mode LOSS/RR chưa có Fix loss thì dùng số này. Sync không nhân max loss." />
+            <Check label="SL theo position" checked={form.slPosition} onChange={(value) => setField("slPosition", value)} disabled={disabled} hint="Cờ SL.POSITION. Lệnh tay có slp cũng bật cờ này trên SL của lệnh đó." />
           </Section>
           <Section title="Trailing">
-            <Check label="Trailing" checked={form.trailing} onChange={(value) => setField("trailing", value)} disabled={disabled} />
-            <Select label="Trailing type" value={form.trailingType} options={TRAILING_TYPES} onChange={(value) => setField("trailingType", value)} disabled={disabled} />
-            <Num label="SP" value={form.sp} onChange={(value) => setField("sp", value)} disabled={disabled} />
-            <Num label="Trigger" value={form.trigger} onChange={(value) => setField("trigger", value)} disabled={disabled} />
-            <Num label="R" value={form.r} onChange={(value) => setField("r", value)} disabled={disabled} />
-            <Check label="HP" checked={form.hp} onChange={(value) => setField("hp", value)} disabled={disabled} />
-            <Num label="HP trigger" value={form.hpTrigger} onChange={(value) => setField("hpTrigger", value)} disabled={disabled} />
-            <Num label="RHSL" value={form.rhsl} onChange={(value) => setField("rhsl", value)} disabled={disabled} />
-            <Num label="RH" value={form.rh} onChange={(value) => setField("rh", value)} disabled={disabled} />
+            <Check label="Trailing" checked={form.trailing} onChange={(value) => setField("trailing", value)} disabled={disabled} hint="Bật thì dời SL theo lời." />
+            <Select label="Trailing type" value={form.trailingType} options={TRAILING_TYPES} onChange={(value) => setField("trailingType", value)} disabled={disabled} hint="FIX là % lãi. TP1 đến TP4 chờ chạm TP đó mới gồng. ATR và ROSE là số lần ATR. HYBRID dùng type này để gồng, SP rộng theo R." />
+            <Num label="SP" value={form.sp} onChange={(value) => setField("sp", value)} disabled={disabled} hint="Khoảng cách SL gồng. FIX: 0.01 = 1% lãi. ATR: số lần ATR. SP phải nhỏ hơn Trigger." />
+            <Num label="Trigger" value={form.trigger} onChange={(value) => setField("trigger", value)} disabled={disabled} hint="Lời cần đạt rồi mới bắt đầu gồng. FIX là % lãi. ATR là số lần ATR." />
+            <Num label="R" value={form.r} onChange={(value) => setField("r", value)} disabled={disabled} hint="Mỗi lần giá đi thêm chừng này thì dời SL một bước. FIX là % lãi. ATR là số lần ATR." />
+            <Check label="HP" checked={form.hp} onChange={(value) => setField("hp", value)} disabled={disabled} hint="Khi lời vượt HP trigger thì kéo SL theo đỉnh." />
+            <Num label="HP trigger" value={form.hpTrigger} onChange={(value) => setField("hpTrigger", value)} disabled={disabled} hint="Ngưỡng lời để bật HP. Nhiều TP thì bot có thể gán trigger bằng TP cuối." />
+            <Num label="RHSL" value={form.rhsl} onChange={(value) => setField("rhsl", value)} disabled={disabled} hint="Kéo SL lùi so với lời hiện tại khi HP kích hoạt." />
+            <Num label="RH" value={form.rh} onChange={(value) => setField("rh", value)} disabled={disabled} hint="Bước lời thêm để dời tiếp SL kiểu HP." />
           </Section>
           <Section title="Copy">
-            <Check label="Copy" checked={form.copy} onChange={(value) => setField("copy", value)} disabled={disabled} />
-            <Check label="Fix cost" checked={form.copyFix} onChange={(value) => setField("copyFix", value)} disabled={disabled} />
-            <Check label="DCA" checked={form.copyDca} onChange={(value) => setField("copyDca", value)} disabled={disabled} />
-            <Check label="Follow" checked={form.copyFollow} onChange={(value) => setField("copyFollow", value)} disabled={disabled} />
-            <Num label="Max volume ($)" value={form.maxVolume} onChange={(value) => setField("maxVolume", value)} disabled={disabled} />
-            <Num label="Rate" value={form.copyRate} onChange={(value) => setField("copyRate", value)} disabled={disabled} hint="0.1 = 10%" />
+            <Check label="Copy" checked={form.copy} onChange={(value) => setField("copy", value)} disabled={disabled} hint="Cho phép nhận lệnh copy. Tắt thì signal copy bị bỏ." />
+            <Check label="Fix cost" checked={form.copyFix} onChange={(value) => setField("copyFix", value)} disabled={disabled} hint="Bật thì lệnh copy giữ volume của signal. Tắt thì volume nhân Rate và bị trần Max volume." />
+            <Check label="DCA" checked={form.copyDca} onChange={(value) => setField("copyDca", value)} disabled={disabled} hint="Theo lệnh thêm volume của nguồn copy. Tắt thì bỏ qua." />
+            <Check label="Follow" checked={form.copyFollow} onChange={(value) => setField("copyFollow", value)} disabled={disabled} hint="Theo lệnh đóng bớt của nguồn copy. Tắt thì không đóng theo." />
+            <Num label="Max volume ($)" value={form.maxVolume} onChange={(value) => setField("maxVolume", value)} disabled={disabled} hint="Trần volume của lệnh copy khi không bật Fix cost." />
+            <Num label="Rate" value={form.copyRate} onChange={(value) => setField("copyRate", value)} disabled={disabled} hint="Tỷ lệ volume so với lệnh nguồn khi tắt Fix cost. 0.1 = 10%." />
           </Section>
           <Section title="Sync">
-            <Num label="Interval (giây)" value={form.interval} onChange={(value) => setField("interval", value)} disabled={disabled} />
-            <Text label="Sync from" value={form.syncFrom || ""} onChange={(value) => setField("syncFrom", value)} disabled={disabled} placeholder="Tên config gốc" />
-            <Text label="Sync except" value={lists.syncExcept || ""} onChange={(value) => setList("syncExcept", value)} disabled={disabled} placeholder={SYNC_GROUPS.join(", ")} />
-            <Check label="Sync scale" checked={form.syncScale} onChange={(value) => setField("syncScale", value)} disabled={disabled} />
-            <Num label="Sync margin ratio" value={form.syncMarginRatio} onChange={(value) => setField("syncMarginRatio", value)} disabled={disabled} />
-            <Num label="Sync wallet" value={form.syncWalletBal} onChange={(value) => setField("syncWalletBal", value)} disabled={disabled} />
+            <Num label="Interval (giây)" value={form.interval} onChange={(value) => setField("interval", value)} disabled={disabled} hint="Chu kỳ monitor, tính bằng giây." />
+            <Text label="Sync from" value={form.syncFrom || ""} onChange={(value) => setField("syncFrom", value)} disabled={disabled} placeholder="Tên config gốc" hint="Config gốc. Gốc sửa bằng /sc thì nhánh bị ghi đè, trừ nhóm nằm trong Sync except." />
+            <Text label="Sync except" value={lists.syncExcept || ""} onChange={(value) => setList("syncExcept", value)} disabled={disabled} placeholder={SYNC_GROUPS.join(", ")} hint="Nhóm nhánh tự giữ, không lấy từ gốc: cost, level, sl, tp, trailing, hp, open, margin, copy, on, paper, signals, blacklist." />
+            <Check label="Sync scale" checked={form.syncScale} onChange={(value) => setField("syncScale", value)} disabled={disabled} hint="Bật thì nhân USD theo tỷ lệ ví nhánh trên ví gốc. Tắt thì copy đúng số USD. Max loss không nhân." />
+            <Num label="Sync margin ratio" value={form.syncMarginRatio} onChange={(value) => setField("syncMarginRatio", value)} disabled={disabled} hint="Acc gốc lưu cost chia ví. Nhánh scale cost đọc số này, không gọi API của gốc." />
+            <Num label="Sync wallet" value={form.syncWalletBal} onChange={(value) => setField("syncWalletBal", value)} disabled={disabled} hint="Ví gốc lúc ghi ratio. Nhánh LOSS/FIX nhân USD theo ví nhánh chia số này." />
           </Section>
         </form>
+        </ShowHint.Provider>
       ) : null}
     </section>
   );
