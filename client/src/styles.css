@@ -248,6 +248,9 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
   margin-top: 8px;
 }
 
+.account-main { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.account-meta { color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
+
 .row-actions { display: flex; gap: 6px; }
 .row-actions button, .inline-edit button { padding: 6px 10px; }
 

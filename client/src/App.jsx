@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
 import BotDetailPage from "./pages/BotDetailPage";
+import AccountConfigPage from "./pages/AccountConfigPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import UserApisPage from "./pages/UserApisPage";
 import UserApiDetailPage from "./pages/UserApiDetailPage";
@@ -12,6 +13,7 @@ import AuditLogsPage from "./pages/AuditLogsPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
+const CONFIG_VIEW = "config.view";
 const CREDENTIALS_VIEW = "credentials.view";
 const LOGS_VIEW = "logs.view";
 
@@ -85,6 +87,16 @@ function AppRoutes() {
           <Protected>
             <Shell>
               <AccessHome />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/bots/:username/accounts/:env"
+        element={
+          <Protected permission={CONFIG_VIEW}>
+            <Shell>
+              <AccountConfigPage />
             </Shell>
           </Protected>
         }

@@ -272,6 +272,9 @@ Các invariant:
 | `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; thêm env, tạo `Account_Config` nếu chưa có |
 | `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
 | `DELETE /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; gỡ env, xoá `Account_Config` nếu không user bot nào còn giữ |
+| `GET /api/bots/:username/configs` | `requireAuth` | `config.view` + scope; tóm tắt On, Long/Short, signal, mode, volume của từng account |
+| `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; cùng các field, không trả nguyên `trade_config` |
+| `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
 | `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |
@@ -345,6 +348,7 @@ File chuẩn:
 - Audit writer/redaction: `server/src/lib/audit.js`
 - Audit model/API: `server/src/models/audit-log.js`, `server/src/routes/audit-logs.js`
 - Bot scope API: `server/src/routes/bots.js`
+- Tóm tắt account config: `server/src/lib/account-config-view.js`
 - User API: `server/src/routes/user-apis.js`, `server/src/lib/user-api-directory.js`
 - Safe response shape: `server/src/lib/public-user.js`
 - Client session state: `client/src/auth.jsx`

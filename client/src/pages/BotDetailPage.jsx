@@ -11,6 +11,36 @@ function can(user, permission) {
   return (user?.permissions || []).includes(permission);
 }
 
+function onOff(value) {
+  if (value == null) return "?";
+  return value ? "bật" : "tắt";
+}
+
+function money(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  const text = Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+  return `${text}$`;
+}
+
+function summaryText(row) {
+  if (!row) return "Đang tải…";
+  if (row.missing) return "Chưa có bản ghi config";
+  const signals = row.signals?.length ? row.signals.join(", ") : "không signal";
+  const parts = [
+    `On=${onOff(row.on)}`,
+    `Long=${onOff(row.long)}`,
+    `Short=${onOff(row.short)}`,
+    signals,
+    row.mode || "—",
+  ];
+  if (row.mode === "RATIO" && row.ratio != null) parts.push(`ratio ${row.ratio}`);
+  if ((row.mode === "LOSS" || row.mode === "RR") && row.fixloss != null) parts.push(`fixloss ${money(row.fixloss)}`);
+  if (row.mode === "RISK" && row.risk != null) parts.push(`risk ${row.risk}`);
+  parts.push(`vol ${money(row.volume)}`);
+  return parts.join(" · ");
+}
+
 export default function BotDetailPage() {
   const { username = "" } = useParams();
   const navigate = useNavigate();
@@ -91,7 +121,7 @@ export default function BotDetailPage() {
           <Link to="/">← Danh sách user bot</Link>
         </p>
         <h1>{bot?.username || username}</h1>
-        <p className="muted">Xem, sửa hoặc xoá config của user này.</p>
+        <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Bấm Sửa để đổi các mục đó.</p>
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
