@@ -199,7 +199,10 @@ main:has(.config-screen) {
   background: color-mix(in srgb, var(--bg) 92%, transparent);
 }
 
-.config-toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.config-toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
+
+.help-toggle { align-items: center; width: auto; margin-right: 4px; font-size: 0.88rem; }
+.help-toggle input { margin-top: 0; }
 
 .config-copy {
   display: flex;
@@ -214,8 +217,9 @@ main:has(.config-screen) {
 .config-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 8px;
   align-items: start;
+  padding: 12px;
 }
 
 .config-form .config-section { grid-column: auto; }
@@ -230,6 +234,7 @@ main:has(.config-screen) {
 }
 
 .hint-mark {
+  position: relative;
   width: 16px;
   height: 16px;
   padding: 0;
@@ -244,7 +249,7 @@ main:has(.config-screen) {
 
 .hint-mark:hover, .hint-mark:focus-visible { background: var(--surface-2); }
 
-.field-name[data-hint]:hover::after,
+.hint-mark:hover::after,
 .hint-mark:focus-visible::after {
   content: attr(data-hint);
   position: absolute;
@@ -351,7 +356,7 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
 .config-section {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 12px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
 }
@@ -361,7 +366,16 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
 .config-fields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
+}
+
+.config-fields label { font-size: 0.82rem; gap: 3px; }
+
+.config-fields input:not([type="checkbox"]),
+.config-fields select {
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 0.86rem;
 }
 
 .config-fields .span-2 { grid-column: span 2; }

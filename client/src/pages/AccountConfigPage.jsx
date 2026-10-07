@@ -43,10 +43,11 @@ function withCurrent(options, current) {
   return [current, ...options];
 }
 
-const ShowHint = createContext(false);
+const HelpUi = createContext({ help: false, editing: false });
 
 function Hint({ text }) {
-  if (!text) return null;
+  const { help } = useContext(HelpUi);
+  if (!help || !text) return null;
   return (
     <button
       type="button"
@@ -65,15 +66,14 @@ function Hint({ text }) {
 }
 
 function HintText({ text }) {
-  const open = useContext(ShowHint);
-  if (!open || !text) return null;
+  const { help, editing } = useContext(HelpUi);
+  if (!help || !editing || !text) return null;
   return <small className="field-hint">{text}</small>;
 }
 
 function FieldName({ label, hint }) {
-  const open = useContext(ShowHint);
   return (
-    <span className="field-name" data-hint={open ? undefined : hint || undefined}>
+    <span className="field-name">
       {label}
       <Hint text={hint} />
     </span>
@@ -154,6 +154,7 @@ export default function AccountConfigPage() {
   const [lists, setLists] = useState({});
   const [snapshot, setSnapshot] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [help, setHelp] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [bots, setBots] = useState([]);
   const [copyUser, setCopyUser] = useState(username);
@@ -379,10 +380,17 @@ export default function AccountConfigPage() {
             <Link to={`/bots/${encodeURIComponent(username)}`}>← {username}</Link>
           </p>
           <h1>{env}</h1>
-          <p className="muted">Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Volume = cost × đòn bẩy long. Bot nhận bản mới sau khi restart.</p>
+          {help ? (
+            <p className="muted">Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Volume = cost × đòn bẩy long. Bot nhận bản mới sau khi restart.</p>
+          ) : null}
         </div>
-        {canEdit ? (
-          <div className="config-toolbar">
+        <div className="config-toolbar">
+          <label className="check help-toggle">
+            <input type="checkbox" checked={help} onChange={(event) => setHelp(event.target.checked)} />
+            <span>Help</span>
+          </label>
+          {canEdit ? (
+            <>
             {editing ? (
               <button type="button" key="save" onClick={onSave} disabled={busy}>
                 Lưu
@@ -403,8 +411,9 @@ export default function AccountConfigPage() {
             <button type="button" className="danger" onClick={onDelete} disabled={busy || editing}>
               Xoá
             </button>
-          </div>
-        ) : null}
+            </>
+          ) : null}
+        </div>
         {canViewSignalHistory ? (
           <Link className="ghost link-btn" to="/signals">
             Lịch sử signal
@@ -444,7 +453,7 @@ export default function AccountConfigPage() {
       {error ? <p className="form-error">{error}</p> : null}
       {saved ? <p className="muted">{saved}</p> : null}
       {form ? (
-        <ShowHint.Provider value={editing}>
+        <HelpUi.Provider value={{ help, editing }}>
         <form id="config-form" className="card config-form" onSubmit={onSubmit}>
           <Section title="Bật tắt">
             <Check label="On" checked={form.on} onChange={(value) => setField("on", value)} disabled={disabled} hint="Bật thì account nhận signal mới. Tắt thì bỏ qua." />
@@ -463,7 +472,7 @@ export default function AccountConfigPage() {
             <Text label="Whitelist" value={lists.whitelist || ""} onChange={(value) => setList("whitelist", value)} disabled={disabled} hint="Mảng whitelist lưu riêng. Bot đang dùng Blacklist cùng cờ Whitelist mode, không đọc mảng này khi lọc lệnh." />
           </Section>
           <Section title="Volume">
-            <Select label="Mode" value={form.mode} options={MODES} onChange={(value) => setField("mode", value)} disabled={disabled} hint="FIX: volume = cost × đòn bẩy. RATIO: cost lấy theo tỷ lệ ví. RISK: theo risk lệnh. LOSS và RR: size để chạm SL lỗ khoảng Fix loss. sl chỉ đặt giá cắt lỗ." />
+            <Select label="Mode" value={form.mode} options={MODES} onChange={(value) => setField("mode", value)} disabled={disabled} hint="FIX: volume = cost × đòn bẩy long. RATIO: cost lấy theo tỷ lệ ví. RISK: theo risk lệnh. LOSS và RR: size để chạm SL lỗ khoảng Fix loss. sl chỉ đặt giá cắt lỗ. Bot nhận bản mới sau khi restart." />
             <Num label="Cost ($)" value={form.cost} onChange={(value) => setField("cost", value)} disabled={disabled} hint="USD ký quỹ khi mode FIX. Volume hiển thị = cost × đòn bẩy long." />
             <Num label="Đòn bẩy long" value={form.leverage} onChange={(value) => setField("leverage", value)} disabled={disabled} hint="LONG_LEVERAGE dùng khi vào LONG." />
             <Num label="Đòn bẩy short" value={form.shortLeverage} onChange={(value) => setField("shortLeverage", value)} disabled={disabled} hint="SHORT_LEVERAGE dùng khi vào SHORT." />
@@ -534,7 +543,7 @@ export default function AccountConfigPage() {
             <Num label="Sync wallet" value={form.syncWalletBal} onChange={(value) => setField("syncWalletBal", value)} disabled={disabled} hint="Ví gốc lúc ghi ratio. Nhánh LOSS/FIX nhân USD theo ví nhánh chia số này." />
           </Section>
         </form>
-        </ShowHint.Provider>
+        </HelpUi.Provider>
       ) : null}
     </section>
   );
