@@ -7,7 +7,7 @@ const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
 const { requirePermission } = require("../src/middleware/auth");
 const { PERMISSIONS } = require("../src/auth/access-control");
-const { addAccount, createBot, deleteAccount } = require("../src/lib/bot-directory");
+const { addAccount, copyAccount, createBot, deleteAccount } = require("../src/lib/bot-directory");
 
 function response() {
     return {
@@ -131,6 +131,84 @@ test("deleteAccount removes the env and deletes an unowned config", async () => 
     } finally {
         UserAccount.findOne = originalFind;
         AccountConfig.deleteOne = originalDelete;
+    }
+});
+
+test("copyAccount clones the config onto the chosen user", async () => {
+    const originalFind = UserAccount.findOne;
+    const originalConfigFind = AccountConfig.findOne;
+    const originalCreate = AccountConfig.create;
+    const admin = { role: "admin", id: "admin" };
+    const source = { username: "alpha", accounts: ["a1"] };
+    const target = {
+        username: "beta",
+        accounts: [],
+        async save() {
+            this.saved = true;
+        },
+    };
+    let created = null;
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query(source);
+        if (filter.username === "beta") return query(target);
+        return query(null);
+    };
+    AccountConfig.findOne = (filter) => {
+        if (filter.env === "a1") {
+            return query({
+                _id: "src",
+                env: "a1",
+                signals: ["ROSE"],
+                blacklist: ["BTC"],
+                trade_config: { ON: true, FIX_COST_AMOUNT: 100 },
+                sync_from: "old",
+                createdAt: new Date(),
+            });
+        }
+        return query(null);
+    };
+    AccountConfig.create = async (doc) => {
+        created = doc;
+    };
+    try {
+        const result = await copyAccount(admin, "alpha", "a1", "beta", "a1copy");
+        assert.deepEqual(result, { username: "beta", env: "a1copy" });
+        assert.equal(created.env, "a1copy");
+        assert.equal(created._id, undefined);
+        assert.deepEqual(created.signals, ["ROSE"]);
+        assert.deepEqual(created.blacklist, ["BTC"]);
+        assert.equal(created.trade_config.ON, true);
+        assert.equal(created.sync_from, null);
+        assert.deepEqual(target.accounts, ["a1copy"]);
+        assert.equal(target.saved, true);
+        assert.deepEqual(source.accounts, ["a1"]);
+    } finally {
+        UserAccount.findOne = originalFind;
+        AccountConfig.findOne = originalConfigFind;
+        AccountConfig.create = originalCreate;
+    }
+});
+
+test("copyAccount rejects a target outside scope before writing", async () => {
+    const originalFind = UserAccount.findOne;
+    const originalCreate = AccountConfig.create;
+    let created = false;
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["a1"] });
+        return query(null);
+    };
+    AccountConfig.create = async () => {
+        created = true;
+    };
+    try {
+        await assert.rejects(() => copyAccount(operator, "alpha", "a1", "beta", "a1copy"), (error) => {
+            assert.equal(error.status, 403);
+            return true;
+        });
+        assert.equal(created, false);
+    } finally {
+        UserAccount.findOne = originalFind;
+        AccountConfig.create = originalCreate;
     }
 });
 

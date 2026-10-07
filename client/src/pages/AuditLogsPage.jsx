@@ -13,6 +13,7 @@ const ACTION_LABELS = {
   "bot.account_renamed": "Đổi tên config",
   "bot.account_deleted": "Xóa config khỏi bot",
   "config.updated": "Sửa On/signal/volume",
+  "config.copied": "Copy account config",
   "credential.created": "Tạo API/credential",
   "credential.updated": "Cập nhật API/credential",
   "credential.deleted": "Xóa API/credential",

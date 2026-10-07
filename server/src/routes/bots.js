@@ -13,6 +13,7 @@ const {
     addAccount,
     renameAccount,
     deleteAccount,
+    copyAccount,
 } = require("../lib/bot-directory");
 const {
     listConfigSummaries,
@@ -71,6 +72,34 @@ router.get(
             res.json({ config });
         } catch (error) {
             sendError(res, error, "GET /api/bots/:username/configs/:env");
+        }
+    }
+);
+
+router.post(
+    "/:username/configs/:env/copy",
+    requireAuth,
+    requirePermission(PERMISSIONS.CONFIG_EDIT),
+    async (req, res) => {
+        try {
+            const username = normalizeName(req.params.username);
+            const env = normalizeName(req.params.env);
+            const targetUsername = normalizeName(req.body?.username);
+            const nextEnv = normalizeName(req.body?.env);
+            const copied = await copyAccount(req.webUser, username, env, targetUsername, nextEnv);
+            await safeRecordAudit({
+                action: "config.copied",
+                actor: req.webUser,
+                targetType: "account_config",
+                target: { username: `${copied.username}/${copied.env}` },
+                changes: {
+                    from: { from: null, to: `${username}/${env}` },
+                    account: { from: null, to: copied.env },
+                },
+            });
+            res.status(201).json(copied);
+        } catch (error) {
+            sendError(res, error, "POST /api/bots/:username/configs/:env/copy");
         }
     }
 );

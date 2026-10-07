@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
@@ -102,15 +102,22 @@ function optionalNumber(value) {
 
 export default function AccountConfigPage() {
   const { username = "", env = "" } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = can(user, CONFIG_EDIT);
   const [form, setForm] = useState(null);
   const [lists, setLists] = useState({});
+  const [snapshot, setSnapshot] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [bots, setBots] = useState([]);
+  const [copyUser, setCopyUser] = useState(username);
+  const [copyName, setCopyName] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const disabled = !canEdit || busy;
+  const disabled = !editing || busy;
 
   function applyConfig(config) {
     setForm(config);
@@ -129,6 +136,9 @@ export default function AccountConfigPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setEditing(false);
+    setCopyOpen(false);
+    setBusy(false);
     api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}`)
       .then((data) => {
         if (!cancelled) applyConfig(data.config);
@@ -161,7 +171,7 @@ export default function AccountConfigPage() {
 
   async function onSubmit(event) {
     event.preventDefault();
-    if (!canEdit || !form) return;
+    if (!canEdit || !editing || !form) return;
     setBusy(true);
     setError("");
     setSaved("");
@@ -240,6 +250,8 @@ export default function AccountConfigPage() {
         },
       });
       applyConfig(data.config);
+      setEditing(false);
+      setSnapshot(null);
       setSaved("Đã lưu. Bot đang chạy chỉ nhận config mới sau khi restart.");
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
@@ -248,25 +260,132 @@ export default function AccountConfigPage() {
     }
   }
 
-  const hybrid =
-    form && (Object.keys(form.slHybrid || {}).length || Object.keys(form.tpHybrid || {}).length)
-      ? { sl: form.slHybrid, tp: form.tpHybrid }
-      : null;
+  function startEdit() {
+    setSnapshot({ form: { ...form }, lists: { ...lists } });
+    setEditing(true);
+    setSaved("");
+    setCopyOpen(false);
+  }
+
+  function cancelEdit() {
+    if (snapshot) {
+      setForm(snapshot.form);
+      setLists(snapshot.lists);
+    }
+    setEditing(false);
+    setSnapshot(null);
+  }
+
+  async function onDelete() {
+    if (!canEdit) return;
+    if (!window.confirm(`Xoá config ${env} khỏi user ${username}? Bản ghi account config cũng bị xoá nếu không còn user nào giữ.`)) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}`, { method: "DELETE" });
+      navigate(`/bots/${encodeURIComponent(username)}`, { replace: true });
+    } catch (err) {
+      setError(err.message || "Thao tác thất bại");
+      setBusy(false);
+    }
+  }
+
+  async function openCopy() {
+    setCopyOpen(true);
+    setCopyName("");
+    setCopyUser(username);
+    setError("");
+    try {
+      const data = await api("/api/bots");
+      setBots(data.bots || []);
+    } catch (err) {
+      setError(err.message || "Không tải được danh sách user");
+    }
+  }
+
+  async function onCopy(event) {
+    event.preventDefault();
+    if (!canEdit) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}/copy`, {
+        method: "POST",
+        body: { username: copyUser, env: copyName },
+      });
+      navigate(`/bots/${encodeURIComponent(data.username)}/accounts/${encodeURIComponent(data.env)}`, { replace: true });
+    } catch (err) {
+      setError(err.message || "Thao tác thất bại");
+      setBusy(false);
+    }
+  }
 
   return (
-    <section>
-      <header className="page-head">
-        <p>
-          <Link to={`/bots/${encodeURIComponent(username)}`}>← {username}</Link>
-        </p>
-        <h1>{env}</h1>
-        <p className="muted">Đủ các mục lệnh cấu hình của bot. Volume = cost × đòn bẩy long. Bot nhận bản mới sau khi restart.</p>
+    <section className="config-screen">
+      <header className="page-head config-head">
+        <div>
+          <p>
+            <Link to={`/bots/${encodeURIComponent(username)}`}>← {username}</Link>
+          </p>
+          <h1>{env}</h1>
+          <p className="muted">Bấm Sửa để đổi thông tin. Volume = cost × đòn bẩy long. Bot nhận bản mới sau khi restart.</p>
+        </div>
+        {canEdit ? (
+          <div className="config-toolbar">
+            {editing ? (
+              <button type="submit" form="config-form" disabled={busy}>
+                Lưu
+              </button>
+            ) : (
+              <button type="button" onClick={startEdit} disabled={busy || !form}>
+                Sửa
+              </button>
+            )}
+            {editing ? (
+              <button type="button" className="ghost" onClick={cancelEdit} disabled={busy}>
+                Huỷ
+              </button>
+            ) : null}
+            <button type="button" className="ghost" onClick={openCopy} disabled={busy || editing}>
+              Copy
+            </button>
+            <button type="button" className="danger" onClick={onDelete} disabled={busy || editing}>
+              Xoá
+            </button>
+          </div>
+        ) : null}
       </header>
+      {copyOpen && canEdit ? (
+        <form className="card config-copy" onSubmit={onCopy}>
+          <label>
+            User nhận
+            <select value={copyUser} onChange={(event) => setCopyUser(event.target.value)} disabled={busy}>
+              {(bots.some((bot) => bot.username === copyUser) ? bots : [{ username: copyUser }, ...bots]).map((bot) => (
+                <option key={bot.username} value={bot.username}>
+                  {bot.username}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Tên config mới
+            <input value={copyName} onChange={(event) => setCopyName(event.target.value)} required disabled={busy} />
+          </label>
+          <button type="submit" disabled={busy}>
+            Tạo bản sao
+          </button>
+          <button type="button" className="ghost" onClick={() => setCopyOpen(false)} disabled={busy}>
+            Đóng
+          </button>
+        </form>
+      ) : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       {saved ? <p className="muted">{saved}</p> : null}
       {form ? (
-        <form className="card admin-form" onSubmit={onSubmit}>
+        <form id="config-form" className="card config-form" onSubmit={onSubmit}>
           <Section title="Bật tắt">
             <Check label="On" checked={form.on} onChange={(value) => setField("on", value)} disabled={disabled} />
             <Check label="Long" checked={form.long} onChange={(value) => setField("long", value)} disabled={disabled} />
@@ -354,18 +473,6 @@ export default function AccountConfigPage() {
             <Num label="Sync margin ratio" value={form.syncMarginRatio} onChange={(value) => setField("syncMarginRatio", value)} disabled={disabled} />
             <Num label="Sync wallet" value={form.syncWalletBal} onChange={(value) => setField("syncWalletBal", value)} disabled={disabled} />
           </Section>
-          {hybrid ? (
-            <Section title="Hybrid đang lưu">
-              <pre className="span-2 config-json">{JSON.stringify(hybrid, null, 2)}</pre>
-            </Section>
-          ) : null}
-          {canEdit ? (
-            <button type="submit" disabled={busy}>
-              Lưu
-            </button>
-          ) : (
-            <p className="muted">Bạn chỉ được xem config này.</p>
-          )}
         </form>
       ) : null}
     </section>

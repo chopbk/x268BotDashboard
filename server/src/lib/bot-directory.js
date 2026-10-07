@@ -177,6 +177,41 @@ async function renameAccount(actor, username, env, nextEnv, permission = PERMISS
     return toBot(bot);
 }
 
+async function copyAccount(actor, sourceUsername, sourceEnv, targetUsername, nextEnv) {
+    assertName(nextEnv, "Tên config");
+    const sourceBot = await requireBot(actor, sourceUsername, PERMISSIONS.CONFIG_EDIT);
+    if (!(sourceBot.accounts || []).includes(sourceEnv)) throw httpError(404, "Không tìm thấy config");
+    const targetBot = await requireBot(actor, targetUsername, PERMISSIONS.CONFIG_EDIT);
+    if ((targetBot.accounts || []).includes(nextEnv)) throw httpError(409, "Config đã có trong user bot này");
+    const owner = await envOwner(nextEnv);
+    if (owner) throw httpError(409, "Config đang thuộc user bot khác");
+    const taken = await AccountConfig.findOne({ env: nextEnv }).select("env").lean();
+    if (taken) throw httpError(409, "Tên config đã tồn tại");
+
+    const source = await AccountConfig.findOne({ env: sourceEnv }).lean();
+    if (!source) throw httpError(404, "Không tìm thấy config");
+    const copy = { ...source };
+    delete copy._id;
+    delete copy.createdAt;
+    delete copy.updatedAt;
+    copy.env = nextEnv;
+    copy.sync_from = null;
+    copy.sync_except = [];
+    copy.sync_scale = false;
+    copy.sync_margin_ratio = 0;
+    copy.sync_wallet_bal = 0;
+    copy.sync_size = null;
+    try {
+        await AccountConfig.create(copy);
+    } catch (error) {
+        if (error?.code === 11000) throw httpError(409, "Tên config đã tồn tại");
+        throw error;
+    }
+    targetBot.accounts = [...(targetBot.accounts || []), nextEnv];
+    await targetBot.save();
+    return { username: targetBot.username, env: nextEnv };
+}
+
 async function deleteAccount(actor, username, env, permission = PERMISSIONS.CONFIG_EDIT) {
     const bot = await requireBot(actor, username, permission);
     const accounts = bot.accounts || [];
@@ -198,4 +233,5 @@ module.exports = {
     addAccount,
     renameAccount,
     deleteAccount,
+    copyAccount,
 };
