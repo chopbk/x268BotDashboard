@@ -301,6 +301,11 @@ main:has(.config-screen) {
   margin: 8px 0;
 }
 
+.bot-access-bar { flex-wrap: wrap; align-items: end; }
+.bot-access-bar label { min-width: 180px; }
+.bot-list select { min-width: 150px; }
+tr.row-dirty td { background: rgba(255, 196, 87, 0.08); }
+
 .check-col { width: 36px; }
 
 .table-wrap input[type="checkbox"],
