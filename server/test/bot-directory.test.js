@@ -7,7 +7,7 @@ const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
 const { requirePermission } = require("../src/middleware/auth");
 const { PERMISSIONS } = require("../src/auth/access-control");
-const { addAccount, copyAccount, createBot, deleteAccount } = require("../src/lib/bot-directory");
+const { addAccount, copyAccount, createBot, deleteAccount, updateBotAccess } = require("../src/lib/bot-directory");
 
 function response() {
     return {
@@ -209,6 +209,33 @@ test("copyAccount rejects a target outside scope before writing", async () => {
     } finally {
         UserAccount.findOne = originalFind;
         AccountConfig.create = originalCreate;
+    }
+});
+
+test("updateBotAccess stores the active flag and rejects a non-boolean", async () => {
+    const originalFind = UserAccount.findOne;
+    const bot = {
+        username: "alpha",
+        accounts: [],
+        visibility: "public",
+        active: true,
+        async save() {
+            this.saved = true;
+        },
+    };
+    const admin = { role: "admin", id: "admin", botUsernames: [] };
+    UserAccount.findOne = (filter) => (filter.username === "alpha" ? query(bot) : query(null));
+    try {
+        const turnedOff = await updateBotAccess(admin, "alpha", { active: false });
+        assert.equal(bot.active, false);
+        assert.equal(bot.saved, true);
+        assert.equal(turnedOff.active, false);
+        await assert.rejects(() => updateBotAccess(admin, "alpha", { active: "no" }), (error) => {
+            assert.equal(error.status, 400);
+            return true;
+        });
+    } finally {
+        UserAccount.findOne = originalFind;
     }
 });
 

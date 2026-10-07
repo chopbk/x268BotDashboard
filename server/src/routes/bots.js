@@ -27,7 +27,7 @@ const router = express.Router();
 router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (req, res) => {
     try {
         const rows = await UserAccount.find()
-            .select("username accounts ownerUserId visibility")
+            .select("username accounts ownerUserId visibility active")
             .sort({ username: 1 })
             .lean();
         const bots = rows
@@ -37,6 +37,7 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (re
                 accounts: row.accounts || [],
                 ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null,
                 visibility: row.visibility || "public",
+                active: row.active !== false,
             }));
         res.json({ bots });
     } catch (error) {
@@ -133,7 +134,8 @@ router.patch(
 
 router.post("/", requireAuth, requirePermission(PERMISSIONS.BOTS_CREATE), requireAllScope(PERMISSIONS.BOTS_CREATE), async (req, res) => {
     try {
-        const bot = await createBot(req.webUser, normalizeName(req.body?.username), req.body?.visibility || "public");
+        const active = Object.prototype.hasOwnProperty.call(req.body || {}, "active") ? req.body.active : true;
+        const bot = await createBot(req.webUser, normalizeName(req.body?.username), req.body?.visibility || "public", active);
         await safeRecordAudit({ action: "bot.created", actor: req.webUser, targetType: "bot", target: bot, changes: { username: { from: null, to: bot.username } } });
         res.status(201).json({ bot });
     } catch (error) {
@@ -144,19 +146,20 @@ router.post("/", requireAuth, requirePermission(PERMISSIONS.BOTS_CREATE), requir
 router.patch("/:username", requireAuth, requirePermission(PERMISSIONS.BOTS_EDIT), async (req, res) => {
     try {
         const previousName = normalizeName(req.params.username);
-        const beforeAccess = await UserAccount.findOne({ username: previousName }).select("username ownerUserId visibility").lean();
+        const beforeAccess = await UserAccount.findOne({ username: previousName }).select("username ownerUserId visibility active").lean();
         const hasUsername = Object.prototype.hasOwnProperty.call(req.body || {}, "username");
         let bot = hasUsername ? await renameBot(req.webUser, previousName, normalizeName(req.body.username), PERMISSIONS.BOTS_EDIT) : null;
         const currentName = bot?.username || previousName;
-        if (Object.prototype.hasOwnProperty.call(req.body || {}, "visibility") || Object.prototype.hasOwnProperty.call(req.body || {}, "ownerUserId")) {
-            bot = await updateBotAccess(req.webUser, currentName, { visibility: req.body.visibility, ownerUserId: req.body.ownerUserId });
+        const body = req.body || {};
+        if (Object.prototype.hasOwnProperty.call(body, "visibility") || Object.prototype.hasOwnProperty.call(body, "ownerUserId") || Object.prototype.hasOwnProperty.call(body, "active")) {
+            bot = await updateBotAccess(req.webUser, currentName, { visibility: body.visibility, ownerUserId: body.ownerUserId, active: body.active });
         }
         if (!bot) throw Object.assign(new Error("Không có dữ liệu để cập nhật"), { status: 400 });
         if (previousName !== bot.username) await safeRecordAudit({ action: "bot.renamed", actor: req.webUser, targetType: "bot", target: bot, changes: { username: { from: previousName, to: bot.username } } });
         const accessChanges = buildChanges(
-            { ownerUserId: beforeAccess?.ownerUserId ? String(beforeAccess.ownerUserId) : null, visibility: beforeAccess?.visibility || "public" },
+            { ownerUserId: beforeAccess?.ownerUserId ? String(beforeAccess.ownerUserId) : null, visibility: beforeAccess?.visibility || "public", active: beforeAccess?.active !== false },
             bot,
-            ["ownerUserId", "visibility"]
+            ["ownerUserId", "visibility", "active"]
         );
         if (Object.keys(accessChanges).length) await safeRecordAudit({ action: "bot.access_updated", actor: req.webUser, targetType: "bot", target: bot, changes: accessChanges });
         res.json({ bot });

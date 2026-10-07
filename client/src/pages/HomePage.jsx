@@ -14,6 +14,18 @@ function matchesQuery(bot, query) {
   return (bot.accounts || []).some((account) => account.toLowerCase().includes(query));
 }
 
+function isActive(bot) {
+  return bot?.active !== false;
+}
+
+function draftFrom(bot) {
+  return {
+    visibility: bot?.visibility || "public",
+    ownerUserId: bot?.ownerUserId || "",
+    active: isActive(bot),
+  };
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const canCreateBot = can(user, "bots.create");
@@ -28,7 +40,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState("");
   const [newBotVisibility, setNewBotVisibility] = useState("public");
+  const [newBotActive, setNewBotActive] = useState(true);
   const [scope, setScope] = useState("");
+  const [activity, setActivity] = useState("on");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -38,9 +52,11 @@ export default function HomePage() {
     () =>
       bots.filter((bot) => {
         if (scope && (bot.visibility || "public") !== scope) return false;
+        if (activity === "on" && !isActive(bot)) return false;
+        if (activity === "off" && isActive(bot)) return false;
         return matchesQuery(bot, normalizedQuery);
       }),
-    [bots, normalizedQuery, scope]
+    [activity, bots, normalizedQuery, scope]
   );
   const visibleNames = visibleBots.map((bot) => bot.username);
   const allVisiblePicked =
@@ -65,12 +81,13 @@ export default function HomePage() {
   }
 
   function draftOf(bot) {
-    return drafts[bot.username] || { visibility: bot.visibility || "public", ownerUserId: bot.ownerUserId || "" };
+    return drafts[bot.username] || draftFrom(bot);
   }
 
   function isDirty(bot) {
     const draft = draftOf(bot);
     if ((draft.visibility || "public") !== (bot.visibility || "public")) return true;
+    if (isActive(draft) !== isActive(bot)) return true;
     return isAdmin && (draft.ownerUserId || "") !== (bot.ownerUserId || "");
   }
 
@@ -79,7 +96,7 @@ export default function HomePage() {
       const next = { ...prev };
       for (const name of names) {
         const bot = bots.find((item) => item.username === name);
-        const current = next[name] || { visibility: bot?.visibility || "public", ownerUserId: bot?.ownerUserId || "" };
+        const current = next[name] || draftFrom(bot);
         next[name] = { ...current, ...values };
       }
       return next;
@@ -88,7 +105,7 @@ export default function HomePage() {
 
   function rememberBots(rows) {
     setBots(rows);
-    setDrafts(Object.fromEntries(rows.map((bot) => [bot.username, { visibility: bot.visibility || "public", ownerUserId: bot.ownerUserId || "" }])));
+    setDrafts(Object.fromEntries(rows.map((bot) => [bot.username, draftFrom(bot)])));
   }
 
   function ownerLabel(id) {
@@ -140,9 +157,14 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">Đổi phạm vi và chủ sở hữu ngay trên danh sách. Chọn nhiều user, đặt giá trị, rồi bấm Lưu. Sửa mở trang config.</p>
+          <p className="muted">Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách. Mặc định chỉ hiện user đang active. Chọn nhiều user, đặt giá trị, rồi bấm Lưu.</p>
         </div>
         <div className="bot-list-tools">
+          <select value={activity} onChange={(event) => setActivity(event.target.value)} aria-label="Lọc active">
+            <option value="on">Đang active</option>
+            <option value="off">Không active</option>
+            <option value="">Mọi trạng thái</option>
+          </select>
           <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Lọc phạm vi">
             <option value="">Mọi phạm vi</option>
             <option value="public">Công khai</option>
@@ -164,7 +186,7 @@ export default function HomePage() {
             run(async () => {
               const data = await api("/api/bots", {
                 method: "POST",
-                body: { username: newUser, visibility: newBotVisibility },
+                body: { username: newUser, visibility: newBotVisibility, active: newBotActive },
               });
               setBots((prev) => {
                 const next = [...prev.filter((bot) => bot.username !== data.bot.username), data.bot].sort((a, b) =>
@@ -172,12 +194,13 @@ export default function HomePage() {
                 );
                 setDrafts((current) => ({
                   ...current,
-                  [data.bot.username]: { visibility: data.bot.visibility || "public", ownerUserId: data.bot.ownerUserId || "" },
+                  [data.bot.username]: draftFrom(data.bot),
                 }));
                 return next;
               });
               setNewUser("");
               setNewBotVisibility("public");
+              setNewBotActive(true);
             });
           }}
         >
@@ -197,6 +220,10 @@ export default function HomePage() {
                 : "Người có quyền xem tất cả vẫn thấy."}
             </small>
           </label>
+          <label className="check">
+            <input type="checkbox" checked={newBotActive} onChange={(event) => setNewBotActive(event.target.checked)} />
+            <span>Active</span>
+          </label>
           <button type="submit" disabled={busy}>
             Thêm
           </button>
@@ -214,6 +241,8 @@ export default function HomePage() {
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleNames))}>Chọn đang hiện</button>
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => (bot.visibility || "public") === "public").map((bot) => bot.username)))}>Chọn công khai</button>
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => bot.visibility === "private").map((bot) => bot.username)))}>Chọn riêng tư</button>
+            <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => isActive(bot)).map((bot) => bot.username)))}>Chọn active</button>
+            <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => !isActive(bot)).map((bot) => bot.username)))}>Chọn không active</button>
             <button type="button" className="ghost" disabled={!picked.size} onClick={() => setPicked(new Set())}>Bỏ chọn</button>
             <span className="muted">Đã chọn {picked.size}</span>
           </div>
@@ -233,6 +262,22 @@ export default function HomePage() {
                   <option value="">Giữ nguyên</option>
                   <option value="public">Công khai</option>
                   <option value="private">Riêng tư</option>
+                </select>
+              </label>
+              <label>
+                Đặt active
+                <select
+                  value=""
+                  disabled={busy || !picked.size}
+                  aria-label="Đặt active cho user đã chọn"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value) patchDraft([...picked], { active: value === "on" });
+                  }}
+                >
+                  <option value="">Giữ nguyên</option>
+                  <option value="on">Active</option>
+                  <option value="off">Không active</option>
                 </select>
               </label>
               {isAdmin ? (
@@ -267,6 +312,7 @@ export default function HomePage() {
                         const draft = draftOf(bot);
                         const body = {};
                         if ((draft.visibility || "public") !== (bot.visibility || "public")) body.visibility = draft.visibility;
+                        if (isActive(draft) !== isActive(bot)) body.active = isActive(draft);
                         if (isAdmin && (draft.ownerUserId || "") !== (bot.ownerUserId || "")) body.ownerUserId = draft.ownerUserId || null;
                         if (!Object.keys(body).length) continue;
                         const data = await api(`/api/bots/${encodeURIComponent(bot.username)}`, { method: "PATCH", body });
@@ -277,7 +323,7 @@ export default function HomePage() {
                         setBots((prev) => prev.map((item) => saved.find((bot) => bot.username === item.username) || item));
                         setDrafts((prev) => {
                           const next = { ...prev };
-                          for (const bot of saved) next[bot.username] = { visibility: bot.visibility || "public", ownerUserId: bot.ownerUserId || "" };
+                          for (const bot of saved) next[bot.username] = draftFrom(bot);
                           return next;
                         });
                       }
@@ -343,6 +389,7 @@ export default function HomePage() {
                   </th>
                 ) : null}
                 <th>User bot</th>
+                <th>Active</th>
                 <th>Phạm vi</th>
                 <th>Chủ sở hữu</th>
                 <th>Số config</th>
@@ -357,7 +404,7 @@ export default function HomePage() {
                   ? (bot.accounts || []).filter((account) => account.toLowerCase().includes(normalizedQuery))
                   : [];
                 return (
-                  <tr key={bot.username} className={isDirty(bot) ? "row-dirty" : undefined}>
+                  <tr key={bot.username} className={[isDirty(bot) ? "row-dirty" : "", draft.active === false ? "row-off" : ""].filter(Boolean).join(" ") || undefined}>
                     {canPick ? (
                       <td className="check-col">
                         <input
@@ -369,6 +416,17 @@ export default function HomePage() {
                       </td>
                     ) : null}
                     <td>{bot.username}</td>
+                    <td>
+                      {canEditBot ? (
+                        <input
+                          type="checkbox"
+                          checked={draft.active !== false}
+                          disabled={busy}
+                          aria-label={`Active ${bot.username}`}
+                          onChange={(event) => patchDraft([bot.username], { active: event.target.checked })}
+                        />
+                      ) : isActive(bot) ? "Bật" : "Tắt"}
+                    </td>
                     <td>
                       {canEditBot ? (
                         <select

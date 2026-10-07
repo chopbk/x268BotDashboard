@@ -121,6 +121,8 @@ endpoint, không được hiểu permission xem là quyền trả raw secret m�
 - `user_accounts.visibility=private` là lớp bảo vệ bổ sung nằm trên permission scope.
   User thường có scope `all` vẫn không thấy tài nguyên private, trừ khi là owner hoặc
   được gán đích danh. Admin luôn thấy. Document cũ thiếu field được coi là `public`.
+- `user_accounts.active` là cờ hiển thị trên tab Bot, không phải lớp quyền. Thiếu field
+  được coi là đang active. Tắt cờ không chặn API và không đổi lệnh của bot.
 - `pending` không có `bots.view`, nên không được gọi `/api/bots`, kể cả nếu dữ liệu lỗi
   khiến `botUsernames` không rỗng.
 - Không được chỉ lọc bot ở client. Query và kết quả phải được giới hạn ở server.
@@ -292,7 +294,7 @@ Các invariant:
 | `GET /api/account-statics/:id` | `requireAuth` | `statistics.view` + scope bot; chi tiết một lệnh `account_statics`. Query `username` bắt buộc; lệnh phải thuộc account config của user bot đó |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
 | `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
-| `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility, chỉ admin đổi owner |
+| `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility/active, chỉ admin đổi owner |
 | `DELETE /api/bots/:username` | `requireAuth` | `bots.delete` + scope riêng |
 | `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; thêm env, tạo `Account_Config` nếu chưa có |
 | `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
@@ -462,7 +464,7 @@ Mọi thay đổi user quan trọng phải được ghi ở server sau khi mutat
 - `user.updated`: admin sửa profile, role, permission, bot scope, trạng thái hoặc password;
 - `user.username_linked`: pending legacy user được gắn username trong registration retry.
 - `bot.created`, `bot.renamed`, `bot.deleted`: thay đổi user bot;
-- `bot.access_updated`: thay đổi owner hoặc trạng thái public/private của bot;
+- `bot.access_updated`: thay đổi owner, public/private hoặc cờ active của bot;
 - `bot.account_added`, `bot.account_renamed`, `bot.account_deleted`: thay đổi config/env
   được gắn vào bot;
 - `credential.created`, `credential.updated`, `credential.deleted`: thay đổi cấu hình API.

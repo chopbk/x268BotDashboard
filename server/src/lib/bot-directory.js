@@ -23,6 +23,7 @@ function toBot(doc) {
         accounts: doc.accounts || [],
         ownerUserId: doc.ownerUserId ? String(doc.ownerUserId) : null,
         visibility: doc.visibility || "public",
+        active: doc.active !== false,
     };
 }
 
@@ -46,13 +47,14 @@ async function envOwner(env, exceptUsername) {
     return UserAccount.findOne(filter).select("username").lean();
 }
 
-async function createBot(actor, username, visibility = "public") {
+async function createBot(actor, username, visibility = "public", active = true) {
     assertName(username, "Tên user bot");
     if (!["public", "private"].includes(visibility)) throw httpError(400, "Visibility không hợp lệ");
+    if (typeof active !== "boolean") throw httpError(400, "Cờ active không hợp lệ");
     const existing = await findBot(username);
     if (existing) throw httpError(409, "User bot đã tồn tại");
     try {
-        const created = await UserAccount.create({ username, accounts: [], ownerUserId: actor?.id || null, visibility });
+        const created = await UserAccount.create({ username, accounts: [], ownerUserId: actor?.id || null, visibility, active });
         return toBot(created);
     } catch (error) {
         if (error?.code === 11000) throw httpError(409, "User bot đã tồn tại");
@@ -84,11 +86,15 @@ async function renameBot(actor, username, nextName, permission = PERMISSIONS.BOT
     return toBot(bot);
 }
 
-async function updateBotAccess(actor, username, { visibility, ownerUserId }) {
+async function updateBotAccess(actor, username, { visibility, ownerUserId, active }) {
     const bot = await requireBot(actor, username, PERMISSIONS.BOTS_EDIT);
     if (visibility !== undefined) {
         if (!["public", "private"].includes(visibility)) throw httpError(400, "Visibility không hợp lệ");
         bot.visibility = visibility;
+    }
+    if (active !== undefined) {
+        if (typeof active !== "boolean") throw httpError(400, "Cờ active không hợp lệ");
+        bot.active = active;
     }
     if (ownerUserId !== undefined) {
         if (actor?.role !== "admin") throw httpError(403, "Chỉ admin được đổi chủ sở hữu");

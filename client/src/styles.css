@@ -313,6 +313,7 @@ main:has(.config-screen) {
 .bot-access-bar label { min-width: 180px; }
 .bot-list select { min-width: 150px; }
 tr.row-dirty td { background: rgba(255, 196, 87, 0.08); }
+tr.row-off td { color: var(--muted); }
 
 .check-col { width: 36px; }
 

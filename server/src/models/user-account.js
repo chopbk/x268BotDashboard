@@ -18,6 +18,10 @@ const UserAccountSchema = new mongoose.Schema(
             enum: ["public", "private"],
             default: "public",
         },
+        active: {
+            type: Boolean,
+            default: true,
+        },
     },
     {
         versionKey: false,
