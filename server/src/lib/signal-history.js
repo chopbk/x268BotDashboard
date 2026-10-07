@@ -1,38 +1,36 @@
-const AccountConfig = require("../models/account-config");
 const SignalInfo = require("../models/signal-info");
-const { PERMISSIONS } = require("../auth/access-control");
-const { requireBot } = require("./bot-directory");
-const { httpError } = require("./http");
 const { openTimeFilter, openTimeRange } = require("./open-time-range");
+
+const SESSIONS = [
+    { id: "Á", label: "Phiên Á", from: 7, to: 15, hours: "07:00–15:00" },
+    { id: "Âu", label: "Phiên Âu", from: 15, to: 21, hours: "15:00–21:00" },
+    { id: "Mỹ", label: "Phiên Mỹ", from: 21, to: 7, hours: "21:00–07:00" },
+];
 
 function escapeRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function signalNamesForBot(actor, username, env) {
-    const bot = await requireBot(actor, username, PERMISSIONS.SIGNALS_HISTORY);
-    const envs = env ? [env] : (bot.accounts || []);
-    if (env && !(bot.accounts || []).includes(env)) throw httpError(404, "Config không thuộc user bot này");
-    const configs = await AccountConfig.find({ env: { $in: envs } }).select("env signals").lean();
-    const names = [...new Set(configs.flatMap((row) => row.signals || []).filter(Boolean))];
-    return { names, envs };
+function sessionId(hour) {
+    const value = Number(hour);
+    if (value >= 7 && value < 15) return "Á";
+    if (value >= 15 && value < 21) return "Âu";
+    return "Mỹ";
 }
 
-async function listSignalHistory(actor, input = {}) {
-    const username = String(input.username || "").trim();
-    const env = String(input.env || "").trim();
-    if (!username) throw httpError(400, "Thiếu user bot");
-    const { names, envs } = await signalNamesForBot(actor, username, env || null);
+function sessionSummary(rows) {
+    const counts = Object.fromEntries(SESSIONS.map((item) => [item.id, 0]));
+    for (const row of rows || []) counts[row._id] = row.count || 0;
+    const sessions = SESSIONS.map((item) => ({ ...item, count: counts[item.id] || 0 }));
+    const topSession = sessions.reduce((best, item) => (item.count > best.count ? item : best), sessions[0]);
+    return { sessions, topSession: topSession.count ? topSession : null };
+}
+
+async function listSignalHistory(_actor, input = {}) {
     const page = Math.max(1, Number.parseInt(input.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(input.limit, 10) || 50));
     const range = openTimeRange(input);
-    if (!names.length) {
-        return { rows: [], stats: { total: 0, long: 0, short: 0, bySignal: [] }, page, limit, total: 0, username, env: env || null, envs, signals: [], from: range.from, to: range.to };
-    }
-
-    const signalVariants = [...new Set(names.flatMap((name) => [name, String(name).toUpperCase(), String(name).toLowerCase()]))];
-    const filter = { signal: { $in: signalVariants } };
-    filter.openTime = openTimeFilter(range);
+    const filter = { openTime: openTimeFilter(range) };
     if (["LONG", "SHORT"].includes(input.side)) filter.side = input.side;
     const query = String(input.q || "").trim();
     if (query) filter.symbol = new RegExp(escapeRegex(query), "i");
@@ -40,23 +38,64 @@ async function listSignalHistory(actor, input = {}) {
     const [rows, total, grouped] = await Promise.all([
         SignalInfo.find(filter).select("signal status side symbol type openTime createdAt").sort({ openTime: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
         SignalInfo.countDocuments(filter),
-        SignalInfo.aggregate([{ $match: filter }, { $group: { _id: { signal: "$signal", side: "$side" }, count: { $sum: 1 } } }]),
+        SignalInfo.aggregate([
+            { $match: filter },
+            {
+                $facet: {
+                    bySignalSide: [{ $group: { _id: { signal: "$signal", side: "$side" }, count: { $sum: 1 } } }],
+                    byType: [{ $group: { _id: { $ifNull: ["$type", "SCALP"] }, count: { $sum: 1 } } }],
+                    bySymbol: [{ $group: { _id: "$symbol", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }],
+                    bySession: [
+                        { $project: { hour: { $hour: { date: "$openTime", timezone: "Asia/Ho_Chi_Minh" } } } },
+                        {
+                            $group: {
+                                _id: {
+                                    $switch: {
+                                        branches: [
+                                            { case: { $and: [{ $gte: ["$hour", 7] }, { $lt: ["$hour", 15] }] }, then: "Á" },
+                                            { case: { $and: [{ $gte: ["$hour", 15] }, { $lt: ["$hour", 21] }] }, then: "Âu" },
+                                        ],
+                                        default: "Mỹ",
+                                    },
+                                },
+                                count: { $sum: 1 },
+                            },
+                        },
+                    ],
+                },
+            },
+        ]),
     ]);
+    const facet = grouped[0] || {};
     const bySignalMap = new Map();
     let long = 0;
     let short = 0;
-    for (const item of grouped) {
+    for (const item of facet.bySignalSide || []) {
         const count = item.count || 0;
         const signal = item._id?.signal || "UNKNOWN";
         bySignalMap.set(signal, (bySignalMap.get(signal) || 0) + count);
         if (item._id?.side === "LONG") long += count;
         if (item._id?.side === "SHORT") short += count;
     }
+    const { sessions, topSession } = sessionSummary(facet.bySession);
     return {
         rows: rows.map((row) => ({ id: String(row._id), signal: row.signal, status: row.status, side: row.side, symbol: row.symbol, type: row.type, openTime: row.openTime, createdAt: row.createdAt })),
-        stats: { total, long, short, bySignal: [...bySignalMap].map(([signal, count]) => ({ signal, count })).sort((a, b) => b.count - a.count) },
-        page, limit, total, username, env: env || null, envs, signals: names, from: range.from, to: range.to,
+        stats: {
+            total,
+            long,
+            short,
+            bySignal: [...bySignalMap].map(([signal, count]) => ({ signal, count })).sort((a, b) => b.count - a.count),
+            byType: (facet.byType || []).map((row) => ({ type: row._id || "SCALP", count: row.count })).sort((a, b) => b.count - a.count),
+            bySymbol: (facet.bySymbol || []).map((row) => ({ symbol: row._id || "—", count: row.count })),
+            sessions,
+            topSession,
+        },
+        page,
+        limit,
+        total,
+        from: range.from,
+        to: range.to,
     };
 }
 
-module.exports = { signalNamesForBot, listSignalHistory };
+module.exports = { SESSIONS, sessionId, listSignalHistory };

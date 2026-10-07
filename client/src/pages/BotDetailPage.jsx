@@ -138,7 +138,7 @@ export default function BotDetailPage() {
         </p>
         <h1>{bot?.username || username}</h1>
         <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Bấm Sửa để đổi các mục đó.</p>
-        {canViewSignalHistory ? <p><Link to={`/signals?username=${encodeURIComponent(username)}`}>Xem lịch sử signal của User bot</Link></p> : null}
+        {canViewSignalHistory ? <p><Link to="/signals">Xem lịch sử signal hệ thống</Link></p> : null}
         {canViewStatistics ? <p><Link to={`/signals?view=statics&username=${encodeURIComponent(username)}`}>Xem Account Static của User bot</Link></p> : null}
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}
@@ -171,9 +171,12 @@ export default function BotDetailPage() {
               <button type="submit" disabled={busy}>
                 Lưu thông tin bot
               </button>
-              <label className="check">
-                <input type="checkbox" checked={visibility === "private"} onChange={(event) => setVisibility(event.target.checked ? "private" : "public")} />
-                Riêng tư
+              <label>
+                Phạm vi
+                <select value={visibility === "private" ? "private" : "public"} onChange={(event) => setVisibility(event.target.value)} aria-label="Phạm vi bot">
+                  <option value="public">Công khai</option>
+                  <option value="private">Riêng tư</option>
+                </select>
               </label>
               {user?.role === "admin" ? (
                 <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} aria-label="Chủ sở hữu bot">

@@ -2,10 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 
-const UserAccount = require("../src/models/user-account");
-const AccountConfig = require("../src/models/account-config");
 const SignalInfo = require("../src/models/signal-info");
-const { listSignalHistory } = require("../src/lib/signal-history");
+const { listSignalHistory, sessionId } = require("../src/lib/signal-history");
 
 function query(value) {
     return {
@@ -15,74 +13,65 @@ function query(value) {
     };
 }
 
-test("account signal history uses only signals configured for that env", async () => {
-    const originals = {
-        user: UserAccount.findOne,
-        config: AccountConfig.find,
-        signal: SignalInfo.find,
-        count: SignalInfo.countDocuments,
-        aggregate: SignalInfo.aggregate,
-    };
+test("signal history lists the system log inside the default 3 day window", async () => {
+    const originals = { signal: SignalInfo.find, count: SignalInfo.countDocuments, aggregate: SignalInfo.aggregate };
     let signalFilter;
-    UserAccount.findOne = () => query({ username: "alpha", accounts: ["a1", "a2"], visibility: "public" });
-    AccountConfig.find = () => query([{ env: "a1", signals: ["ROSE", "BULL"] }]);
-    SignalInfo.find = (filter) => { signalFilter = filter; return query([{ _id: "1", signal: "ROSE", symbol: "BTCUSDT", side: "LONG", status: "CLOSE", openTime: new Date("2026-01-01") }]); };
-    SignalInfo.countDocuments = async () => 1;
-    SignalInfo.aggregate = async () => [{ _id: { signal: "ROSE", side: "LONG" }, count: 1 }];
+    SignalInfo.find = (filter) => {
+        signalFilter = filter;
+        return query([{ _id: "1", signal: "ROSE", symbol: "BTCUSDT", side: "LONG", type: "SCALP", status: "CLOSE", openTime: new Date() }]);
+    };
+    SignalInfo.countDocuments = async () => 4;
+    SignalInfo.aggregate = async () => [{
+        bySignalSide: [{ _id: { signal: "ROSE", side: "LONG" }, count: 3 }, { _id: { signal: "BULL", side: "SHORT" }, count: 1 }],
+        byType: [{ _id: "SCALP", count: 3 }, { _id: "SWING", count: 1 }],
+        bySymbol: [{ _id: "BTCUSDT", count: 2 }, { _id: "ETHUSDT", count: 2 }],
+        bySession: [{ _id: "Á", count: 3 }, { _id: "Mỹ", count: 1 }],
+    }];
     try {
-        const result = await listSignalHistory({ id: "u1", role: "viewer", botUsernames: ["alpha"] }, { username: "alpha", env: "a1" });
-        assert.equal(result.total, 1);
-        assert.equal(result.stats.long, 1);
-        assert.deepEqual(result.envs, ["a1"]);
-        assert.equal(signalFilter.signal.$in.includes("ROSE"), true);
-        assert.equal(signalFilter.signal.$in.includes("BULL"), true);
+        const result = await listSignalHistory({ role: "viewer" }, {});
+        assert.equal(result.total, 4);
+        assert.equal(result.stats.long, 3);
+        assert.equal(result.stats.short, 1);
+        assert.equal(result.stats.byType[0].type, "SCALP");
+        assert.equal(result.stats.bySymbol[0].symbol, "BTCUSDT");
+        assert.equal(result.stats.topSession.id, "Á");
+        assert.equal(signalFilter.signal, undefined);
         const span = Date.now() - signalFilter.openTime.$gte.getTime();
         assert.ok(span > 2.9 * 24 * 60 * 60 * 1000 && span < 3.1 * 24 * 60 * 60 * 1000);
-        assert.equal(signalFilter.openTime.$lte, undefined);
     } finally {
-        UserAccount.findOne = originals.user;
-        AccountConfig.find = originals.config;
         SignalInfo.find = originals.signal;
         SignalInfo.countDocuments = originals.count;
         SignalInfo.aggregate = originals.aggregate;
     }
 });
 
-test("signal history uses the requested time range", async () => {
-    const originals = { user: UserAccount.findOne, config: AccountConfig.find, signal: SignalInfo.find, count: SignalInfo.countDocuments, aggregate: SignalInfo.aggregate };
+test("signal history uses the requested time range and symbol", async () => {
+    const originals = { signal: SignalInfo.find, count: SignalInfo.countDocuments, aggregate: SignalInfo.aggregate };
     let signalFilter;
-    UserAccount.findOne = () => query({ username: "alpha", accounts: ["a1"], visibility: "public" });
-    AccountConfig.find = () => query([{ env: "a1", signals: ["ROSE"] }]);
     SignalInfo.find = (filter) => { signalFilter = filter; return query([]); };
     SignalInfo.countDocuments = async () => 0;
-    SignalInfo.aggregate = async () => [];
+    SignalInfo.aggregate = async () => [{ bySignalSide: [], byType: [], bySymbol: [], bySession: [] }];
     try {
-        await listSignalHistory({ role: "viewer", botUsernames: ["alpha"] }, {
-            username: "alpha",
-            env: "a1",
+        await listSignalHistory({}, {
             from: "2026-10-01T00:00:00.000Z",
             to: "2026-10-04T00:00:00.000Z",
+            q: "btc",
         });
         assert.equal(signalFilter.openTime.$gte.toISOString(), "2026-10-01T00:00:00.000Z");
         assert.equal(signalFilter.openTime.$lte.toISOString(), "2026-10-04T00:00:00.000Z");
+        assert.match(String(signalFilter.symbol), /btc/i);
     } finally {
-        UserAccount.findOne = originals.user;
-        AccountConfig.find = originals.config;
         SignalInfo.find = originals.signal;
         SignalInfo.countDocuments = originals.count;
         SignalInfo.aggregate = originals.aggregate;
     }
 });
 
-test("signal history rejects a config outside the selected user bot", async () => {
-    const original = UserAccount.findOne;
-    UserAccount.findOne = () => query({ username: "alpha", accounts: ["a1"], visibility: "public" });
-    try {
-        await assert.rejects(
-            () => listSignalHistory({ role: "viewer", botUsernames: ["alpha"] }, { username: "alpha", env: "other" }),
-            (error) => error.status === 404
-        );
-    } finally {
-        UserAccount.findOne = original;
-    }
+test("session hours follow Vietnam time", () => {
+    assert.equal(sessionId(7), "Á");
+    assert.equal(sessionId(14), "Á");
+    assert.equal(sessionId(15), "Âu");
+    assert.equal(sessionId(20), "Âu");
+    assert.equal(sessionId(21), "Mỹ");
+    assert.equal(sessionId(2), "Mỹ");
 });

@@ -406,7 +406,7 @@ export default function AccountConfigPage() {
           </div>
         ) : null}
         {canViewSignalHistory ? (
-          <Link className="ghost link-btn" to={`/signals?username=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`}>
+          <Link className="ghost link-btn" to="/signals">
             Lịch sử signal
           </Link>
         ) : null}

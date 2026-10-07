@@ -287,7 +287,7 @@ Các invariant:
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
 | `GET /api/summary` | `requireAuth` | `summary.view`; mặc định 3 ngày, hỗ trợ `range=3d\|7d\|30d\|90d\|all` và cache server 60 giây; trả tổng bot public/private, config bật/tắt, signal, position và hiệu suất giao dịch, không trả tên bot/config/user |
-| `GET /api/signal-history` | `requireAuth` | `signals.history` + scope bot; lịch sử theo signal được cấu hình của User bot/Account Config từ `signal_infos`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
+| `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
 | `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng |
 | `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
@@ -362,12 +362,12 @@ UserApisPage / UserApiDetailPage
   -> user_apis, không trả raw secret
 ```
 
-SignalHistoryPage dùng hai nguồn tách biệt: `signal_infos` là lịch sử signal nhận được;
-`account_statics` là kết quả giao dịch thực tế của từng `env`. Không suy diễn profit từ
-SignalInfo và không dùng `Signal_History` legacy làm nguồn chuẩn. Khi query theo User bot,
-server lấy hợp các env thuộc `user_accounts.accounts`; khi query theo Account Config,
-server bắt buộc env đó thuộc User bot đã được authorize. UI có tab riêng để lọc/phân trang,
-đồng thời trang Config đặt link sâu tới đúng user/env.
+SignalHistoryPage dùng hai nguồn tách biệt: `signal_infos` là nhật ký signal của cả hệ thống,
+không lọc theo user bot hay account config; `account_statics` là kết quả giao dịch thực tế
+của từng `env`. Không suy diễn profit từ SignalInfo và không dùng `Signal_History` legacy
+làm nguồn chuẩn. Tab Account Static query theo User bot thì lấy hợp các env thuộc
+`user_accounts.accounts`; query theo Account Config thì env đó phải thuộc User bot đã được
+authorize. UI có tab riêng để lọc/phân trang.
 
 File chuẩn:
 

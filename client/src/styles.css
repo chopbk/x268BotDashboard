@@ -441,6 +441,16 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .summary-updated { margin-top: 18px; text-align: right; font-size: 0.82rem; }
 .signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .history-range { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+button.symbol-chip {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+button.symbol-chip.active, button.symbol-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-2); }
 .signal-stats { margin-bottom: 12px; }
 .signal-chips { margin: 0 0 12px; }
 .signal-table { max-height: 620px; }
