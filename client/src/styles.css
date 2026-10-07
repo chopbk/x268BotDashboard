@@ -369,7 +369,11 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
 }
 
 .account-filters label { flex: 1; min-width: 110px; font-size: 0.78rem; gap: 3px; }
-.account-filters select { padding: 5px 8px; }
+.account-filters select, .account-filters input { padding: 5px 8px; }
+.account-filters label.volume-filter { flex: 1.6; min-width: 220px; }
+.volume-filter-row { display: flex; gap: 4px; }
+.volume-filter-row select { width: 104px; flex: 0 0 104px; }
+.volume-filter-row input { min-width: 0; }
 
 .config-section {
   display: inline-block;

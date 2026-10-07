@@ -45,21 +45,30 @@ function summaryText(row) {
   return parts.join(" · ");
 }
 
-function uniqueSorted(values, numeric) {
-  const items = [...new Set(values.filter((value) => value != null && value !== ""))];
-  if (numeric) return items.sort((a, b) => Number(a) - Number(b));
-  return items.sort((a, b) => String(a).localeCompare(String(b)));
+function uniqueSorted(values) {
+  return [...new Set(values.filter((value) => value != null && value !== ""))].sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function volumeLimit(filters) {
+  if (filters.volume === "" || filters.volume == null) return null;
+  const n = Number(filters.volume);
+  return Number.isFinite(n) ? n : null;
 }
 
 function matchesConfig(row, filters) {
-  const active = filters.signal || filters.long || filters.on || filters.volume || filters.mode || filters.type;
+  const limit = volumeLimit(filters);
+  const active = filters.signal || filters.long || filters.on || limit != null || filters.mode || filters.type;
   if (!row || row.missing) return !active;
   if (filters.signal && !(row.signals || []).some((name) => String(name).toUpperCase() === filters.signal.toUpperCase())) return false;
   if (filters.long === "on" && row.long !== true) return false;
   if (filters.long === "off" && row.long !== false) return false;
   if (filters.on === "on" && row.on !== true) return false;
   if (filters.on === "off" && row.on !== false) return false;
-  if (filters.volume !== "" && String(row.volume) !== filters.volume) return false;
+  if (limit != null) {
+    const volume = Number(row.volume);
+    if (!Number.isFinite(volume)) return false;
+    if (filters.volumeOp === "lt" ? volume >= limit : volume <= limit) return false;
+  }
   if (filters.mode && row.mode !== filters.mode) return false;
   if (filters.type && row.openType !== filters.type) return false;
   return true;
@@ -87,13 +96,12 @@ export default function BotDetailPage() {
   const [envDraft, setEnvDraft] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [summaries, setSummaries] = useState({});
-  const [filters, setFilters] = useState({ signal: "", long: "", on: "", volume: "", mode: "", type: "" });
+  const [filters, setFilters] = useState({ signal: "", long: "", on: "", volume: "", volumeOp: "gt", mode: "", type: "" });
   const [busy, setBusy] = useState(false);
   const accounts = bot?.accounts || [];
   const visibleAccounts = accounts.filter((account) => account === editEnv || matchesConfig(summaries[account], filters));
   const allPicked = visibleAccounts.length > 0 && visibleAccounts.every((account) => picked.has(account));
   const signalOptions = uniqueSorted(accounts.flatMap((account) => summaries[account]?.signals || []));
-  const volumeOptions = uniqueSorted(accounts.map((account) => summaries[account]?.volume).filter((value) => value != null).map(String), true);
   const modeOptions = uniqueSorted(accounts.map((account) => summaries[account]?.mode));
   const typeOptions = uniqueSorted(accounts.map((account) => summaries[account]?.openType));
 
@@ -293,12 +301,22 @@ export default function BotDetailPage() {
                   <option value="off">Tắt</option>
                 </select>
               </label>
-              <label>
+              <label className="volume-filter">
                 Volume
-                <select value={filters.volume} onChange={(event) => setFilters((prev) => ({ ...prev, volume: event.target.value }))}>
-                  <option value="">Tất cả</option>
-                  {volumeOptions.map((value) => <option key={value} value={value}>{money(value)}</option>)}
-                </select>
+                <span className="volume-filter-row">
+                  <select aria-label="So với volume" value={filters.volumeOp === "lt" ? "lt" : "gt"} onChange={(event) => setFilters((prev) => ({ ...prev, volumeOp: event.target.value }))}>
+                    <option value="gt">Lớn hơn</option>
+                    <option value="lt">Bé hơn</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="any"
+                    value={filters.volume}
+                    placeholder="Nhập số"
+                    aria-label="Ngưỡng volume"
+                    onChange={(event) => setFilters((prev) => ({ ...prev, volume: event.target.value }))}
+                  />
+                </span>
               </label>
               <label>
                 Mode
