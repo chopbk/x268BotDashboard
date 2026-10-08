@@ -7,7 +7,9 @@ const UserAccount = require("../src/models/user-account");
 const MonitorPosition = require("../src/models/monitor-position");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
 const { buildPositionView, loadPositions, estimatedPnl } = require("../src/lib/positions");
-const { createPositionHub, applyAccountUpdate, applyOrderUpdate } = require("../src/lib/position-feed");
+const { applyAccountUpdate, applyOrderUpdate } = require("../src/lib/position-feed");
+const { parseNotice, decideUpdate } = require("../src/lib/position-cache");
+const { watch, resetLive, bindRedis } = require("../src/lib/position-live");
 
 const actor = { id: "u1", role: "operator", username: "me", email: "me@x.com", botUsernames: ["V"] };
 const now = new Date("2026-10-08T12:00:00Z").getTime();
@@ -153,73 +155,66 @@ test("positions stay inside the actor scope and do not leak another account", as
     }
 });
 
-test("a shared account feed reconnects without dropping or duplicating the snapshot", async () => {
-    let userHandlers = null;
-    let opens = 0;
-    let closes = 0;
-    let snapshots = 0;
-    let timerId = 1;
-    const timers = new Map();
-    const events = [];
-    const hub = createPositionHub({
-        loadSnapshot: async () => {
-            snapshots += 1;
-            return {
+test("pubsub notice is only a version marker and a gap keeps the last snapshot", async () => {
+    assert.deepEqual(parseNotice(JSON.stringify({
+        account: "V",
+        version: 4,
+        at: "2026-10-08T12:00:00Z",
+        positions: [{ symbol: "ETHUSDT", api_secret: "leak" }],
+        listenKey: "secret",
+    })), { account: "V", version: 4, at: "2026-10-08T12:00:00Z" });
+    const stored = { version: 2, positions: [{ symbol: "BTCUSDT" }] };
+    assert.equal(decideUpdate(stored, { version: 5 }, stored).action, "reread");
+    assert.equal(decideUpdate(stored, { version: 5 }, null).action, "keep");
+    assert.equal(decideUpdate({ version: 3 }, null, { version: 3, positions: [{ symbol: "BTCUSDT" }] }).action, "same");
+    assert.equal(decideUpdate({ version: 3 }, null, { version: 4, positions: [{ symbol: "BTCUSDT" }] }).action, "send");
+
+    resetLive();
+    let version = 4;
+    let handler = null;
+    const subs = [];
+    bindRedis({
+        isReady: true,
+        async get() {
+            return JSON.stringify({
+                version,
+                at: new Date().toISOString(),
+                source: "monitor",
+                account: "V",
                 positions: [{ symbol: "BTCUSDT", positionAmt: "1", positionSide: "LONG", entryPrice: "10", markPrice: "11", unRealizedProfit: "1" }],
-                openOrders: [{ orderId: 1, symbol: "BTCUSDT", status: "NEW" }],
-                algoOrders: [],
+                monitors: [],
+            });
+        },
+        duplicate() {
+            return {
+                on() {},
+                async connect() { this.isReady = true; return this; },
+                async subscribe(channel, fn) { subs.push(channel); handler = fn; },
+                async unsubscribe(channel) { subs.splice(subs.indexOf(channel), 1); handler = null; },
             };
         },
-        openListenKey: async () => {
-            opens += 1;
-            return { listenKey: "secret-key", close: async () => { closes += 1; } };
-        },
-        connect: (url, handlers) => {
-            if (String(url).includes("private")) userHandlers = handlers;
-            return { close() {} };
-        },
-        graceMs: 1000,
-        setTimer: (fn, ms) => {
-            const id = timerId;
-            timerId += 1;
-            timers.set(id, { fn, ms });
-            return id;
-        },
-        clearTimer: (id) => timers.delete(id),
     });
-    function fire(ms) {
-        const match = [...timers.entries()].find(([, timer]) => timer.ms === ms);
-        assert.ok(match, `không thấy timer ${ms}`);
-        timers.delete(match[0]);
-        match[1].fn();
-    }
-    const stopA = hub.watch("V", (snap) => events.push(snap));
-    const stopB = hub.watch("V", () => {});
+    const seen = [];
+    const stopA = watch("V", (snap) => seen.push(snap));
+    const stopB = watch("V", () => {});
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(opens, 1);
-    assert.equal(snapshots >= 1, true);
-    userHandlers.onOpen();
-    userHandlers.onMessage({ e: "ORDER_TRADE_UPDATE", o: { i: 1, X: "FILLED", s: "BTCUSDT" } });
-    userHandlers.onClose();
-    const stale = events.at(-1);
-    assert.equal(stale.stale, true);
-    assert.equal(stale.positions.length, 1);
-    assert.equal(stale.openOrders.length, 0);
-    assert.equal(JSON.stringify(events).includes("secret-key"), false);
-    fire(1000);
+    assert.deepEqual(subs, ["wb:pos:notify:V"]);
+    assert.equal(seen.at(-1).version, 4);
+    assert.equal(seen.at(-1).positions.length, 1);
+    version = 4;
+    handler(JSON.stringify({ account: "V", version: 9, positions: [{ api_secret: "leak" }] }));
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(opens, 2);
-    assert.equal(snapshots >= 2, true);
-    assert.equal(hub.cached("V").positions.length, 1);
+    assert.equal(seen.at(-1).stale, true);
+    assert.equal(seen.at(-1).positions[0].symbol, "BTCUSDT");
+    assert.equal(JSON.stringify(seen).includes("leak"), false);
     stopA();
-    assert.equal(closes, 1);
+    assert.equal(subs.length, 1);
     stopB();
-    fire(1000);
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(closes, 2);
-    assert.equal(hub.cached("OTHER"), null);
+    assert.equal(subs.length, 0);
+    resetLive();
 });
 
 test("account and order events patch the cached position", () => {

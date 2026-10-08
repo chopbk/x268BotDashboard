@@ -83,15 +83,17 @@ export default function PositionsPage() {
   useEscape(Boolean(panel), closePanel);
 
   useEffect(() => {
-    let source = null;
+    let socket = null;
     let poll = null;
+    let retry = null;
     let gone = false;
+    let attempt = 0;
 
     function apply(view) {
-      if (gone) return;
+      if (gone || !view) return;
       setPayload((prev) => {
         if (view?.stale && !view.rows?.length && prev?.rows?.length) {
-          return { ...prev, stale: true, connection: "stale" };
+          return { ...prev, stale: true, connection: "stale", version: view.version ?? prev.version };
         }
         return { ...view, accounts: view.accounts?.length ? view.accounts : (prev?.accounts || []) };
       });
@@ -114,50 +116,74 @@ export default function PositionsPage() {
       poll = window.setInterval(load, 15000);
     }
 
-    function openStream() {
-      if (!account || document.visibilityState === "hidden") {
-        startPoll();
-        return;
-      }
-      source = new EventSource(`/api/positions/stream?account=${encodeURIComponent(account)}`);
-      source.addEventListener("snapshot", (event) => {
+    function send(type) {
+      if (!socket || socket.readyState !== WebSocket.OPEN || !account) return;
+      socket.send(JSON.stringify({ type, account }));
+    }
+
+    function openSocket() {
+      if (!account || document.visibilityState === "hidden") return;
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const current = new WebSocket(`${proto}//${window.location.host}/api/positions/ws`);
+      socket = current;
+      current.onopen = () => {
+        if (socket !== current) return;
+        attempt = 0;
+        if (poll) window.clearInterval(poll);
+        poll = null;
+        send("watch");
+      };
+      current.onmessage = (event) => {
+        if (socket !== current) return;
         try {
-          apply(JSON.parse(event.data));
-          setError("");
-          if (poll) window.clearInterval(poll);
-          poll = null;
+          const message = JSON.parse(event.data);
+          if (message.type === "error") {
+            setError(message.error || "Không xem được vị thế");
+            return;
+          }
+          if (message.type === "snapshot") {
+            apply(message);
+            setError("");
+          }
         } catch (err) {
           console.error("[positions]", err);
         }
-      });
-      source.onerror = () => {
+      };
+      current.onclose = () => {
+        if (socket !== current) return;
+        socket = null;
         setPayload((prev) => (prev ? { ...prev, stale: true, connection: "stale" } : prev));
-        if (!source || source.readyState === EventSource.CLOSED) {
-          source = null;
-          startPoll();
-        }
+        if (gone || document.visibilityState === "hidden") return;
+        startPoll();
+        const wait = Math.min(10000, 1000 * (2 ** attempt));
+        attempt += 1;
+        retry = window.setTimeout(openSocket, wait);
       };
     }
 
     function onVisible() {
       if (document.visibilityState === "hidden") {
-        source?.close();
-        source = null;
-        startPoll();
+        send("pause");
+        if (poll) window.clearInterval(poll);
+        poll = null;
         return;
       }
       if (poll) window.clearInterval(poll);
       poll = null;
-      if (account && !source) openStream();
+      if (!account) return;
+      if (socket?.readyState === WebSocket.OPEN) send("resume");
+      else openSocket();
     }
 
     load();
-    openStream();
+    openSocket();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       gone = true;
-      source?.close();
+      send("pause");
+      socket?.close();
       if (poll) window.clearInterval(poll);
+      if (retry) window.clearTimeout(retry);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [account]);
@@ -257,6 +283,7 @@ export default function PositionsPage() {
       </form>
       <p className={stale ? "pos-status pos-stale" : "pos-status"}>
         {account ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : stale ? "Mất kết nối, giữ dữ liệu cuối" : "Snapshot") : "Chọn tài khoản để nhận live"}
+        {payload?.version != null ? ` · v${payload.version}` : ""}
         {payload?.updatedAt ? ` · cập nhật ${when(payload.updatedAt)}` : ""}
       </p>
       {error ? <p className="form-error">{error}</p> : null}

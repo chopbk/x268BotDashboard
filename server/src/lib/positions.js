@@ -383,7 +383,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         try {
             snap = await deps.snapshot(account);
             if (snap) {
-                connection = snap.status || "snapshot";
+                connection = snap.status || (snap.source === "monitor" ? "live" : "snapshot");
                 updatedAt = snap.at || null;
                 stale = snap.stale === true || snap.status === "stale";
             }
@@ -399,19 +399,23 @@ async function loadPositions(actor, query = {}, deps = {}) {
         if (!grouped.has(owner)) grouped.set(owner, []);
         grouped.get(owner).push(doc);
     }
+    if (account && snap?.source === "monitor" && Array.isArray(snap.monitors)) {
+        grouped.set(account, snap.monitors.filter((doc) => monitorOwner(doc, envOwners) === account));
+    }
     const rows = [];
     for (const name of selected) {
         const current = name === account ? snap : null;
+        const fromMonitor = current?.source === "monitor" && ageMs(current.at, now) != null && ageMs(current.at, now) <= HEARTBEAT_MS;
         rows.push(...buildPositionView({
             account: name,
             monitors: grouped.get(name) || [],
             exchangePositions: current?.positions || [],
             openOrders: current?.openOrders || [],
             algoOrders: current?.algoOrders || [],
-            heartbeatFresh: fresh,
+            heartbeatFresh: fromMonitor || fresh,
             now,
             connection: name === account ? connection : "idle",
-            exchangeLoaded: Boolean(current),
+            exchangeLoaded: Boolean(current && (current.positions || current.source === "monitor")),
         }));
     }
     return {
@@ -420,6 +424,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         connection,
         updatedAt,
         stale,
+        version: snap?.version == null ? null : Number(snap.version),
     };
 }
 

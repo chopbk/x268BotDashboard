@@ -75,4 +75,8 @@ function rateLimitStoreStatus() {
     return redisClient?.isReady ? "redis" : "memory";
 }
 
-module.exports = { MemoryRateLimitStore, connectRateLimitStore, consumeRateLimit, rateLimitStoreStatus };
+function getRedisClient() {
+    return redisClient;
+}
+
+module.exports = { MemoryRateLimitStore, connectRateLimitStore, consumeRateLimit, rateLimitStoreStatus, getRedisClient };

@@ -334,11 +334,8 @@ function createPositionHub(deps = {}) {
         if (feed.stopTimer) clearLoop(feed, "stopTimer");
         feed.viewers.add(viewer);
         if (feed.snapshot.at) viewer(feed.snapshot);
-        if (!feed.user && !feed.starting) {
-            feed.starting = (async () => {
-                if (!feed.snapshot.at) await takeSnapshot(account, feed, "polling");
-                if (feed.viewers.size) await startUser(account, feed);
-            })().finally(() => { feed.starting = null; });
+        if (!feed.snapshot.at && !feed.starting) {
+            feed.starting = takeSnapshot(account, feed, "snapshot").finally(() => { feed.starting = null; });
         }
         return function unwatch() {
             feed.viewers.delete(viewer);
@@ -449,6 +446,7 @@ function getPositionHub() {
 module.exports = {
     createPositionHub,
     getPositionHub,
+    loadBinanceSnapshot,
     applyAccountUpdate,
     applyOrderUpdate,
     applyMark,

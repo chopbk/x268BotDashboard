@@ -8,7 +8,9 @@ const { requireCsrf } = require("./middleware/csrf");
 const { createRateLimit, endpointKey, requestIp } = require("./middleware/rate-limit");
 const { createConcurrencyLimit, requestTimeout, sessionIdentity } = require("./middleware/request-guards");
 const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
-const { connectRateLimitStore, rateLimitStoreStatus } = require("./lib/rate-limit-store");
+const { connectRateLimitStore, rateLimitStoreStatus, getRedisClient } = require("./lib/rate-limit-store");
+const { bindRedis } = require("./lib/position-live");
+const { attachPositionSocket } = require("./lib/position-ws");
 
 async function main() {
     try {
@@ -22,6 +24,7 @@ async function main() {
 
         await connect(config.mongodb);
         await connectRateLimitStore(config.redisUrl);
+        bindRedis(getRedisClient());
         await bootstrapAdmin();
         await startSummarySnapshotJob();
 
@@ -92,6 +95,7 @@ async function main() {
         const server = app.listen(config.port, config.host, () => {
             console.log("[main] listen", config.port);
         });
+        attachPositionSocket(server);
         server.requestTimeout = 35_000;
         server.headersTimeout = 10_000;
         server.keepAliveTimeout = 5_000;
