@@ -5,6 +5,7 @@
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "deploy": "bash scripts/deploy.sh",
+    "update": "bash scripts/update.sh",
     "test:deploy": "node --test scripts/deploy.test.cjs"
   }
 }

@@ -106,8 +106,10 @@ Chạy trên Debian bằng đúng user đã khởi động PM2:
 
 ```sh
 cd "$HOME/web-bot"
-git pull --ff-only && npm run deploy
+npm run update
 ```
+
+`npm run update` chạy `scripts/update.sh`: kiểm tra checkout sạch và upstream, pull bằng `git pull --ff-only`, rồi chạy bản `scripts/deploy.sh` vừa cập nhật. Nếu pull lỗi thì dừng, không deploy. Server chưa có lệnh này cần chạy `git pull --ff-only` một lần để lấy script. Dùng `npm run deploy` khi muốn deploy code hiện tại mà không pull.
 
 Không copy đè Nginx mẫu sau khi Certbot đã cấu hình HTTPS. `.env` vẫn được giữ vì không nằm trong Git. Script có restart backend nên có gián đoạn ngắn; không phải deploy không downtime.
 

@@ -48,10 +48,10 @@ Hướng dẫn đầy đủ: [Deploy trên Debian](docs/deploy-debian.md), gồm
 Sau khi chuẩn bị server theo hướng dẫn, cập nhật bằng:
 
 ```sh
-git pull --ff-only && npm run deploy
+npm run update
 ```
 
-Script chạy trên server, kiểm tra checkout sạch, cài dependency, test/build, restart riêng PM2 `web-bot`, kiểm tra health rồi xuất frontend vào `/var/www/web-bot`.
+Lệnh `update` pull code mới bằng `git pull --ff-only` rồi chạy script deploy. Script chạy trên server, kiểm tra checkout sạch, cài dependency, test/build, restart riêng PM2 `web-bot`, kiểm tra health rồi xuất frontend vào `/var/www/web-bot`. Dùng `npm run deploy` nếu chỉ muốn triển khai commit đang checkout, không pull.
 
 ```sh
 npm --prefix server test
