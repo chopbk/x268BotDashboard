@@ -15,6 +15,7 @@ import SignalHistoryPage from "./pages/SignalHistoryPage";
 import SignalSearchPage from "./pages/SignalSearchPage";
 import ProfilePage from "./pages/ProfilePage";
 import AccountLedgerPage from "./pages/AccountLedgerPage";
+import SystemHealthPage from "./pages/SystemHealthPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -82,6 +83,7 @@ function Shell({ children }) {
             ) : null}
             {hasPermission(user, USERS_MANAGE) ? <NavLink to="/admin/users">User</NavLink> : null}
             {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
+            {hasPermission(user, LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all" ? <NavLink to="/system">Hệ thống</NavLink> : null}
           </nav>
         </div>
         <div className="who">
@@ -212,6 +214,16 @@ function AppRoutes() {
           <Protected permission={USERS_EDIT}>
             <Shell>
               <ProfilePage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/system"
+        element={
+          <Protected permission={LOGS_VIEW}>
+            <Shell>
+              <SystemHealthPage />
             </Shell>
           </Protected>
         }

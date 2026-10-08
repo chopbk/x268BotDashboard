@@ -353,6 +353,7 @@ Các invariant:
 | Các `/api/admin/users/*` còn lại | `requireAuth` | permission `users.*` theo field/action và scope |
 | `GET /api/admin/users/access-control` | `requireAuth` | `users.view`; trả catalog gồm group + allowedScopes và template role |
 | `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server |
+| `GET /api/system-health` | `requireAuth` | `logs.view` scope `all`. Heartbeat `bot_heartbeats`: MongoDB, Redis, MQTT, Telegram V1/V2, Discord, trader, monitor, signal, DCA/MTF, poster/webhook, PM2. Kèm RAM, CPU, restart, RUN, NODE_ENV, MQTT, TELE_CLIENT. Cảnh báo listener mất heartbeat, trader không nhận MQTT, monitor không heartbeat, position NOTPSL, snapshot lỗi hoặc quá hạn, Redis fallback memory, credential lỗi |
 
 Quy ước HTTP:
 
