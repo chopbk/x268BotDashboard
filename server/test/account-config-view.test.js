@@ -172,6 +172,7 @@ test("config glance mine is owned plus assigned, all adds viewable bots", async 
         lean: async () => [
             { username: "HIEN", accounts: ["H"], ownerUserId: "other", visibility: "public" },
             { username: "MINE", accounts: ["M"], ownerUserId: "admin", visibility: "public" },
+            { username: "OLD", accounts: ["O"], ownerUserId: "admin", visibility: "public", active: false },
             { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public" },
         ],
     });

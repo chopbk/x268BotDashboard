@@ -87,14 +87,16 @@ function draftFrom(bot) {
   };
 }
 
+const SORT_KEYS = new Set(["username", "visibility", "owner", "configs"]);
+
 function readList(params) {
-  const active = params.get("active");
   return {
     q: params.get("q") || "",
     page: Math.max(1, Number(params.get("page")) || 1),
-    activity: active === "off" ? "off" : active === "all" ? "" : "on",
     scope: params.get("visibility") || "",
     audience: params.get("audience") === "all" ? "all" : "mine",
+    sort: SORT_KEYS.has(params.get("sort")) ? params.get("sort") : "username",
+    dir: params.get("dir") === "desc" ? "desc" : "asc",
   };
 }
 
@@ -103,10 +105,10 @@ function writeList(current, partial) {
   const params = new URLSearchParams();
   if (next.q) params.set("q", next.q);
   if (next.page > 1) params.set("page", String(next.page));
-  if (next.activity === "off") params.set("active", "off");
-  if (next.activity === "") params.set("active", "all");
   if (next.scope) params.set("visibility", next.scope);
   if (next.audience === "all") params.set("audience", "all");
+  if (next.sort !== "username") params.set("sort", next.sort);
+  if (next.dir !== "asc") params.set("dir", next.dir);
   return params;
 }
 
@@ -143,18 +145,17 @@ export default function HomePage() {
   const pageLimit = 50;
   const dropDrafts = useRef(false);
   const debouncedQuery = useDebouncedValue(query);
-  const { scope, activity, audience, page } = list;
+  const { scope, audience, page, sort, dir } = list;
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleBots = useMemo(
     () =>
       bots.filter((bot) => {
+        if (!isActive(bot)) return false;
         if (scope && (bot.visibility || "public") !== scope) return false;
-        if (activity === "on" && !isActive(bot)) return false;
-        if (activity === "off" && isActive(bot)) return false;
         return matchesQuery(bot, normalizedQuery);
       }),
-    [activity, bots, normalizedQuery, scope]
+    [bots, normalizedQuery, scope]
   );
   const visibleNames = visibleBots.map((bot) => bot.username);
   const allVisiblePicked =
@@ -259,10 +260,11 @@ export default function HomePage() {
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
     params.set("audience", audience);
+    params.set("active", "true");
+    params.set("sort", sort);
+    params.set("dir", dir);
     if (list.q) params.set("q", list.q);
     if (scope) params.set("visibility", scope);
-    if (activity === "on") params.set("active", "true");
-    if (activity === "off") params.set("active", "false");
     const controller = new AbortController();
     api(`/api/bots?${params}`, { signal: controller.signal })
       .then((data) => {
@@ -278,7 +280,7 @@ export default function HomePage() {
       cancelled = true;
       controller.abort();
     };
-  }, [page, list.q, scope, activity, audience]);
+  }, [page, list.q, scope, audience, sort, dir]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -328,6 +330,11 @@ export default function HomePage() {
     };
   }, [peek, canViewConfig]);
 
+  function toggleSort(key) {
+    const nextDir = sort === key && dir === "asc" ? "desc" : "asc";
+    commitList({ sort: key, dir: sort === key ? nextDir : (key === "configs" ? "desc" : "asc"), page: 1 });
+  }
+
   function openPeek(kind, username) {
     const day = todayWindow();
     setPeekBusy(!(kind === "account" && !canViewConfig));
@@ -353,7 +360,7 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu. " : ""}User của tôi gồm bot sở hữu và bot được gán. Tất cả thêm bot mà quyền xem của bạn cho phép. {canViewStatistics ? "Static tất cả và Lãi lỗ tất cả cộng đúng phạm vi đang chọn, trong ngày UTC (GMT+0)." : "Config tất cả cộng đúng phạm vi đang chọn."}</p>
+          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu. " : ""}Chỉ hiện user đang active. User của tôi gồm bot sở hữu và bot được gán. Tất cả thêm bot mà quyền xem của bạn cho phép. Bấm tiêu đề cột để sắp xếp. {canViewStatistics ? "Static tất cả và Lãi lỗ tất cả cộng đúng phạm vi đang chọn, trong ngày UTC (GMT+0)." : "Config tất cả cộng đúng phạm vi đang chọn."}</p>
           {canViewStatistics || canViewConfig ? (
             <div className="history-range">
               {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
@@ -366,11 +373,6 @@ export default function HomePage() {
           <select value={audience} onChange={(event) => commitList({ audience: event.target.value, page: 1 })} aria-label="Phạm vi danh sách">
             <option value="mine">User của tôi</option>
             <option value="all">Tất cả</option>
-          </select>
-          <select value={activity} onChange={(event) => commitList({ activity: event.target.value, page: 1 })} aria-label="Lọc active">
-            <option value="on">Đang active</option>
-            <option value="off">Không active</option>
-            <option value="">Mọi trạng thái</option>
           </select>
           <select value={scope} onChange={(event) => commitList({ scope: event.target.value, page: 1 })} aria-label="Lọc phạm vi">
             <option value="">Mọi phạm vi</option>
@@ -598,11 +600,19 @@ export default function HomePage() {
                     />
                   </th>
                 ) : null}
-                <th>User bot</th>
+                <th aria-sort={sort === "username" ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="sort-col" onClick={() => toggleSort("username")}>User bot{sort === "username" ? (dir === "asc" ? " ↑" : " ↓") : ""}</button>
+                </th>
                 <th>Active</th>
-                <th>Phạm vi</th>
-                <th>Chủ sở hữu</th>
-                <th>Số config</th>
+                <th aria-sort={sort === "visibility" ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="sort-col" onClick={() => toggleSort("visibility")}>Phạm vi{sort === "visibility" ? (dir === "asc" ? " ↑" : " ↓") : ""}</button>
+                </th>
+                <th aria-sort={sort === "owner" ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="sort-col" onClick={() => toggleSort("owner")}>Chủ sở hữu{sort === "owner" ? (dir === "asc" ? " ↑" : " ↓") : ""}</button>
+                </th>
+                <th aria-sort={sort === "configs" ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="sort-col" onClick={() => toggleSort("configs")}>Số config{sort === "configs" ? (dir === "asc" ? " ↑" : " ↓") : ""}</button>
+                </th>
                 <th>Khớp</th>
                 <th></th>
               </tr>

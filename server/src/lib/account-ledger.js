@@ -182,7 +182,7 @@ async function usersForAudience(actor, audience, permission = PERMISSIONS.STATIS
     const wide = audience === "all";
     return (rows || [])
         .filter((row) => {
-            if (!row?.username) return false;
+            if (!row?.username || row.active === false) return false;
             const user = { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null };
             if (isOwnUser(actor, user)) return true;
             return wide && canAccessResource(actor, permission, row);

@@ -485,7 +485,7 @@ async function listAssignedConfigGlance(actor, audience = "mine") {
         .sort({ username: 1 })
         .lean();
     const mine = (rows || []).filter((row) => {
-        if (!row?.username) return false;
+        if (!row?.username || row.active === false) return false;
         const user = { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null };
         if (isOwnUser(actor, user)) return true;
         return wide && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, row);

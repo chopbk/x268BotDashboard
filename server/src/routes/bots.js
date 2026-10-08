@@ -61,6 +61,20 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (re
         if (["public", "private"].includes(req.query.visibility)) bots = bots.filter((bot) => bot.visibility === req.query.visibility);
         if (req.query.active === "true") bots = bots.filter((bot) => bot.active);
         if (req.query.active === "false") bots = bots.filter((bot) => !bot.active);
+        const sortKey = ["username", "visibility", "owner", "configs"].includes(req.query.sort) ? req.query.sort : "username";
+        const dir = req.query.dir === "desc" ? -1 : 1;
+        bots.sort((a, b) => {
+            const value = (bot) => {
+                if (sortKey === "configs") return (bot.accounts || []).length;
+                if (sortKey === "visibility") return bot.visibility || "public";
+                if (sortKey === "owner") return bot.ownerUserId || "";
+                return bot.username || "";
+            };
+            const av = value(a);
+            const bv = value(b);
+            const compared = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+            return compared * dir || String(a.username).localeCompare(String(b.username));
+        });
         const total = bots.length;
         const start = (page - 1) * limit;
         res.json({ bots: bots.slice(start, start + limit), page, limit, total });

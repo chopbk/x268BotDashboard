@@ -33,6 +33,7 @@ test("mine is owned plus assigned, all adds bots the actor may view", async () =
         { username: "HIEN", accounts: ["H"], ownerUserId: "other", visibility: "public", active: true },
         { username: "MINE", accounts: ["M"], ownerUserId: "admin", visibility: "public", active: true },
         { username: "SECRET", accounts: ["S"], ownerUserId: "other", visibility: "private", active: true },
+        { username: "OLD", accounts: ["O"], ownerUserId: "admin", visibility: "public", active: false },
         { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public", active: true },
     ]);
     try {
