@@ -257,7 +257,7 @@ async function getAccountStatic(actor, id, input = {}) {
 
 async function listAssignedStatics(actor, input = {}) {
     const { usersForAudience } = require("./account-ledger");
-    const scope = input.scope === "mine" ? "mine" : "assigned";
+    const scope = input.scope === "all" ? "all" : "mine";
     const users = await usersForAudience(actor, scope);
     const envUser = new Map();
     for (const user of users) {

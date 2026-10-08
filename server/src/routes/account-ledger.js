@@ -13,7 +13,7 @@ router.use(requireAuth, requirePermission(PERMISSIONS.STATISTICS_VIEW));
 router.get("/", async (req, res) => {
     try {
         const scope = String(req.query.scope || "").trim();
-        res.json(scope === "assigned" || scope === "mine" ? await loadAssignedIncome(req.webUser, scope) : await loadLedger(req.webUser, req.query));
+        res.json(scope === "all" || scope === "mine" || scope === "assigned" ? await loadAssignedIncome(req.webUser, scope) : await loadLedger(req.webUser, req.query));
     } catch (error) {
         sendError(res, error, "GET /api/account-ledger");
     }

@@ -163,7 +163,7 @@ test("updateSelectedConfigs applies one patch to each selected config and skips 
     }
 });
 
-test("assigned config glance stays on owned and assigned bots", async () => {
+test("config glance mine is owned plus assigned, all adds viewable bots", async () => {
     const originalUsers = UserAccount.find;
     const originalConfigs = AccountConfig.find;
     UserAccount.find = () => ({
@@ -182,9 +182,9 @@ test("assigned config glance stays on owned and assigned bots", async () => {
     const admin = { id: "admin", role: "admin", username: "root", botUsernames: ["HIEN"] };
     try {
         const mine = await listAssignedConfigGlance(admin, "mine");
-        const assigned = await listAssignedConfigGlance(admin, "assigned");
-        assert.deepEqual(mine.users.map((row) => row.username), ["MINE"]);
-        assert.deepEqual(assigned.users.map((row) => row.username), ["HIEN", "MINE"]);
+        const all = await listAssignedConfigGlance(admin, "all");
+        assert.deepEqual(mine.users.map((row) => row.username), ["HIEN", "MINE"]);
+        assert.deepEqual(all.users.map((row) => row.username), ["HIEN", "MINE", "ZED"]);
     } finally {
         UserAccount.find = originalUsers;
         AccountConfig.find = originalConfigs;

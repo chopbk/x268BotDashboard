@@ -8,7 +8,7 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.STATISTICS_VIEW), asy
     try {
         const scope = String(req.query.scope || "").trim();
         const username = String(req.query.username || "").trim();
-        res.json((scope === "assigned" || scope === "mine") && !username
+        res.json((scope === "all" || scope === "mine" || scope === "assigned") && !username
             ? await listAssignedStatics(req.webUser, req.query)
             : await listAccountStatics(req.webUser, req.query));
     }

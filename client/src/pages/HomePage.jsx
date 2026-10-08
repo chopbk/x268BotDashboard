@@ -56,10 +56,10 @@ function signalText(signals) {
 
 function peekTitle(peek) {
   if (peek.kind === "static") return `Static trong ngày · ${peek.username}`;
-  if (peek.kind === "static-all") return peek.audience === "mine" ? "Static trong ngày UTC · user của tôi" : "Static trong ngày UTC · user được gán";
+  if (peek.kind === "static-all") return peek.audience === "all" ? "Static trong ngày UTC · user có quyền xem" : "Static trong ngày UTC · user của tôi";
   if (peek.kind === "profit") return `Lãi lỗ trong ngày · ${peek.username}`;
-  if (peek.kind === "profit-all") return peek.audience === "mine" ? "Lãi lỗ trong ngày UTC · user của tôi" : "Lãi lỗ trong ngày UTC · user được gán";
-  if (peek.kind === "account-all") return peek.audience === "mine" ? "Config · user của tôi" : "Config · user được gán";
+  if (peek.kind === "profit-all") return peek.audience === "all" ? "Lãi lỗ trong ngày UTC · user có quyền xem" : "Lãi lỗ trong ngày UTC · user của tôi";
+  if (peek.kind === "account-all") return peek.audience === "all" ? "Config · user có quyền xem" : "Config · user của tôi";
   return `Config · ${peek.username}`;
 }
 
@@ -298,11 +298,11 @@ export default function HomePage() {
     const controller = new AbortController();
     let cancelled = false;
     const staticQuery = new URLSearchParams({ from: peek.from, to: peek.to });
+    const personal = peek.audience === "all" ? "all" : "mine";
     if (peek.kind === "static") {
       staticQuery.set("username", peek.username);
       staticQuery.set("limit", "10");
-    } else if (peek.kind === "static-all") staticQuery.set("scope", peek.audience === "mine" ? "mine" : "assigned");
-    const personal = peek.audience === "mine" ? "mine" : "assigned";
+    } else if (peek.kind === "static-all") staticQuery.set("scope", personal);
     const path = peek.kind === "static" || peek.kind === "static-all"
       ? `/api/account-statics?${staticQuery}`
       : peek.kind === "profit"
@@ -353,7 +353,7 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu. " : ""}Danh sách không gồm toàn hệ thống. User của tôi là bot bạn sở hữu. Tất cả gồm thêm bot được gán cho tài khoản này. {canViewStatistics ? "Static tất cả và Lãi lỗ tất cả cộng đúng phạm vi đang chọn, trong ngày UTC (GMT+0)." : "Config tất cả cộng đúng phạm vi đang chọn."}</p>
+          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu. " : ""}User của tôi gồm bot sở hữu và bot được gán. Tất cả thêm bot mà quyền xem của bạn cho phép. {canViewStatistics ? "Static tất cả và Lãi lỗ tất cả cộng đúng phạm vi đang chọn, trong ngày UTC (GMT+0)." : "Config tất cả cộng đúng phạm vi đang chọn."}</p>
           {canViewStatistics || canViewConfig ? (
             <div className="history-range">
               {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
@@ -438,7 +438,7 @@ export default function HomePage() {
       ) : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
-      {!loading && bots.length === 0 ? <div className="card empty">{audience === "mine" ? "Chưa có bot bạn sở hữu." : "Chưa có bot bạn sở hữu hoặc được gán."}</div> : null}
+      {!loading && bots.length === 0 ? <div className="card empty">{audience === "all" ? "Không có bot nào trong quyền xem." : "Chưa có bot bạn sở hữu hoặc được gán."}</div> : null}
       {!loading && bots.length > 0 && visibleBots.length === 0 ? (
         <div className="card empty">Không có user khớp bộ lọc.</div>
       ) : null}

@@ -477,21 +477,24 @@ async function updateSelectedConfigs(actor, username, envs, body) {
     return { updated, failed };
 }
 
-async function listAssignedConfigGlance(actor, audience = "assigned") {
-    const { isOwnedUser, isOwnUser } = require("./account-ledger");
-    const keep = audience === "mine" ? isOwnedUser : isOwnUser;
+async function listAssignedConfigGlance(actor, audience = "mine") {
+    const { isOwnUser } = require("./account-ledger");
+    const wide = audience === "all";
     const rows = await UserAccount.find({})
         .select("username accounts ownerUserId visibility active")
         .sort({ username: 1 })
         .lean();
-    const mine = (rows || []).filter((row) => row?.username
-        && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, row)
-        && keep(actor, { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null }));
+    const mine = (rows || []).filter((row) => {
+        if (!row?.username) return false;
+        const user = { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null };
+        if (isOwnUser(actor, user)) return true;
+        return wide && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, row);
+    });
     const envs = [...new Set(mine.flatMap((row) => row.accounts || []).map((env) => String(env || "").trim()).filter(Boolean))];
     const docs = await loadDocs(envs);
     const byEnv = new Map((docs || []).map((doc) => [doc.env, doc]));
     return {
-        scope: audience === "mine" ? "mine" : "assigned",
+        scope: audience === "all" ? "all" : "mine",
         users: mine.map((row) => ({
             username: row.username,
             configs: (row.accounts || []).map((env) => {

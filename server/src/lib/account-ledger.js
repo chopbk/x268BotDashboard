@@ -177,14 +177,27 @@ function isOwnUser(actor, user) {
     return isOwnedUser(actor, user) || (actor?.botUsernames || []).includes(user?.username);
 }
 
-async function usersForAudience(actor, audience) {
-    const users = await visibleUsers(actor);
-    const keep = audience === "mine" ? isOwnedUser : isOwnUser;
-    return users.filter((user) => keep(actor, user));
+async function usersForAudience(actor, audience, permission = PERMISSIONS.STATISTICS_VIEW) {
+    const rows = await UserAccount.find({}).select("username accounts ownerUserId visibility active").lean();
+    const wide = audience === "all";
+    return (rows || [])
+        .filter((row) => {
+            if (!row?.username) return false;
+            const user = { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null };
+            if (isOwnUser(actor, user)) return true;
+            return wide && canAccessResource(actor, permission, row);
+        })
+        .map((row) => ({
+            username: row.username,
+            accounts: row.accounts || [],
+            active: row.active !== false,
+            ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null,
+        }))
+        .sort((a, b) => a.username.localeCompare(b.username));
 }
 
 async function assignedUsers(actor) {
-    return usersForAudience(actor, "assigned");
+    return usersForAudience(actor, "mine");
 }
 
 function pickUser(users, username, actor) {
@@ -404,7 +417,7 @@ async function refreshLedger(actor, username, options = {}) {
 }
 
 async function loadAssignedIncome(actor, audience = "assigned") {
-    const users = await usersForAudience(actor, audience === "mine" ? "mine" : "assigned");
+    const users = await usersForAudience(actor, audience === "all" ? "all" : "mine");
     const today = startOfUtcDay(new Date());
     const end = addUtcDays(today, 1);
     const targets = users.map((user) => ({
@@ -442,7 +455,7 @@ async function loadAssignedIncome(actor, audience = "assigned") {
         return sum;
     }, { profit: 0, fee: 0, funding: 0, rebate: 0 });
     for (const key of Object.keys(totals)) totals[key] = r3(totals[key]);
-    return { scope: audience === "mine" ? "mine" : "assigned", from: ymd(today), to: ymd(today), rows, totals };
+    return { scope: audience === "all" ? "all" : "mine", from: ymd(today), to: ymd(today), rows, totals };
 }
 
 module.exports = {
