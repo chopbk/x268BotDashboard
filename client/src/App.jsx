@@ -72,9 +72,9 @@ function Shell({ children }) {
                 Bot
               </NavLink>
             ) : null}
-            {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/signal-search">Tìm signal</NavLink> : null}
+            {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
             {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
-            {hasPermission(user, SIGNALS_HISTORY) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Signal & Static</NavLink> : null}
+            {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Account Static</NavLink> : null}
             {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
             {hasPermission(user, CREDENTIALS_VIEW) ? (
               <NavLink to="/user-apis" className={onApis ? "active" : ""}>
@@ -147,11 +147,11 @@ function AppRoutes() {
       <Route
         path="/signal-search"
         element={
-          <Protected permission={CONFIG_VIEW}>
+          <ProtectedAny permissions={[CONFIG_VIEW, SIGNALS_HISTORY]}>
             <Shell>
               <SignalSearchPage />
             </Shell>
-          </Protected>
+          </ProtectedAny>
         }
       />
       <Route

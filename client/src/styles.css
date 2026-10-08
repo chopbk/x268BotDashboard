@@ -509,8 +509,12 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 .summary-stat.negative strong { color: var(--danger); }
 .summary-rank strong { font-size: 1.35rem; overflow-wrap: anywhere; }
 .summary-updated { margin-top: 18px; text-align: right; font-size: 0.82rem; }
-.signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px 8px; margin-bottom: 12px; padding: 10px 12px; }
+.signal-filters label { font-size: 0.72rem; gap: 2px; min-width: 0; }
+.signal-filters input, .signal-filters select { padding: 3px 7px; border-radius: 7px; font-size: 0.8rem; min-width: 0; }
 .signal-filters > button { align-self: end; }
+.signal-filters .history-range { grid-column: 1 / -1; gap: 4px; }
+.signal-filters .history-range button { padding: 3px 8px; border-radius: 7px; font-size: 0.75rem; font-weight: 600; }
 button.sort-col { background: none; border: 0; color: inherit; font: inherit; font-weight: 650; padding: 0; cursor: pointer; }
 .config-brief { display: block; max-width: 420px; font-size: 0.78rem; line-height: 1.35; }
 .config-glance { display: grid; gap: 14px; }
@@ -534,7 +538,18 @@ button.symbol-chip.active, button.symbol-chip:hover { border-color: var(--accent
 .signal-stats { margin-bottom: 12px; }
 .signal-chips { margin: 0 0 12px; }
 .signal-table { max-height: 620px; }
-.history-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.history-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.signal-setup { display: grid; gap: 12px; }
+.signal-setup h2 { margin: 0 0 6px; font-size: 1rem; }
+.signal-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.signal-chips span { display: inline-flex; gap: 4px; }
+button.th-sort { background: transparent; border: 0; padding: 0; color: var(--muted); font-weight: 600; }
+button.th-sort.active, button.th-sort:hover { color: var(--accent); background: transparent; }
+.compare-block { margin: 8px 0 16px; }
+.signal-pick { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 8px 0 12px; padding: 10px 12px; }
+.signal-pick h2 { font-size: 1rem; }
+.compare-block .muted { margin-bottom: 8px; }
+.history-tabs button.active { background: var(--accent); }
 .history-tabs button.active { background: var(--accent); color: #081018; }
 .trade-row { cursor: pointer; }
 .trade-row.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }

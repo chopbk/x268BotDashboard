@@ -326,9 +326,11 @@ Các invariant:
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
 | `PATCH /api/auth/me` | `requireAuth` | `users.edit` cho tên, Telegram ID, Telegram username và số điện thoại. `users.reset_password` cho mật khẩu mới, bắt buộc đúng mật khẩu hiện tại. Không đổi email, username, role hay quyền. Không trả `passwordHash` |
 | `GET /api/summary` | `requireAuth` | `summary.view` (admin và role `summary_viewer`); mặc định 3 ngày, hỗ trợ `range=today\|3d\|7d\|30d\|90d\|all`. Request chỉ đọc materialized snapshot trong `web_summary_snapshots`; snapshot quá hạn vẫn được trả ngay và được refresh nền. Dashboard nhận `snapshot.generatedAt`, `snapshot.status` và `snapshot.formulaVersion`. Chỉ user bot `active !== false`. Position mở lấy `monitor_positions`; profit, profit hôm nay, volume, win rate và xếp hạng lấy `account_statics` với `isPaper=false`, theo thời điểm đóng (`closeTime`, thiếu thì `openTime`), chỉ account config của user đang active, không lấy từ `signal_infos`. Thẻ đầu chỉ trả tín hiệu, user và symbol đứng đầu. `userRanks` xếp mọi user active theo profit, kèm volume, số lệnh và win rate |
-| `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |
-| `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh, win rate, số lượng, status, profit, ROE và volume từ `account_statics`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` (một hoặc nhiều tên cách nhau bởi dấu phẩy), `status`, `profit=win\|loss\|flat` lọc danh sách và số tổng; breakdown signal/status giữ theo user, config, symbol, side và thời gian |
-| `GET /api/account-statics/:id` | `requireAuth` | `statistics.view` + scope bot; chi tiết một lệnh `account_statics`. Query `username` bắt buộc; lệnh phải thuộc account config của user bot đó |
+| `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Màn hình là tab Lịch sử trong Signal → Tìm Signal. Bấm một signal xem số lượng và lịch sử; nút Tìm config chuyển sang tìm config với đúng tên đó. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |
+| `GET /api/signal-config` | `requireAuth` | `config.view` hoặc `signals.history`. Danh sách user để thêm/xoá, và mục Signal đang dùng, chỉ lấy account của user bot đang sở hữu hoặc được gán. Danh sách chọn bỏ user `active === false`. `username` khác hai nhóm đó trả 403. Channel chỉ trả tên, OCR, ảnh; không trả session, apiId, apiHash. Phạm vi không phải tất cả thì channel, lỗi parse và signal bị gỡ chỉ gồm signal/config được xem. Lỗi parse là log `source=parse` 7 ngày. Signal bị gỡ là log `source=autoremove` 14 ngày |
+| `POST /api/signal-config` | `requireAuth` | `config.edit` + scope user, và user bot phải đang sở hữu hoặc được gán. `action=add` thêm signal, giữ signal cũ. `action=remove` chỉ gỡ các tên được gửi. Tối đa 40 config và 20 signal. Mỗi config đổi thật ghi audit `config.updated` |
+| `GET /api/account-statics` | `requireAuth` | `statistics.view` + scope bot; lịch sử lệnh và bảng so sánh signal/config/side từ `account_statics`. Không truyền `book` thì sổ live, trừ khi mọi config đang chọn bật `trade_config.PAPER`: lúc đó mở sổ paper. `book=live\|paper\|all` là chọn tường minh, `copy=copy\|manual`, `closed=closed\|open`. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal`, `status`, `profit` lọc danh sách và số tổng. Bảng signal giữ theo user, config, symbol, side và thời gian. `byConfig` nhóm theo config và có tính signal đang chọn, để so config live hoặc paper của cùng một signal. Gồm win rate, profit, ROI/cost, long/short, volume, max lãi/lỗ |
+| `GET /api/account-statics/:id` | `requireAuth` | `statistics.view` + scope bot; chi tiết một lệnh `account_statics`. Query `username` bắt buộc; lệnh phải thuộc account config của user bot đó. Kèm `symbolInfo` (`tickSize`, `stepSize`, số thập phân) từ `futures_symbols`, không trả `marketInfo` |
 | `GET /api/account-ledger` | `requireAuth` | `statistics.view` + scope bot. Lãi lỗ ví của user được xem: số dư, khả dụng, lãi lỗ chưa chốt, margin, income, nạp/rút/chuyển, đường số dư, trading PnL tách dòng tiền, so số dư DB với sàn. `days=7\|14\|30\|90`, mặc định 14. `username` chọn user; không truyền thì user của chính mình nếu có. Danh sách kèm `mine` và `active`: mặc định chỉ user của mình và đang active, tick mới thêm user khác hoặc account đang tắt |
 | `POST /api/account-ledger/:username/refresh` | `requireAuth` | `statistics.view` + scope bot. Gọi Binance futures của user đó cho ngày UTC hôm nay rồi ghi `futures_profits`. Không trả API key/secret. Giới hạn 6 lần / 15 phút |
 | `GET /api/bots` | `requireAuth` | `bots.view` + scope riêng; phân trang server bằng `page`, `limit`, hỗ trợ `q`, `visibility`, `active` |
@@ -342,6 +344,7 @@ Các invariant:
 | `DELETE /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; gỡ env, xoá `Account_Config` nếu không user bot nào còn giữ |
 | `GET /api/bots/:username/configs` | `requireAuth` | `config.view` + scope; tóm tắt On, Long/Short, signal, mode, volume của từng account |
 | `GET /api/bots/:username/configs/:env` | `requireAuth` | `config.view` + scope; đủ field lệnh `/sc` (on, volume, open, tp, sl, trailing, copy, signal, blacklist, sync), không trả nguyên document |
+| `POST /api/bots/:username/configs/bulk` | `requireAuth` | `config.edit` + scope; áp cùng một patch lên các env trong `envs` (tối đa 40). Field không gửi giữ nguyên. Mỗi config ghi audit `config.updated` |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.view` trên nguồn, `config.edit` trên đích. `mode=new` tạo `Account_Config` mới. `mode=replace` ghi đè config đích đã có và gỡ sync của đích. `mode=sync` tạo config mới, chép nội dung nguồn và đặt `sync_from` về nguồn |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng; phân trang server bằng `page`, `limit`, tìm bằng `q`. Response không có raw secret |
@@ -352,7 +355,8 @@ Các invariant:
 | `GET /api/admin/users` | `requireAuth` | `users.view` + scope; phân trang server bằng `page`, `limit`, tìm bằng `q` |
 | Các `/api/admin/users/*` còn lại | `requireAuth` | permission `users.*` theo field/action và scope |
 | `GET /api/admin/users/access-control` | `requireAuth` | `users.view`; trả catalog gồm group + allowedScopes và template role |
-| `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server |
+| `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server. Đây là lịch sử chỉnh sửa web, collection `web_audit_logs` |
+| `GET /api/runtime-logs` | `requireAuth` | `logs.view`; log lỗi runtime của binance-bot trong `bot_runtime_logs`, giữ 30 ngày. Category `open`, `exchange`, `monitor`, `tpsl`, `listener`, `mqtt`, `signal`, `process`. Scope không phải `all` chỉ thấy log của bot user được gán và không thấy listener, MQTT, PM2 |
 | `GET /api/system-health` | `requireAuth` | `logs.view` scope `all`. Heartbeat `bot_heartbeats`: MongoDB, Redis, MQTT, Telegram V1/V2, Discord, trader, monitor, signal, DCA/MTF, poster/webhook, PM2. Kèm RAM, CPU, restart, RUN, NODE_ENV, MQTT, TELE_CLIENT. Cảnh báo listener mất heartbeat, trader không nhận MQTT, monitor không heartbeat, position NOTPSL, snapshot lỗi hoặc quá hạn, Redis fallback memory, credential lỗi |
 
 Quy ước HTTP:
@@ -413,7 +417,7 @@ không lọc theo user bot hay account config; `account_statics` là kết quả
 của từng `env`. Không suy diễn profit từ SignalInfo và không dùng `Signal_History` legacy
 làm nguồn chuẩn. Tab Account Static query theo User bot thì lấy hợp các env thuộc
 `user_accounts.accounts`; query theo Account Config thì env đó phải thuộc User bot đã được
-authorize. UI mở tab Account Static trước. Bấm một dòng để xem chi tiết lệnh. UI có tab riêng để lọc/phân trang.
+authorize. UI mở tab Account Static trước. Ô User bot mặc định chỉ user của người đang xem và đang active; chọn Người khác mới hiện user active còn lại mà họ được phép xem. Bấm một dòng để xem chi tiết lệnh; giá vào, giá đóng và TP dùng `tickSize` của `futures_symbols` để giữ đúng số thập phân. UI có tab riêng để lọc/phân trang.
 
 File chuẩn:
 
@@ -537,8 +541,28 @@ Invariant bảo mật:
   nhưng server middleware mới là lớp bảo vệ quyết định.
 - Audit log là append-only qua application: không cung cấp API sửa/xóa log.
 
-Client có route `/logs`, hỗ trợ tìm theo action/actor/target, phân trang, thời gian và mở
+Client có route `/logs`, hai tab. Tab sửa trên web hỗ trợ tìm theo action/actor/target, phân trang và mở
 chi tiết diff. Client chỉ render dữ liệu audit đã sanitize từ server.
+
+### Log runtime của bot
+
+Collection `bot_runtime_logs`, process binance-bot ghi thêm, web chỉ đọc. Không copy file log PM2.
+Mỗi dòng có `at`, `level`, `category`, process PM2 (`processName`, `pmId`), `usernames` từ `RUN`,
+`env`, `symbol`, `signal`, `source`, `message` đã cắt 500 ký tự và xoá key/secret.
+
+Category:
+
+- `open`: lỗi mở lệnh;
+- `exchange`: lỗi API sàn, rate limit, timeout, chữ ký;
+- `monitor`: lỗi monitor vị thế;
+- `tpsl`: lỗi TP/SL;
+- `listener`: lỗi listener Telegram/Discord;
+- `mqtt`: lỗi MQTT;
+- `signal`: signal bị bỏ, không mở lệnh;
+- `process`: process PM2 khởi động, crash, lỗi loader.
+
+Logger chỉ ghi `error`/`warn` khi nội dung khớp một category. Signal bị bỏ được ghi rõ tại
+`callHandleSignalBot`. Dòng trùng category và nội dung trong 60 giây được gộp. TTL 30 ngày.
 
 Test bắt buộc thêm:
 
