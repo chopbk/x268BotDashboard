@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew web-bot IP certificate
+Wants=network-online.target
+After=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/certbot-ip/bin/certbot renew --config-dir /etc/letsencrypt-ip --cert-name web-bot-ip --quiet --deploy-hook "/usr/sbin/nginx -t && /usr/bin/systemctl reload nginx"

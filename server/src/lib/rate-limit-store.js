@@ -54,7 +54,8 @@ async function connectRateLimitStore(url) {
         return client;
     } catch (error) {
         reportRedisFallback(error);
-        client.destroy();
+        // Failed connection retries may already have closed the client.
+        if (client.isOpen) client.destroy();
         return null;
     }
 }

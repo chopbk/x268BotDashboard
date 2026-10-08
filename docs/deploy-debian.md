@@ -4,6 +4,8 @@ Mô hình: domain HTTPS → Nginx → frontend `/var/www/web-bot`; `/api/*` → 
 
 Hướng dẫn dành cho Debian 12/13 với user có quyền sudo. Thay `bot.example.com` bằng domain thật. Chạy npm/PM2 bằng cùng một user thường; chỉ các bước hệ thống dùng sudo. Nếu máy đã chạy bot, giữ nguyên Node/PM2 của bot đó; có thể dùng user riêng cho dashboard để không ảnh hưởng.
 
+Chưa có domain: làm bước 1–3, rồi dùng [HTTPS cho IP](#https-cho-ip-khi-chưa-có-domain) thay bước 4.
+
 ## 1. Chuẩn bị máy (một lần)
 
 Trỏ DNS A về IP server; nếu có AAAA thì IPv6 cũng phải tới đúng server. Cho phép TCP 80/443 trên firewall/security group, giữ cổng SSH đang dùng. MongoDB cần truy cập được từ server; không mở MongoDB/Redis ra Internet.
@@ -124,3 +126,67 @@ npm run deploy
 ```
 
 Sau khi xử lý nguyên nhân, `git switch main` rồi pull/deploy lại. Rollback code không rollback dữ liệu MongoDB.
+
+## Redis chưa cài
+
+Để `REDIS_URL=` trong `.env` nếu chưa có Redis. Restart bằng `pm2 restart web-bot --update-env`; health sẽ báo `rateLimitStore: "memory"`. Nếu URL Redis còn được export trong shell hoặc lưu trong môi trường PM2, cần gỡ giá trị đó vì nó ưu tiên hơn `.env`.
+
+Redis không bắt buộc cho một instance. Bản cũ có lỗi gọi `destroy()` trên client đã đóng sau khi kết nối thất bại, làm xuất hiện `[main] The client is closed`. Pull bản sửa rồi deploy lại; nhánh fallback giữ backend hoạt động khi Redis không sẵn sàng.
+
+## HTTPS cho IP khi chưa có domain
+
+Theo [Let’s Encrypt](https://letsencrypt.org/2026/03/11/shorter-certs-certbot), có thể cấp chứng chỉ cho IP công khai bằng Certbot >= 5.4 với webroot. Chứng chỉ IP có hạn 6 ngày nên phải bật tự gia hạn. Cookie production của dashboard vẫn dùng HTTPS; không đổi sang development để đăng nhập qua HTTP.
+
+Các lệnh dưới đây chạy trên Debian, sau bước deploy app. Thay IP minh họa bằng IP thật:
+
+```sh
+cd "$HOME/web-bot"
+WEB_PUBLIC_IP=192.0.2.10
+```
+
+Đặt `CLIENT_ORIGIN=https://IP_THAT` và `REDIS_URL=` (nếu chưa cài Redis) trong `.env`, rồi `pm2 restart web-bot --update-env`. Mở port 80/443 trên firewall/security group.
+
+**1. Nginx HTTP để xác minh quyền sở hữu IP:**
+
+```sh
+sed "s/bot.example.com/$WEB_PUBLIC_IP/g" deploy/nginx.conf | sudo tee /etc/nginx/sites-available/web-bot > /dev/null
+sudo ln -sfn /etc/nginx/sites-available/web-bot /etc/nginx/sites-enabled/web-bot
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+**2. Cài Certbot mới trong venv riêng**, tránh phụ thuộc bản cũ từ apt và không thay công cụ đang dùng cho website khác:
+
+```sh
+sudo apt install -y python3-venv
+sudo python3 -m venv /opt/certbot-ip
+sudo /opt/certbot-ip/bin/pip install --upgrade 'certbot>=5.4'
+sudo /opt/certbot-ip/bin/certbot --version
+sudo /opt/certbot-ip/bin/certbot certonly --config-dir /etc/letsencrypt-ip \
+  --webroot --webroot-path /var/www/web-bot \
+  --preferred-profile shortlived \
+  --ip-address "$WEB_PUBLIC_IP" --cert-name web-bot-ip
+```
+
+Nhập email và chấp nhận điều khoản khi Certbot hỏi. Dùng `certonly --webroot` cho IP; không dùng quy trình `--nginx -d DOMAIN` ở bước domain.
+
+**3. Chỉ sau khi cấp chứng chỉ thành công, cài Nginx HTTPS:**
+
+```sh
+sed "s/192.0.2.10/$WEB_PUBLIC_IP/g" deploy/nginx-ip.conf | sudo tee /etc/nginx/sites-available/web-bot > /dev/null
+sudo nginx -t && sudo systemctl reload nginx
+curl --fail "https://$WEB_PUBLIC_IP/api/health"
+```
+
+Mở `https://IP_THAT` để đăng nhập. HTTP được chuyển sang HTTPS, còn đường dẫn ACME vẫn dùng được để gia hạn.
+
+**4. Bật tự gia hạn và reload chứng chỉ:**
+
+```sh
+sudo cp deploy/web-bot-cert-renew.service deploy/web-bot-cert-renew.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now web-bot-cert-renew.timer
+sudo /opt/certbot-ip/bin/certbot renew --config-dir /etc/letsencrypt-ip --cert-name web-bot-ip --dry-run
+systemctl list-timers web-bot-cert-renew.timer
+```
+
+Timer kiểm tra hai lần/ngày và reload Nginx sau khi gia hạn thành công. Kiểm tra lỗi bằng `journalctl -u web-bot-cert-renew.service`; phải giữ port 80 truy cập được. Chứng chỉ IP được lưu riêng trong `/etc/letsencrypt-ip` nên không ảnh hưởng timer Certbot cũ và chứng chỉ của website khác.
