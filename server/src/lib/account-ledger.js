@@ -167,15 +167,24 @@ async function visibleUsers(actor) {
         .sort((a, b) => a.username.localeCompare(b.username));
 }
 
-async function assignedUsers(actor) {
-    return visibleUsers(actor);
+function isOwnedUser(actor, user) {
+    const id = String(actor?.id || "");
+    if (user?.ownerUserId && user.ownerUserId === id) return true;
+    return !user?.ownerUserId && [actor?.username, actor?.email].filter(Boolean).includes(user?.username);
 }
 
 function isOwnUser(actor, user) {
-    const id = String(actor?.id || "");
-    if (user?.ownerUserId && user.ownerUserId === id) return true;
-    if (!user?.ownerUserId && [actor?.username, actor?.email].filter(Boolean).includes(user?.username)) return true;
-    return (actor?.botUsernames || []).includes(user?.username);
+    return isOwnedUser(actor, user) || (actor?.botUsernames || []).includes(user?.username);
+}
+
+async function usersForAudience(actor, audience) {
+    const users = await visibleUsers(actor);
+    const keep = audience === "mine" ? isOwnedUser : isOwnUser;
+    return users.filter((user) => keep(actor, user));
+}
+
+async function assignedUsers(actor) {
+    return usersForAudience(actor, "assigned");
 }
 
 function pickUser(users, username, actor) {
@@ -394,8 +403,8 @@ async function refreshLedger(actor, username, options = {}) {
     return loadLedger(actor, { username: user.username, days });
 }
 
-async function loadAssignedIncome(actor) {
-    const users = await assignedUsers(actor);
+async function loadAssignedIncome(actor, audience = "assigned") {
+    const users = await usersForAudience(actor, audience === "mine" ? "mine" : "assigned");
     const today = startOfUtcDay(new Date());
     const end = addUtcDays(today, 1);
     const targets = users.map((user) => ({
@@ -433,12 +442,14 @@ async function loadAssignedIncome(actor) {
         return sum;
     }, { profit: 0, fee: 0, funding: 0, rebate: 0 });
     for (const key of Object.keys(totals)) totals[key] = r3(totals[key]);
-    return { scope: "assigned", from: ymd(today), to: ymd(today), rows, totals };
+    return { scope: audience === "mine" ? "mine" : "assigned", from: ymd(today), to: ymd(today), rows, totals };
 }
 
 module.exports = {
     ledgerEnv,
+    isOwnedUser,
     isOwnUser,
+    usersForAudience,
     assignedUsers,
     classifyIncome,
     summarizeLedger,

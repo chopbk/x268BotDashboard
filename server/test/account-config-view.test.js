@@ -163,7 +163,7 @@ test("updateSelectedConfigs applies one patch to each selected config and skips 
     }
 });
 
-test("assigned config glance includes every bot an admin may view", async () => {
+test("assigned config glance stays on owned and assigned bots", async () => {
     const originalUsers = UserAccount.find;
     const originalConfigs = AccountConfig.find;
     UserAccount.find = () => ({
@@ -171,16 +171,20 @@ test("assigned config glance includes every bot an admin may view", async () => 
         sort() { return this; },
         lean: async () => [
             { username: "HIEN", accounts: ["H"], ownerUserId: "other", visibility: "public" },
-            { username: "secret", accounts: ["S"], ownerUserId: "other", visibility: "private" },
+            { username: "MINE", accounts: ["M"], ownerUserId: "admin", visibility: "public" },
+            { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public" },
         ],
     });
     AccountConfig.find = () => ({
         select() { return this; },
         lean: async () => [],
     });
+    const admin = { id: "admin", role: "admin", username: "root", botUsernames: ["HIEN"] };
     try {
-        const result = await listAssignedConfigGlance({ id: "admin", role: "admin", username: "root", botUsernames: [] });
-        assert.deepEqual(result.users.map((row) => row.username), ["HIEN", "secret"]);
+        const mine = await listAssignedConfigGlance(admin, "mine");
+        const assigned = await listAssignedConfigGlance(admin, "assigned");
+        assert.deepEqual(mine.users.map((row) => row.username), ["MINE"]);
+        assert.deepEqual(assigned.users.map((row) => row.username), ["HIEN", "MINE"]);
     } finally {
         UserAccount.find = originalUsers;
         AccountConfig.find = originalConfigs;

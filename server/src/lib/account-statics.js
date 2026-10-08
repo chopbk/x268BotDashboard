@@ -256,8 +256,9 @@ async function getAccountStatic(actor, id, input = {}) {
 }
 
 async function listAssignedStatics(actor, input = {}) {
-    const { assignedUsers } = require("./account-ledger");
-    const users = await assignedUsers(actor);
+    const { usersForAudience } = require("./account-ledger");
+    const scope = input.scope === "mine" ? "mine" : "assigned";
+    const users = await usersForAudience(actor, scope);
     const envUser = new Map();
     for (const user of users) {
         for (const env of user.accounts || []) {
@@ -268,7 +269,7 @@ async function listAssignedStatics(actor, input = {}) {
     const envs = [...envUser.keys()];
     const range = openTimeRange(input);
     const empty = {
-        scope: "assigned",
+        scope,
         usernames: users.map((user) => user.username),
         stats: { total: 0, profit: 0, winRate: 0, byConfigSignal: [] },
         book: "live",

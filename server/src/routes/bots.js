@@ -26,6 +26,7 @@ const {
 } = require("../lib/account-config-view");
 const { pagination, escapeRegex } = require("../lib/pagination");
 const { searchConfigsBySignal } = require("../lib/config-search");
+const { isOwnedUser, isOwnUser } = require("../lib/account-ledger");
 
 const router = express.Router();
 
@@ -47,6 +48,8 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.BOTS_VIEW), async (re
                 visibility: row.visibility || "public",
                 active: row.active !== false,
             }));
+        if (req.query.audience === "mine") bots = bots.filter((bot) => isOwnedUser(req.webUser, bot));
+        if (req.query.audience === "all") bots = bots.filter((bot) => isOwnUser(req.webUser, bot));
         if (["public", "private"].includes(req.query.visibility)) bots = bots.filter((bot) => bot.visibility === req.query.visibility);
         if (req.query.active === "true") bots = bots.filter((bot) => bot.active);
         if (req.query.active === "false") bots = bots.filter((bot) => !bot.active);
@@ -69,7 +72,8 @@ router.get("/config-search", requireAuth, requirePermission(PERMISSIONS.CONFIG_V
 
 router.get("/assigned-configs", requireAuth, requirePermission(PERMISSIONS.CONFIG_VIEW), async (req, res) => {
     try {
-        res.json(await listAssignedConfigGlance(req.webUser));
+        const scope = req.query.scope === "mine" ? "mine" : "assigned";
+        res.json(await listAssignedConfigGlance(req.webUser, scope));
     } catch (error) {
         sendError(res, error, "GET /api/bots/assigned-configs");
     }

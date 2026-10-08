@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { api } from "../api";
 import { useAuth } from "../auth";
 import Pager from "../components/Pager";
-import { canEditResource, ownsBot } from "../access";
+import { canEditResource } from "../access";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useEscape, useLeaveGuard } from "../navigation";
 
@@ -40,12 +40,9 @@ function when(value) {
 }
 
 function todayWindow() {
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
-  to.setMilliseconds(-1);
-  return { from: from.toISOString(), to: to.toISOString() };
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return { from: from.toISOString(), to: now.toISOString() };
 }
 
 function onOff(value) {
@@ -59,10 +56,10 @@ function signalText(signals) {
 
 function peekTitle(peek) {
   if (peek.kind === "static") return `Static trong ngày · ${peek.username}`;
-  if (peek.kind === "static-all") return "Static trong ngày · bot được phép xem";
+  if (peek.kind === "static-all") return peek.audience === "mine" ? "Static trong ngày UTC · user của tôi" : "Static trong ngày UTC · user được gán";
   if (peek.kind === "profit") return `Lãi lỗ trong ngày · ${peek.username}`;
-  if (peek.kind === "profit-all") return "Lãi lỗ trong ngày · bot được phép xem";
-  if (peek.kind === "account-all") return "Config · bot được phép xem";
+  if (peek.kind === "profit-all") return peek.audience === "mine" ? "Lãi lỗ trong ngày UTC · user của tôi" : "Lãi lỗ trong ngày UTC · user được gán";
+  if (peek.kind === "account-all") return peek.audience === "mine" ? "Config · user của tôi" : "Config · user được gán";
   return `Config · ${peek.username}`;
 }
 
@@ -152,19 +149,12 @@ export default function HomePage() {
   const visibleBots = useMemo(
     () =>
       bots.filter((bot) => {
-        if (!isAdmin) {
-          if (audience === "all") {
-            if (!isActive(bot) || (bot.visibility || "public") === "private") return false;
-          } else if (!ownsBot(user, bot)) return false;
-        }
-        if (isAdmin || audience !== "all") {
-          if (scope && (bot.visibility || "public") !== scope) return false;
-          if (activity === "on" && !isActive(bot)) return false;
-          if (activity === "off" && isActive(bot)) return false;
-        }
+        if (scope && (bot.visibility || "public") !== scope) return false;
+        if (activity === "on" && !isActive(bot)) return false;
+        if (activity === "off" && isActive(bot)) return false;
         return matchesQuery(bot, normalizedQuery);
       }),
-    [activity, audience, bots, isAdmin, normalizedQuery, scope, user]
+    [activity, bots, normalizedQuery, scope]
   );
   const visibleNames = visibleBots.map((bot) => bot.username);
   const allVisiblePicked =
@@ -268,6 +258,7 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
+    params.set("audience", audience);
     if (list.q) params.set("q", list.q);
     if (scope) params.set("visibility", scope);
     if (activity === "on") params.set("active", "true");
@@ -287,7 +278,7 @@ export default function HomePage() {
       cancelled = true;
       controller.abort();
     };
-  }, [page, list.q, scope, activity]);
+  }, [page, list.q, scope, activity, audience]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -310,15 +301,16 @@ export default function HomePage() {
     if (peek.kind === "static") {
       staticQuery.set("username", peek.username);
       staticQuery.set("limit", "10");
-    } else if (peek.kind === "static-all") staticQuery.set("scope", "assigned");
+    } else if (peek.kind === "static-all") staticQuery.set("scope", peek.audience === "mine" ? "mine" : "assigned");
+    const personal = peek.audience === "mine" ? "mine" : "assigned";
     const path = peek.kind === "static" || peek.kind === "static-all"
       ? `/api/account-statics?${staticQuery}`
       : peek.kind === "profit"
         ? `/api/account-ledger?username=${encodeURIComponent(peek.username)}&days=1`
         : peek.kind === "profit-all"
-          ? "/api/account-ledger?scope=assigned&days=1"
+          ? `/api/account-ledger?scope=${personal}&days=1`
           : peek.kind === "account-all"
-            ? "/api/bots/assigned-configs"
+            ? `/api/bots/assigned-configs?scope=${personal}`
             : `/api/bots/${encodeURIComponent(peek.username)}/configs`;
     api(path, { signal: controller.signal })
       .then((data) => {
@@ -341,7 +333,7 @@ export default function HomePage() {
     setPeekBusy(!(kind === "account" && !canViewConfig));
     setPeekError("");
     setPeekData(null);
-    setPeek({ kind, username, from: day.from, to: day.to });
+    setPeek({ kind, username, audience, from: day.from, to: day.to });
   }
 
   async function run(action) {
@@ -361,7 +353,7 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu." : "Mặc định chỉ hiện user của bạn. Chọn Tất cả để xem user đang active và công khai."} {canViewStatistics ? "Trước tên user: Static theo signal của từng config, Lãi lỗ là income của user. Static tất cả, Config tất cả và Lãi lỗ tất cả cộng các bot được phép xem." : "Trước tên user, bấm Account để xem config đang theo signal nào. Config tất cả cộng các bot được phép xem."}</p>
+          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu. " : ""}Danh sách không gồm toàn hệ thống. User của tôi là bot bạn sở hữu. Tất cả gồm thêm bot được gán cho tài khoản này. {canViewStatistics ? "Static tất cả và Lãi lỗ tất cả cộng đúng phạm vi đang chọn, trong ngày UTC (GMT+0)." : "Config tất cả cộng đúng phạm vi đang chọn."}</p>
           {canViewStatistics || canViewConfig ? (
             <div className="history-range">
               {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
@@ -371,26 +363,20 @@ export default function HomePage() {
           ) : null}
         </div>
         <div className="bot-list-tools">
-          {!isAdmin ? (
-            <select value={audience} onChange={(event) => commitList({ audience: event.target.value, page: 1 })} aria-label="Phạm vi danh sách">
-              <option value="mine">Của tôi</option>
-              <option value="all">Tất cả</option>
-            </select>
-          ) : null}
-          {isAdmin || audience !== "all" ? (
-            <>
+          <select value={audience} onChange={(event) => commitList({ audience: event.target.value, page: 1 })} aria-label="Phạm vi danh sách">
+            <option value="mine">User của tôi</option>
+            <option value="all">Tất cả</option>
+          </select>
           <select value={activity} onChange={(event) => commitList({ activity: event.target.value, page: 1 })} aria-label="Lọc active">
-                <option value="on">Đang active</option>
-                <option value="off">Không active</option>
-                <option value="">Mọi trạng thái</option>
-              </select>
+            <option value="on">Đang active</option>
+            <option value="off">Không active</option>
+            <option value="">Mọi trạng thái</option>
+          </select>
           <select value={scope} onChange={(event) => commitList({ scope: event.target.value, page: 1 })} aria-label="Lọc phạm vi">
-                <option value="">Mọi phạm vi</option>
-                <option value="public">Công khai</option>
-                <option value="private">Riêng tư</option>
-              </select>
-            </>
-          ) : null}
+            <option value="">Mọi phạm vi</option>
+            <option value="public">Công khai</option>
+            <option value="private">Riêng tư</option>
+          </select>
           <input
             className="user-search"
             value={query}
@@ -452,7 +438,7 @@ export default function HomePage() {
       ) : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
-      {!loading && bots.length === 0 ? <div className="card empty">Chưa được gán bot nào.</div> : null}
+      {!loading && bots.length === 0 ? <div className="card empty">{audience === "mine" ? "Chưa có bot bạn sở hữu." : "Chưa có bot bạn sở hữu hoặc được gán."}</div> : null}
       {!loading && bots.length > 0 && visibleBots.length === 0 ? (
         <div className="card empty">Không có user khớp bộ lọc.</div>
       ) : null}
@@ -745,7 +731,7 @@ export default function HomePage() {
               <>
                 <p>
                   {peekData.stats.total} lệnh · lãi {money(peekData.stats.profit)} · win rate {pct(peekData.stats.winRate)}
-                  {` · openTime ${when(peek.from)} → ${when(peek.to)}`}
+                  {` · openTime UTC ${when(peek.from)} → ${when(peek.to)}`}
                   {peekData.book ? ` · sổ ${peekData.book}` : ""}
                 </p>
                 {peekData.stats.byConfigSignal?.length ? (
@@ -864,7 +850,7 @@ export default function HomePage() {
             ) : null}
             {peek.kind === "profit-all" && peekData ? (
               <>
-                <p className="muted">Income từng bot được phép xem, ngày UTC {peekData.from}. Mỗi user một ví, cùng lệnh /income.</p>
+                <p className="muted">Income ngày UTC {peekData.from}, đúng phạm vi đang chọn. Mỗi user một ví, cùng lệnh /income.</p>
                 {(peekData.rows || []).length ? (
                   <div className="table-wrap">
                     <table>

@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, assignedUsers, ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
+const { isOwnUser, isOwnedUser, usersForAudience, ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -27,18 +27,21 @@ test("own user is the owner or an assigned bot, not every visible user", () => {
     assert.equal(isOwnUser(actor, { username: "vx268", ownerUserId: null }), true);
 });
 
-test("all-scope static and income include every bot the actor may view", async () => {
+test("personal audience stays on owned and assigned bots", async () => {
     const original = UserAccount.find;
     UserAccount.find = () => chain([
         { username: "HIEN", accounts: ["H"], ownerUserId: "other", visibility: "public", active: true },
-        { username: "secret", accounts: ["S"], ownerUserId: "other", visibility: "private", active: true },
+        { username: "MINE", accounts: ["M"], ownerUserId: "admin", visibility: "public", active: true },
         { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public", active: true },
     ]);
     try {
-        const admin = await assignedUsers({ id: "admin", role: "admin", username: "root", botUsernames: [] });
-        assert.deepEqual(admin.map((row) => row.username), ["HIEN", "secret", "ZED"]);
-        const collaborator = await assignedUsers({ id: "vx", role: "collaborator", username: "vx268", botUsernames: ["HIEN"] });
-        assert.deepEqual(collaborator.map((row) => row.username), ["HIEN"]);
+        const admin = { id: "admin", role: "admin", username: "root", botUsernames: ["HIEN"] };
+        assert.equal(isOwnedUser(admin, { username: "MINE", ownerUserId: "admin" }), true);
+        assert.equal(isOwnUser(admin, { username: "ZED", ownerUserId: "other" }), false);
+        const mine = await usersForAudience(admin, "mine");
+        const assigned = await usersForAudience(admin, "assigned");
+        assert.deepEqual(mine.map((row) => row.username), ["MINE"]);
+        assert.deepEqual(assigned.map((row) => row.username), ["HIEN", "MINE"]);
     } finally {
         UserAccount.find = original;
     }
