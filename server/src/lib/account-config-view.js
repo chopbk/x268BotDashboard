@@ -478,14 +478,11 @@ async function updateSelectedConfigs(actor, username, envs, body) {
 }
 
 async function listAssignedConfigGlance(actor) {
-    const { isOwnUser } = require("./account-ledger");
     const rows = await UserAccount.find({})
         .select("username accounts ownerUserId visibility active")
         .sort({ username: 1 })
         .lean();
-    const mine = (rows || []).filter((row) => row?.username
-        && isOwnUser(actor, { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null })
-        && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, row));
+    const mine = (rows || []).filter((row) => row?.username && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, row));
     const envs = [...new Set(mine.flatMap((row) => row.accounts || []).map((env) => String(env || "").trim()).filter(Boolean))];
     const docs = await loadDocs(envs);
     const byEnv = new Map((docs || []).map((doc) => [doc.env, doc]));

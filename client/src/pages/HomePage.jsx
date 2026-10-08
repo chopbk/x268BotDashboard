@@ -59,10 +59,10 @@ function signalText(signals) {
 
 function peekTitle(peek) {
   if (peek.kind === "static") return `Static trong ngày · ${peek.username}`;
-  if (peek.kind === "static-all") return "Static trong ngày · user được gán";
+  if (peek.kind === "static-all") return "Static trong ngày · bot được phép xem";
   if (peek.kind === "profit") return `Lãi lỗ trong ngày · ${peek.username}`;
-  if (peek.kind === "profit-all") return "Lãi lỗ trong ngày · user được gán";
-  if (peek.kind === "account-all") return "Config · user được gán";
+  if (peek.kind === "profit-all") return "Lãi lỗ trong ngày · bot được phép xem";
+  if (peek.kind === "account-all") return "Config · bot được phép xem";
   return `Config · ${peek.username}`;
 }
 
@@ -361,7 +361,7 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu." : "Mặc định chỉ hiện user của bạn. Chọn Tất cả để xem user đang active và công khai."} {canViewStatistics ? "Trước tên user: Static theo signal của từng config, Lãi lỗ là income của user. Static tất cả, Config tất cả và Lãi lỗ tất cả cộng các user được gán." : "Trước tên user, bấm Account để xem config đang theo signal nào. Config tất cả cộng các user được gán."}</p>
+          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu." : "Mặc định chỉ hiện user của bạn. Chọn Tất cả để xem user đang active và công khai."} {canViewStatistics ? "Trước tên user: Static theo signal của từng config, Lãi lỗ là income của user. Static tất cả, Config tất cả và Lãi lỗ tất cả cộng các bot được phép xem." : "Trước tên user, bấm Account để xem config đang theo signal nào. Config tất cả cộng các bot được phép xem."}</p>
           {canViewStatistics || canViewConfig ? (
             <div className="history-range">
               {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
@@ -844,7 +844,7 @@ export default function HomePage() {
                       </tbody>
                     </table>
                   </div>
-                ) : <p className="muted">Chưa có user bot được gán cho tài khoản này.</p>}
+                ) : <p className="muted">Không có bot nào trong phạm vi xem.</p>}
               </>
             ) : null}
             {peek.kind === "profit" && peekData ? (
@@ -864,7 +864,7 @@ export default function HomePage() {
             ) : null}
             {peek.kind === "profit-all" && peekData ? (
               <>
-                <p className="muted">Income từng user được gán, ngày UTC {peekData.from}. Mỗi user một ví, cùng lệnh /income.</p>
+                <p className="muted">Income từng bot được phép xem, ngày UTC {peekData.from}. Mỗi user một ví, cùng lệnh /income.</p>
                 {(peekData.rows || []).length ? (
                   <div className="table-wrap">
                     <table>
@@ -884,7 +884,7 @@ export default function HomePage() {
                       </tbody>
                     </table>
                   </div>
-                ) : <p className="muted">Chưa có user bot được gán cho tài khoản này.</p>}
+                ) : <p className="muted">Không có bot nào trong phạm vi xem.</p>}
                 {peekData.totals ? <p>Tổng profit {money(peekData.totals.profit)} · fee {money(peekData.totals.fee)} · funding {money(peekData.totals.funding)} · ref {money(peekData.totals.rebate)}</p> : null}
               </>
             ) : null}

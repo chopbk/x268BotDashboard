@@ -168,8 +168,7 @@ async function visibleUsers(actor) {
 }
 
 async function assignedUsers(actor) {
-    const users = await visibleUsers(actor);
-    return users.filter((user) => isOwnUser(actor, user));
+    return visibleUsers(actor);
 }
 
 function isOwnUser(actor, user) {

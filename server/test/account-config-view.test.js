@@ -5,7 +5,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 
 const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
-const { toSummary, toDetail, listConfigSummaries, updateConfigSummary, updateSelectedConfigs } = require("../src/lib/account-config-view");
+const { toSummary, toDetail, listConfigSummaries, listAssignedConfigGlance, updateConfigSummary, updateSelectedConfigs } = require("../src/lib/account-config-view");
 
 const admin = { role: "admin", botUsernames: [] };
 const viewer = {
@@ -160,5 +160,29 @@ test("updateSelectedConfigs applies one patch to each selected config and skips 
         UserAccount.findOne = originalUser;
         AccountConfig.findOne = originalFind;
         AccountConfig.updateOne = originalUpdate;
+    }
+});
+
+test("assigned config glance includes every bot an admin may view", async () => {
+    const originalUsers = UserAccount.find;
+    const originalConfigs = AccountConfig.find;
+    UserAccount.find = () => ({
+        select() { return this; },
+        sort() { return this; },
+        lean: async () => [
+            { username: "HIEN", accounts: ["H"], ownerUserId: "other", visibility: "public" },
+            { username: "secret", accounts: ["S"], ownerUserId: "other", visibility: "private" },
+        ],
+    });
+    AccountConfig.find = () => ({
+        select() { return this; },
+        lean: async () => [],
+    });
+    try {
+        const result = await listAssignedConfigGlance({ id: "admin", role: "admin", username: "root", botUsernames: [] });
+        assert.deepEqual(result.users.map((row) => row.username), ["HIEN", "secret"]);
+    } finally {
+        UserAccount.find = originalUsers;
+        AccountConfig.find = originalConfigs;
     }
 });

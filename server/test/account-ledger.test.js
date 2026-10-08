@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
+const { isOwnUser, assignedUsers, ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -25,6 +25,23 @@ test("own user is the owner or an assigned bot, not every visible user", () => {
     assert.equal(isOwnUser(actor, { username: "assigned", ownerUserId: "other" }), true);
     assert.equal(isOwnUser(actor, { username: "other", ownerUserId: "other" }), false);
     assert.equal(isOwnUser(actor, { username: "vx268", ownerUserId: null }), true);
+});
+
+test("all-scope static and income include every bot the actor may view", async () => {
+    const original = UserAccount.find;
+    UserAccount.find = () => chain([
+        { username: "HIEN", accounts: ["H"], ownerUserId: "other", visibility: "public", active: true },
+        { username: "secret", accounts: ["S"], ownerUserId: "other", visibility: "private", active: true },
+        { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public", active: true },
+    ]);
+    try {
+        const admin = await assignedUsers({ id: "admin", role: "admin", username: "root", botUsernames: [] });
+        assert.deepEqual(admin.map((row) => row.username), ["HIEN", "secret", "ZED"]);
+        const collaborator = await assignedUsers({ id: "vx", role: "collaborator", username: "vx268", botUsernames: ["HIEN"] });
+        assert.deepEqual(collaborator.map((row) => row.username), ["HIEN"]);
+    } finally {
+        UserAccount.find = original;
+    }
 });
 
 test("ledger uses the user name as the shared wallet env", () => {
