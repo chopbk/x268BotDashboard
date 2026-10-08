@@ -5,7 +5,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 
 const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
-const { toSummary, toDetail, listConfigSummaries, updateConfigSummary } = require("../src/lib/account-config-view");
+const { toSummary, toDetail, listConfigSummaries, updateConfigSummary, updateSelectedConfigs } = require("../src/lib/account-config-view");
 
 const admin = { role: "admin", botUsernames: [] };
 const viewer = {
@@ -126,6 +126,36 @@ test("updateConfigSummary sets only the edited field and keeps the rest of trade
         assert.deepEqual(update.doc.$set, { "trade_config.ON": false });
         assert.equal(Object.hasOwn(update.doc.$set, "trade_config"), false);
         assert.equal(Object.hasOwn(update.doc.$set, "trade_config.SL"), false);
+    } finally {
+        UserAccount.findOne = originalUser;
+        AccountConfig.findOne = originalFind;
+        AccountConfig.updateOne = originalUpdate;
+    }
+});
+
+test("updateSelectedConfigs applies one patch to each selected config and skips the rest", async () => {
+    const originalUser = UserAccount.findOne;
+    const originalFind = AccountConfig.findOne;
+    const originalUpdate = AccountConfig.updateOne;
+    const updates = [];
+    UserAccount.findOne = async () => ({ username: "alpha", accounts: ["a1", "a2"] });
+    AccountConfig.findOne = (filter) => configQuery({
+        env: filter.env,
+        signals: ["ROSE"],
+        trade_config: { ON: true, LONG: true, SHORT: false, FIX_COST_AMOUNT: 50, LONG_LEVERAGE: 10, MARGIN: { MODE: "FIX" } },
+    });
+    AccountConfig.updateOne = async (filter, doc) => {
+        updates.push({ filter, doc });
+        return { matchedCount: 1 };
+    };
+    try {
+        const result = await updateSelectedConfigs(admin, "alpha", ["a1", "a2", "nope"], { on: false, cost: 80 });
+        assert.deepEqual(result.updated.map((row) => row.env), ["a1", "a2"]);
+        assert.equal(result.failed[0].env, "nope");
+        assert.equal(updates.length, 2);
+        assert.deepEqual(updates[0].doc.$set, { "trade_config.ON": false, "trade_config.FIX_COST_AMOUNT": 80 });
+        assert.equal(Object.hasOwn(updates[0].doc.$set, "trade_config.LONG"), false);
+        await assert.rejects(() => updateSelectedConfigs(admin, "alpha", ["a1"], {}), /Không có gì để sửa/);
     } finally {
         UserAccount.findOne = originalUser;
         AccountConfig.findOne = originalFind;

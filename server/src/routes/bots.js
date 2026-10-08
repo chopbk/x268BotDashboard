@@ -20,6 +20,7 @@ const {
     listConfigSummaries,
     getConfigDetail,
     updateConfigSummary,
+    updateSelectedConfigs,
     AUDIT_FIELDS,
 } = require("../lib/account-config-view");
 const { pagination, escapeRegex } = require("../lib/pagination");
@@ -132,6 +133,38 @@ router.post(
             res.status(201).json(copied);
         } catch (error) {
             sendError(res, error, "POST /api/bots/:username/configs/:env/copy");
+        }
+    }
+);
+
+router.post(
+    "/:username/configs/bulk",
+    requireAuth,
+    requirePermission(PERMISSIONS.CONFIG_EDIT),
+    async (req, res) => {
+        try {
+            const username = normalizeName(req.params.username);
+            const patch = { ...(req.body || {}) };
+            const envs = patch.envs;
+            delete patch.envs;
+            const result = await updateSelectedConfigs(req.webUser, username, envs, patch);
+            for (const row of result.updated) {
+                const changes = buildChanges(row.before, row.after, AUDIT_FIELDS);
+                if (!Object.keys(changes).length) continue;
+                await safeRecordAudit({
+                    action: "config.updated",
+                    actor: req.webUser,
+                    targetType: "account_config",
+                    target: { username: `${username}/${row.env}` },
+                    changes,
+                });
+            }
+            res.json({
+                updated: result.updated.map((row) => row.env),
+                failed: result.failed,
+            });
+        } catch (error) {
+            sendError(res, error, "POST /api/bots/:username/configs/bulk");
         }
     }
 );

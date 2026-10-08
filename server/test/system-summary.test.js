@@ -14,8 +14,9 @@ function findQuery(rows) {
 
 test("system summary ranks account-static profit without listing every identity", async (t) => {
     t.mock.method(UserAccount, "find", () => findQuery([
-        { username: "alpha", accounts: ["A", "B"], visibility: "public" },
+        { username: "alpha", accounts: ["A", "B"], visibility: "public", active: true },
         { username: "beta", accounts: ["C"], visibility: "private" },
+        { username: "gamma", accounts: ["D"], visibility: "public", active: false },
     ]));
     t.mock.method(AccountConfig, "countDocuments", async (filter) => {
         assert.deepEqual(filter.env.$in, ["A", "B", "C"]);
@@ -49,8 +50,9 @@ test("system summary ranks account-static profit without listing every identity"
             ],
             bySymbol: [{ _id: "BTCUSDT", profit: 20, trades: 3, wins: 2, losses: 1 }],
             byEnv: [
-                { _id: "A", profit: 25, trades: 4, wins: 3, losses: 1 },
-                { _id: "C", profit: 15, trades: 6, wins: 3, losses: 3 },
+                { _id: "A", profit: 25, volume: 400, trades: 4, wins: 3, losses: 1 },
+                { _id: "C", profit: 15, volume: 600, trades: 6, wins: 3, losses: 3 },
+                { _id: "D", profit: 90, volume: 50, trades: 1, wins: 1, losses: 0 },
             ],
             bySide: [{ _id: "LONG", profit: 50 }, { _id: "SHORT", profit: -10 }],
         }];
@@ -68,6 +70,10 @@ test("system summary ranks account-static profit without listing every identity"
         bestSignal: { name: "SIGNAL_A", profit: 30, trades: 6, winRate: (5 / 6) * 100 },
         worstSignal: { name: "BULL", profit: -5, trades: 4, winRate: 25 },
         bestUser: { name: "alpha", profit: 25, trades: 4, winRate: 75 },
+        userRanks: [
+            { name: "alpha", profit: 25, volume: 400, trades: 4, wins: 3, losses: 1, winRate: 75 },
+            { name: "beta", profit: 15, volume: 600, trades: 6, wins: 3, losses: 3, winRate: 50 },
+        ],
         bestSymbol: { name: "BTCUSDT", profit: 20, trades: 3, winRate: (2 / 3) * 100 },
         range: "3d", from: new Date("2026-10-04T12:00:00.000Z"), to: new Date("2026-10-07T12:00:00.000Z"),
         generatedAt: new Date("2026-10-07T12:00:00.000Z"),

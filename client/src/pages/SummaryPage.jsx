@@ -27,8 +27,20 @@ function rankTone(item) {
   return item.profit < 0 ? "negative" : "positive";
 }
 
+const FACTORS = [
+  { id: "profit", label: "Profit" },
+  { id: "volume", label: "Volume" },
+  { id: "winRate", label: "Win rate" },
+  { id: "trades", label: "Số lệnh" },
+];
+
+function sortedUsers(rows, factor) {
+  return [...(rows || [])].sort((a, b) => (b[factor] || 0) - (a[factor] || 0) || (b.profit || 0) - (a.profit || 0) || (b.volume || 0) - (a.volume || 0));
+}
+
 export default function SummaryPage() {
   const [range, setRange] = useState("3d");
+  const [factor, setFactor] = useState("profit");
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
 
@@ -43,7 +55,7 @@ export default function SummaryPage() {
 
   return (
     <section>
-      <header className="page-head summary-head"><div><h1>Tổng kết hệ thống</h1><p className="muted">Profit và volume lấy từ lệnh đóng trên Account Static của account. Xếp hạng chỉ hiện tín hiệu, user và symbol đứng đầu.</p></div><label>Khoảng thời gian<select value={range} onChange={(event) => setRange(event.target.value)}><option value="today">Hôm nay</option><option value="3d">3 ngày gần nhất</option><option value="7d">7 ngày gần nhất</option><option value="30d">30 ngày gần nhất</option><option value="90d">90 ngày gần nhất</option><option value="all">Toàn thời gian</option></select></label></header>
+      <header className="page-head summary-head"><div><h1>Tổng kết hệ thống</h1><p className="muted">Chỉ tính user bot đang active. Profit và volume lấy từ lệnh đóng trên Account Static của account. Thẻ xếp hạng chỉ hiện tín hiệu, user và symbol đứng đầu.</p></div><label>Khoảng thời gian<select value={range} onChange={(event) => setRange(event.target.value)}><option value="today">Hôm nay</option><option value="3d">3 ngày gần nhất</option><option value="7d">7 ngày gần nhất</option><option value="30d">30 ngày gần nhất</option><option value="90d">90 ngày gần nhất</option><option value="all">Toàn thời gian</option></select></label></header>
       {error ? <p className="form-error">{error}</p> : null}
       {!summary && !error ? <p className="muted">Đang tải số liệu…</p> : null}
       {summary ? <>
@@ -71,6 +83,46 @@ export default function SummaryPage() {
           <Stat rank label="User hiệu suất tốt nhất" value={rankValue(summary.bestUser)} note={rankNote(summary.bestUser)} tone={rankTone(summary.bestUser)} />
           <Stat rank label="Symbol lãi nhất" value={rankValue(summary.bestSymbol)} note={rankNote(summary.bestSymbol)} tone={rankTone(summary.bestSymbol)} />
         </div>
+        <h2 className="summary-section-title">Bảng xếp hạng user</h2>
+        <div className="history-tabs">
+          {FACTORS.map((item) => (
+            <button type="button" key={item.id} className={factor === item.id ? "active" : "ghost"} onClick={() => setFactor(item.id)}>
+              Theo {item.label}
+            </button>
+          ))}
+        </div>
+        {sortedUsers(summary.userRanks, factor).length ? (
+          <div className="table-wrap signal-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>User</th>
+                  <th>Profit</th>
+                  <th>Volume</th>
+                  <th>Số lệnh</th>
+                  <th>Win rate</th>
+                  <th>Thắng</th>
+                  <th>Thua</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedUsers(summary.userRanks, factor).map((row, index) => (
+                  <tr key={row.name}>
+                    <td>{index + 1}</td>
+                    <td>{row.name}</td>
+                    <td>{money(row.profit)}</td>
+                    <td>{money(row.volume)}</td>
+                    <td>{number(row.trades)}</td>
+                    <td>{number(row.winRate, 1)}%</td>
+                    <td>{number(row.wins)}</td>
+                    <td>{number(row.losses)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="card empty">Chưa có user active có lệnh trong kỳ.</div>}
         <p className="summary-updated muted">Dữ liệu được tính lúc: {new Date(summary.snapshot?.generatedAt || summary.generatedAt).toLocaleString("vi-VN")}{summary.snapshot?.status === "refreshing" ? " · đang làm mới nền" : summary.cached ? " · snapshot MongoDB" : ""}</p>
       </> : null}
     </section>

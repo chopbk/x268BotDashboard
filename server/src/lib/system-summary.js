@@ -8,7 +8,7 @@ const { httpError } = require("./http");
 
 const RANGE_DAYS = Object.freeze({ today: 0, "3d": 3, "7d": 7, "30d": 30, "90d": 90, all: null });
 const CACHE_TTL_MS = 60 * 1000;
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 
 const volumeExpr = {
     $ifNull: [
@@ -88,21 +88,31 @@ function leaders(rows) {
     return { best: performance(pool[0]), worst };
 }
 
-function bestUser(byEnv, bots) {
+function isActiveBot(bot) {
+    return !!bot?.username && bot.active !== false;
+}
+
+function rankUsers(byEnv, bots) {
     const totals = new Map();
-    for (const row of rankRows(byEnv)) {
-        const owners = (bots || []).filter((bot) => bot.username && (bot.accounts || []).includes(row.name));
+    for (const row of byEnv || []) {
+        const env = String(row?._id || "").trim();
+        if (!env) continue;
+        const owners = (bots || []).filter((bot) => isActiveBot(bot) && (bot.accounts || []).includes(env));
         for (const owner of owners) {
-            const current = totals.get(owner.username) || { name: owner.username, profit: 0, trades: 0, wins: 0, losses: 0 };
-            current.profit += row.profit;
-            current.trades += row.trades;
-            current.wins += row.wins;
-            current.losses += row.losses;
+            const current = totals.get(owner.username) || {
+                name: owner.username, profit: 0, volume: 0, trades: 0, wins: 0, losses: 0,
+            };
+            current.profit += row.profit || 0;
+            current.volume += row.volume || 0;
+            current.trades += row.trades || 0;
+            current.wins += row.wins || 0;
+            current.losses += row.losses || 0;
             totals.set(owner.username, current);
         }
     }
-    const ranked = [...totals.values()].sort((a, b) => b.profit - a.profit || b.trades - a.trades);
-    return performance(ranked[0]);
+    return [...totals.values()]
+        .map((row) => ({ ...row, winRate: winRate(row.wins, row.losses) }))
+        .sort((a, b) => b.profit - a.profit || b.volume - a.volume || b.trades - a.trades);
 }
 
 function sideProfit(rows, side) {
@@ -112,7 +122,7 @@ function sideProfit(rows, side) {
 
 async function getSystemSummary(rangeInput = "3d", now = new Date()) {
     const range = normalizeSummaryRange(rangeInput);
-    const bots = await UserAccount.find().select("username accounts visibility").lean();
+    const bots = (await UserAccount.find().select("username accounts visibility active").lean()).filter(isActiveBot);
     const envs = [...new Set(bots.flatMap((bot) => bot.accounts || []).filter(Boolean))];
     const dayStart = startOfUtcDay(now);
     const last24Hours = new Date(now.getTime() - (24 * 60 * 60 * 1000));
@@ -165,6 +175,7 @@ async function getSystemSummary(rangeInput = "3d", now = new Date()) {
                         $group: {
                             _id: "$env",
                             profit: { $sum: profitExpr },
+                            volume: { $sum: volumeExpr },
                             trades: { $sum: 1 },
                             wins: winExpr,
                             losses: lossExpr,
@@ -180,6 +191,7 @@ async function getSystemSummary(rangeInput = "3d", now = new Date()) {
     const trades = facet.totals?.[0] || {};
     const signalLeaders = leaders(facet.bySignal);
     const symbolLeaders = leaders(facet.bySymbol);
+    const userRanks = rankUsers(facet.byEnv, bots);
     const configCount = bots.reduce((total, bot) => total + (bot.accounts || []).length, 0);
     const privateBotCount = bots.filter((bot) => bot.visibility === "private").length;
 
@@ -204,7 +216,8 @@ async function getSystemSummary(rangeInput = "3d", now = new Date()) {
         shortProfit: sideProfit(facet.bySide, "SHORT"),
         bestSignal: signalLeaders.best,
         worstSignal: signalLeaders.worst,
-        bestUser: bestUser(facet.byEnv, bots),
+        bestUser: performance(userRanks[0]),
+        userRanks,
         bestSymbol: symbolLeaders.best,
         range,
         from: selectedDates?.$gte || null,

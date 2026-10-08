@@ -96,6 +96,9 @@ export default function BotDetailPage() {
   const [editEnv, setEditEnv] = useState(null);
   const [envDraft, setEnvDraft] = useState("");
   const [picked, setPicked] = useState(() => new Set());
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quick, setQuick] = useState({ on: "", long: "", short: "", paper: "", monitor: "", mode: "", cost: "", leverage: "", signals: "" });
+  const [summaryVersion, setSummaryVersion] = useState(0);
   const [summaries, setSummaries] = useState({});
   const [filters, setFilters] = useState({ signal: "", long: "", on: "", volume: "", volumeOp: "gt", mode: "", type: "" });
   const [busy, setBusy] = useState(false);
@@ -158,7 +161,7 @@ export default function BotDetailPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [canViewConfig, bot, accountKey]);
+  }, [canViewConfig, bot, accountKey, summaryVersion]);
 
   async function run(action) {
     setBusy(true);
@@ -179,8 +182,8 @@ export default function BotDetailPage() {
           <Link to="/">← Danh sách user bot</Link>
         </p>
         <h1>{bot?.username || username}</h1>
-        <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Bấm Sửa để đổi các mục đó.</p>
-        {canViewSignalHistory ? <p><Link to="/signals?view=signals">Xem lịch sử signal hệ thống</Link></p> : null}
+        <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Chọn nhiều config rồi bấm Config nhanh để sửa cùng lúc, hoặc Sửa để mở đủ mục.</p>
+        {canViewSignalHistory ? <p><Link to="/signal-search?tab=history">Xem lịch sử signal hệ thống</Link></p> : null}
         {canViewStatistics ? <p><Link to={`/signals?view=statics&username=${encodeURIComponent(username)}`}>Xem Account Static của User bot</Link></p> : null}
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}
@@ -247,6 +250,11 @@ export default function BotDetailPage() {
           <div className="bulk-bar">
             <p className="muted">Config</p>
             {canEditConfig && picked.size > 0 ? (
+              <button type="button" disabled={busy} onClick={() => setQuickOpen((open) => !open)}>
+                Config nhanh
+              </button>
+            ) : null}
+            {canEditConfig && picked.size > 0 ? (
               <button
                 type="button"
                 className="danger"
@@ -283,6 +291,83 @@ export default function BotDetailPage() {
               </button>
             ) : null}
           </div>
+          {canEditConfig && quickOpen && picked.size > 0 ? (
+            <form
+              className="account-filters"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const names = [...picked];
+                const body = { envs: names };
+                for (const key of ["on", "long", "short", "paper", "monitor"]) {
+                  if (quick[key] === "on") body[key] = true;
+                  if (quick[key] === "off") body[key] = false;
+                }
+                if (quick.mode) body.mode = quick.mode;
+                if (quick.cost !== "") body.cost = Number(quick.cost);
+                if (quick.leverage !== "") {
+                  body.leverage = Number(quick.leverage);
+                  body.shortLeverage = Number(quick.leverage);
+                }
+                if (quick.signals.trim()) {
+                  body.signals = quick.signals.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+                }
+                if (Object.keys(body).length === 1) {
+                  setError("Chọn ít nhất một mục để sửa. Ô để trống sẽ giữ nguyên.");
+                  return;
+                }
+                if (!window.confirm(`Áp config nhanh cho ${names.length} account?`)) return;
+                run(async () => {
+                  const data = await api(`/api/bots/${encodeURIComponent(bot.username)}/configs/bulk`, {
+                    method: "POST",
+                    body,
+                  });
+                  setSummaryVersion((version) => version + 1);
+                  setQuickOpen(false);
+                  if (data.failed?.length) {
+                    setError(data.failed.map((row) => `${row.env}: ${row.error}`).join("; "));
+                  }
+                });
+              }}
+            >
+              {[
+                ["on", "On"],
+                ["long", "Long"],
+                ["short", "Short"],
+                ["paper", "Paper"],
+                ["monitor", "Monitor"],
+              ].map(([key, label]) => (
+                <label key={key}>
+                  {label}
+                  <select value={quick[key]} onChange={(event) => setQuick((prev) => ({ ...prev, [key]: event.target.value }))}>
+                    <option value="">Giữ nguyên</option>
+                    <option value="on">Bật</option>
+                    <option value="off">Tắt</option>
+                  </select>
+                </label>
+              ))}
+              <label>
+                Mode
+                <select value={quick.mode} onChange={(event) => setQuick((prev) => ({ ...prev, mode: event.target.value }))}>
+                  <option value="">Giữ nguyên</option>
+                  {["FIX", "RATIO", "RISK", "RR", "LOSS"].map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                </select>
+              </label>
+              <label>
+                Cost
+                <input value={quick.cost} inputMode="decimal" placeholder="Giữ nguyên" onChange={(event) => setQuick((prev) => ({ ...prev, cost: event.target.value }))} />
+              </label>
+              <label>
+                Đòn bẩy
+                <input value={quick.leverage} inputMode="decimal" placeholder="Giữ nguyên" onChange={(event) => setQuick((prev) => ({ ...prev, leverage: event.target.value }))} />
+              </label>
+              <label>
+                Signal
+                <input value={quick.signals} placeholder="Giữ nguyên" onChange={(event) => setQuick((prev) => ({ ...prev, signals: event.target.value }))} />
+              </label>
+              <button type="submit" disabled={busy}>Áp dụng {picked.size} config</button>
+              <p className="muted">Ô để trống giữ nguyên. Signal điền vào sẽ thay cả danh sách signal. Bot nhận bản mới sau khi restart.</p>
+            </form>
+          ) : null}
           {accounts.length > 0 ? (
             <div className="account-filters">
               <label>

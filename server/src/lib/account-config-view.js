@@ -447,6 +447,35 @@ async function updateConfigSummary(actor, username, env, body) {
     return getConfigDetail(actor, username, env, PERMISSIONS.CONFIG_EDIT);
 }
 
+async function updateSelectedConfigs(actor, username, envs, body) {
+    const names = [...new Set((Array.isArray(envs) ? envs : []).map((item) => String(item || "").trim()).filter(Boolean))];
+    if (!names.length) throw httpError(400, "Chưa chọn config");
+    if (names.length > 40) throw httpError(400, "Chọn tối đa 40 config");
+    const bot = await requireBot(actor, username, PERMISSIONS.CONFIG_EDIT);
+    const owned = new Set(bot.accounts || []);
+    const patch = { ...(body || {}) };
+    delete patch.envs;
+    if (!Object.keys(patch).length) throw httpError(400, "Không có gì để sửa");
+    const updated = [];
+    const failed = [];
+    for (const env of names) {
+        if (!owned.has(env)) {
+            failed.push({ env, error: "Config không thuộc user bot này" });
+            continue;
+        }
+        try {
+            const before = await getConfigDetail(actor, username, env, PERMISSIONS.CONFIG_EDIT);
+            const after = await updateConfigSummary(actor, username, env, patch);
+            updated.push({ env, before, after });
+        } catch (error) {
+            console.error("[updateSelectedConfigs]", env, error?.status || error?.name || "error");
+            failed.push({ env, error: error?.message || "Không sửa được" });
+        }
+    }
+    if (!updated.length) throw httpError(400, failed[0]?.error || "Không sửa được config nào");
+    return { updated, failed };
+}
+
 module.exports = {
     MODES,
     OPEN_TYPES,
@@ -464,4 +493,5 @@ module.exports = {
     getConfigSummary,
     getConfigDetail,
     updateConfigSummary,
+    updateSelectedConfigs,
 };

@@ -1,9 +1,14 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import SignalSetupPanel from "./SignalSetupPanel";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth";
 import { canEditResource } from "../access";
 
 const CONFIG_EDIT = "config.edit";
+const SIGNALS_HISTORY = "signals.history";
+const CONFIG_VIEW = "config.view";
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const fmtTime = (value) => value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value)) : "—";
@@ -201,6 +206,109 @@ function ConfigGlance({ config }) {
   );
 }
 
+function daysAgo(days) {
+  return new Date(Date.now() - days * DAY_MS).toISOString();
+}
+
+function SignalLog({ canSearch, onFindConfig }) {
+  const [signal, setSignal] = useState("");
+  const [q, setQ] = useState("");
+  const [side, setSide] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [fallbackFrom] = useState(() => daysAgo(3));
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const debouncedQ = useDebouncedValue(q);
+  const activeFrom = from || fallbackFrom;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    const query = new URLSearchParams({ page: String(page), limit: "50", from: activeFrom });
+    if (to) query.set("to", to);
+    if (debouncedQ) query.set("q", debouncedQ);
+    if (side) query.set("side", side);
+    if (signal) query.set("signal", signal);
+    api(`/api/signal-history?${query}`, { signal: controller.signal }).then((result) => {
+      setData(result);
+    }).catch((err) => {
+      if (!controller.signal.aborted) setError(err.message || "Không tải được lịch sử signal");
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+    return () => controller.abort();
+  }, [signal, debouncedQ, side, activeFrom, to, page]);
+
+  function pick(name) {
+    setPage(1);
+    setSignal((current) => (current === name ? "" : name));
+  }
+
+  const count = signal ? (data?.total || 0) : 0;
+  return (
+    <>
+      <div className="card signal-filters">
+        <label>Symbol<input value={q} placeholder="BTCUSDT" onChange={(event) => { setPage(1); setQ(event.target.value); }} /></label>
+        <label>Side<select value={side} onChange={(event) => { setPage(1); setSide(event.target.value); }}><option value="">Tất cả</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
+        <label>Từ<input type="datetime-local" value={toLocalInput(activeFrom)} onChange={(event) => { setPage(1); setFrom(applyDatePick(activeFrom, event.target.value) || fallbackFrom); }} /></label>
+        <label>Đến<input type="datetime-local" value={toLocalInput(to)} onChange={(event) => { setPage(1); setTo(applyDatePick(to, event.target.value)); }} /></label>
+        <div className="history-range">
+          {[1, 3, 7, 30, 90].map((days) => (
+            <button type="button" className="ghost" key={days} onClick={() => { setPage(1); setFrom(daysAgo(days)); setTo(""); }}>{days} ngày</button>
+          ))}
+        </div>
+      </div>
+      {data?.stats?.bySignal?.length ? (
+        <div className="chips signal-chips">
+          <span className="muted">Signal</span>
+          {data.stats.bySignal.map((item) => (
+            <button type="button" className={signal === item.signal ? "symbol-chip active" : "symbol-chip"} key={item.signal} onClick={() => pick(item.signal)}>
+              {item.signal}: {item.count}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {signal ? (
+        <div className="card signal-pick">
+          <div>
+            <h2>{signal}</h2>
+            <p className="muted">{count} signal trong khoảng này{data?.stats ? ` · ${data.stats.long} LONG · ${data.stats.short} SHORT` : ""}</p>
+          </div>
+          {canSearch ? <button type="button" onClick={() => onFindConfig(signal)}>Tìm config</button> : null}
+        </div>
+      ) : <p className="muted">Bấm một signal để xem lịch sử và số lượng.</p>}
+      {loading ? <p className="muted">Đang tải…</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
+      {signal && !loading && data?.rows?.length === 0 ? <div className="card empty">Không có signal trong khoảng này.</div> : null}
+      {signal && data?.rows?.length ? (
+        <div className="table-wrap signal-table">
+          <table>
+            <thead><tr><th>Thời gian</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Loại</th><th>Trạng thái</th></tr></thead>
+            <tbody>
+              {data.rows.map((row) => (
+                <tr key={row.id}><td>{fmtTime(row.openTime)}</td><td>{row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.type}</td><td>{row.status}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {signal && data?.total > data?.limit ? (
+        <div className="audit-pagination">
+          <span className="muted">Trang {data.page} · {data.total} signal</span>
+          <div>
+            <button type="button" className="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button>
+            <button type="button" className="ghost" disabled={page * data.limit >= data.total} onClick={() => setPage(page + 1)}>Sau</button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function SortHead({ label, name, order, onSort }) {
   const active = order?.key === name;
   return (
@@ -214,6 +322,17 @@ function SortHead({ label, name, order, onSort }) {
 
 export default function SignalSearchPage() {
   const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const historyAllowed = can(user, SIGNALS_HISTORY);
+  const searchAllowed = can(user, CONFIG_VIEW);
+  const requestedTab = params.get("tab");
+  const tab = requestedTab === "setup"
+    ? "setup"
+    : requestedTab === "history" && historyAllowed
+      ? "history"
+      : searchAllowed
+        ? "search"
+        : "history";
   const staticAllowed = can(user, "statistics.view");
   const editAllowed = can(user, CONFIG_EDIT);
   const [signal, setSignal] = useState("");
@@ -266,9 +385,9 @@ export default function SignalSearchPage() {
     });
   }, [rows, order]);
 
-  function searchParams() {
+  function searchParams(name = signal) {
     const params = new URLSearchParams();
-    params.set("signal", signal.trim());
+    params.set("signal", name.trim());
     if (from || to) {
       if (from) params.set("from", from);
       if (to) params.set("to", to);
@@ -286,14 +405,14 @@ export default function SignalSearchPage() {
     return params;
   }
 
-  function onSearch(event) {
-    event.preventDefault();
-    if (!signal.trim()) return;
+  function onSearch(event, name = signal) {
+    event?.preventDefault();
+    if (!String(name || "").trim()) return;
     setBusy(true);
     setError("");
     setOrder(null);
     const controller = renewController(searchController);
-    api(`/api/bots/config-search?${searchParams()}`, { signal: controller.signal })
+    api(`/api/bots/config-search?${searchParams(name)}`, { signal: controller.signal })
       .then((data) => {
         setRows(data.rows || []);
         setRange({ from: data.from, to: data.to });
@@ -479,15 +598,40 @@ export default function SignalSearchPage() {
     }
   }
 
+  function openTab(next) {
+    const copy = new URLSearchParams(params);
+    copy.set("tab", next);
+    setParams(copy);
+  }
+
+  function findConfig(name) {
+    setSignal(name);
+    openTab("search");
+    onSearch(null, name);
+  }
+
   return (
     <section>
       <header className="page-head">
         <div>
-          <h1>Tìm signal</h1>
-          <p className="muted">Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây.</p>
+          <h1>Signal</h1>
+          <p className="muted">
+            {tab === "setup"
+              ? "Thêm hoặc xoá signal trên config của user đang sở hữu hoặc được gán. Signal đang dùng cũng chỉ đếm các account đó."
+              : tab === "history"
+                ? "Bấm một signal để xem lịch sử và số lượng. Tìm config đưa sang bộ lọc config với đúng signal đó."
+                : "Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây."}
+          </p>
         </div>
       </header>
-      <form className="card signal-filters" onSubmit={onSearch}>
+      <div className="history-tabs">
+        {historyAllowed ? <button type="button" className={tab === "history" ? "active" : "ghost"} onClick={() => openTab("history")}>Lịch sử signal</button> : null}
+        {searchAllowed ? <button type="button" className={tab === "search" ? "active" : "ghost"} onClick={() => openTab("search")}>Tìm Signal</button> : null}
+        <button type="button" className={tab === "setup" ? "active" : "ghost"} onClick={() => openTab("setup")}>Cấu hình Signal</button>
+      </div>
+      {tab === "setup" ? <SignalSetupPanel onFindConfig={searchAllowed ? findConfig : null} /> : null}
+      {tab === "history" ? <SignalLog canSearch={searchAllowed} onFindConfig={findConfig} /> : null}
+      {tab === "search" ? <form className="card signal-filters" onSubmit={onSearch}>
         <label>
           Signal
           <input value={signal} placeholder="SIGNAL_A, BULL" onChange={(event) => setSignal(event.target.value)} />
@@ -542,10 +686,10 @@ export default function SignalSearchPage() {
           </select>
         </label>
         <button type="submit" disabled={busy || !signal.trim()}>{busy ? "Đang tìm…" : "Tìm"}</button>
-      </form>
-      {error ? <p className="form-error">{error}</p> : null}
-      {shown && range ? <p className="muted">Từ {fmtTime(range.from)}{range.to ? ` đến ${fmtTime(range.to)}` : ""}. Bỏ config chưa có lệnh. Bấm tiêu đề cột để xếp lại. Win rate là tỷ lệ lệnh có profit &gt; 0, không tính paper.</p> : null}
-      {shown ? (
+      </form> : null}
+      {tab === "search" && error ? <p className="form-error">{error}</p> : null}
+      {tab === "search" && shown && range ? <p className="muted">Từ {fmtTime(range.from)}{range.to ? ` đến ${fmtTime(range.to)}` : ""}. Bỏ config chưa có lệnh. Bấm tiêu đề cột để xếp lại. Win rate là tỷ lệ lệnh có profit &gt; 0, không tính paper.</p> : null}
+      {tab === "search" && shown ? (
         shown.length === 0 ? <p className="muted">Không có config có lệnh trong khoảng này.</p> : (
           <div className="table-wrap">
             <table>
@@ -588,7 +732,7 @@ export default function SignalSearchPage() {
           </div>
         )
       ) : null}
-      {panel ? (
+      {tab === "search" && panel ? (
         <div className="modal-backdrop" onClick={closePanel}>
           <div className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header>
