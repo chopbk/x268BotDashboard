@@ -14,6 +14,7 @@ import SummaryPage from "./pages/SummaryPage";
 import SignalHistoryPage from "./pages/SignalHistoryPage";
 import SignalSearchPage from "./pages/SignalSearchPage";
 import ProfilePage from "./pages/ProfilePage";
+import AccountLedgerPage from "./pages/AccountLedgerPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -73,6 +74,7 @@ function Shell({ children }) {
             {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/signal-search">Tìm signal</NavLink> : null}
             {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
             {hasPermission(user, SIGNALS_HISTORY) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Signal & Static</NavLink> : null}
+            {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
             {hasPermission(user, CREDENTIALS_VIEW) ? (
               <NavLink to="/user-apis" className={onApis ? "active" : ""}>
                 User API
@@ -146,6 +148,16 @@ function AppRoutes() {
           <Protected permission={CONFIG_VIEW}>
             <Shell>
               <SignalSearchPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ledger"
+        element={
+          <Protected permission={STATISTICS_VIEW}>
+            <Shell>
+              <AccountLedgerPage />
             </Shell>
           </Protected>
         }

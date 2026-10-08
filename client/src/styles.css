@@ -631,6 +631,15 @@ th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
   color: var(--muted);
 }
 
+.ledger-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.ledger-tools label { width: 160px; }
+.ledger-chart { width: 100%; height: 180px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+.ledger-legend { display: flex; gap: 16px; font-size: 0.82rem; }
+.ledger-trade, .ledger-trade-line { color: var(--ok); stroke: var(--ok); }
+.ledger-cash, .ledger-cash-line { color: var(--warn, #e0a106); stroke: var(--warn, #e0a106); }
+td.positive { color: var(--ok); }
+td.negative { color: var(--danger); }
+
 @media (max-width: 1100px) {
   .config-form { columns: 2; }
   .config-head { position: static; flex-direction: column; }
