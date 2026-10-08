@@ -6,6 +6,7 @@ import { useEscape } from "../navigation";
 const WARN = {
   "no-monitor": "Chưa có monitor",
   "qty-mismatch": "Lệch qty",
+  "closed-on-exchange": "Đã đóng trên sàn, monitor chưa cập nhật",
   "monitor-without-position": "Monitor không thấy vị thế",
   stale: "Dữ liệu cũ",
 };
@@ -36,9 +37,13 @@ function matches(row, params) {
   const env = (params.get("env") || "").trim();
   if (symbol && row.symbol !== symbol) return false;
   if (side && row.side !== side) return false;
-  if (book === "notpsl") {
+  if (book === "all") {
+    // live và paper
+  } else if (book === "notpsl") {
     if (!row.notpsl && !row.monitors.some((monitor) => monitor.notpsl)) return false;
-  } else if (book && row.book !== book) return false;
+  } else if (book === "paper" || book === "pending") {
+    if (row.book !== book) return false;
+  } else if (row.book === "paper") return false;
   if (env && !row.monitors.some((monitor) => monitor.env === env)) return false;
   if (params.get("warn") === "1" && !row.warnings.length) return false;
   return true;
@@ -49,6 +54,8 @@ export default function PositionsPage() {
   const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const account = params.get("account") || "";
+  const audience = params.get("audience") === "all" ? "all" : "mine";
+  const book = params.get("book") || "";
   const panel = params.get("panel") || "";
   const [payload, setPayload] = useState(null);
   const [error, setError] = useState("");
@@ -101,8 +108,11 @@ export default function PositionsPage() {
 
     async function load() {
       try {
-        const query = account ? `?account=${encodeURIComponent(account)}` : "";
-        apply(await api(`/api/positions${query}`));
+        const query = new URLSearchParams();
+        query.set("audience", audience);
+        if (book) query.set("book", book);
+        if (account) query.set("account", account);
+        apply(await api(`/api/positions?${query}`));
         setError("");
       } catch (err) {
         console.error("[positions]", err);
@@ -118,7 +128,7 @@ export default function PositionsPage() {
 
     function send(type) {
       if (!socket || socket.readyState !== WebSocket.OPEN || !account) return;
-      socket.send(JSON.stringify({ type, account }));
+      socket.send(JSON.stringify({ type, account, audience, book }));
     }
 
     function openSocket() {
@@ -186,7 +196,7 @@ export default function PositionsPage() {
       if (retry) window.clearTimeout(retry);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [account]);
+  }, [account, audience, book]);
 
   useEffect(() => {
     if (!panel || !monitorId) {
@@ -194,7 +204,7 @@ export default function PositionsPage() {
       return undefined;
     }
     let gone = false;
-    api(`/api/positions/detail?id=${encodeURIComponent(monitorId)}`)
+    api(`/api/positions/detail?id=${encodeURIComponent(monitorId)}&audience=${encodeURIComponent(audience)}`)
       .then((body) => { if (!gone) { setDetail(body); setDetailError(""); } })
       .catch((err) => {
         console.error("[positions]", err);
@@ -213,7 +223,8 @@ export default function PositionsPage() {
     const next = new URLSearchParams(location.search);
     if (value) next.set(name, value);
     else next.delete(name);
-    if (name === "account") next.delete("panel");
+    if (name === "account" || name === "audience") next.delete("panel");
+    if (name === "audience") next.delete("account");
     const search = next.toString();
     const target = { pathname: location.pathname, search: search ? `?${search}` : "" };
     if ((location.state?.layer || 0) > 0 && next.get("panel")) {
@@ -240,9 +251,15 @@ export default function PositionsPage() {
     <section className="stack">
       <header>
         <h1>Position</h1>
-        <p className="muted">Xem vị thế live và monitor. Không đặt hay đóng lệnh từ đây.</p>
+        <p className="muted">Mặc định là vị thế live của bot bạn sở hữu hoặc được gán, không gồm paper. Tất cả thêm bot mà quyền xem Position cho phép. Không đặt hay đóng lệnh từ đây.</p>
       </header>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
+        <label>Phạm vi
+          <select value={audience} onChange={(event) => setFilter("audience", event.target.value)}>
+            <option value="mine">Của tôi</option>
+            <option value="all">Có quyền xem</option>
+          </select>
+        </label>
         <label>Tài khoản
           <select value={account} onChange={(event) => setFilter("account", event.target.value)}>
             <option value="">Tất cả</option>
@@ -267,9 +284,9 @@ export default function PositionsPage() {
         </label>
         <label>Sổ
           <select value={params.get("book") || ""} onChange={(event) => setFilter("book", event.target.value)}>
-            <option value="">Tất cả</option>
-            <option value="live">Live</option>
+            <option value="">Live</option>
             <option value="paper">Paper</option>
+            <option value="all">Live và paper</option>
             <option value="pending">Lệnh chờ</option>
             <option value="notpsl">NOTPSL</option>
           </select>

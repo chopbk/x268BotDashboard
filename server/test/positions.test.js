@@ -6,7 +6,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 const UserAccount = require("../src/models/user-account");
 const MonitorPosition = require("../src/models/monitor-position");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
-const { buildPositionView, loadPositions, estimatedPnl } = require("../src/lib/positions");
+const { buildPositionView, filterRows, loadPositions, estimatedPnl } = require("../src/lib/positions");
 const { applyAccountUpdate, applyOrderUpdate } = require("../src/lib/position-feed");
 const { parseNotice, decideUpdate } = require("../src/lib/position-cache");
 const { watch, resetLive, bindRedis } = require("../src/lib/position-live");
@@ -107,7 +107,9 @@ test("warnings cover a position without a monitor, qty drift, and a monitor with
     const xrp = rows.find((row) => row.symbol === "XRPUSDT");
     assert.equal(btc.warnings.includes("qty-mismatch"), true);
     assert.equal(btc.warnings.includes("stale"), true);
-    assert.equal(xrp.warnings.includes("monitor-without-position"), true);
+    assert.equal(xrp.warnings.includes("closed-on-exchange"), true);
+    assert.equal(xrp.closedOnExchange, true);
+    assert.equal(xrp.exchangeQty, null);
     const naked = buildPositionView({
         account: "V",
         exchangePositions: [{ symbol: "BNBUSDT", positionAmt: "1", entryPrice: "1", markPrice: "1", unRealizedProfit: "0" }],
@@ -215,6 +217,52 @@ test("pubsub notice is only a version marker and a gap keeps the last snapshot",
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(subs.length, 0);
     resetLive();
+});
+
+test("default audience is mine and paper stays out until asked", async () => {
+    const admin = { id: "u1", role: "admin", username: "me", email: "me@x.com", botUsernames: ["V"] };
+    const originals = { users: UserAccount.find, monitors: MonitorPosition.find, beats: ProcessHeartbeat.find };
+    UserAccount.find = () => query([
+        { username: "V", accounts: ["V1"], ownerUserId: "other", active: true },
+        { username: "OTHER", accounts: ["O1"], ownerUserId: "other", active: true },
+        { username: "OFF", accounts: ["F1"], ownerUserId: "u1", active: false },
+    ]);
+    MonitorPosition.find = () => query([
+        { _id: "mine", env: "V1", futuresClientName: "V", symbol: "BTCUSDT", side: "LONG", positionAmt: "1", closed: false },
+        { _id: "paper", env: "V1", futuresClientName: "V", symbol: "ETHUSDT", side: "LONG", positionAmt: "2", isPaper: true, closed: false },
+        { _id: "done", env: "V1", futuresClientName: "V", symbol: "XRPUSDT", side: "SHORT", positionAmt: "1", isClosed: true, closed: false },
+        { _id: "other", env: "O1", futuresClientName: "OTHER", symbol: "SOLUSDT", side: "LONG", positionAmt: "1", closed: false },
+    ]);
+    ProcessHeartbeat.find = () => query([]);
+    const deps = { UserAccount, Monitor: MonitorPosition, Heartbeat: ProcessHeartbeat, now };
+    try {
+        const mine = await loadPositions(admin, {}, deps);
+        assert.deepEqual(mine.accounts.map((row) => row.username), ["V"]);
+        assert.equal(mine.rows.some((row) => row.symbol === "ETHUSDT"), false);
+        assert.equal(mine.rows.some((row) => row.symbol === "SOLUSDT" || row.symbol === "XRPUSDT"), false);
+        const paper = await loadPositions(admin, { book: "paper" }, deps);
+        assert.deepEqual(paper.rows.map((row) => row.symbol), ["ETHUSDT"]);
+        const all = await loadPositions(admin, { audience: "all", book: "all" }, deps);
+        assert.deepEqual(all.accounts.map((row) => row.username), ["V", "OTHER"]);
+        assert.equal(all.rows.some((row) => row.account === "OTHER"), true);
+        const closed = buildPositionView({
+            account: "V",
+            exchangeLoaded: true,
+            exchangePositions: [],
+            monitors: [
+                { _id: "stale", env: "V1", symbol: "BNBUSDT", side: "LONG", positionAmt: "1", position: { positionAmt: "1" }, closed: false },
+                { _id: "shut", env: "V1", symbol: "ADAUSDT", side: "LONG", positionAmt: "1", isClosed: true, closed: false },
+            ],
+        });
+        assert.equal(closed.length, 1);
+        assert.equal(closed[0].closedOnExchange, true);
+        assert.equal(filterRows(closed, {}).length, 1);
+        assert.equal(filterRows([{ book: "paper", symbol: "ETHUSDT", side: "LONG", monitors: [], warnings: [] }], {}).length, 0);
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.find = originals.monitors;
+        ProcessHeartbeat.find = originals.beats;
+    }
 });
 
 test("account and order events patch the cached position", () => {

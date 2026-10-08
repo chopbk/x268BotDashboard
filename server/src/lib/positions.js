@@ -56,6 +56,10 @@ function isPaper(doc) {
     return doc?.isPaper === true || doc?.config?.PAPER === true;
 }
 
+function isClosedDoc(doc) {
+    return doc?.closed === true || doc?.isClosed === true;
+}
+
 function isPending(doc) {
     return doc?.isLimit === true && !isPaper(doc);
 }
@@ -255,7 +259,7 @@ function buildPositionView({
     for (const item of live) {
         const parent = parentFromExchange(account, item.row, connection);
         monitors.forEach((doc, index) => {
-            if (isPaper(doc) || isPending(doc) || doc.closed === true) return;
+            if (isPaper(doc) || isPending(doc) || isClosedDoc(doc)) return;
             if (!samePosition(item.identity, monitorIdentity(doc))) return;
             parent.monitors.push(publicMonitor(doc, heartbeatFresh, now, parent.mark));
             used.add(index);
@@ -268,7 +272,7 @@ function buildPositionView({
     }
 
     monitors.forEach((doc, index) => {
-        if (used.has(index) || doc.closed === true) return;
+        if (used.has(index) || isClosedDoc(doc)) return;
         const identity = monitorIdentity(doc);
         if (!identity.symbol || !identity.side) return;
         const book = isPaper(doc) ? "paper" : isPending(doc) ? "pending" : "live";
@@ -276,7 +280,10 @@ function buildPositionView({
         const monitor = publicMonitor(doc, heartbeatFresh, now, null);
         parent.monitors.push(monitor);
         parent.notpsl = monitor.notpsl;
-        if (book === "live") parent.warnings.push("monitor-without-position");
+        if (book === "live" && exchangeLoaded) {
+            parent.warnings.push("closed-on-exchange");
+            parent.closedOnExchange = true;
+        }
         parents.push(parent);
     });
 
@@ -323,13 +330,26 @@ function filterRows(rows, query = {}) {
     return rows.filter((row) => {
         if (symbol && row.symbol !== symbol) return false;
         if (side && row.side !== side) return false;
-        if (book === "notpsl") {
+        if (book === "all") {
+            // giữ live và paper
+        } else if (book === "notpsl") {
             if (!row.notpsl && !row.monitors.some((monitor) => monitor.notpsl)) return false;
-        } else if (book && row.book !== book) return false;
+        } else if (book === "paper" || book === "pending") {
+            if (row.book !== book) return false;
+        } else if (row.book === "paper") return false;
         if (env && !row.monitors.some((monitor) => monitor.env === env)) return false;
         if (warn && !row.warnings.length) return false;
         return true;
     });
+}
+
+function isMine(actor, bot) {
+    const username = bot?.username;
+    if (!username || !actor) return false;
+    const ownerUserId = bot.ownerUserId ? String(bot.ownerUserId) : "";
+    if (ownerUserId && ownerUserId === String(actor.id || "")) return true;
+    if (!ownerUserId && [actor.username, actor.email].filter(Boolean).includes(String(username))) return true;
+    return (actor.botUsernames || []).includes(username);
 }
 
 function monitorOwner(doc, envOwners) {
@@ -346,9 +366,14 @@ function heartbeatFresh(beats, now) {
     });
 }
 
-async function visibleBots(actor, UserAccount) {
+async function visibleBots(actor, UserAccount, audience = "mine") {
     const rows = await UserAccount.find().select("username accounts ownerUserId visibility active").lean();
-    return (rows || []).filter((row) => row?.username && canAccessResource(actor, PERMISSIONS.POSITIONS_VIEW, row));
+    return (rows || []).filter((row) => {
+        if (!row?.username || row.active === false) return false;
+        if (!canAccessResource(actor, PERMISSIONS.POSITIONS_VIEW, row)) return false;
+        if (audience === "all") return true;
+        return isMine(actor, row);
+    });
 }
 
 async function loadPositions(actor, query = {}, deps = {}) {
@@ -356,7 +381,8 @@ async function loadPositions(actor, query = {}, deps = {}) {
     const Monitor = deps.Monitor || require("../models/monitor-position");
     const Heartbeat = deps.Heartbeat || require("../models/process-heartbeat");
     const now = deps.now || Date.now();
-    const bots = await visibleBots(actor, UserAccount);
+    const audience = query.audience === "all" ? "all" : "mine";
+    const bots = await visibleBots(actor, UserAccount, audience);
     const names = bots.map((row) => row.username);
     const account = String(query.account || "").trim();
     if (account && !names.includes(account)) throw httpError(403, "Không có quyền với tài khoản này");
@@ -369,6 +395,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
     const found = selected.length
         ? await Monitor.find({
             closed: { $ne: true },
+            isClosed: { $ne: true },
             $or: [{ futuresClientName: { $in: selected } }, { env: { $in: envs.length ? envs : ["__none__"] } }],
         }).lean()
         : [];
@@ -424,6 +451,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         connection,
         updatedAt,
         stale,
+        audience,
         version: snap?.version == null ? null : Number(snap.version),
     };
 }
@@ -444,6 +472,7 @@ module.exports = {
     HEARTBEAT_MS,
     buildPositionView,
     filterRows,
+    isMine,
     estimatedPnl,
     loadPositions,
     monitorDetail,

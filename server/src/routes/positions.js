@@ -34,7 +34,8 @@ router.get("/detail", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW)
     try {
         const id = String(req.query.id || "");
         if (!mongoose.Types.ObjectId.isValid(id)) throw httpError(404, "Không tìm thấy monitor");
-        const bots = await visibleBots(req.webUser, UserAccount);
+        const audience = req.query.audience === "all" ? "all" : "mine";
+        const bots = await visibleBots(req.webUser, UserAccount, audience);
         const envOwners = new Map();
         for (const bot of bots) {
             for (const env of bot.accounts || []) envOwners.set(env, bot.username);

@@ -86,8 +86,13 @@ function openSocket(ws, user) {
         if (message?.type !== "watch" && message?.type !== "resume") return;
         const account = String(message.account || "").trim();
         if (!account) return;
+        const viewQuery = {
+            account,
+            audience: message.audience === "all" ? "all" : "mine",
+            book: message.book || "",
+        };
         try {
-            await loadPositions(user, { account }, { snapshot: async () => null });
+            await loadPositions(user, viewQuery, { snapshot: async () => null });
         } catch (error) {
             send({ type: "error", error: error.status === 403 ? "Không có quyền với tài khoản này" : "Không xem được vị thế" });
             return;
@@ -95,7 +100,7 @@ function openSocket(ws, user) {
         stop?.();
         stop = live.watch(account, async (snap) => {
             try {
-                const view = await loadPositions(user, { account }, { snapshot: async () => snap });
+                const view = await loadPositions(user, viewQuery, { snapshot: async () => snap });
                 send({ type: "snapshot", ...view });
             } catch (error) {
                 console.error("[positionWs]", error.message);
