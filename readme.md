@@ -43,9 +43,20 @@ Mở `http://localhost:5173`. Vite chuyển request `/api` sang backend.
 
 ## Kiểm tra và production
 
+Hướng dẫn đầy đủ: [Deploy trên Debian](docs/deploy-debian.md), gồm cài Node.js/PM2, cấu hình MongoDB, Nginx, HTTPS và tự khởi động sau reboot.
+
+Sau khi chuẩn bị server theo hướng dẫn, cập nhật bằng:
+
+```sh
+git pull --ff-only && npm run deploy
+```
+
+Script chạy trên server, kiểm tra checkout sạch, cài dependency, test/build, restart riêng PM2 `web-bot`, kiểm tra health rồi xuất frontend vào `/var/www/web-bot`.
+
 ```sh
 npm --prefix server test
 npm --prefix client run build
+npm run test:deploy
 ```
 
 Phục vụ `client/dist` bằng Nginx hoặc static server hỗ trợ SPA fallback về `index.html`. Proxy `/api` sang backend và giữ nguyên tiền tố `/api`.

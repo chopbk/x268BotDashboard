@@ -84,7 +84,7 @@ async function main() {
             res.status(500).json({ error: "Internal error" });
         });
 
-        const server = app.listen(config.port, () => {
+        const server = app.listen(config.port, config.host, () => {
             console.log("[main] listen", config.port);
         });
         server.requestTimeout = 35_000;

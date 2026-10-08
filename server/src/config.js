@@ -4,6 +4,7 @@ require("dotenv").config({ path: path.join(__dirname, "../../.env") });
 const config = {
     mongodb: process.env.MONGODB || "",
     port: Number(process.env.WEB_PORT || 4000),
+    host: process.env.WEB_HOST || undefined,
     jwtSecret: process.env.WEB_JWT_SECRET || "",
     adminEmail: String(process.env.WEB_ADMIN_EMAIL || "")
         .trim()
