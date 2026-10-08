@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
+const { isOwnUser, ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -18,6 +18,14 @@ function chain(value) {
         then(onOk, onErr) { return Promise.resolve(value).then(onOk, onErr); },
     };
 }
+
+test("own user is the owner or an assigned bot, not every visible user", () => {
+    const actor = { id: "vx", username: "vx268", email: "vx@x268.com", botUsernames: ["assigned"] };
+    assert.equal(isOwnUser(actor, { username: "V", ownerUserId: "vx" }), true);
+    assert.equal(isOwnUser(actor, { username: "assigned", ownerUserId: "other" }), true);
+    assert.equal(isOwnUser(actor, { username: "other", ownerUserId: "other" }), false);
+    assert.equal(isOwnUser(actor, { username: "vx268", ownerUserId: null }), true);
+});
 
 test("ledger uses the user name as the shared wallet env", () => {
     assert.equal(ledgerEnv({ username: "v", accounts: ["v1", "V"] }), "V");

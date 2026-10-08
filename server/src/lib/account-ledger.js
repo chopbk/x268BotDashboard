@@ -167,6 +167,13 @@ async function visibleUsers(actor) {
         .sort((a, b) => a.username.localeCompare(b.username));
 }
 
+function isOwnUser(actor, user) {
+    const id = String(actor?.id || "");
+    if (user?.ownerUserId && user.ownerUserId === id) return true;
+    if (!user?.ownerUserId && [actor?.username, actor?.email].filter(Boolean).includes(user?.username)) return true;
+    return (actor?.botUsernames || []).includes(user?.username);
+}
+
 function pickUser(users, username, actor) {
     if (username) {
         const found = users.find((user) => user.username.toLowerCase() === String(username).toLowerCase());
@@ -217,7 +224,7 @@ async function loadLedger(actor, query = {}) {
     }
     const summary = summarizeLedger([...byDay.values()], await staticProfit(user.accounts.length ? user.accounts : [env], from, to));
     return {
-        users: users.map((item) => ({ username: item.username, active: item.active })),
+        users: users.map((item) => ({ username: item.username, active: item.active, mine: isOwnUser(actor, item) })),
         username: user.username,
         env,
         days,
@@ -386,6 +393,7 @@ async function refreshLedger(actor, username, options = {}) {
 
 module.exports = {
     ledgerEnv,
+    isOwnUser,
     classifyIncome,
     summarizeLedger,
     loadLedger,

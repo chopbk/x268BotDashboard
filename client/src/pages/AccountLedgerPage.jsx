@@ -20,6 +20,14 @@ function tone(value) {
   return n > 0 ? "positive" : "negative";
 }
 
+function filterUsers(users, showOthers, showInactive) {
+  return (users || []).filter((item) => {
+    if (!showInactive && item.active === false) return false;
+    if (!showOthers && !item.mine) return false;
+    return true;
+  });
+}
+
 function points(series, key, width, height, minValue, maxValue) {
   const values = series.map((row) => Number(row[key]) || 0);
   const min = minValue == null ? Math.min(...values) : minValue;
@@ -35,6 +43,8 @@ function points(series, key, width, height, minValue, maxValue) {
 export default function AccountLedgerPage() {
   const [days, setDays] = useState("14");
   const [username, setUsername] = useState("");
+  const [showOthers, setShowOthers] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -51,7 +61,11 @@ export default function AccountLedgerPage() {
         if (cancelled) return;
         setData(result);
         setError("");
-        if (!username && result.username) setUsername(result.username);
+        if (!username) {
+          const choices = filterUsers(result.users, showOthers, showInactive);
+          const preferred = choices.find((item) => item.username === result.username) || choices[0];
+          if (preferred) setUsername(preferred.username);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message || "Không tải được lãi lỗ");
@@ -64,6 +78,15 @@ export default function AccountLedgerPage() {
       controller.abort();
     };
   }, [days, username]);
+
+  const choices = filterUsers(data?.users, showOthers, showInactive);
+
+  useEffect(() => {
+    if (!data) return;
+    const next = filterUsers(data.users, showOthers, showInactive);
+    if (next.some((item) => item.username === username)) return;
+    setUsername(next[0]?.username || "");
+  }, [data, showInactive, showOthers, username]);
 
   async function refresh() {
     if (!data?.username) return;
@@ -105,11 +128,19 @@ export default function AccountLedgerPage() {
         <div className="ledger-tools">
           <label>
             User
-            <select value={username} onChange={(event) => setUsername(event.target.value)}>
-              {(data?.users || []).map((user) => (
-                <option key={user.username} value={user.username}>{user.username}{user.active ? "" : " (tắt)"}</option>
+            <select value={choices.some((item) => item.username === username) ? username : ""} onChange={(event) => setUsername(event.target.value)}>
+              {choices.map((item) => (
+                <option key={item.username} value={item.username}>{item.username}{item.active ? "" : " (tắt)"}</option>
               ))}
             </select>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={showOthers} onChange={(event) => setShowOthers(event.target.checked)} />
+            Xem của người khác
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
+            Xem account non-active
           </label>
           <label>
             Số ngày
@@ -125,8 +156,8 @@ export default function AccountLedgerPage() {
       </header>
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
-      {!loading && data && !data.username ? <p className="muted">Bạn chưa có user bot để xem lãi lỗ.</p> : null}
-      {data?.username ? (
+      {!loading && data && !choices.length ? <p className="muted">{showOthers ? "Không có user khác trong quyền xem." : "Bạn chưa có user bot đang active. Tick để xem người khác hoặc account đang tắt."}</p> : null}
+      {data?.username && choices.some((item) => item.username === data.username) ? (
         <>
           <p className="muted">User {data.username} · ví ghi ở env {data.env} · {data.from} → {data.to} UTC{live.asOf ? ` · mốc ${new Date(live.asOf).toLocaleString("vi-VN")}` : ""}</p>
           <div className="stats-grid summary-grid">
