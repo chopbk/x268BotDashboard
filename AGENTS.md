@@ -40,3 +40,7 @@ npm --prefix client run build
   không commit `.env`, secret hoặc file tạm.
 - Nếu worktree có thay đổi sẵn của user hoặc tiến trình khác, phải giữ nguyên và chỉ
   commit phần thuộc prompt hiện tại; nếu không thể tách an toàn thì báo rõ trước khi commit.
+
+- Sau khi commit và kiểm tra xong, tự push branch hiện tại lên upstream GitHub đã cấu hình.
+- Chỉ push khi upstream rõ ràng và các commit sắp push thuộc phạm vi được phép. Nếu chưa có upstream hoặc bị từ chối, báo rõ; không tự force-push, amend, rewrite history hoặc bỏ qua hook.
+- Không đưa thay đổi có sẵn của user/tiến trình khác vào commit hoặc push nếu chưa được yêu cầu.

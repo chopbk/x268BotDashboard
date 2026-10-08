@@ -18,11 +18,11 @@ test("signal history lists the system log inside the default 3 day window", asyn
     let signalFilter;
     SignalInfo.find = (filter) => {
         signalFilter = filter;
-        return query([{ _id: "1", signal: "ROSE", symbol: "BTCUSDT", side: "LONG", type: "SCALP", status: "CLOSE", openTime: new Date() }]);
+        return query([{ _id: "1", signal: "SIGNAL_A", symbol: "BTCUSDT", side: "LONG", type: "SCALP", status: "CLOSE", openTime: new Date() }]);
     };
     SignalInfo.countDocuments = async () => 4;
     SignalInfo.aggregate = async () => [{
-        bySignalSide: [{ _id: { signal: "ROSE", side: "LONG" }, count: 3 }, { _id: { signal: "BULL", side: "SHORT" }, count: 1 }],
+        bySignalSide: [{ _id: { signal: "SIGNAL_A", side: "LONG" }, count: 3 }, { _id: { signal: "BULL", side: "SHORT" }, count: 1 }],
         byType: [{ _id: "SCALP", count: 3 }, { _id: "SWING", count: 1 }],
         bySymbol: [{ _id: "BTCUSDT", count: 2 }, { _id: "ETHUSDT", count: 2 }],
         bySession: [{ _id: "Á", count: 3 }, { _id: "Mỹ", count: 1 }],
@@ -73,14 +73,14 @@ test("signal history filters one signal without hiding the other signal choices"
     let pipeline;
     SignalInfo.find = (filter) => { signalFilter = filter; return query([]); };
     SignalInfo.countDocuments = async () => 0;
-    SignalInfo.aggregate = async (stages) => { pipeline = stages; return [{ bySignalSide: [], byType: [], bySymbol: [], bySession: [], signalOptions: [{ _id: "ROSE", count: 2 }, { _id: "BULL", count: 1 }] }]; };
+    SignalInfo.aggregate = async (stages) => { pipeline = stages; return [{ bySignalSide: [], byType: [], bySymbol: [], bySession: [], signalOptions: [{ _id: "SIGNAL_A", count: 2 }, { _id: "BULL", count: 1 }] }]; };
     try {
-        const result = await listSignalHistory({}, { signal: "rose+" });
-        assert.equal(signalFilter.signal.source, "^rose\\+$");
+        const result = await listSignalHistory({}, { signal: "signal_a+" });
+        assert.equal(signalFilter.signal.source, "^signal_a\\+$");
         assert.equal(pipeline[0].$match.signal, undefined);
         assert.equal(pipeline[1].$facet.signalOptions[0].$match, undefined);
-        assert.equal(pipeline[1].$facet.bySignalSide[0].$match.signal.source, "^rose\\+$");
-        assert.deepEqual(result.stats.bySignal.map((item) => item.signal), ["ROSE", "BULL"]);
+        assert.equal(pipeline[1].$facet.bySignalSide[0].$match.signal.source, "^signal_a\\+$");
+        assert.deepEqual(result.stats.bySignal.map((item) => item.signal), ["SIGNAL_A", "BULL"]);
     } finally {
         SignalInfo.find = originals.signal;
         SignalInfo.countDocuments = originals.count;

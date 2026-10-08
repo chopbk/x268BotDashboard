@@ -178,7 +178,7 @@ test("copyAccount clones the config onto the chosen user", async () => {
             return query({
                 _id: "src",
                 env: "a1",
-                signals: ["ROSE"],
+                signals: ["SIGNAL_A"],
                 blacklist: ["BTC"],
                 trade_config: { ON: true, FIX_COST_AMOUNT: 100 },
                 sync_from: "old",
@@ -195,7 +195,7 @@ test("copyAccount clones the config onto the chosen user", async () => {
         assert.deepEqual(result, { username: "beta", env: "a1copy" });
         assert.equal(created.env, "a1copy");
         assert.equal(created._id, undefined);
-        assert.deepEqual(created.signals, ["ROSE"]);
+        assert.deepEqual(created.signals, ["SIGNAL_A"]);
         assert.deepEqual(created.blacklist, ["BTC"]);
         assert.equal(created.trade_config.ON, true);
         assert.equal(created.sync_from, null);
@@ -223,7 +223,7 @@ test("copyAccount overwrites an existing config and clears its sync", async () =
     };
     AccountConfig.findOne = (filter) => query(filter.env === "a1" ? {
         env: "a1",
-        signals: ["ROSE"],
+        signals: ["SIGNAL_A"],
         blacklist: ["BTC"],
         whitelist: ["ETH"],
         trade_config: { ON: true },
@@ -237,7 +237,7 @@ test("copyAccount overwrites an existing config and clears its sync", async () =
         const result = await copyAccount(admin, "alpha", "a1", "beta", "keep", { replace: true });
         assert.deepEqual(result, { username: "beta", env: "keep", replaced: true });
         assert.equal(updated.filter.env, "keep");
-        assert.deepEqual(updated.doc.$set.signals, ["ROSE"]);
+        assert.deepEqual(updated.doc.$set.signals, ["SIGNAL_A"]);
         assert.deepEqual(updated.doc.$set.whitelist, ["ETH"]);
         assert.equal(updated.doc.$set.trade_config.ON, true);
         assert.equal(updated.doc.$set.sync_from, null);
@@ -270,7 +270,7 @@ test("copyAccount can create a new config that stays synced to the source", asyn
     };
     AccountConfig.findOne = (filter) => query(filter.env === "a1" ? {
         env: "a1",
-        signals: ["ROSE"],
+        signals: ["SIGNAL_A"],
         trade_config: { ON: true },
         sync_from: "other",
     } : null);
@@ -282,7 +282,7 @@ test("copyAccount can create a new config that stays synced to the source", asyn
         assert.deepEqual(result, { username: "beta", env: "branch" });
         assert.equal(created.env, "branch");
         assert.equal(created.sync_from, "a1");
-        assert.deepEqual(created.signals, ["ROSE"]);
+        assert.deepEqual(created.signals, ["SIGNAL_A"]);
         assert.deepEqual(target.accounts, ["branch"]);
     } finally {
         UserAccount.findOne = originalFind;

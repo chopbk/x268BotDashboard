@@ -44,7 +44,7 @@ test("system summary ranks account-static profit without listing every identity"
             totals: [{ tradeCount: 10, wins: 6, losses: 2, volume: 1000, profit: 40 }],
             today: [{ profit: -2 }],
             bySignal: [
-                { _id: "ROSE", profit: 30, trades: 6, wins: 5, losses: 1 },
+                { _id: "SIGNAL_A", profit: 30, trades: 6, wins: 5, losses: 1 },
                 { _id: "BULL", profit: -5, trades: 4, wins: 1, losses: 3 },
             ],
             bySymbol: [{ _id: "BTCUSDT", profit: 20, trades: 3, wins: 2, losses: 1 }],
@@ -65,7 +65,7 @@ test("system summary ranks account-static profit without listing every identity"
         tradeCount: 10, wins: 6, losses: 2, openPositionCount: 2, winRate: 75,
         profit: 40, profitToday: -2, volume: 1000,
         longProfit: 50, shortProfit: -10,
-        bestSignal: { name: "ROSE", profit: 30, trades: 6, winRate: (5 / 6) * 100 },
+        bestSignal: { name: "SIGNAL_A", profit: 30, trades: 6, winRate: (5 / 6) * 100 },
         worstSignal: { name: "BULL", profit: -5, trades: 4, winRate: 25 },
         bestUser: { name: "alpha", profit: 25, trades: 4, winRate: 75 },
         bestSymbol: { name: "BTCUSDT", profit: 20, trades: 3, winRate: (2 / 3) * 100 },

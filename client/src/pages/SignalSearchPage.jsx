@@ -484,13 +484,13 @@ export default function SignalSearchPage() {
       <header className="page-head">
         <div>
           <h1>Tìm signal</h1>
-          <p className="muted">Gõ một hoặc nhiều tên, ví dụ ROSE hoặc ROSE, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây.</p>
+          <p className="muted">Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây.</p>
         </div>
       </header>
       <form className="card signal-filters" onSubmit={onSearch}>
         <label>
           Signal
-          <input value={signal} placeholder="ROSE, BULL" onChange={(event) => setSignal(event.target.value)} />
+          <input value={signal} placeholder="SIGNAL_A, BULL" onChange={(event) => setSignal(event.target.value)} />
         </label>
         <label>
           Thời gian

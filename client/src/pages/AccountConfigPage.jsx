@@ -488,7 +488,7 @@ export default function AccountConfigPage() {
             <Check label="Report profit" checked={form.reportProfit} onChange={(value) => setField("reportProfit", value)} disabled={disabled} hint="Monitor gửi báo cáo lãi khi cập nhật lời." />
           </Section>
           <Section title="Danh sách">
-            <Text label="Signal" value={lists.signals || ""} onChange={(value) => setList("signals", value)} disabled={disabled} placeholder="ROSE, BULL" hint="Kênh signal được nhận, cách nhau bằng dấu phẩy. Rỗng thì không nhận kênh nào." />
+            <Text label="Signal" value={lists.signals || ""} onChange={(value) => setList("signals", value)} disabled={disabled} placeholder="SIGNAL_A, BULL" hint="Kênh signal được nhận, cách nhau bằng dấu phẩy. Rỗng thì không nhận kênh nào." />
             <Text label="Blacklist" value={lists.blacklist || ""} onChange={(value) => setList("blacklist", value)} disabled={disabled} placeholder="BTCUSDT, ETHUSDT" hint="Danh sách symbol bot thực sự xét. Whitelist mode tắt thì đây là danh sách cấm. Bật thì đây là danh sách được vào." />
             <Text label="Whitelist" value={lists.whitelist || ""} onChange={(value) => setList("whitelist", value)} disabled={disabled} hint="Mảng whitelist lưu riêng. Bot đang dùng Blacklist cùng cờ Whitelist mode, không đọc mảng này khi lọc lệnh." />
           </Section>
@@ -519,16 +519,16 @@ export default function AccountConfigPage() {
             <Num label="Fomo ATR" value={form.fomoAtr} onChange={(value) => setField("fomoAtr", value)} disabled={disabled} hint="Ngưỡng fomo, tính bằng số lần ATR." />
           </Section>
           <Section title="Chốt lời">
-            <Select label="TP type" value={form.tpType} options={TP_TYPES} onChange={(value) => setField("tpType", value)} disabled={disabled} hint="FIX là % lãi. ATR và ROSE là số lần ATR. TRAILING gồng. FOLLOWSIGNAL theo TP của signal. STOPLOSS lấy theo SL. HYBRID và ENTRY_STYLE dùng mẫu riêng." />
+            <Select label="TP type" value={form.tpType} options={TP_TYPES} onChange={(value) => setField("tpType", value)} disabled={disabled} hint="FIX là % lãi. ATR là số lần ATR. TRAILING gồng. FOLLOWSIGNAL theo TP của signal. STOPLOSS lấy theo SL. HYBRID và ENTRY_STYLE dùng mẫu riêng." />
             <Text label="TP percent" value={lists.tpPercent || ""} onChange={(value) => setList("tpPercent", value)} disabled={disabled} placeholder="0.1, 0.2" hint="Các mốc chốt, cách nhau bằng dấu phẩy. FIX: 0.2 = 20% lãi. ATR: 1.2, 2, 3 là số lần ATR." />
             <Num label="Close" value={form.tpClose} onChange={(value) => setField("tpClose", value)} disabled={disabled} hint="Tỷ lệ volume chốt mỗi TP. 0.4 = 40%. Muốn Hold gồng phần dư thì để nhỏ hơn 1." />
             <Num label="TP time (giây)" value={form.tpTime} onChange={(value) => setField("tpTime", value)} disabled={disabled} hint="Số giây chờ trước khi xử lý TP." />
             <Check label="Hold" checked={form.tpHold} onChange={(value) => setField("tpHold", value)} disabled={disabled} hint="Từ 2 TP: TP cuối chỉ chốt Close × phần còn lại, phần dư gồng. Đúng 1 TP thì luôn chốt hết." />
           </Section>
           <Section title="Cắt lỗ">
-            <Select label="SL type" value={form.slType} options={SL_TYPES} onChange={(value) => setField("slType", value)} disabled={disabled} hint="Cách đặt giá cắt lỗ. ATR = hệ số × ATR. ROSE neo EMA gần hoặc entry trừ 2 ATR. HYBRID và ENTRY_STYLE dùng SL candle với Period." />
-            <Select label="SL candle" value={form.slCandle} options={CANDLES} onChange={(value) => setField("slCandle", value)} disabled={disabled} hint="Khung nến cho ATR, EMA, ROSE, HYBRID và ENTRY_STYLE." />
-            <Num label="Period" value={form.slPeriod} onChange={(value) => setField("slPeriod", value)} disabled={disabled} hint="Số nến tính ATR hoặc EMA. ATR và ROSE dùng chung số này." />
+            <Select label="SL type" value={form.slType} options={SL_TYPES} onChange={(value) => setField("slType", value)} disabled={disabled} hint="Cách đặt giá cắt lỗ. ATR = hệ số × ATR. HYBRID và ENTRY_STYLE dùng SL candle với Period." />
+            <Select label="SL candle" value={form.slCandle} options={CANDLES} onChange={(value) => setField("slCandle", value)} disabled={disabled} hint="Khung nến cho ATR, EMA, HYBRID và ENTRY_STYLE." />
+            <Num label="Period" value={form.slPeriod} onChange={(value) => setField("slPeriod", value)} disabled={disabled} hint="Số nến tính ATR hoặc EMA. Các loại dùng ATR hoặc EMA dùng chung số này." />
             <Num label="SL" value={form.sl} onChange={(value) => setField("sl", value)} disabled={disabled} hint="Mốc cắt lỗ chính. % ROI thì số âm là lỗ, ví dụ -0.3. ATR thì là số lần ATR, ví dụ 1.5." />
             <Num label="SLI" value={form.sli} onChange={(value) => setField("sli", value)} disabled={disabled} hint="Mốc cắt lỗ phụ, bot dùng làm stopPrice." />
             <Num label="SL2" value={form.sl2} onChange={(value) => setField("sl2", value)} disabled={disabled} hint="Mốc cắt lỗ thứ hai. Khi SL type là ATR thì giá SL2 lấy cùng SL chính." />
@@ -538,7 +538,7 @@ export default function AccountConfigPage() {
           </Section>
           <Section title="Trailing">
             <Check label="Trailing" checked={form.trailing} onChange={(value) => setField("trailing", value)} disabled={disabled} hint="Bật thì dời SL theo lời." />
-            <Select label="Trailing type" value={form.trailingType} options={TRAILING_TYPES} onChange={(value) => setField("trailingType", value)} disabled={disabled} hint="FIX là % lãi. TP1 đến TP4 chờ chạm TP đó mới gồng. ATR và ROSE là số lần ATR. HYBRID dùng type này để gồng, SP rộng theo R." />
+            <Select label="Trailing type" value={form.trailingType} options={TRAILING_TYPES} onChange={(value) => setField("trailingType", value)} disabled={disabled} hint="FIX là % lãi. TP1 đến TP4 chờ chạm TP đó mới gồng. ATR là số lần ATR. HYBRID dùng type này để gồng, SP rộng theo R." />
             <Num label="SP" value={form.sp} onChange={(value) => setField("sp", value)} disabled={disabled} hint="Khoảng cách SL gồng. FIX: 0.01 = 1% lãi. ATR: số lần ATR. SP phải nhỏ hơn Trigger." />
             <Num label="Trigger" value={form.trigger} onChange={(value) => setField("trigger", value)} disabled={disabled} hint="Lời cần đạt rồi mới bắt đầu gồng. FIX là % lãi. ATR là số lần ATR." />
             <Num label="R" value={form.r} onChange={(value) => setField("r", value)} disabled={disabled} hint="Mỗi lần giá đi thêm chừng này thì dời SL một bước. FIX là % lãi. ATR là số lần ATR." />

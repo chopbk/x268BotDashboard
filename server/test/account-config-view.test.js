@@ -28,7 +28,7 @@ function configQuery(value) {
 test("toSummary reports on, sides, signals and volume as cost times leverage", () => {
     const row = toSummary({
         env: "a1",
-        signals: ["ROSE", "BULL"],
+        signals: ["SIGNAL_A", "BULL"],
         trade_config: {
             ON: false,
             LONG: true,
@@ -41,7 +41,7 @@ test("toSummary reports on, sides, signals and volume as cost times leverage", (
     assert.equal(row.on, false);
     assert.equal(row.long, true);
     assert.equal(row.short, false);
-    assert.deepEqual(row.signals, ["ROSE", "BULL"]);
+    assert.deepEqual(row.signals, ["SIGNAL_A", "BULL"]);
     assert.equal(row.mode, "FIX");
     assert.equal(row.volume, 2000);
     assert.equal(row.openType, "MARKET");
@@ -50,7 +50,7 @@ test("toSummary reports on, sides, signals and volume as cost times leverage", (
 test("toDetail keeps the stoploss, take profit, open and copy groups", () => {
     const row = toDetail({
         env: "a1",
-        signals: ["ROSE"],
+        signals: ["SIGNAL_A"],
         blacklist: ["BTCUSDT"],
         trade_config: {
             ON: true,
@@ -99,7 +99,7 @@ test("updateConfigSummary sets only the edited field and keeps the rest of trade
     AccountConfig.findOne = () =>
         configQuery({
             env: "a1",
-            signals: ["ROSE"],
+            signals: ["SIGNAL_A"],
             trade_config: {
                 ON: true,
                 LONG: true,
