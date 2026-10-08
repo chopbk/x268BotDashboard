@@ -871,3 +871,16 @@ td.negative { color: var(--danger); }
   .audit-head { align-items: stretch; flex-direction: column; }
   .audit-search { width: 100%; }
 }
+
+.pos-status { margin: 8px 0; font-size: 0.85rem; }
+.pos-stale { color: var(--danger); }
+.pos-up { color: var(--ok); }
+.pos-down { color: var(--danger); }
+.pos-alert { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.pos-child td { color: var(--muted); font-size: 0.82rem; }
+.pos-table { width: 100%; border-collapse: collapse; }
+.pos-table th, .pos-table td { padding: 8px 10px; text-align: left; white-space: nowrap; }
+button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+button.linkish:hover { background: none; }
+.pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }
+.pos-detail pre { max-height: 180px; overflow: auto; background: var(--bg); border-radius: 10px; padding: 10px; }

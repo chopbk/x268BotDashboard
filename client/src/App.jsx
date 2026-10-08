@@ -19,6 +19,7 @@ import SignalSearchPage from "./pages/SignalSearchPage";
 import ProfilePage from "./pages/ProfilePage";
 import AccountLedgerPage from "./pages/AccountLedgerPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
+import PositionsPage from "./pages/PositionsPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -29,6 +30,7 @@ const USERS_EDIT = "users.edit";
 const SUMMARY_VIEW = "summary.view";
 const SIGNALS_HISTORY = "signals.history";
 const STATISTICS_VIEW = "statistics.view";
+const POSITIONS_VIEW = "positions.view";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -81,6 +83,7 @@ function Shell({ children }) {
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/bots">Danh sách</NavLink> : null}
           {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
+          {hasPermission(user, POSITIONS_VIEW) ? <NavLink to="/positions">Position</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Account Static</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
@@ -154,6 +157,16 @@ function AppRoutes() {
           <Protected permission={BOTS_VIEW}>
             <Shell>
               <BotDetailPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/positions"
+        element={
+          <Protected permission={POSITIONS_VIEW}>
+            <Shell>
+              <PositionsPage />
             </Shell>
           </Protected>
         }

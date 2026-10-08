@@ -32,11 +32,11 @@ function binanceError(status, body) {
     return httpError(502, "Không lấy được số liệu sàn");
 }
 
-async function requestJson(url, headers, fetchImpl) {
+async function requestJson(url, headers, fetchImpl, method = "GET") {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
-        const res = await fetchImpl(url, { headers, signal: controller.signal });
+        const res = await fetchImpl(url, { method, headers, signal: controller.signal });
         const body = await res.json().catch(() => ({}));
         if (!res.ok || (body && body.code && body.msg)) throw binanceError(res.status, body);
         return body;
@@ -62,7 +62,12 @@ function createBinanceFutures({ apiKey, apiSecret, fetchImpl = fetch }) {
         return requestJson(`${HOST}${path}`, {}, fetchImpl);
     }
 
-    return { signedGet, publicGet };
+    async function signed(method, path, params = {}) {
+        const query = signQuery(apiSecret, params);
+        return requestJson(`${HOST}${path}?${query}`, { "X-MBX-APIKEY": apiKey }, fetchImpl, method);
+    }
+
+    return { signedGet, publicGet, signed };
 }
 
 async function loadPriceMap(client) {

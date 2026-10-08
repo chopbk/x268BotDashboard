@@ -71,6 +71,7 @@ async function main() {
         app.use("/api/runtime-logs", require("./routes/runtime-logs"));
         app.use("/api/system-health", require("./routes/system-health"));
         app.use("/api/dashboard", require("./routes/dashboard"));
+        app.use("/api/positions", require("./routes/positions"));
         app.use("/api/summary", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/summary"));
         app.use("/api/signal-history", require("./routes/signal-history"));
         app.use("/api/signal-config", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/signal-setup"));
