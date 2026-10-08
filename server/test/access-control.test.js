@@ -118,4 +118,8 @@ test("roles that can inspect config also receive scoped signal history", () => {
     assert.equal(scopeForPermission({ role: "operator" }, PERMISSIONS.SIGNALS_HISTORY), "own_assigned");
     assert.equal(scopeForPermission({ role: "auditor" }, PERMISSIONS.SIGNALS_HISTORY), "all");
     assert.equal(scopeForPermission({ role: "member" }, PERMISSIONS.STATISTICS_VIEW), "own");
+    assert.equal(hasPermission({ role: "member" }, PERMISSIONS.SUMMARY_VIEW), true);
+    assert.equal(scopeForPermission({ role: "member" }, PERMISSIONS.SUMMARY_VIEW), "own");
+    assert.equal(scopeForPermission({ role: "operator" }, PERMISSIONS.SUMMARY_VIEW), "own_assigned");
+    assert.equal(scopeForPermission({ role: "summary_viewer" }, PERMISSIONS.SUMMARY_VIEW), "all");
 });

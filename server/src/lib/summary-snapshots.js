@@ -4,7 +4,7 @@ const SummarySnapshot = require("../models/summary-snapshot");
 const { getSystemSummary, normalizeSummaryRange } = require("./system-summary");
 const { ensureSummaryIndexes } = require("./summary-indexes");
 
-const FORMULA_VERSION = "v1";
+const FORMULA_VERSION = "v3";
 const PRECOMPUTED_RANGES = Object.freeze(["today", "3d", "7d", "30d", "90d"]);
 const ALL_RANGES = Object.freeze([...PRECOMPUTED_RANGES, "all"]);
 const REGULAR_TTL_MS = 2 * 60 * 1000;
@@ -75,7 +75,7 @@ function refreshInBackground(range) {
     refreshSummarySnapshot(range).catch((error) => console.error(`[summary-snapshot:${range}]`, error.message || error));
 }
 
-async function getSummarySnapshot(rangeInput = "3d", now = new Date()) {
+async function getSummarySnapshot(rangeInput = "today", now = new Date()) {
     const range = normalizeSummaryRange(rangeInput);
     let snapshot = await SummarySnapshot.findById(snapshotKey(range)).lean();
     if (!snapshot?.payload) {
@@ -114,4 +114,15 @@ function stopSummarySnapshotJob() {
     scheduler = null;
 }
 
-module.exports = { FORMULA_VERSION, PRECOMPUTED_RANGES, ALL_RANGES, REGULAR_TTL_MS, ALL_TTL_MS, LEASE_MS, snapshotKey, ttlFor, acquireLease, refreshSummarySnapshot, getSummarySnapshot, refreshDueSnapshots, startSummarySnapshotJob, stopSummarySnapshotJob };
+async function forceSummarySnapshot(rangeInput, now = new Date()) {
+    const range = normalizeSummaryRange(rangeInput);
+    const snapshot = await refreshSummarySnapshot(range, { now });
+    if (snapshot?.payload) return publicSnapshot(snapshot, false);
+    const current = await SummarySnapshot.findById(snapshotKey(range)).lean();
+    if (current?.payload) return publicSnapshot(current, true);
+    const error = new Error("Tổng kết đang được tính, vui lòng thử lại");
+    error.status = 409;
+    throw error;
+}
+
+module.exports = { FORMULA_VERSION, PRECOMPUTED_RANGES, ALL_RANGES, REGULAR_TTL_MS, ALL_TTL_MS, LEASE_MS, snapshotKey, ttlFor, acquireLease, refreshSummarySnapshot, getSummarySnapshot, forceSummarySnapshot, refreshDueSnapshots, startSummarySnapshotJob, stopSummarySnapshotJob };

@@ -139,7 +139,7 @@ function CompareTable({ title, note, rows, nameKey, nameLabel, active, onPick, s
   );
 }
 
-function TradeDetail({ row, onClose }) {
+function TradeDetail({ row, onClose, configHref, historyHref }) {
   const qtyDigits = digitsFor(row.symbolInfo?.qtyDecimals, row.positionAmt, 4);
   return (
     <article className="card trade-detail">
@@ -148,8 +148,8 @@ function TradeDetail({ row, onClose }) {
         <button type="button" className="ghost" onClick={onClose}>Đóng</button>
       </header>
       <dl>
-        <DetailItem label="Config" value={row.env} />
-        <DetailItem label="Signal" value={row.signal} />
+        <DetailItem label="Config" value={configHref ? <Link className="trail-link" to={configHref}>{row.env}</Link> : row.env} />
+        <DetailItem label="Signal" value={historyHref ? <Link className="trail-link" to={historyHref}>{row.signal || "—"}</Link> : row.signal} />
         <DetailItem label="Status" value={row.status} />
         <DetailItem label="Profit" value={`${fmt(row.profit)} $`} />
         <DetailItem label="ROE" value={`${fmt(row.roe)} %`} />
@@ -175,6 +175,7 @@ export default function SignalHistoryPage() {
   const { user } = useAuth();
   const signalAllowed = can(user, "signals.history");
   const staticAllowed = can(user, "statistics.view");
+  const configAllowed = can(user, "config.view");
   const [params, setParams] = useSearchParams();
   const [bots, setBots] = useState([]);
   const [audience, setAudience] = useState("mine");
@@ -201,6 +202,7 @@ export default function SignalHistoryPage() {
   const gain = params.get("gain") || "";
   const trade = params.get("trade") || "";
   const [fallbackFrom] = useState(() => daysAgo(3));
+  const [loadedAt, setLoadedAt] = useState(null);
   const from = params.get("from") || "";
   const to = params.get("to") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
@@ -261,7 +263,10 @@ export default function SignalHistoryPage() {
       if (closed) query.set("closed", closed);
     }
     api(`/api/account-statics?${query}`, { signal: controller.signal }).then((result) => {
-      if (!cancelled) setData(result);
+      if (!cancelled) {
+        setData(result);
+        setLoadedAt(new Date().toISOString());
+      }
     }).catch((err) => {
       if (!cancelled) setError(err.message);
     }).finally(() => {
@@ -304,6 +309,22 @@ export default function SignalHistoryPage() {
   );
   const book = bookChoice || data?.book || "live";
   const bookLabel = book === "paper" ? "paper" : book === "all" ? "live và paper" : "live";
+  function historyTo(rowSignal, rowEnv) {
+    const query = new URLSearchParams({ tab: "history", fromUser: username });
+    const targetEnv = rowEnv || env;
+    if (targetEnv) query.set("fromEnv", targetEnv);
+    if (rowSignal) query.set("signal", rowSignal);
+    const names = env && targetEnv === env
+      ? (data?.stats?.bySignal || []).map((item) => item.signal).filter(Boolean).slice(0, 20)
+      : (rowSignal ? [rowSignal] : []);
+    if (names.length) query.set("signals", names.join(","));
+    if (activeFrom) query.set("from", activeFrom);
+    if (to) query.set("to", to);
+    return `/signal-search?${query}`;
+  }
+  function configTo(rowEnv) {
+    return `/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(rowEnv)}`;
+  }
   const ruleNote = [
     groupRules.minWin != null ? `win rate ≥ ${groupRules.minWin}%` : "",
     groupRules.minTrades != null ? `≥ ${groupRules.minTrades} lệnh` : "",
@@ -352,16 +373,18 @@ export default function SignalHistoryPage() {
           ))}
         </div>
       </div>
+      {params.get("src") === "summary" ? <p className="muted">Mở từ Tổng kết. Tổng kết tính lệnh đóng theo closeTime. Bảng này lọc openTime, sổ {bookLabel}{closed === "closed" ? ", chỉ lệnh đã đóng" : ""}.</p> : null}
       {tradeStats ? <div className="stats-grid signal-stats"><article className="card"><span className="muted">Số lượng giao dịch</span><strong>{tradeStats.total}</strong><small className="muted">{tradeStats.wins} thắng · {tradeStats.losses} thua</small></article><article className="card"><span className="muted">Win rate</span><strong>{fmt(tradeStats.winRate, 1)}%</strong></article><article className="card"><span className="muted">Profit</span><strong>{fmt(tradeStats.profit)}$</strong><small className="muted">Cost {fmt(tradeStats.cost)}$ · ROI {fmt(tradeStats.avgRoi, 1)}%</small></article><article className="card"><span className="muted">Volume</span><strong>{fmt(tradeStats.volume)}$</strong></article><article className="card"><span className="muted">Long</span><strong>{fmt(tradeStats.longProfit)}$</strong></article><article className="card"><span className="muted">Short</span><strong>{fmt(tradeStats.shortProfit)}$</strong></article></div> : null}
+      {tradeStats ? <p className="muted">Nguồn: Account Static, sổ {bookLabel}. Khoảng openTime {fmtTime(data?.from || activeFrom)}{data?.to || to ? ` → ${fmtTime(data?.to || to)}` : " → nay"}.{loadedAt ? ` Tải lúc ${fmtTime(loadedAt)}.` : ""} Không lấy từ income sàn.</p> : null}
       {view === "statics" && data?.stats?.byStatus?.length ? <div className="chips signal-chips"><span className="muted">Status</span>{data.stats.byStatus.map((item) => <button type="button" className={status === item.status ? "symbol-chip active" : "symbol-chip"} key={item.status} onClick={() => update({ status: status === item.status ? "" : item.status })}>{item.status}: {item.count} · {fmt(item.profit)}$</button>)}</div> : null}
       {view === "statics" && data?.stats?.bySide?.length ? <div className="chips signal-chips"><span className="muted">Side</span>{data.stats.bySide.map((item) => <button type="button" className={side === item.side ? "symbol-chip active" : "symbol-chip"} key={item.side} onClick={() => update({ side: side === item.side ? "" : item.side })}>{item.side}: {item.wins}/{item.count} · WR {fmt(item.winRate, 1)}% · {fmt(item.profit)}$</button>)}</div> : null}
       {view === "statics" && data?.stats?.bySignal?.length ? <CompareTable title={env ? `Signal của ${env}` : `Signal của ${username || "user"}`} note={`${signalRows.length}/${data.stats.bySignal.length} signal${ruleNote ? ` · ${ruleNote}` : ""}. Bấm một dòng để giữ signal đó và so config.`} rows={signalRows} nameKey="signal" nameLabel="Signal" active={signal} onPick={(value) => update({ signal: signal === value ? "" : value })} sortKey={signalSort} onSort={setSignalSort} /> : null}
-      {view === "statics" && env ? <p className="muted">Đang xem một config. Chọn Tất cả config để so config nào tốt hơn.</p> : null}
+      {view === "statics" && env ? <p className="trail-note muted"><span>Đang xem config {env}. Chọn Tất cả config để so config nào tốt hơn.</span>{configAllowed ? <Link className="trail-link" to={configTo(env)}>Mở config</Link> : null}{signalAllowed ? <Link className="trail-link" to={historyTo(signal, env)}>Lịch sử signal của config</Link> : null}</p> : null}
       {view === "statics" && !env && (data?.stats?.byConfig || data?.stats?.byEnv || []).length ? <CompareTable title={signal ? `Config ${bookLabel} của signal ${signal}` : `Config ${bookLabel} của ${username || "user"}`} note={signal ? `Mỗi dòng chỉ tính signal ${signal}${side ? `, side ${side}` : ""}. ${configRows.length} config đạt bộ lọc.` : `Chưa chọn signal nên mỗi dòng là cả config. Chọn một signal để so đúng signal đó. ${configRows.length} config đạt bộ lọc.`} rows={configRows} nameKey="env" nameLabel="Config" active={env} onPick={(value) => update({ env: value })} sortKey={envSort} onSort={setEnvSort} /> : null}
-      {detail ? <TradeDetail row={detail} onClose={() => update({ trade: "" })} /> : null}
+      {detail ? <TradeDetail row={detail} onClose={() => update({ trade: "" })} configHref={configAllowed && detail.env ? configTo(detail.env) : ""} historyHref={signalAllowed ? historyTo(detail.signal, detail.env) : ""} /> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}{error ? <p className="form-error">{error}</p> : null}
       {!loading && data?.rows?.length === 0 ? <div className="card empty">Không có dữ liệu trong khoảng thời gian này.</div> : null}
-      {data?.rows?.length ? <div className="table-wrap signal-table"><table><thead><tr><th>Thời gian</th><th>Config</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Status</th><th>Profit</th><th>ROE</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id} className={trade === row.id ? "trade-row active" : "trade-row"} tabIndex={0} onClick={() => update({ trade: trade === row.id ? "" : row.id })} onKeyDown={(event) => { if (event.key === "Enter") update({ trade: trade === row.id ? "" : row.id }); }}><td>{fmtTime(row.openTime)}</td><td>{row.env}</td><td>{row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.status}</td><td>{fmt(row.profit)}$</td><td>{fmt(row.roe)}%</td></tr>)}</tbody></table></div> : null}
+      {data?.rows?.length ? <div className="table-wrap signal-table"><table><thead><tr><th>Thời gian</th><th>Config</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Status</th><th>Profit</th><th>ROE</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id} className={trade === row.id ? "trade-row active" : "trade-row"} tabIndex={0} onClick={() => update({ trade: trade === row.id ? "" : row.id })} onKeyDown={(event) => { if (event.key === "Enter") update({ trade: trade === row.id ? "" : row.id }); }}><td>{fmtTime(row.openTime)}</td><td>{configAllowed && row.env ? <Link className="trail-link" to={configTo(row.env)} onClick={(event) => event.stopPropagation()}>{row.env}</Link> : row.env}</td><td>{signalAllowed && row.signal ? <Link className="trail-link" to={historyTo(row.signal, row.env)} onClick={(event) => event.stopPropagation()}>{row.signal}</Link> : row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.status}</td><td>{fmt(row.profit)}$</td><td>{fmt(row.roe)}%</td></tr>)}</tbody></table></div> : null}
       {data?.total > data?.limit ? <div className="audit-pagination"><span className="muted">Trang {data.page} · {data.total} bản ghi</span><div><button type="button" className="ghost" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Trước</button><button type="button" className="ghost" disabled={page * data.limit >= data.total} onClick={() => update({ page: String(page + 1) })}>Sau</button></div></div> : null}
       {view === "statics" && username ? <p className="muted"><Link to={`/bots/${encodeURIComponent(username)}`}>Mở User bot {username}</Link></p> : null}
     </section>

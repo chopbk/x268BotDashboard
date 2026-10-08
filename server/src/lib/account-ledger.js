@@ -13,7 +13,7 @@ const {
 } = require("./binance-futures");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DAY_CHOICES = new Set([7, 14, 30, 90]);
+const DAY_CHOICES = new Set([1, 7, 14, 30, 90]);
 const TRADING_TYPES = new Set([
     "REALIZED_PNL",
     "COMMISSION",
@@ -167,6 +167,11 @@ async function visibleUsers(actor) {
         .sort((a, b) => a.username.localeCompare(b.username));
 }
 
+async function assignedUsers(actor) {
+    const users = await visibleUsers(actor);
+    return users.filter((user) => isOwnUser(actor, user));
+}
+
 function isOwnUser(actor, user) {
     const id = String(actor?.id || "");
     if (user?.ownerUserId && user.ownerUserId === id) return true;
@@ -208,9 +213,8 @@ async function loadLedger(actor, query = {}) {
     const today = startOfUtcDay(new Date());
     const from = addUtcDays(today, 1 - days);
     const to = addUtcDays(today, 1);
-    if (!user) {
-        return { users: [], username: null, env: null, days, from: ymd(from), to: ymd(today), series: [], totals: summarizeLedger([]).totals, live: {}, compare: {}, flows: [] };
-    }
+    const empty = { users: [], username: null, env: null, days, from: ymd(from), to: ymd(today), series: [], totals: summarizeLedger([]).totals, live: {}, compare: {}, flows: [] };
+    if (!user) return empty;
     const env = ledgerEnv(user);
     const docs = await FuturesProfit.find({
         env: { $in: [env, user.username] },
@@ -391,11 +395,55 @@ async function refreshLedger(actor, username, options = {}) {
     return loadLedger(actor, { username: user.username, days });
 }
 
+async function loadAssignedIncome(actor) {
+    const users = await assignedUsers(actor);
+    const today = startOfUtcDay(new Date());
+    const end = addUtcDays(today, 1);
+    const targets = users.map((user) => ({
+        username: user.username,
+        env: ledgerEnv(user),
+        active: user.active !== false,
+    }));
+    const envs = [...new Set(targets.flatMap((item) => [item.env, String(item.env || "").toUpperCase()]).filter(Boolean))];
+    const docs = envs.length
+        ? await FuturesProfit.find({ env: { $in: envs }, day: { $gte: today, $lt: end } })
+            .select("env day profit fee funding ref balance stats.wallet")
+            .lean()
+        : [];
+    const rows = targets.map((target) => {
+        const matched = docs.filter((doc) => String(doc?.env || "").toUpperCase() === String(target.env || "").toUpperCase());
+        const day = summarizeLedger(matched, 0).days[0] || null;
+        return {
+            username: target.username,
+            env: target.env,
+            active: target.active,
+            profit: day ? day.profit : null,
+            fee: day ? day.fee : null,
+            funding: day ? day.funding : null,
+            rebate: day ? day.rebate : null,
+            trading: day ? day.trading : null,
+            balance: day ? day.balance : null,
+            unrealized: day ? day.unrealized : null,
+        };
+    }).sort((a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0) || a.username.localeCompare(b.username));
+    const totals = rows.reduce((sum, row) => {
+        sum.profit += Number(row.profit) || 0;
+        sum.fee += Number(row.fee) || 0;
+        sum.funding += Number(row.funding) || 0;
+        sum.rebate += Number(row.rebate) || 0;
+        return sum;
+    }, { profit: 0, fee: 0, funding: 0, rebate: 0 });
+    for (const key of Object.keys(totals)) totals[key] = r3(totals[key]);
+    return { scope: "assigned", from: ymd(today), to: ymd(today), rows, totals };
+}
+
 module.exports = {
     ledgerEnv,
     isOwnUser,
+    assignedUsers,
     classifyIncome,
     summarizeLedger,
     loadLedger,
+    loadAssignedIncome,
     refreshLedger,
 };

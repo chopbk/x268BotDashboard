@@ -1,13 +1,74 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import Pager from "../components/Pager";
 import { canEditResource, ownsBot } from "../access";
 import useDebouncedValue from "../hooks/useDebouncedValue";
+import { useEscape, useLeaveGuard } from "../navigation";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
+}
+
+function money(value, signed = true) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  const text = n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (!signed) return `${text}$`;
+  return `${n > 0 ? "+" : ""}${text}$`.replace("+-", "-");
+}
+
+function tone(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n === 0) return "";
+  return n > 0 ? "positive" : "negative";
+}
+
+function pct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.round(n * 10) / 10}%`;
+}
+
+function when(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("vi-VN");
+}
+
+function todayWindow() {
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  to.setMilliseconds(-1);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function onOff(value) {
+  if (value == null) return "—";
+  return value ? "bật" : "tắt";
+}
+
+function signalText(signals) {
+  return Array.isArray(signals) && signals.length ? `Theo ${signals.join(", ")}` : "Chưa theo signal nào";
+}
+
+function peekTitle(peek) {
+  if (peek.kind === "static") return `Static trong ngày · ${peek.username}`;
+  if (peek.kind === "static-all") return "Static trong ngày · user được gán";
+  if (peek.kind === "profit") return `Lãi lỗ trong ngày · ${peek.username}`;
+  if (peek.kind === "profit-all") return "Lãi lỗ trong ngày · user được gán";
+  if (peek.kind === "account-all") return "Config · user được gán";
+  return `Config · ${peek.username}`;
+}
+
+function incomeDay(data) {
+  const series = data?.series || [];
+  return series.find((row) => row.ymd === data?.to) || series[series.length - 1] || null;
 }
 
 function matchesQuery(bot, query) {
@@ -29,11 +90,40 @@ function draftFrom(bot) {
   };
 }
 
+function readList(params) {
+  const active = params.get("active");
+  return {
+    q: params.get("q") || "",
+    page: Math.max(1, Number(params.get("page")) || 1),
+    activity: active === "off" ? "off" : active === "all" ? "" : "on",
+    scope: params.get("visibility") || "",
+    audience: params.get("audience") === "all" ? "all" : "mine",
+  };
+}
+
+function writeList(current, partial) {
+  const next = { ...readList(current), ...partial };
+  const params = new URLSearchParams();
+  if (next.q) params.set("q", next.q);
+  if (next.page > 1) params.set("page", String(next.page));
+  if (next.activity === "off") params.set("active", "off");
+  if (next.activity === "") params.set("active", "all");
+  if (next.scope) params.set("visibility", next.scope);
+  if (next.audience === "all") params.set("audience", "all");
+  return params;
+}
+
 export default function HomePage() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const list = readList(params);
   const canCreateBot = can(user, "bots.create");
   const canEditBot = can(user, "bots.edit");
   const canDeleteBot = can(user, "bots.delete");
+  const canViewConfig = can(user, "config.view");
+  const canViewStatistics = can(user, "statistics.view");
   const isAdmin = user?.role === "admin";
   const canPick = canEditBot || canDeleteBot;
   const [bots, setBots] = useState([]);
@@ -44,16 +134,19 @@ export default function HomePage() {
   const [newUser, setNewUser] = useState("");
   const [newBotVisibility, setNewBotVisibility] = useState("public");
   const [newBotActive, setNewBotActive] = useState(true);
-  const [scope, setScope] = useState("");
-  const [activity, setActivity] = useState("on");
-  const [audience, setAudience] = useState("mine");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(list.q);
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
-  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [peek, setPeek] = useState(null);
+  const [peekData, setPeekData] = useState(null);
+  const [peekError, setPeekError] = useState("");
+  const [peekBusy, setPeekBusy] = useState(false);
+  useEscape(Boolean(peek), () => setPeek(null));
   const pageLimit = 50;
+  const dropDrafts = useRef(false);
   const debouncedQuery = useDebouncedValue(query);
+  const { scope, activity, audience, page } = list;
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleBots = useMemo(
@@ -120,7 +213,24 @@ export default function HomePage() {
 
   function rememberBots(rows) {
     setBots(rows);
-    setDrafts(Object.fromEntries(rows.map((bot) => [bot.username, draftFrom(bot)])));
+    setDrafts((prev) => {
+      if (dropDrafts.current) {
+        dropDrafts.current = false;
+        return Object.fromEntries(rows.map((bot) => [bot.username, draftFrom(bot)]));
+      }
+      return Object.fromEntries(rows.map((bot) => {
+        const old = prev[bot.username];
+        if (!old) return [bot.username, draftFrom(bot)];
+        const dirty = (old.visibility || "public") !== (bot.visibility || "public")
+          || isActive(old) !== isActive(bot)
+          || (isAdmin && (old.ownerUserId || "") !== (bot.ownerUserId || ""));
+        return [bot.username, dirty ? old : draftFrom(bot)];
+      }));
+    });
+  }
+
+  function resetDrafts() {
+    setDrafts(Object.fromEntries(bots.map((bot) => [bot.username, draftFrom(bot)])));
   }
 
   function ownerLabel(id) {
@@ -130,13 +240,38 @@ export default function HomePage() {
   }
 
   const dirtyBots = bots.filter(isDirty);
+  const guard = useLeaveGuard(dirtyBots.length > 0, `Đang sửa ${dirtyBots.length} user.`);
+
+  async function commitList(partial) {
+    if (dirtyBots.length && guard) {
+      const ok = await guard.confirmLeave();
+      if (!ok) {
+        setQuery(list.q);
+        return;
+      }
+      dropDrafts.current = true;
+      resetDrafts();
+    }
+    const next = writeList(params, partial);
+    navigate({ pathname: location.pathname, search: next.toString() ? `?${next}` : "" }, { state: location.state });
+  }
+
+  useEffect(() => {
+    if (debouncedQuery.trim() === list.q) return;
+    commitList({ q: debouncedQuery.trim(), page: 1 });
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    setQuery(list.q);
+  }, [list.q]);
 
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
-    if (debouncedQuery.trim()) params.set("q", debouncedQuery.trim());
+    if (list.q) params.set("q", list.q);
     if (scope) params.set("visibility", scope);
-    if (activity) params.set("active", activity === "on" ? "true" : "false");
+    if (activity === "on") params.set("active", "true");
+    if (activity === "off") params.set("active", "false");
     const controller = new AbortController();
     api(`/api/bots?${params}`, { signal: controller.signal })
       .then((data) => {
@@ -152,7 +287,7 @@ export default function HomePage() {
       cancelled = true;
       controller.abort();
     };
-  }, [page, debouncedQuery, scope, activity]);
+  }, [page, list.q, scope, activity]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -162,6 +297,52 @@ export default function HomePage() {
       .catch(() => setWebUsers([]));
     return () => controller.abort();
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!peek) return undefined;
+    if (peek.kind === "account" && !canViewConfig) {
+      setPeekBusy(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    const staticQuery = new URLSearchParams({ from: peek.from, to: peek.to });
+    if (peek.kind === "static") {
+      staticQuery.set("username", peek.username);
+      staticQuery.set("limit", "10");
+    } else if (peek.kind === "static-all") staticQuery.set("scope", "assigned");
+    const path = peek.kind === "static" || peek.kind === "static-all"
+      ? `/api/account-statics?${staticQuery}`
+      : peek.kind === "profit"
+        ? `/api/account-ledger?username=${encodeURIComponent(peek.username)}&days=1`
+        : peek.kind === "profit-all"
+          ? "/api/account-ledger?scope=assigned&days=1"
+          : peek.kind === "account-all"
+            ? "/api/bots/assigned-configs"
+            : `/api/bots/${encodeURIComponent(peek.username)}/configs`;
+    api(path, { signal: controller.signal })
+      .then((data) => {
+        if (!cancelled) setPeekData(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setPeekError(err.message || "Không tải được");
+      })
+      .finally(() => {
+        if (!cancelled) setPeekBusy(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [peek, canViewConfig]);
+
+  function openPeek(kind, username) {
+    const day = todayWindow();
+    setPeekBusy(!(kind === "account" && !canViewConfig));
+    setPeekError("");
+    setPeekData(null);
+    setPeek({ kind, username, from: day.from, to: day.to });
+  }
 
   async function run(action) {
     setBusy(true);
@@ -180,23 +361,30 @@ export default function HomePage() {
       <header className="page-head user-list-head">
         <div>
           <h1>Bot được phép xem</h1>
-          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu." : "Mặc định chỉ hiện user của bạn. Chọn Tất cả để xem user đang active và công khai."}</p>
+          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu." : "Mặc định chỉ hiện user của bạn. Chọn Tất cả để xem user đang active và công khai."} {canViewStatistics ? "Trước tên user: Static theo signal của từng config, Lãi lỗ là income của user. Static tất cả, Config tất cả và Lãi lỗ tất cả cộng các user được gán." : "Trước tên user, bấm Account để xem config đang theo signal nào. Config tất cả cộng các user được gán."}</p>
+          {canViewStatistics || canViewConfig ? (
+            <div className="history-range">
+              {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
+              {canViewConfig ? <button type="button" className="ghost" onClick={() => openPeek("account-all")}>Config tất cả</button> : null}
+              {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("profit-all")}>Lãi lỗ tất cả</button> : null}
+            </div>
+          ) : null}
         </div>
         <div className="bot-list-tools">
           {!isAdmin ? (
-            <select value={audience} onChange={(event) => setAudience(event.target.value)} aria-label="Phạm vi danh sách">
+            <select value={audience} onChange={(event) => commitList({ audience: event.target.value, page: 1 })} aria-label="Phạm vi danh sách">
               <option value="mine">Của tôi</option>
               <option value="all">Tất cả</option>
             </select>
           ) : null}
           {isAdmin || audience !== "all" ? (
             <>
-          <select value={activity} onChange={(event) => { setActivity(event.target.value); setPage(1); }} aria-label="Lọc active">
+          <select value={activity} onChange={(event) => commitList({ activity: event.target.value, page: 1 })} aria-label="Lọc active">
                 <option value="on">Đang active</option>
                 <option value="off">Không active</option>
                 <option value="">Mọi trạng thái</option>
               </select>
-          <select value={scope} onChange={(event) => { setScope(event.target.value); setPage(1); }} aria-label="Lọc phạm vi">
+          <select value={scope} onChange={(event) => commitList({ scope: event.target.value, page: 1 })} aria-label="Lọc phạm vi">
                 <option value="">Mọi phạm vi</option>
                 <option value="public">Công khai</option>
                 <option value="private">Riêng tư</option>
@@ -207,7 +395,7 @@ export default function HomePage() {
             className="user-search"
             value={query}
             placeholder="Tên user hoặc config"
-            onChange={(event) => { setQuery(event.target.value); setPage(1); }}
+            onChange={(event) => setQuery(event.target.value)}
           />
         </div>
       </header>
@@ -366,6 +554,9 @@ export default function HomePage() {
               >
                 Lưu{dirtyBots.length ? ` (${dirtyBots.length})` : ""}
               </button>
+              {dirtyBots.length ? (
+                <button type="button" className="ghost" disabled={busy} onClick={resetDrafts}>Huỷ thay đổi</button>
+              ) : null}
             </div>
           ) : null}
           {canDeleteBot && picked.size > 0 ? (
@@ -448,7 +639,18 @@ export default function HomePage() {
                         />
                       </td>
                     ) : null}
-                    <td>{bot.username}</td>
+                    <td>
+                      <div className="account-title">
+                        {canViewStatistics ? (
+                          <button type="button" className="ghost" onClick={() => openPeek("static", bot.username)}>Static</button>
+                        ) : null}
+                        <button type="button" className="ghost" onClick={() => openPeek("account", bot.username)}>Account</button>
+                        {canViewStatistics ? (
+                          <button type="button" className="ghost" onClick={() => openPeek("profit", bot.username)}>Lãi lỗ</button>
+                        ) : null}
+                        <span>{bot.username}</span>
+                      </div>
+                    </td>
                     <td>
                       {canEditBot ? (
                         <input
@@ -495,7 +697,7 @@ export default function HomePage() {
                     <td className="muted">{matchedAccounts.join(", ")}</td>
                     <td>
                       <div className="row-actions">
-                        <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(bot.username)}`}>
+                        <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(bot.username)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
                           {canEditResource(user, "config.edit", bot) ? "Sửa" : "Xem"}
                         </Link>
                         {canDeleteBot ? (
@@ -528,7 +730,167 @@ export default function HomePage() {
           </table>
         </div>
       ) : null}
-      <Pager page={page} total={total} limit={pageLimit} onChange={setPage} />
+      {dirtyBots.length ? <p className="dirty-note muted">Đang sửa {dirtyBots.length} user. Đổi bộ lọc hoặc rời trang sẽ hỏi trước khi bỏ các bản nháp.</p> : null}
+      <Pager page={page} total={total} limit={pageLimit} onChange={(next) => commitList({ page: next })} />
+      {peek ? (
+        <div className="modal-backdrop" onClick={() => setPeek(null)}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="bot-peek-title" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <h2 id="bot-peek-title">{peekTitle(peek)}</h2>
+              <button type="button" className="ghost" onClick={() => setPeek(null)}>Đóng</button>
+            </header>
+            {peekError ? <p className="form-error">{peekError}</p> : null}
+            {peekBusy ? <p className="muted">Đang tải…</p> : null}
+            {(peek.kind === "static" || peek.kind === "static-all") && peekData?.stats ? (
+              <>
+                <p>
+                  {peekData.stats.total} lệnh · lãi {money(peekData.stats.profit)} · win rate {pct(peekData.stats.winRate)}
+                  {` · openTime ${when(peek.from)} → ${when(peek.to)}`}
+                  {peekData.book ? ` · sổ ${peekData.book}` : ""}
+                </p>
+                {peekData.stats.byConfigSignal?.length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          {peek.kind === "static-all" ? <th>User</th> : null}
+                          <th>Config</th>
+                          <th>Signal</th>
+                          <th>Lệnh</th>
+                          <th>Win rate</th>
+                          <th>Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {peekData.stats.byConfigSignal.map((row) => (
+                          <tr key={`${row.username || peek.username}:${row.env}:${row.signal}`}>
+                            {peek.kind === "static-all" ? <td>{row.username}</td> : null}
+                            <td>{row.env}</td>
+                            <td>{row.signal}</td>
+                            <td>{row.count}</td>
+                            <td>{pct(row.winRate)}</td>
+                            <td className={tone(row.profit)}>{money(row.profit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="muted">Không có lệnh trong ngày này.</p>}
+                {peek.kind === "static" ? (
+                  <p>
+                    <Link className="link-btn" to={`/signals?view=statics&username=${encodeURIComponent(peek.username)}&from=${encodeURIComponent(peek.from)}&to=${encodeURIComponent(peek.to)}`}>
+                      Mở Account Static
+                    </Link>
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {peek.kind === "account" && !peekBusy ? (
+              <>
+                {canViewConfig && peekData?.configs?.length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>Config</th><th>On</th><th>Signal</th><th>Mode</th><th></th></tr></thead>
+                      <tbody>
+                        {peekData.configs.map((row) => (
+                          <tr key={row.env}>
+                            <td>{row.env}</td>
+                            <td>{row.missing ? "chưa có bản ghi" : onOff(row.on)}</td>
+                            <td>{row.missing ? "—" : signalText(row.signals)}</td>
+                            <td>{row.missing ? "—" : row.mode || "—"}</td>
+                            <td>
+                              {canViewConfig ? (
+                                <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(peek.username)}/accounts/${encodeURIComponent(row.env)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
+                                  {canEditResource(user, "config.edit", bots.find((item) => item.username === peek.username)) ? "Sửa" : "Xem"}
+                                </Link>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                {!canViewConfig ? (
+                  (bots.find((item) => item.username === peek.username)?.accounts || []).length ? (
+                    <ul>
+                      {(bots.find((item) => item.username === peek.username)?.accounts || []).map((env) => <li key={env}>{env}</li>)}
+                    </ul>
+                  ) : <p className="muted">User này chưa có config.</p>
+                ) : null}
+                {canViewConfig && peekData && !peekData.configs?.length ? <p className="muted">User này chưa có config.</p> : null}
+                <p>
+                  <Link className="link-btn" to={`/bots/${encodeURIComponent(peek.username)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
+                    Mở user
+                  </Link>
+                </p>
+              </>
+            ) : null}
+            {peek.kind === "account-all" && !peekBusy && peekData ? (
+              <>
+                {(peekData.users || []).length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>User</th><th>Config</th><th>Signal</th><th>On</th></tr></thead>
+                      <tbody>
+                        {(peekData.users || []).flatMap((item) => (item.configs?.length ? item.configs : [{ env: "", missing: true }]).map((row) => (
+                          <tr key={`${item.username}:${row.env || "none"}`}>
+                            <td>{item.username}</td>
+                            <td>{row.env || "—"}</td>
+                            <td>{row.missing ? "—" : signalText(row.signals)}</td>
+                            <td>{row.env ? (row.missing ? "chưa có bản ghi" : onOff(row.on)) : "chưa có config"}</td>
+                          </tr>
+                        )))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="muted">Chưa có user bot được gán cho tài khoản này.</p>}
+              </>
+            ) : null}
+            {peek.kind === "profit" && peekData ? (
+              <>
+                <p className="muted">Income của user {peekData.username || peek.username}, ví {peekData.env || "—"}. Ngày UTC {peekData.to || peekData.from}. Cùng nguồn lệnh /income, không tách theo account-config.</p>
+                {incomeDay(peekData) ? (
+                  <p>
+                    Profit {money(incomeDay(peekData).profit)} · fee {money(incomeDay(peekData).fee)} · funding {money(incomeDay(peekData).funding)} · ref {money(incomeDay(peekData).rebate)}
+                    {` · số dư ${money(incomeDay(peekData).balance, false)}`}
+                    {peekData.live?.unrealized != null ? ` · chưa chốt ${money(peekData.live.unrealized)}` : ""}
+                  </p>
+                ) : <p className="muted">Chưa có income của user này trong ngày UTC.</p>}
+                <p>
+                  <Link className="link-btn" to={`/ledger?username=${encodeURIComponent(peek.username)}`}>Mở lãi lỗ</Link>
+                </p>
+              </>
+            ) : null}
+            {peek.kind === "profit-all" && peekData ? (
+              <>
+                <p className="muted">Income từng user được gán, ngày UTC {peekData.from}. Mỗi user một ví, cùng lệnh /income.</p>
+                {(peekData.rows || []).length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>User</th><th>Ví</th><th>Profit</th><th>Fee</th><th>Funding</th><th>Ref</th><th>Số dư</th></tr></thead>
+                      <tbody>
+                        {peekData.rows.map((row) => (
+                          <tr key={row.username}>
+                            <td><Link to={`/ledger?username=${encodeURIComponent(row.username)}`}>{row.username}</Link></td>
+                            <td>{row.env}</td>
+                            <td className={tone(row.profit)}>{money(row.profit)}</td>
+                            <td className={tone(row.fee)}>{money(row.fee)}</td>
+                            <td className={tone(row.funding)}>{money(row.funding)}</td>
+                            <td className={tone(row.rebate)}>{money(row.rebate)}</td>
+                            <td>{money(row.balance, false)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="muted">Chưa có user bot được gán cho tài khoản này.</p>}
+                {peekData.totals ? <p>Tổng profit {money(peekData.totals.profit)} · fee {money(peekData.totals.fee)} · funding {money(peekData.totals.funding)} · ref {money(peekData.totals.rebate)}</p> : null}
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

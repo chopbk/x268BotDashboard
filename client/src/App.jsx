@@ -1,8 +1,11 @@
+import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { GuardProvider } from "./navigation";
 import { AuthProvider, useAuth } from "./auth";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
+import DashboardPage from "./pages/DashboardPage";
 import BotDetailPage from "./pages/BotDetailPage";
 import AccountConfigPage from "./pages/AccountConfigPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
@@ -50,8 +53,13 @@ function ProtectedAny({ children, permissions }) {
 function Shell({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const onBots = location.pathname === "/" || location.pathname.startsWith("/bots/");
-  const onApis = location.pathname.startsWith("/user-apis");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showNumbers = hasPermission(user, STATISTICS_VIEW) || hasPermission(user, SUMMARY_VIEW) || hasPermission(user, BOTS_VIEW);
+  const showOps = hasPermission(user, LOGS_VIEW);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname, location.search]);
 
   async function onLogout() {
     try {
@@ -63,37 +71,32 @@ function Shell({ children }) {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <NavLink to="/">Web Bot</NavLink>
-          <nav>
-            {hasPermission(user, BOTS_VIEW) ? (
-              <NavLink to="/" className={onBots ? "active" : ""}>
-                Bot
-              </NavLink>
-            ) : null}
-            {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
-            {hasPermission(user, SUMMARY_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
-            {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Account Static</NavLink> : null}
-            {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
-            {hasPermission(user, CREDENTIALS_VIEW) ? (
-              <NavLink to="/user-apis" className={onApis ? "active" : ""}>
-                User API
-              </NavLink>
-            ) : null}
-            {hasPermission(user, USERS_MANAGE) ? <NavLink to="/admin/users">User</NavLink> : null}
-            {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
-            {hasPermission(user, LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all" ? <NavLink to="/system">Hệ thống</NavLink> : null}
-          </nav>
-        </div>
+      <button type="button" className="nav-toggle" onClick={() => setMenuOpen((open) => !open)}>Menu</button>
+      {menuOpen ? <button type="button" className="nav-backdrop" aria-label="Đóng menu" onClick={() => setMenuOpen(false)} /> : null}
+      <aside className={menuOpen ? "sidenav open" : "sidenav"}>
+        <NavLink to="/" className="brand-link">Web Bot</NavLink>
+        <nav>
+          {hasPermission(user, BOTS_VIEW) ? <NavLink to="/" end>Tổng quan</NavLink> : null}
+          {hasPermission(user, BOTS_VIEW) || hasPermission(user, CREDENTIALS_VIEW) ? <p className="nav-label">Bot</p> : null}
+          {hasPermission(user, BOTS_VIEW) ? <NavLink to="/bots">Danh sách</NavLink> : null}
+          {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
+          {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
+          {showNumbers ? <p className="nav-label">Số liệu</p> : null}
+          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Account Static</NavLink> : null}
+          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
+          {hasPermission(user, SUMMARY_VIEW) || hasPermission(user, BOTS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
+          {showOps ? <p className="nav-label">Vận hành</p> : null}
+          {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
+          {hasPermission(user, LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all" ? <NavLink to="/system">Hệ thống</NavLink> : null}
+          {hasPermission(user, USERS_MANAGE) ? <p className="nav-label">Quản trị</p> : null}
+          {hasPermission(user, USERS_MANAGE) ? <NavLink to="/admin/users">User</NavLink> : null}
+        </nav>
         <div className="who">
           {hasPermission(user, USERS_EDIT) ? <NavLink to="/profile">{user?.name}</NavLink> : <span>{user?.name}</span>}
           <span className="role">{user?.role}</span>
-          <button type="button" className="ghost" onClick={onLogout}>
-            Đăng xuất
-          </button>
+          <button type="button" className="ghost" onClick={onLogout}>Đăng xuất</button>
         </div>
-      </header>
+      </aside>
       <main>{children}</main>
     </div>
   );
@@ -101,6 +104,7 @@ function Shell({ children }) {
 
 function AppRoutes() {
   return (
+    <GuardProvider>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
@@ -110,6 +114,16 @@ function AppRoutes() {
           <Protected>
             <Shell>
               <AccessHome />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/bots"
+        element={
+          <Protected permission={BOTS_VIEW}>
+            <Shell>
+              <HomePage />
             </Shell>
           </Protected>
         }
@@ -127,11 +141,11 @@ function AppRoutes() {
       <Route
         path="/summary"
         element={
-          <Protected permission={SUMMARY_VIEW}>
+          <ProtectedAny permissions={[SUMMARY_VIEW, BOTS_VIEW, STATISTICS_VIEW]}>
             <Shell>
               <SummaryPage />
             </Shell>
-          </Protected>
+          </ProtectedAny>
         }
       />
       <Route
@@ -240,12 +254,13 @@ function AppRoutes() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </GuardProvider>
   );
 }
 
 function AccessHome() {
   const { user } = useAuth();
-  if (hasPermission(user, BOTS_VIEW)) return <HomePage />;
+  if (hasPermission(user, BOTS_VIEW)) return <DashboardPage />;
   if (hasPermission(user, SUMMARY_VIEW)) return <Navigate to="/summary" replace />;
   return <PendingPage />;
 }

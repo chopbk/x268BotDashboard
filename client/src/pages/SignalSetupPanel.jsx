@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-const fmtTime = (value) => value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "—";
-
 export default function SignalSetupPanel({ onFindConfig }) {
   const [data, setData] = useState(null);
   const [username, setUsername] = useState("");
@@ -136,60 +134,6 @@ export default function SignalSetupPanel({ onFindConfig }) {
           ))}
         </div>
         {(data?.catalog || []).length === 0 ? <p className="muted">Chưa có signal trên account bạn sở hữu hoặc được gán.</p> : null}
-      </section>
-      <section className="card">
-        <h2>Channel</h2>
-        <p className="muted">Tên channel listener đang theo. Không gồm session hay API hash.</p>
-        <div className="signal-chips">
-          {(data?.channels || []).map((row) => (
-            <button type="button" key={row.name} className="ghost" onClick={() => setNames(row.name)}>
-              {row.name}{row.ocr ? " · OCR" : ""}{row.photoFomo ? " · ảnh" : ""}
-            </button>
-          ))}
-        </div>
-        {(data?.channels || []).length === 0 ? <p className="muted">Không có channel trong phạm vi bạn được xem.</p> : null}
-      </section>
-      <section className="card">
-        <h2>Lỗi parse</h2>
-        <p className="muted">7 ngày gần nhất. Tin có LONG, SHORT, BUY, SELL hoặc ENTRY nhưng không ra được side và symbol. Số này có sau khi listener chạy bản mới.</p>
-        {(data?.parseErrors || []).length === 0 ? <p className="muted">Chưa có lỗi parse.</p> : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Signal</th><th>Số lần</th><th>Gần nhất</th><th>Mẫu</th></tr></thead>
-              <tbody>
-                {data.parseErrors.map((row) => (
-                  <tr key={row.signal}>
-                    <td>{row.signal || "—"}</td>
-                    <td>{row.count}</td>
-                    <td>{fmtTime(row.lastAt)}</td>
-                    <td>{row.sample}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      <section className="card">
-        <h2>Bị gỡ vì chuỗi thua</h2>
-        <p className="muted">14 ngày gần nhất. Config bật autoremove, chuỗi thua và win rate thấp thì bot gỡ signal, hoặc tắt config nếu đó là signal cuối. ROSE không bị gỡ. Log có sau khi monitor chạy bản mới.</p>
-        {(data?.removed || []).length === 0 ? <p className="muted">Chưa có signal bị gỡ.</p> : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Thời gian</th><th>Config</th><th>Signal</th><th>Lý do</th></tr></thead>
-              <tbody>
-                {data.removed.map((row, index) => (
-                  <tr key={`${row.env}-${row.signal}-${index}`}>
-                    <td>{fmtTime(row.at)}</td>
-                    <td>{row.env}</td>
-                    <td>{row.signal}</td>
-                    <td>{row.message}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
     </div>
   );

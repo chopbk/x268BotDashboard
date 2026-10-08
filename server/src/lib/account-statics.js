@@ -118,6 +118,18 @@ function byProfit(rows) {
     return [...rows].sort((a, b) => (b.profit || 0) - (a.profit || 0) || (b.count || 0) - (a.count || 0));
 }
 
+function presentConfigSignal(row) {
+    const id = row?._id && typeof row._id === "object" ? row._id : {};
+    return {
+        env: id.env || "UNKNOWN",
+        ...presentGroup({ ...row, _id: id.signal || "UNKNOWN" }, "signal"),
+    };
+}
+
+function byConfigThenProfit(rows) {
+    return [...rows].sort((a, b) => String(a.env).localeCompare(String(b.env)) || (b.profit || 0) - (a.profit || 0) || (b.count || 0) - (a.count || 0));
+}
+
 function signalMatch(input) {
     const signalNames = String(input.signal || "").split(",").map((item) => item.trim()).filter(Boolean);
     if (signalNames.length === 1) {
@@ -190,6 +202,7 @@ async function listAccountStatics(actor, input = {}) {
             {
                 $facet: {
                     bySignal: [{ $group: groupMetrics("$typeSignal") }],
+                    byConfigSignal: [{ $group: groupMetrics({ env: "$env", signal: "$typeSignal" }) }],
                     byEnv: [{ $group: groupMetrics("$env") }],
                     byConfig: [{ $match: signalMatch(input) }, { $group: groupMetrics("$env") }],
                     bySide: [{ $group: groupMetrics("$side") }],
@@ -215,6 +228,7 @@ async function listAccountStatics(actor, input = {}) {
             longProfit: sum.longProfit || 0,
             shortProfit: sum.shortProfit || 0,
             bySignal: byProfit((facet.bySignal || []).map((row) => presentGroup(row, "signal"))),
+            byConfigSignal: byConfigThenProfit((facet.byConfigSignal || []).map(presentConfigSignal)),
             byEnv: byProfit((facet.byEnv || []).map((row) => presentGroup(row, "env"))),
             byConfig: byProfit((facet.byConfig || []).map((row) => presentGroup(row, "env"))),
             bySide: (facet.bySide || []).map((row) => presentGroup(row, "side")),
@@ -241,4 +255,46 @@ async function getAccountStatic(actor, id, input = {}) {
     return trade;
 }
 
-module.exports = { listAccountStatics, getAccountStatic };
+async function listAssignedStatics(actor, input = {}) {
+    const { assignedUsers } = require("./account-ledger");
+    const users = await assignedUsers(actor);
+    const envUser = new Map();
+    for (const user of users) {
+        for (const env of user.accounts || []) {
+            const name = String(env || "").trim();
+            if (name && !envUser.has(name)) envUser.set(name, user.username);
+        }
+    }
+    const envs = [...envUser.keys()];
+    const range = openTimeRange(input);
+    const empty = {
+        scope: "assigned",
+        usernames: users.map((user) => user.username),
+        stats: { total: 0, profit: 0, winRate: 0, byConfigSignal: [] },
+        book: "live",
+        from: range.from,
+        to: range.to,
+    };
+    if (!envs.length) return empty;
+    const filter = { env: { $in: envs }, openTime: openTimeFilter(range), isPaper: { $ne: true } };
+    const [total, totals, grouped] = await Promise.all([
+        AccountStatic.countDocuments(filter),
+        AccountStatic.aggregate([{ $match: filter }, { $group: { _id: null, profit: { $sum: profitExpr }, wins: { $sum: { $cond: [winCond, 1, 0] } } } }]),
+        AccountStatic.aggregate([{ $match: filter }, { $group: groupMetrics({ env: "$env", signal: "$typeSignal" }) }]),
+    ]);
+    const sum = totals[0] || { profit: 0, wins: 0 };
+    return {
+        ...empty,
+        stats: {
+            total,
+            profit: sum.profit || 0,
+            winRate: total ? ((sum.wins || 0) / total) * 100 : 0,
+            byConfigSignal: (grouped || []).map((row) => ({
+                username: envUser.get(row?._id?.env) || "UNKNOWN",
+                ...presentConfigSignal(row),
+            })).sort((a, b) => String(a.username).localeCompare(String(b.username)) || String(a.env).localeCompare(String(b.env)) || (b.profit || 0) - (a.profit || 0)),
+        },
+    };
+}
+
+module.exports = { listAccountStatics, listAssignedStatics, getAccountStatic };

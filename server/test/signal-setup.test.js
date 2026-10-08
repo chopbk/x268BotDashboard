@@ -5,6 +5,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 
 const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
+const AccountStatic = require("../src/models/account-static");
 const TelegramClient = require("../src/models/telegram-client");
 const RuntimeLog = require("../src/models/runtime-log");
 const { mergeSignals, listSignalSetup, applySignals } = require("../src/lib/signal-setup");
@@ -35,6 +36,7 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         channels: TelegramClient.find,
         logs: RuntimeLog.find,
         aggregate: RuntimeLog.aggregate,
+        statics: AccountStatic.aggregate,
     };
     let parseMatch;
     UserAccount.findOne = async () => ({ username: "V", accounts: ["V1"], ownerUserId: "other", visibility: "public", active: true });
@@ -59,6 +61,7 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         parseMatch = pipeline[0].$match;
         return [{ _id: "ROSE", count: 4, lastAt: new Date("2026-10-02T00:00:00Z"), sample: "Parse thiếu side hoặc symbol ROSE" }];
     };
+    AccountStatic.aggregate = async () => [{ _id: { env: "V1", signal: "ROSE" }, count: 4, wins: 1, profit: -12 }];
     try {
         const view = await listSignalSetup(operator, { username: "V" });
         assert.deepEqual(view.bots.map((row) => row.username), ["V"]);
@@ -67,6 +70,18 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         assert.equal(JSON.stringify(view).includes("SECRET"), false);
         assert.equal(view.accounts[0].autoRemove, true);
         assert.equal(view.editable, true);
+        assert.equal(view.summary.signals, 1);
+        assert.equal(view.summary.parseErrors, 4);
+        assert.equal(view.usage[0].signal, "ROSE");
+        assert.equal(view.usage[0].channel, true);
+        assert.equal(view.usage[0].on, 1);
+        assert.equal(view.usage[0].autoRemove, 1);
+        assert.equal(view.usage[0].parseErrors, 4);
+        assert.equal(view.usage[0].removed, 1);
+        assert.equal(view.performance.losingSignals[0].signal, "ROSE");
+        assert.equal(view.performance.losingSignals[0].profit, -12);
+        assert.equal(view.performance.lowWinRate[0].signal, "ROSE");
+        assert.equal(view.performance.lowWinRate[0].winRate, 25);
         assert.deepEqual(parseMatch.signal.$in, ["ROSE"]);
         assert.deepEqual(view.removed.map((row) => row.env), ["V1"]);
     } finally {
@@ -76,11 +91,12 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         TelegramClient.find = originals.channels;
         RuntimeLog.find = originals.logs;
         RuntimeLog.aggregate = originals.aggregate;
+        AccountStatic.aggregate = originals.statics;
     }
 });
 
 test("catalog counts signals only on owned or assigned accounts", async () => {
-    const originals = { users: UserAccount.find, configs: AccountConfig.find, channels: TelegramClient.find, logs: RuntimeLog.find, aggregate: RuntimeLog.aggregate };
+    const originals = { users: UserAccount.find, configs: AccountConfig.find, channels: TelegramClient.find, logs: RuntimeLog.find, aggregate: RuntimeLog.aggregate, statics: AccountStatic.aggregate };
     UserAccount.find = () => query([
         { username: "OWN", accounts: ["O1"], ownerUserId: "admin", visibility: "public", active: true },
         { username: "ELSE", accounts: ["E1"], ownerUserId: "other", visibility: "public", active: true },
@@ -92,16 +108,20 @@ test("catalog counts signals only on owned or assigned accounts", async () => {
     TelegramClient.find = () => query([]);
     RuntimeLog.find = () => query([]);
     RuntimeLog.aggregate = async () => [];
+    AccountStatic.aggregate = async () => [];
     try {
         const view = await listSignalSetup(admin, {});
         assert.deepEqual(view.bots.map((row) => row.username), ["OWN"]);
         assert.deepEqual(view.catalog.map((row) => row.signal), ["ROSE"]);
+        assert.deepEqual(view.usage.map((row) => row.signal), ["ROSE"]);
+        assert.equal(view.usage[0].channel, false);
     } finally {
         UserAccount.find = originals.users;
         AccountConfig.find = originals.configs;
         TelegramClient.find = originals.channels;
         RuntimeLog.find = originals.logs;
         RuntimeLog.aggregate = originals.aggregate;
+        AccountStatic.aggregate = originals.statics;
     }
 });
 

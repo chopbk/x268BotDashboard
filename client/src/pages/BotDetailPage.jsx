@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Crumbs, useEscape, useLeaveGuard } from "../navigation";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { canEditResource } from "../access";
@@ -46,6 +48,31 @@ function summaryText(row) {
   return parts.join(" · ");
 }
 
+function showList(value) {
+  return Array.isArray(value) && value.length ? value.join(", ") : "—";
+}
+
+function pct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.round(n * 10) / 10}%`;
+}
+
+function when(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("vi-VN");
+}
+
+function capitalLine(config) {
+  const mode = config?.mode || "FIX";
+  if (mode === "RATIO") return `RATIO: size theo ví × ratio ${config.ratio ?? "—"}.`;
+  if (mode === "LOSS" || mode === "RR") return `${mode}: size để chạm SL lỗ khoảng ${money(config.fixloss)}. Để 0 thì lấy max loss ${config.maxLoss ?? "—"}.`;
+  if (mode === "RISK") return `RISK: size = cost ${money(config.cost)} × (risk của signal / 5).`;
+  return `FIX: volume = cost ${money(config.cost)} × đòn bẩy long ${config.leverage ?? "—"} = ${money(config.volume)}.`;
+}
+
 function uniqueSorted(values) {
   return [...new Set(values.filter((value) => value != null && value !== ""))].sort((a, b) => String(a).localeCompare(String(b)));
 }
@@ -78,6 +105,19 @@ function matchesConfig(row, filters) {
 export default function BotDetailPage() {
   const { username = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const filters = {
+    signal: params.get("signal") || "",
+    long: params.get("long") || "",
+    on: params.get("on") || "",
+    volume: params.get("volume") || "",
+    volumeOp: params.get("op") === "lt" ? "lt" : "gt",
+    mode: params.get("mode") || "",
+    type: params.get("type") || "",
+  };
+  const [volumeText, setVolumeText] = useState(filters.volume);
+  const debouncedVolume = useDebouncedValue(volumeText);
   const { user } = useAuth();
   const canViewConfig = can(user, CONFIG_VIEW);
   const canEditBot = can(user, BOTS_EDIT);
@@ -100,8 +140,20 @@ export default function BotDetailPage() {
   const [quick, setQuick] = useState({ on: "", long: "", short: "", paper: "", monitor: "", mode: "", cost: "", leverage: "", signals: "" });
   const [summaryVersion, setSummaryVersion] = useState(0);
   const [summaries, setSummaries] = useState({});
-  const [filters, setFilters] = useState({ signal: "", long: "", on: "", volume: "", volumeOp: "gt", mode: "", type: "" });
   const [busy, setBusy] = useState(false);
+  const [peek, setPeek] = useState(null);
+  const [peekData, setPeekData] = useState(null);
+  const [peekError, setPeekError] = useState("");
+  const [peekBusy, setPeekBusy] = useState(false);
+  useEscape(Boolean(peek), () => setPeek(null));
+  const quickDirty = Object.values(quick).some((value) => String(value || "").trim() !== "");
+  const metaDirty = Boolean(bot) && (
+    editUserName !== (bot.username || "")
+    || (visibility || "public") !== (bot.visibility || "public")
+    || (user?.role === "admin" && (ownerUserId || "") !== (bot.ownerUserId || ""))
+  );
+  const pendingCount = (editEnv ? 1 : 0) + (quickDirty ? 1 : 0) + (metaDirty ? 1 : 0);
+  const guard = useLeaveGuard(pendingCount > 0, pendingCount > 1 ? `Đang sửa ${pendingCount} mục.` : editEnv ? "Đang đổi tên 1 config." : quickDirty ? "Config nhanh chưa được áp dụng." : "Thông tin bot chưa được lưu.");
   const accounts = bot?.accounts || [];
   const visibleAccounts = accounts.filter((account) => account === editEnv || matchesConfig(summaries[account], filters));
   const allPicked = visibleAccounts.length > 0 && visibleAccounts.every((account) => picked.has(account));
@@ -113,6 +165,7 @@ export default function BotDetailPage() {
     let cancelled = false;
     const controller = new AbortController();
     setLoading(true);
+    setPeek(null);
     api(`/api/bots/${encodeURIComponent(username)}`, { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
@@ -163,6 +216,82 @@ export default function BotDetailPage() {
     };
   }, [canViewConfig, bot, accountKey, summaryVersion]);
 
+  useEffect(() => {
+    if (!peek || !bot?.username) return undefined;
+    let cancelled = false;
+    const controller = new AbortController();
+    setPeekBusy(true);
+    setPeekError("");
+    setPeekData(null);
+    const path = peek.kind === "static"
+      ? `/api/account-statics?username=${encodeURIComponent(bot.username)}&env=${encodeURIComponent(peek.env)}&limit=20`
+      : `/api/bots/${encodeURIComponent(bot.username)}/configs/${encodeURIComponent(peek.env)}`;
+    api(path, { signal: controller.signal })
+      .then((data) => {
+        if (!cancelled) setPeekData(peek.kind === "static" ? data : data.config);
+      })
+      .catch((err) => {
+        if (!cancelled) setPeekError(err.message || "Không tải được");
+      })
+      .finally(() => {
+        if (!cancelled) setPeekBusy(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [peek, bot?.username]);
+
+  useEffect(() => {
+    setVolumeText(filters.volume);
+  }, [filters.volume]);
+
+  useEffect(() => {
+    if (debouncedVolume === filters.volume) return;
+    commitFilters({ volume: debouncedVolume });
+  }, [debouncedVolume]);
+
+  async function commitFilters(partial) {
+    if (pendingCount > 0 && guard) {
+      const ok = await guard.confirmLeave();
+      if (!ok) {
+        setVolumeText(filters.volume);
+        return;
+      }
+      setEditEnv(null);
+      setEnvDraft("");
+      setQuick({ on: "", long: "", short: "", paper: "", monitor: "", mode: "", cost: "", leverage: "", signals: "" });
+      setQuickOpen(false);
+      if (bot) {
+        setEditUserName(bot.username || "");
+        setVisibility(bot.visibility || "public");
+        setOwnerUserId(bot.ownerUserId || "");
+      }
+    }
+    const next = new URLSearchParams(params);
+    const values = { ...filters, ...partial };
+    const write = {
+      signal: values.signal,
+      long: values.long,
+      on: values.on,
+      volume: values.volume,
+      op: values.volumeOp === "lt" ? "lt" : "",
+      mode: values.mode,
+      type: values.type,
+    };
+    for (const [key, value] of Object.entries(write)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    const search = next.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { state: location.state });
+  }
+
+  function clearQuick() {
+    setQuick({ on: "", long: "", short: "", paper: "", monitor: "", mode: "", cost: "", leverage: "", signals: "" });
+    setQuickOpen(false);
+  }
+
   async function run(action) {
     setBusy(true);
     setError("");
@@ -178,11 +307,27 @@ export default function BotDetailPage() {
   return (
     <section>
       <header className="page-head">
-        <p>
-          <Link to="/">← Danh sách user bot</Link>
-        </p>
+        <Crumbs
+          items={[{ label: "Bot", to: location.state?.returnTo || "/bots" }, { label: bot?.username || username }]}
+          returnTo={location.state?.returnTo || ""}
+        />
         <h1>{bot?.username || username}</h1>
-        <p className="muted">Mỗi config hiện On, Long/Short, signal, mode và volume. Chọn nhiều config rồi bấm Config nhanh để sửa cùng lúc, hoặc Sửa để mở đủ mục.</p>
+        {pendingCount > 0 ? (
+          <p className="dirty-note muted">
+            Đang sửa {pendingCount} mục.
+            <button type="button" className="ghost" onClick={() => {
+              setEditEnv(null);
+              setEnvDraft("");
+              clearQuick();
+              if (bot) {
+                setEditUserName(bot.username || "");
+                setVisibility(bot.visibility || "public");
+                setOwnerUserId(bot.ownerUserId || "");
+              }
+            }}>Huỷ thay đổi</button>
+          </p>
+        ) : null}
+        <p className="muted">Bấm Cấu hình hoặc Static trước tên config để xem nhanh trong popup. Sửa vẫn mở đủ mục.</p>
         {canViewSignalHistory ? <p><Link to="/signal-search?tab=history">Xem lịch sử signal hệ thống</Link></p> : null}
         {canViewStatistics ? <p><Link to={`/signals?view=statics&username=${encodeURIComponent(username)}`}>Xem Account Static của User bot</Link></p> : null}
       </header>
@@ -238,7 +383,7 @@ export default function BotDetailPage() {
                   if (!window.confirm(`Xoá user bot ${bot.username}? Config và API key không bị xoá.`)) return;
                   run(async () => {
                     await api(`/api/bots/${encodeURIComponent(bot.username)}`, { method: "DELETE" });
-                    navigate("/", { replace: true });
+                    navigate("/bots", { replace: true });
                   });
                 }}
               >
@@ -372,14 +517,14 @@ export default function BotDetailPage() {
             <div className="account-filters">
               <label>
                 Signal
-                <select value={filters.signal} onChange={(event) => setFilters((prev) => ({ ...prev, signal: event.target.value }))}>
+                <select value={filters.signal} onChange={(event) => commitFilters({ signal: event.target.value })}>
                   <option value="">Tất cả</option>
                   {signalOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
               </label>
               <label>
                 Long
-                <select value={filters.long} onChange={(event) => setFilters((prev) => ({ ...prev, long: event.target.value }))}>
+                <select value={filters.long} onChange={(event) => commitFilters({ long: event.target.value })}>
                   <option value="">Tất cả</option>
                   <option value="on">Bật</option>
                   <option value="off">Tắt</option>
@@ -387,7 +532,7 @@ export default function BotDetailPage() {
               </label>
               <label>
                 On
-                <select value={filters.on} onChange={(event) => setFilters((prev) => ({ ...prev, on: event.target.value }))}>
+                <select value={filters.on} onChange={(event) => commitFilters({ on: event.target.value })}>
                   <option value="">Tất cả</option>
                   <option value="on">Bật</option>
                   <option value="off">Tắt</option>
@@ -396,30 +541,30 @@ export default function BotDetailPage() {
               <label className="volume-filter">
                 Volume
                 <span className="volume-filter-row">
-                  <select aria-label="So với volume" value={filters.volumeOp === "lt" ? "lt" : "gt"} onChange={(event) => setFilters((prev) => ({ ...prev, volumeOp: event.target.value }))}>
+                  <select aria-label="So với volume" value={filters.volumeOp === "lt" ? "lt" : "gt"} onChange={(event) => commitFilters({ volumeOp: event.target.value })}>
                     <option value="gt">Lớn hơn</option>
                     <option value="lt">Bé hơn</option>
                   </select>
                   <input
                     type="number"
                     step="any"
-                    value={filters.volume}
+                    value={volumeText}
                     placeholder="Nhập số"
                     aria-label="Ngưỡng volume"
-                    onChange={(event) => setFilters((prev) => ({ ...prev, volume: event.target.value }))}
+                    onChange={(event) => setVolumeText(event.target.value)}
                   />
                 </span>
               </label>
               <label>
                 Mode
-                <select value={filters.mode} onChange={(event) => setFilters((prev) => ({ ...prev, mode: event.target.value }))}>
+                <select value={filters.mode} onChange={(event) => commitFilters({ mode: event.target.value })}>
                   <option value="">Tất cả</option>
                   {modeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
               </label>
               <label>
                 Type
-                <select aria-label="Lọc theo open type" value={filters.type} onChange={(event) => setFilters((prev) => ({ ...prev, type: event.target.value }))}>
+                <select aria-label="Lọc theo open type" value={filters.type} onChange={(event) => commitFilters({ type: event.target.value })}>
                   <option value="">Tất cả</option>
                   {typeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
@@ -484,7 +629,19 @@ export default function BotDetailPage() {
                   />
                 ) : null}
                 <div className="account-main">
-                  <span className="chip">{account}</span>
+                  <div className="account-title">
+                    {canViewConfig ? (
+                      <button type="button" className="ghost" onClick={() => { setPeekBusy(true); setPeekError(""); setPeekData(null); setPeek({ kind: "config", env: account }); }}>
+                        Cấu hình
+                      </button>
+                    ) : null}
+                    {canViewStatistics ? (
+                      <button type="button" className="ghost" onClick={() => { setPeekBusy(true); setPeekError(""); setPeekData(null); setPeek({ kind: "static", env: account }); }}>
+                        Static
+                      </button>
+                    ) : null}
+                    <span className="chip">{account}</span>
+                  </div>
                   {canViewConfig ? <span className="account-meta">{summaryText(summaries[account])}</span> : null}
                 </div>
                 {canViewConfig || canEditConfig ? (
@@ -492,6 +649,7 @@ export default function BotDetailPage() {
                     <Link
                       className="ghost link-btn"
                       to={`/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`}
+                      state={{ listTo: `${location.pathname}${location.search}`, returnTo: location.state?.returnTo || "" }}
                     >
                       {canEditConfig ? "Sửa" : "Xem"}
                     </Link>
@@ -558,6 +716,84 @@ export default function BotDetailPage() {
             </form>
           ) : null}
         </article>
+      ) : null}
+      {peek && bot ? (
+        <div className="modal-backdrop" onClick={() => setPeek(null)}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="peek-title" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <h2 id="peek-title">{peek.kind === "static" ? "Static signal" : "Cấu hình"} · {bot.username} · {peek.env}</h2>
+              <button type="button" className="ghost" onClick={() => setPeek(null)}>Đóng</button>
+            </header>
+            {peekError ? <p className="form-error">{peekError}</p> : null}
+            {peekBusy ? <p className="muted">Đang tải…</p> : null}
+            {peek.kind === "config" && peekData ? (
+              <div className="config-glance">
+                <section>
+                  <h3>Chạy</h3>
+                  <p>{peekData.paper ? "Paper" : "Live"} · On {onOff(peekData.on)} · Long {onOff(peekData.long)} · Short {onOff(peekData.short)} · Invert {onOff(peekData.invert)} · Monitor {onOff(peekData.monitor)}</p>
+                </section>
+                <section>
+                  <h3>Signal</h3>
+                  <p>{showList(peekData.signals)}</p>
+                </section>
+                <section>
+                  <h3>Vốn</h3>
+                  <p>{capitalLine(peekData)}</p>
+                  <p className="muted">Đòn bẩy long {peekData.leverage ?? "—"} · short {peekData.shortLeverage ?? "—"} · level {peekData.level ?? "—"}</p>
+                </section>
+                <section>
+                  <h3>SL / TP</h3>
+                  <p>SL {peekData.slType || "—"} {peekData.sl ?? "—"} · nến {peekData.slCandle || "—"} · max loss {peekData.maxLoss ?? "—"}</p>
+                  <p>TP {peekData.tpType || "—"} {showList(peekData.tpPercent)} · close {peekData.tpClose ?? "—"} · hold {onOff(peekData.tpHold)}</p>
+                </section>
+                <p className="row-actions">
+                  <Link className="link-btn" to={`/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(peek.env)}`} state={{ listTo: `${location.pathname}${location.search}`, returnTo: location.state?.returnTo || "" }}>
+                    Mở đủ config
+                  </Link>
+                </p>
+              </div>
+            ) : null}
+            {peek.kind === "static" && peekData?.stats ? (
+              <>
+                <p className="muted">
+                  {peekData.stats.total} lệnh · lãi {money(peekData.stats.profit)} · win rate {pct(peekData.stats.winRate)}
+                  {peekData.from ? ` · openTime ${when(peekData.from)}` : ""}
+                  {peekData.to ? ` → ${when(peekData.to)}` : " → nay"}
+                  {peekData.book ? ` · sổ ${peekData.book}` : ""}
+                </p>
+                {peekData.stats.bySignal?.length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Signal</th>
+                          <th>Lệnh</th>
+                          <th>Win rate</th>
+                          <th>Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {peekData.stats.bySignal.map((row) => (
+                          <tr key={row.signal}>
+                            <td>{row.signal}</td>
+                            <td>{row.count}</td>
+                            <td>{pct(row.winRate)}</td>
+                            <td>{money(row.profit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="muted">Không có lệnh trong khoảng này.</p>}
+                <p className="row-actions">
+                  <Link className="link-btn" to={`/signals?view=statics&username=${encodeURIComponent(bot.username)}&env=${encodeURIComponent(peek.env)}`}>
+                    Mở Account Static
+                  </Link>
+                </p>
+              </>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </section>
   );

@@ -1,5 +1,6 @@
 const AccountConfig = require("../models/account-config");
-const { PERMISSIONS } = require("../auth/access-control");
+const UserAccount = require("../models/user-account");
+const { PERMISSIONS, canAccessResource } = require("../auth/access-control");
 const { httpError } = require("./http");
 const { requireBot } = require("./bot-directory");
 
@@ -476,6 +477,30 @@ async function updateSelectedConfigs(actor, username, envs, body) {
     return { updated, failed };
 }
 
+async function listAssignedConfigGlance(actor) {
+    const { isOwnUser } = require("./account-ledger");
+    const rows = await UserAccount.find({})
+        .select("username accounts ownerUserId visibility active")
+        .sort({ username: 1 })
+        .lean();
+    const mine = (rows || []).filter((row) => row?.username
+        && isOwnUser(actor, { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null })
+        && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, row));
+    const envs = [...new Set(mine.flatMap((row) => row.accounts || []).map((env) => String(env || "").trim()).filter(Boolean))];
+    const docs = await loadDocs(envs);
+    const byEnv = new Map((docs || []).map((doc) => [doc.env, doc]));
+    return {
+        scope: "assigned",
+        users: mine.map((row) => ({
+            username: row.username,
+            configs: (row.accounts || []).map((env) => {
+                const doc = byEnv.get(env);
+                return doc ? toSummary(doc) : missingSummary(env);
+            }),
+        })),
+    };
+}
+
 module.exports = {
     MODES,
     OPEN_TYPES,
@@ -490,6 +515,7 @@ module.exports = {
     toSummary,
     toDetail,
     listConfigSummaries,
+    listAssignedConfigGlance,
     getConfigSummary,
     getConfigDetail,
     updateConfigSummary,

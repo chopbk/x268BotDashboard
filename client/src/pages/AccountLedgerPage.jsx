@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 
 function money(value) {
@@ -41,8 +42,9 @@ function points(series, key, width, height, minValue, maxValue) {
 }
 
 export default function AccountLedgerPage() {
+  const [searchParams] = useSearchParams();
   const [days, setDays] = useState("14");
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(() => searchParams.get("username") || "");
   const [showOthers, setShowOthers] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [data, setData] = useState(null);
@@ -61,6 +63,9 @@ export default function AccountLedgerPage() {
         if (cancelled) return;
         setData(result);
         setError("");
+        const requested = (result.users || []).find((item) => item.username === (username || result.username));
+        if (requested && !requested.mine) setShowOthers(true);
+        if (requested && requested.active === false) setShowInactive(true);
         if (!username) {
           const choices = filterUsers(result.users, showOthers, showInactive);
           const preferred = choices.find((item) => item.username === result.username) || choices[0];
@@ -159,16 +164,16 @@ export default function AccountLedgerPage() {
       {!loading && data && !choices.length ? <p className="muted">{showOthers ? "Không có user khác trong quyền xem." : "Bạn chưa có user bot đang active. Tick để xem người khác hoặc account đang tắt."}</p> : null}
       {data?.username && choices.some((item) => item.username === data.username) ? (
         <>
-          <p className="muted">User {data.username} · ví ghi ở env {data.env} · {data.from} → {data.to} UTC{live.asOf ? ` · mốc ${new Date(live.asOf).toLocaleString("vi-VN")}` : ""}</p>
+          <p className="muted">User {data.username} · ví ghi ở env {data.env}. Kỳ {data.from} → {data.to} UTC. Số dư và income lấy futures_profits{live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.</p>
           <div className="stats-grid summary-grid">
-            <article className="card summary-stat"><small>Ví futures</small><strong>{plain(live.wallet)}</strong></article>
-            <article className="card summary-stat"><small>Khả dụng</small><strong>{plain(live.available)}</strong></article>
-            <article className={`card summary-stat ${tone(live.unrealized)}`}><small>Lãi lỗ chưa chốt</small><strong>{money(live.unrealized)}</strong></article>
+            <article className="card summary-stat"><small>Ví futures · futures_profits</small><strong>{plain(live.wallet)}</strong></article>
+            <article className="card summary-stat"><small>Khả dụng · sàn lúc cập nhật</small><strong>{plain(live.available)}</strong></article>
+            <article className={`card summary-stat ${tone(live.unrealized)}`}><small>Lãi lỗ chưa chốt · sàn lúc cập nhật</small><strong>{money(live.unrealized)}</strong></article>
             <article className="card summary-stat"><small>Margin đang dùng</small><strong>{plain(live.margin)}</strong></article>
-            <article className="card summary-stat"><small>Số dư DB</small><strong>{plain(compare.dbBalance)}</strong></article>
-            <article className="card summary-stat"><small>Số dư sàn</small><strong>{plain(compare.exchangeBalance)}</strong></article>
+            <article className="card summary-stat"><small>Số dư DB · futures_profits</small><strong>{plain(compare.dbBalance)}</strong></article>
+            <article className="card summary-stat"><small>Số dư sàn · bản cập nhật hôm nay</small><strong>{plain(compare.exchangeBalance)}</strong></article>
             <article className={`card summary-stat ${tone(compare.diff)}`}><small>Lệch sàn so với DB trước cập nhật</small><strong>{money(compare.diff)}</strong></article>
-            <article className={`card summary-stat ${tone(totals.staticDiff)}`}><small>Income sàn − profit lệnh DB</small><strong>{money(totals.staticDiff)}</strong></article>
+            <article className={`card summary-stat ${tone(totals.staticDiff)}`}><small>Income sàn − profit Account Static</small><strong>{money(totals.staticDiff)}</strong></article>
           </div>
 
           <h2 className="summary-section-title">Đường số dư</h2>
@@ -187,14 +192,14 @@ export default function AccountLedgerPage() {
             </svg>
           )}
           <div className="stats-grid">
-            <article className={`card summary-stat ${tone(totals.trading)}`}><small>Trading PnL, gồm phí funding rebate</small><strong>{money(totals.trading)}</strong></article>
+            <article className={`card summary-stat ${tone(totals.trading)}`}><small>Trading PnL · income sàn, {data.from} → {data.to} UTC</small><strong>{money(totals.trading)}</strong></article>
             <article className="card summary-stat"><small>Phí</small><strong>{money(totals.fee)}</strong></article>
             <article className="card summary-stat"><small>Funding</small><strong>{money(totals.funding)}</strong></article>
             <article className="card summary-stat"><small>Rebate</small><strong>{money(totals.rebate)}</strong></article>
             <article className={`card summary-stat ${tone(totals.cashIn)}`}><small>Nạp / chuyển vào</small><strong>{money(totals.cashIn)}</strong></article>
             <article className={`card summary-stat ${tone(totals.cashOut)}`}><small>Rút / chuyển ra</small><strong>{money(totals.cashOut)}</strong></article>
             <article className="card summary-stat"><small>Quy đổi</small><strong>{money(totals.conversion)}</strong></article>
-            <article className={`card summary-stat ${tone(totals.staticProfit)}`}><small>Profit lệnh trong DB</small><strong>{money(totals.staticProfit)}</strong></article>
+            <article className={`card summary-stat ${tone(totals.staticProfit)}`}><small>Profit lệnh · Account Static, cùng kỳ UTC</small><strong>{money(totals.staticProfit)}</strong></article>
           </div>
 
           <h2 className="summary-section-title">Income theo ngày</h2>

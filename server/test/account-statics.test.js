@@ -69,6 +69,7 @@ test("Account Static filters signal, status and profit without narrowing the sig
         assert.equal(scope.status, undefined);
         assert.equal(scope.profit, undefined);
         assert.equal(facet.byConfig[0].$match.typeSignal.source, "^signal_a\\+$");
+        assert.deepEqual(facet.byConfigSignal[0].$group._id, { env: "$env", signal: "$typeSignal" });
         assert.equal(result.stats.bySignal.length, 0);
         assert.equal(result.stats.byConfig[0].env, "a1");
         assert.equal(result.stats.byConfig[0].winRate, 75);

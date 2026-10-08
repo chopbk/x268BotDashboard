@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 
 const ACTION_LABELS = {
@@ -42,11 +43,11 @@ const RUNTIME_LABELS = {
   process: "PM2 process",
 };
 
-function RuntimeLogs() {
+function RuntimeLogs({ initialCategory = "" }) {
   const [logs, setLogs] = useState([]);
   const [query, setQuery] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState(initialCategory);
   const [level, setLevel] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -158,7 +159,8 @@ function ChangeDetails({ changes }) {
 }
 
 export default function AuditLogsPage() {
-  const [kind, setKind] = useState("audit");
+  const [params] = useSearchParams();
+  const [kind, setKind] = useState(params.get("kind") === "runtime" ? "runtime" : "audit");
   const [logs, setLogs] = useState([]);
   const [query, setQuery] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
@@ -213,7 +215,7 @@ export default function AuditLogsPage() {
         <button type="button" className={kind === "audit" ? "active" : "ghost"} onClick={() => setKind("audit")}>Sửa trên web</button>
         <button type="button" className={kind === "runtime" ? "active" : "ghost"} onClick={() => setKind("runtime")}>Runtime bot</button>
       </div>
-      {kind === "runtime" ? <RuntimeLogs /> : (
+      {kind === "runtime" ? <RuntimeLogs initialCategory={params.get("category") || ""} /> : (
       <>
         <form className="audit-search" onSubmit={onSearch}>
           <input

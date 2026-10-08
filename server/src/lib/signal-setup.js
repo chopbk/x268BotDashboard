@@ -1,5 +1,6 @@
 const UserAccount = require("../models/user-account");
 const AccountConfig = require("../models/account-config");
+const AccountStatic = require("../models/account-static");
 const TelegramClient = require("../models/telegram-client");
 const RuntimeLog = require("../models/runtime-log");
 const { PERMISSIONS, hasPermission, scopeForPermission } = require("../auth/access-control");
@@ -46,6 +47,74 @@ function mergeSignals(current, names, action) {
     }
     const drop = new Set(names);
     return base.filter((token) => !drop.has(token));
+}
+
+function roundMoney(value) {
+    const n = Number(value) || 0;
+    return Math.round(n * 100) / 100;
+}
+
+function startOfVnDay(now = new Date()) {
+    const shifted = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 7 * 60 * 60 * 1000);
+}
+
+function foldSignals(rows, todayOnly) {
+    const bySignal = new Map();
+    for (const row of rows || []) {
+        const today = row?._id?.today === true;
+        if (todayOnly && !today) continue;
+        const signal = String(row?._id?.signal || "").trim().toUpperCase();
+        if (!signal) continue;
+        const count = row.count || 0;
+        const wins = row.wins || 0;
+        const profit = roundMoney(row.profit);
+        const bucket = bySignal.get(signal) || { signal, count: 0, wins: 0, profit: 0 };
+        bucket.count += count;
+        bucket.wins += wins;
+        bucket.profit = roundMoney(bucket.profit + profit);
+        bySignal.set(signal, bucket);
+    }
+    return [...bySignal.values()].map((row) => ({
+        signal: row.signal,
+        count: row.count,
+        winRate: row.count ? (row.wins / row.count) * 100 : 0,
+        profit: row.profit,
+    }));
+}
+
+async function listPerformance(mine) {
+    const envs = [...new Set(mine.flatMap((bot) => bot.accounts || []).map((env) => String(env || "").trim()).filter(Boolean))];
+    const from = new Date(Date.now() - 7 * DAY_MS);
+    const todayFrom = startOfVnDay();
+    const empty = { from, todayFrom, to: new Date(), todayLosing: [], losingSignals: [], lowWinRate: [] };
+    if (!envs.length) return empty;
+    const grouped = await AccountStatic.aggregate([
+        { $match: { env: { $in: envs }, openTime: { $gte: from }, isPaper: { $ne: true } } },
+        { $group: {
+            _id: {
+                signal: "$typeSignal",
+                today: { $cond: [{ $gte: ["$openTime", todayFrom] }, true, false] },
+            },
+            count: { $sum: 1 },
+            wins: { $sum: { $cond: [{ $eq: ["$status", "WIN"] }, 1, 0] } },
+            profit: { $sum: { $ifNull: ["$profit", 0] } },
+        } },
+    ]);
+    const week = foldSignals(grouped, false);
+    const today = foldSignals(grouped, true);
+    const byLoss = (rows) => rows.filter((row) => row.profit < 0).sort((a, b) => a.profit - b.profit || b.count - a.count);
+    const lowWinRate = week
+        .filter((row) => row.count >= 3 && row.winRate < 50)
+        .sort((a, b) => a.winRate - b.winRate || a.profit - b.profit);
+    return {
+        from,
+        todayFrom,
+        to: new Date(),
+        todayLosing: byLoss(today).slice(0, 8),
+        losingSignals: byLoss(week).slice(0, 8),
+        lowWinRate: lowWinRate.slice(0, 8),
+    };
 }
 
 function seesAll(actor) {
@@ -118,6 +187,51 @@ async function listRemoved(envs, all) {
     }));
 }
 
+function buildSignalStats(docs, mineEnvs, channels, parseErrors, removed) {
+    const channelNames = new Set(channels.map((row) => row.name));
+    const parseCount = new Map(parseErrors.map((row) => [row.signal, row.count || 0]));
+    const removedCount = new Map();
+    for (const row of removed) {
+        const signal = row.signal || "";
+        removedCount.set(signal, (removedCount.get(signal) || 0) + 1);
+    }
+    const usageMap = new Map();
+    for (const doc of docs) {
+        if (!mineEnvs.has(doc.env)) continue;
+        const on = doc.trade_config?.ON !== false;
+        const autoRemove = doc.trade_config?.AUTO_REMOVE === true;
+        for (const name of doc.signals || []) {
+            const signal = String(name || "").trim().toUpperCase();
+            if (!signal) continue;
+            const row = usageMap.get(signal) || { signal, configs: 0, on: 0, autoRemove: 0 };
+            row.configs += 1;
+            if (on) row.on += 1;
+            if (autoRemove) row.autoRemove += 1;
+            usageMap.set(signal, row);
+        }
+    }
+    const usage = [...usageMap.values()]
+        .map((row) => ({
+            ...row,
+            channel: channelNames.has(row.signal),
+            parseErrors: parseCount.get(row.signal) || 0,
+            removed: removedCount.get(row.signal) || 0,
+        }))
+        .sort((a, b) => b.parseErrors - a.parseErrors || b.removed - a.removed || b.configs - a.configs || a.signal.localeCompare(b.signal));
+    const used = new Set(usage.map((row) => row.signal));
+    return {
+        usage,
+        orphanChannels: channels.filter((row) => !used.has(row.name)),
+        summary: {
+            channels: channels.length,
+            signals: usage.length,
+            withoutChannel: usage.filter((row) => !row.channel).length,
+            parseErrors: parseErrors.reduce((total, row) => total + (row.count || 0), 0),
+            removed: removed.length,
+        },
+    };
+}
+
 async function listSignalSetup(actor, input = {}) {
     if (!actor) throw httpError(401, "Chưa đăng nhập");
     if (!hasPermission(actor, PERMISSIONS.CONFIG_VIEW) && !hasPermission(actor, PERMISSIONS.SIGNALS_HISTORY)) {
@@ -179,12 +293,18 @@ async function listSignalSetup(actor, input = {}) {
         listParseErrors(allowed),
         listRemoved(envs, all),
     ]);
+    const stats = buildSignalStats(docs, mineEnvs, channels, parseErrors, removed);
+    const performance = hasPermission(actor, PERMISSIONS.STATISTICS_VIEW)
+        ? await listPerformance(mine)
+        : null;
     return {
         bots,
         channels,
         catalog,
         parseErrors,
         removed,
+        performance,
+        ...stats,
         username: selected?.username || "",
         editable: selected ? canAccessBot(actor, selected, PERMISSIONS.CONFIG_EDIT) : false,
         accounts: accountRows,

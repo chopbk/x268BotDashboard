@@ -1,14 +1,15 @@
 const UserAccount = require("../models/user-account");
 const AccountConfig = require("../models/account-config");
-const SignalInfo = require("../models/signal-info");
 const AccountStatic = require("../models/account-static");
+const FuturesProfit = require("../models/futures-profit");
 const MonitorPosition = require("../models/monitor-position");
 const SummaryCache = require("../models/summary-cache");
+const { PERMISSIONS, canAccessResource } = require("../auth/access-control");
 const { httpError } = require("./http");
 
 const RANGE_DAYS = Object.freeze({ today: 0, "3d": 3, "7d": 7, "30d": 30, "90d": 90, all: null });
 const CACHE_TTL_MS = 60 * 1000;
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v6";
 
 const volumeExpr = {
     $ifNull: [
@@ -25,7 +26,7 @@ function startOfUtcDay(date) {
 }
 
 function normalizeSummaryRange(value) {
-    const range = String(value || "3d").trim().toLowerCase();
+    const range = String(value || "today").trim().toLowerCase();
     if (!Object.hasOwn(RANGE_DAYS, range)) throw httpError(400, "Khoảng thời gian không hợp lệ");
     return range;
 }
@@ -92,27 +93,116 @@ function isActiveBot(bot) {
     return !!bot?.username && bot.active !== false;
 }
 
-function rankUsers(byEnv, bots) {
+function envKey(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
+function ownsEnv(bot, env) {
+    const key = envKey(env);
+    return !!key && (bot.accounts || []).some((item) => envKey(item) === key);
+}
+
+function blankRank(username) {
+    return {
+        name: username, profit: 0, volume: 0, trades: 0, wins: 0, losses: 0,
+        balance: 0, balanceKnown: false, roiAcc: 0, roiWeight: 0,
+    };
+}
+
+function addFutures(current, row) {
+    if (!row) return;
+    current.profit += row.profit || 0;
+    if (row.balance != null) {
+        current.balance += row.balance;
+        current.balanceKnown = true;
+    }
+    if (row.roi != null && Number(row.balance) > 0) {
+        current.roiAcc += row.roi * row.balance;
+        current.roiWeight += row.balance;
+    }
+}
+
+function rankUsers(byEnv, bots, futuresRows) {
+    const futures = new Map();
+    for (const row of futuresRows || []) {
+        const key = envKey(row?._id);
+        if (key) futures.set(key, row);
+    }
     const totals = new Map();
+    const seen = new Set();
+    function ownersOf(env) {
+        return (bots || []).filter((bot) => isActiveBot(bot) && ownsEnv(bot, env));
+    }
+    function ensure(owner) {
+        if (!totals.has(owner.username)) totals.set(owner.username, blankRank(owner.username));
+        return totals.get(owner.username);
+    }
+    for (const bot of bots || []) {
+        if (isActiveBot(bot)) ensure(bot);
+    }
     for (const row of byEnv || []) {
         const env = String(row?._id || "").trim();
         if (!env) continue;
-        const owners = (bots || []).filter((bot) => isActiveBot(bot) && (bot.accounts || []).includes(env));
-        for (const owner of owners) {
-            const current = totals.get(owner.username) || {
-                name: owner.username, profit: 0, volume: 0, trades: 0, wins: 0, losses: 0,
-            };
-            current.profit += row.profit || 0;
+        const key = envKey(env);
+        for (const owner of ownersOf(env)) {
+            const current = ensure(owner);
             current.volume += row.volume || 0;
             current.trades += row.trades || 0;
             current.wins += row.wins || 0;
             current.losses += row.losses || 0;
-            totals.set(owner.username, current);
+            if (!seen.has(`${owner.username}:${key}`)) addFutures(current, futures.get(key));
+            seen.add(`${owner.username}:${key}`);
+        }
+        seen.add(key);
+    }
+    for (const [key, row] of futures) {
+        if (seen.has(key)) continue;
+        for (const owner of ownersOf(key)) {
+            if (seen.has(`${owner.username}:${key}`)) continue;
+            addFutures(ensure(owner), row);
+            seen.add(`${owner.username}:${key}`);
         }
     }
     return [...totals.values()]
-        .map((row) => ({ ...row, winRate: winRate(row.wins, row.losses) }))
+        .map((row) => ({
+            name: row.name,
+            profit: row.profit,
+            balance: row.balanceKnown ? row.balance : null,
+            roi: row.roiWeight > 0 ? row.roiAcc / row.roiWeight : null,
+            volume: row.volume,
+            trades: row.trades,
+            wins: row.wins,
+            losses: row.losses,
+            winRate: winRate(row.wins, row.losses),
+        }))
         .sort((a, b) => b.profit - a.profit || b.volume - a.volume || b.trades - a.trades);
+}
+
+function normalizeAudience(value) {
+    const audience = String(value || "system").trim().toLowerCase();
+    if (audience !== "mine" && audience !== "system") throw httpError(400, "Phạm vi xem không hợp lệ");
+    return audience;
+}
+
+function isMineBot(actor, bot) {
+    const id = String(actor?.id || "");
+    if (bot?.ownerUserId && String(bot.ownerUserId) === id) return true;
+    if (!bot?.ownerUserId && [actor?.username, actor?.email].filter(Boolean).includes(bot?.username)) return true;
+    return (actor?.botUsernames || []).includes(bot?.username);
+}
+
+function canSeeSystemBot(actor, bot) {
+    return [PERMISSIONS.BOTS_VIEW, PERMISSIONS.STATISTICS_VIEW]
+        .some((permission) => canAccessResource(actor, permission, bot));
+}
+
+function visibleBots(bots, actor, audience) {
+    return (bots || []).filter((bot) => {
+        if (!isActiveBot(bot)) return false;
+        if (!actor) return true;
+        if (audience === "mine") return isMineBot(actor, bot);
+        return canSeeSystemBot(actor, bot);
+    });
 }
 
 function sideProfit(rows, side) {
@@ -120,21 +210,44 @@ function sideProfit(rows, side) {
     return row?.profit || 0;
 }
 
-async function getSystemSummary(rangeInput = "3d", now = new Date()) {
+async function enteredSignalCounts(envFilter, selectedDates, last24Hours) {
+    const match = {
+        ...envFilter,
+        isPaper: { $ne: true },
+        typeSignal: { $nin: [null, ""] },
+        openTime: selectedDates || { $ne: null },
+    };
+    const rows = await AccountStatic.aggregate([
+        { $match: match },
+        {
+            $group: {
+                _id: { $toUpper: "$typeSignal" },
+                recent: { $max: { $cond: [{ $gte: ["$openTime", last24Hours] }, 1, 0] } },
+            },
+        },
+    ]);
+    return {
+        signalCount: rows.length,
+        signalCount24h: rows.filter((row) => row.recent).length,
+    };
+}
+
+async function getSystemSummary(rangeInput = "today", now = new Date(), actor = null, audienceInput = "system") {
     const range = normalizeSummaryRange(rangeInput);
-    const bots = (await UserAccount.find().select("username accounts visibility active").lean()).filter(isActiveBot);
+    const audience = actor ? normalizeAudience(audienceInput) : "system";
+    const bots = visibleBots(await UserAccount.find().select("username accounts ownerUserId visibility active").lean(), actor, audience);
     const envs = [...new Set(bots.flatMap((bot) => bot.accounts || []).filter(Boolean))];
     const dayStart = startOfUtcDay(now);
     const last24Hours = new Date(now.getTime() - (24 * 60 * 60 * 1000));
     const envFilter = envs.length ? { env: { $in: envs } } : { _id: null };
+    const futuresEnvs = [...new Set(envs.flatMap((item) => [item, envKey(item)]).filter(Boolean))];
+    const futuresEnvFilter = futuresEnvs.length ? { env: { $in: futuresEnvs } } : { _id: null };
     const selectedDates = dateFilter(range, now);
-    const signalFilter = selectedDates ? { openTime: selectedDates } : {};
 
-    const [activeConfigCount, signalCount, signalCount24h, openPositionCount, tradeRows] = await Promise.all([
+    const [activeConfigCount, enteredSignals, openPositionCount, tradeRows, futuresRows] = await Promise.all([
         AccountConfig.countDocuments({ ...envFilter, "trade_config.ON": true }),
-        SignalInfo.countDocuments(signalFilter),
-        SignalInfo.countDocuments({ openTime: { $gte: last24Hours } }),
-        MonitorPosition.countDocuments({ ...envFilter, $or: [{ closed: false }, { isClosed: false }] }),
+        enteredSignalCounts(envFilter, selectedDates, last24Hours),
+        MonitorPosition.countDocuments({ ...envFilter, closed: { $ne: true }, isPaper: { $ne: true }, "config.PAPER": { $ne: true } }),
         AccountStatic.aggregate([
             { $match: tradeMatch(envFilter, selectedDates) },
             {
@@ -185,13 +298,25 @@ async function getSystemSummary(rangeInput = "3d", now = new Date()) {
                 },
             },
         ]),
+        FuturesProfit.aggregate([
+            { $match: { ...futuresEnvFilter, ...(selectedDates ? { day: { $gte: startOfUtcDay(selectedDates.$gte), $lte: selectedDates.$lte } } : {}) } },
+            { $sort: { day: 1 } },
+            {
+                $group: {
+                    _id: { $toUpper: { $ifNull: ["$env", ""] } },
+                    profit: { $sum: { $ifNull: ["$profit", 0] } },
+                    balance: { $last: "$balance" },
+                    roi: { $last: "$roi" },
+                },
+            },
+        ]),
     ]);
 
     const facet = tradeRows[0] || {};
     const trades = facet.totals?.[0] || {};
     const signalLeaders = leaders(facet.bySignal);
     const symbolLeaders = leaders(facet.bySymbol);
-    const userRanks = rankUsers(facet.byEnv, bots);
+    const userRanks = rankUsers(facet.byEnv, bots, futuresRows);
     const configCount = bots.reduce((total, bot) => total + (bot.accounts || []).length, 0);
     const privateBotCount = bots.filter((bot) => bot.visibility === "private").length;
 
@@ -202,8 +327,8 @@ async function getSystemSummary(rangeInput = "3d", now = new Date()) {
         configCount,
         activeConfigCount,
         inactiveConfigCount: Math.max(0, configCount - activeConfigCount),
-        signalCount,
-        signalCount24h,
+        signalCount: enteredSignals.signalCount,
+        signalCount24h: enteredSignals.signalCount24h,
         tradeCount: trades.tradeCount || 0,
         wins: trades.wins || 0,
         losses: trades.losses || 0,
@@ -226,7 +351,7 @@ async function getSystemSummary(rangeInput = "3d", now = new Date()) {
     };
 }
 
-async function getCachedSystemSummary(rangeInput = "3d", now = new Date()) {
+async function getCachedSystemSummary(rangeInput = "today", now = new Date()) {
     const range = normalizeSummaryRange(rangeInput);
     const key = `${CACHE_VERSION}:${range}`;
     const cached = await SummaryCache.findOne({ _id: key, expiresAt: { $gt: now } }).select("payload").lean();
@@ -245,4 +370,4 @@ async function clearSystemSummaryCache() {
     await SummaryCache.deleteMany({ _id: new RegExp(`^${CACHE_VERSION}:`) });
 }
 
-module.exports = { RANGE_DAYS, CACHE_TTL_MS, getSystemSummary, getCachedSystemSummary, clearSystemSummaryCache, normalizeSummaryRange, dateFilter, startOfUtcDay };
+module.exports = { RANGE_DAYS, CACHE_TTL_MS, getSystemSummary, getCachedSystemSummary, clearSystemSummaryCache, normalizeSummaryRange, normalizeAudience, dateFilter, startOfUtcDay };

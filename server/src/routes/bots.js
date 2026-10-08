@@ -18,6 +18,7 @@ const {
 } = require("../lib/bot-directory");
 const {
     listConfigSummaries,
+    listAssignedConfigGlance,
     getConfigDetail,
     updateConfigSummary,
     updateSelectedConfigs,
@@ -63,6 +64,14 @@ router.get("/config-search", requireAuth, requirePermission(PERMISSIONS.CONFIG_V
         res.json(result);
     } catch (error) {
         sendError(res, error, "GET /api/bots/config-search");
+    }
+});
+
+router.get("/assigned-configs", requireAuth, requirePermission(PERMISSIONS.CONFIG_VIEW), async (req, res) => {
+    try {
+        res.json(await listAssignedConfigGlance(req.webUser));
+    } catch (error) {
+        sendError(res, error, "GET /api/bots/assigned-configs");
     }
 });
 
