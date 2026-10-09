@@ -91,6 +91,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/dashboard/attention` | [dashboard](../server/src/routes/dashboard.js) |
 | GET | `/api/positions` | [positions](../server/src/routes/positions.js) |
 | POST | `/api/positions/refresh` | [positions](../server/src/routes/positions.js) |
+| POST | `/api/positions/monitors` | [positions](../server/src/routes/positions.js) |
 | DELETE | `/api/positions/monitors/:id` | [positions](../server/src/routes/positions.js) |
 | GET | `/api/positions/detail` | [positions](../server/src/routes/positions.js) |
 | GET | `/api/summary` | [summary](../server/src/routes/summary.js) |

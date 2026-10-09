@@ -49,14 +49,14 @@ flowchart TD
     Live --> View[positions: ghép position sàn với monitor]
     Mongo[(monitor_positions + user_accounts + heartbeat)] --> View
     Page --> Button[POST /api/positions/refresh]
-    Button --> Book[positionRisk + openOrders + openAlgoOrders]
+    Button --> Book[positionRisk + openOrders + openAlgoOrders + income]
     Live --> Book
     View --> Page
 ```
 
 Source: [position-ws](../server/src/lib/position-ws.js), [position-live](../server/src/lib/position-live.js), [position-cache](../server/src/lib/position-cache.js), [positions](../server/src/lib/positions.js).
 
-Redis key `wb:pos:<account>`, channel `wb:pos:notify:<account>`; notice mang account/version/at. Web đọc snapshot, không lấy nội dung notice làm toàn bộ vị thế. Snapshot có age tối đa 90 giây để coi là fresh. Ba API sổ sàn chỉ chạy khi chưa có `wb:ex`, khi bấm cập nhật, hoặc sau 15 phút. Không có sổ sàn thì view vẫn là monitor Mongo, không đánh dấu đã đóng trên sàn. Snapshot `source=monitor` không được dùng làm danh sách vị thế. Mark price đến từ một websocket public của sàn; viewer đang mở được tính lại giá và PnL mỗi 15 giây, còn qty đổi thì đẩy ngay. Lệnh realtime của binance-bot ghi hash `wb:ord:<account>` và publish `wb:ord:notify:<account>`. Các message client: `watch`, `resume`, `pause`; server trả `snapshot` hoặc `error`. Đóng socket bỏ watcher. Chưa chọn tài khoản thì trang tự gọi lại GET mỗi 15 giây khi đang hiện; GET đó chỉ đọc Redis và chỉ gọi ba API sàn khi sổ `wb:ex` chưa có hoặc đã quá 15 phút.
+Redis key `wb:pos:<account>`, channel `wb:pos:notify:<account>`; notice mang account/version/at. Web đọc snapshot, không lấy nội dung notice làm toàn bộ vị thế. Snapshot có age tối đa 90 giây để coi là fresh. `positionRisk`, `openOrders`, `openAlgoOrders` và `income` chỉ chạy khi chưa có `wb:ex`, khi bấm cập nhật, hoặc sau 15 phút. `income` điền cột PnL ghi nhận. Không có sổ sàn thì view vẫn là monitor Mongo, không đánh dấu đã đóng trên sàn. Snapshot `source=monitor` không được dùng làm danh sách vị thế. Mark price đến từ một websocket public của sàn; viewer đang mở được tính lại giá và PnL mỗi 15 giây, còn qty đổi thì đẩy ngay. Lệnh realtime của binance-bot ghi hash `wb:ord:<account>` và publish `wb:ord:notify:<account>`. Các message client: `watch`, `resume`, `pause`; server trả `snapshot` hoặc `error`. Đóng socket bỏ watcher. Chưa chọn tài khoản thì trang tự gọi lại GET mỗi 15 giây khi đang hiện; GET đó chỉ đọc Redis và chỉ gọi ba API sàn khi sổ `wb:ex` chưa có hoặc đã quá 15 phút.
 
 REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dùng `/api/positions/detail?id=...`. Phân quyền không được bỏ qua vì dữ liệu lấy từ cache. Đọc [giới hạn WS](architecture.md#giới-hạn-hiện-tại) trước khi sửa auth/proxy.
 

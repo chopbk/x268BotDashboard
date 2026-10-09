@@ -4,7 +4,7 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const { createRateLimit } = require("../middleware/rate-limit");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
-const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots, deleteMonitorRecord } = require("../lib/positions");
+const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots, deleteMonitorRecord, createMonitorRecord } = require("../lib/positions");
 const { safeRecordAudit } = require("../lib/audit");
 const { cached, readExchangeBook, readExchangeBooks, saveExchangeBook } = require("../lib/position-live");
 const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "positions" });
@@ -51,6 +51,27 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
         }));
     } catch (error) {
         sendError(res, error, "POST /api/positions/refresh");
+    }
+});
+
+router.post("/monitors", requireAuth, requirePermission(PERMISSIONS.POSITIONS_OPEN), async (req, res) => {
+    try {
+        const created = await createMonitorRecord(req.webUser, req.body || {});
+        await safeRecordAudit({
+            action: "position.monitor_created",
+            actor: req.webUser,
+            targetType: "monitor_position",
+            target: { id: created.id, username: created.account },
+            changes: {
+                env: { from: null, to: created.env },
+                symbol: { from: null, to: created.symbol },
+                side: { from: null, to: created.side },
+                signal: { from: null, to: created.signal },
+            },
+        });
+        res.status(201).json(created);
+    } catch (error) {
+        sendError(res, error, "POST /api/positions/monitors");
     }
 });
 

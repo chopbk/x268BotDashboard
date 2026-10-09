@@ -35,10 +35,12 @@ function pnlClass(value) {
 
 function matches(row, params) {
   const symbol = (params.get("symbol") || "").trim().toUpperCase();
+  const signal = (params.get("signal") || "").trim().toUpperCase();
   const side = (params.get("side") || "").trim().toUpperCase();
   const book = (params.get("book") || "").trim().toLowerCase();
   const env = (params.get("env") || "").trim();
-  if (symbol && row.symbol !== symbol) return false;
+  if (symbol && !String(row.symbol || "").toUpperCase().includes(symbol)) return false;
+  if (signal && !(row.monitors || []).some((monitor) => `${monitor.signal || ""} ${monitor.type || ""}`.toUpperCase().includes(signal))) return false;
   if (side && row.side !== side) return false;
   if (book === "all") {
     // live và paper
@@ -65,6 +67,7 @@ function tpslText(row) {
 export default function PositionsPage() {
   const { user } = useAuth();
   const canClose = (user?.permissions || []).includes("positions.close");
+  const canOpen = (user?.permissions || []).includes("positions.open");
   const location = useLocation();
   const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -81,6 +84,8 @@ export default function PositionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [sort, setSort] = useState({ key: "", dir: "desc" });
   const [actionNote, setActionNote] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   function go(mutate, { replace = false, layer = false } = {}) {
     const next = new URLSearchParams(location.search);
@@ -281,7 +286,7 @@ export default function PositionsPage() {
 
   async function removeMonitor(monitor) {
     const label = `${monitor.env || "monitor"} ${monitor.signal || ""}`.trim();
-    if (!window.confirm(`Xoá document monitor_positions trong MongoDB?\n_id ${monitor.id}\n${label}\nLệnh trên sàn không bị đóng.`)) return;
+    if (!window.confirm(`Xoá monitor ${label}?\nBản ghi monitor_positions _id ${monitor.id}\nLệnh trên sàn không bị đóng.`)) return;
     try {
       await api(`/api/positions/monitors/${encodeURIComponent(monitor.id)}`, { method: "DELETE" });
       setPayload((prev) => prev && ({
@@ -303,7 +308,7 @@ export default function PositionsPage() {
     <section className="stack pos-screen">
       <header>
         <h1>Position</h1>
-        <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận là lãi đã chốt, fee và funding trên monitor. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
+        <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận lấy từ income Binance lúc mở trang và lúc bấm Cập nhật sàn. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
       </header>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
         <label>Phạm vi
@@ -325,7 +330,10 @@ export default function PositionsPage() {
           </select>
         </label>
         <label>Symbol
-          <input value={params.get("symbol") || ""} onChange={(event) => setFilter("symbol", event.target.value.toUpperCase())} />
+          <input value={params.get("symbol") || ""} placeholder="NEAR, BTC…" onChange={(event) => setFilter("symbol", event.target.value.toUpperCase())} />
+        </label>
+        <label>Signal
+          <input value={params.get("signal") || ""} placeholder="GAU, ROSE…" onChange={(event) => setFilter("signal", event.target.value)} />
         </label>
         <label>Side
           <select value={params.get("side") || ""} onChange={(event) => setFilter("side", event.target.value)}>
@@ -356,6 +364,7 @@ export default function PositionsPage() {
             setRefreshing(false);
           }
         }}>{refreshing ? "Đang cập nhật…" : "Cập nhật sàn"}</button>
+        {canOpen ? <button type="button" onClick={() => setDraft({ account: account || "", env: "", symbol: "", side: "LONG", signal: "NOTPSL", positionAmt: "" })}>Thêm monitor position</button> : null}
         <label>Bất thường
           <select value={params.get("warn") || ""} onChange={(event) => setFilter("warn", event.target.value)}>
             <option value="">Tất cả</option>
@@ -396,8 +405,8 @@ export default function PositionsPage() {
               {rows.map((row) => {
                 const roi = roiOf(row);
                 const recordedTitle = row.recorded
-                  ? `chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
-                  : "Monitor chưa ghi lãi chốt, fee hoặc funding";
+                  ? `${row.recorded.source === "income" ? "Income Binance" : "Monitor"} · chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
+                  : "Chưa có income hoặc stats";
                 return (
                 <Fragment key={row.key}>
                   <tr className={row.warnings.length ? "pos-alert" : ""}>
@@ -431,8 +440,9 @@ export default function PositionsPage() {
                         <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
                         <span>{tpslText(row)}</span>
                         <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
+                        {canOpen ? <button type="button" className="ghost" onClick={() => setDraft({ account: row.account, env: "", symbol: row.symbol, side: row.side, signal: "NOTPSL", positionAmt: qtyOf(row) ?? "", entry: row.entry ?? "", mark: row.mark ?? "", leverage: row.leverage ?? "", liquidation: row.liquidation ?? "" })}>Thêm monitor</button> : null}
                         {canClose ? row.monitors.map((monitor) => (
-                          <button key={monitor.id} type="button" className="ghost" title={`Xoá monitor_positions _id ${monitor.id}. Không đóng lệnh sàn.`} onClick={() => removeMonitor(monitor)}>Xoá id MongoDB</button>
+                          <button key={monitor.id} type="button" className="ghost" title={`Xoá monitor_positions _id ${monitor.id}. Không đóng lệnh sàn.`} onClick={() => removeMonitor(monitor)}>Xoá monitor {monitor.env} {monitor.signal || monitor.type || ""}</button>
                         )) : null}
                         {row.warnings.length ? <span className="muted">{row.warnings.map((item) => WARN[item] || item).join(" · ")}</span> : null}
                       </div>
@@ -465,6 +475,71 @@ export default function PositionsPage() {
               })}
             </tbody>
           </table>
+        </div>
+      ) : null}
+      {draft ? (
+        <div className="modal-backdrop" onClick={() => { if (!saving) setDraft(null); }}>
+          <form className="modal-card stack" onClick={(event) => event.stopPropagation()} onSubmit={async (event) => {
+            event.preventDefault();
+            setSaving(true);
+            try {
+              const created = await api("/api/positions/monitors", { method: "POST", body: draft });
+              setPayload((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  rows: (prev.rows || []).map((row) => {
+                    if (row.account !== created.account || row.symbol !== created.symbol || row.side !== created.side) return row;
+                    return {
+                      ...row,
+                      notpsl: row.notpsl || created.row?.notpsl,
+                      warnings: (row.warnings || []).filter((item) => item !== "no-monitor"),
+                      monitors: [...(row.monitors || []), created.row],
+                    };
+                  }),
+                };
+              });
+              setActionNote(created.monitorOff ? `Đã thêm monitor ${created.env} ${created.signal}. Config đang tắt MONITOR nên bot sẽ không chạy monitor này.` : `Đã thêm monitor ${created.env} ${created.signal}. Bot nhận ở vòng kiểm tra monitor kế tiếp.`);
+              setDraft(null);
+              setError("");
+            } catch (err) {
+              console.error("[positions]", err);
+              setError(err.message || "Không thêm được monitor");
+            } finally {
+              setSaving(false);
+            }
+          }}>
+            <header>
+              <h2>Thêm monitor position</h2>
+              <button type="button" onClick={() => setDraft(null)}>Đóng</button>
+            </header>
+            <p className="muted">Tạo bản ghi monitor. Không mở thêm lệnh trên sàn. Bot nhận bản ghi ở vòng kiểm tra kế tiếp và dùng trade config của env.</p>
+            <label>Tài khoản
+              <select value={draft.account} onChange={(event) => setDraft({ ...draft, account: event.target.value, env: "" })} required>
+                <option value="">Chọn</option>
+                {(payload?.accounts || []).map((item) => <option key={item.username} value={item.username}>{item.username}</option>)}
+              </select>
+            </label>
+            <label>Config
+              <select value={draft.env} onChange={(event) => setDraft({ ...draft, env: event.target.value })} required>
+                <option value="">Chọn</option>
+                {((payload?.accounts || []).find((item) => item.username === draft.account)?.accounts || []).map((env) => <option key={env} value={env}>{env}</option>)}
+              </select>
+            </label>
+            <label>Symbol
+              <input value={draft.symbol} onChange={(event) => setDraft({ ...draft, symbol: event.target.value.toUpperCase() })} required />
+            </label>
+            <label>Side
+              <select value={draft.side} onChange={(event) => setDraft({ ...draft, side: event.target.value })}>
+                <option value="LONG">LONG</option>
+                <option value="SHORT">SHORT</option>
+              </select>
+            </label>
+            <label>Signal
+              <input value={draft.signal} onChange={(event) => setDraft({ ...draft, signal: event.target.value })} />
+            </label>
+            <button type="submit" disabled={saving}>{saving ? "Đang lưu…" : "Thêm monitor"}</button>
+          </form>
         </div>
       ) : null}
       {panel && selected ? (

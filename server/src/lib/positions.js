@@ -445,7 +445,6 @@ function buildPositionView({
 }
 
 function applyIncome(parent, income) {
-    if (parent.recorded) return;
     const opened = (parent.monitors || [])
         .map((monitor) => new Date(monitor.openedAt).getTime())
         .filter((time) => time > 0);
@@ -471,18 +470,20 @@ function applyIncome(parent, income) {
         any = true;
     }
     if (!any) return;
-    parent.recorded = { realized, fee, funding, net: realized + fee + funding };
+    parent.recorded = { realized, fee, funding, net: realized + fee + funding, source: "income" };
     parent.recordedNet = parent.recorded.net;
 }
 
 function filterRows(rows, query = {}) {
     const symbol = String(query.symbol || "").trim().toUpperCase();
+    const signal = String(query.signal || "").trim().toUpperCase();
     const side = String(query.side || "").trim().toUpperCase();
     const book = String(query.book || "").trim().toLowerCase();
     const env = String(query.env || "").trim();
     const warn = String(query.warn || "") === "1";
     return rows.filter((row) => {
-        if (symbol && row.symbol !== symbol) return false;
+        if (symbol && !String(row.symbol || "").toUpperCase().includes(symbol)) return false;
+        if (signal && !(row.monitors || []).some((monitor) => `${monitor.signal || ""} ${monitor.type || ""}`.toUpperCase().includes(signal))) return false;
         if (side && row.side !== side) return false;
         if (book === "all") {
             // giữ live và paper
@@ -669,6 +670,80 @@ function monitorDetail(doc, heartbeatFreshNow, now) {
     };
 }
 
+async function createMonitorRecord(actor, input, deps = {}) {
+    const UserAccount = deps.UserAccount || require("../models/user-account");
+    const Monitor = deps.Monitor || require("../models/monitor-position");
+    const AccountConfig = deps.AccountConfig || require("../models/account-config");
+    const env = String(input?.env || "").trim();
+    const symbol = String(input?.symbol || "").trim().toUpperCase();
+    const side = String(input?.side || "").trim().toUpperCase();
+    const signal = String(input?.signal || "NOTPSL").trim() || "NOTPSL";
+    if (!env || !symbol || (side !== "LONG" && side !== "SHORT")) {
+        throw httpError(400, "Cần env, symbol và side LONG hoặc SHORT");
+    }
+    const accounts = await UserAccount.find().select("username accounts ownerUserId visibility active").lean();
+    const active = (accounts || []).filter((row) => row?.username && row.active !== false);
+    const owner = active.find((row) => row.username === env || (row.accounts || []).includes(env));
+    if (!owner || !canAccessResource(actor, PERMISSIONS.POSITIONS_OPEN, owner)) {
+        throw httpError(403, "Không có quyền thêm monitor cho config này");
+    }
+    const existing = await Monitor.countDocuments({ env, symbol, side, closed: { $ne: true } });
+    if (existing) throw httpError(409, "Config này đã có monitor mở cho vị thế");
+    const configDoc = await AccountConfig.findOne({ env }).select("trade_config").lean();
+    const trade = configDoc?.trade_config;
+    if (!trade || typeof trade !== "object") throw httpError(400, "Config chưa có trade_config");
+    const qty = Math.abs(num(input?.positionAmt));
+    const saved = await Monitor.create({
+        symbol,
+        side,
+        prices: {},
+        orders: {},
+        startTime: new Date(),
+        futuresLeverage: side === "SHORT" ? trade.SHORT_LEVERAGE : trade.LONG_LEVERAGE,
+        type: signal,
+        signal,
+        isLimit: false,
+        isPaper: trade.PAPER === true,
+        config: trade,
+        position: {
+            symbol,
+            positionSide: side,
+            positionAmt: input?.positionAmt ?? "",
+            entryPrice: input?.entry ?? "",
+            markPrice: input?.mark ?? "",
+            leverage: input?.leverage ?? "",
+            liquidationPrice: input?.liquidation ?? "",
+        },
+        positionAmt: qty,
+        env,
+        closed: false,
+        futuresClientName: owner.username,
+        isCopy: false,
+    });
+    return {
+        id: String(saved._id),
+        account: owner.username,
+        env,
+        symbol,
+        side,
+        signal,
+        monitorOff: trade.MONITOR === false,
+        row: {
+            id: String(saved._id),
+            env,
+            signal,
+            type: signal,
+            notpsl: signal.toUpperCase() === "NOTPSL",
+            paper: trade.PAPER === true,
+            pending: false,
+            ownQty: qty,
+            exchangeSnapshotQty: qty,
+            openedAt: saved.startTime,
+            closed: false,
+        },
+    };
+}
+
 async function deleteMonitorRecord(actor, id, deps = {}) {
     const UserAccount = deps.UserAccount || require("../models/user-account");
     const Monitor = deps.Monitor || require("../models/monitor-position");
@@ -706,4 +781,5 @@ module.exports = {
     heartbeatFresh,
     visibleBots,
     deleteMonitorRecord,
+    createMonitorRecord,
 };

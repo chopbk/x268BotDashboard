@@ -6,7 +6,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 const UserAccount = require("../src/models/user-account");
 const MonitorPosition = require("../src/models/monitor-position");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
-const { buildPositionView, applyLiveMarks, filterRows, loadPositions, estimatedPnl, deleteMonitorRecord } = require("../src/lib/positions");
+const { buildPositionView, applyLiveMarks, filterRows, loadPositions, estimatedPnl, deleteMonitorRecord, createMonitorRecord } = require("../src/lib/positions");
 const { applyAccountUpdate, applyOrderUpdate, loadExchangeBook, resetExchangeCache } = require("../src/lib/position-feed");
 const { parseNotice, decideUpdate } = require("../src/lib/position-cache");
 const { watch, resetLive, bindRedis } = require("../src/lib/position-live");
@@ -58,6 +58,37 @@ test("binance income fills recorded pnl when the monitor has none", () => {
         ],
     });
     assert.equal(rows[0].recorded.net, 2.8);
+    assert.equal(rows[0].recorded.source, "income");
+});
+
+test("exchange income replaces the monitor stats for recorded pnl", () => {
+    const rows = buildPositionView({
+        account: "V",
+        now,
+        connection: "snapshot",
+        exchangeLoaded: true,
+        exchangePositions: [{ symbol: "ETHUSDT", positionSide: "LONG", positionAmt: "1", entryPrice: "100", markPrice: "110" }],
+        monitors: [{
+            _id: "e1",
+            env: "V",
+            symbol: "ETHUSDT",
+            side: "LONG",
+            closed: false,
+            stats: { realizedPnl: 9, commission: 0, funding: 0 },
+        }],
+        income: [{ symbol: "ETHUSDT", incomeType: "REALIZED_PNL", income: "1.5", time: now }],
+    });
+    assert.equal(rows[0].recorded.net, 1.5);
+    assert.equal(rows[0].recorded.source, "income");
+});
+
+test("symbol and signal filters match a partial name", () => {
+    const rows = [
+        { symbol: "NEARUSDT", side: "LONG", book: "live", monitors: [{ signal: "GAULS", type: "GAULS", env: "V" }], warnings: [] },
+        { symbol: "ETHUSDT", side: "LONG", book: "live", monitors: [{ signal: "ROSE", type: "ROSE", env: "V" }], warnings: [] },
+    ];
+    assert.equal(filterRows(rows, { symbol: "nea" }).length, 1);
+    assert.equal(filterRows(rows, { signal: "gau" })[0].symbol, "NEARUSDT");
 });
 
 test("recorded pnl adds realized, fee and funding from the monitor", () => {
@@ -451,6 +482,37 @@ test("exchange book cache does not call the exchange twice inside the window", a
     assert.equal(book.source, "rest");
     assert.equal(book.positions[0].symbol, "SOLUSDT");
     resetExchangeCache();
+});
+
+test("create monitor copies the config and refuses a duplicate", async () => {
+    const originals = { users: UserAccount.find, count: MonitorPosition.countDocuments, create: MonitorPosition.create };
+    UserAccount.find = () => query([{ username: "V", accounts: ["V1"], ownerUserId: "u1", active: true }]);
+    MonitorPosition.countDocuments = async () => 0;
+    let saved = null;
+    MonitorPosition.create = async (doc) => {
+        saved = doc;
+        return { ...doc, _id: "new1", startTime: doc.startTime };
+    };
+    const config = { findOne: () => ({ select: () => ({ lean: async () => ({ trade_config: { LONG_LEVERAGE: 10, MONITOR: true } }) }) }) };
+    try {
+        const created = await createMonitorRecord(actor, { env: "V1", symbol: "nearusdt", side: "LONG", signal: "NOTPSL", positionAmt: "5" }, {
+            UserAccount, Monitor: MonitorPosition, AccountConfig: config,
+        });
+        assert.equal(created.env, "V1");
+        assert.equal(created.account, "V");
+        assert.equal(saved.futuresClientName, "V");
+        assert.equal(saved.positionAmt, 5);
+        assert.equal(saved.type, "NOTPSL");
+        MonitorPosition.countDocuments = async () => 1;
+        await assert.rejects(
+            () => createMonitorRecord(actor, { env: "V1", symbol: "NEARUSDT", side: "LONG" }, { UserAccount, Monitor: MonitorPosition, AccountConfig: config }),
+            (error) => error.status === 409
+        );
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.countDocuments = originals.count;
+        MonitorPosition.create = originals.create;
+    }
 });
 
 test("delete removes a monitor in scope and refuses a viewer", async () => {
