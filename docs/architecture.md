@@ -4,7 +4,7 @@
 
 Dashboard đọc dữ liệu bot, quản lý user/quyền và cập nhật cấu hình trong MongoDB. Tiến trình nhận signal, mở/đóng lệnh, monitor SL/TP và ghi heartbeat thuộc project bot giao dịch riêng. Chạy dashboard không tự khởi động các process đó.
 
-Web vẫn có truy cập Binance: lấy snapshot vị thế khi cần fallback và cập nhật lãi lỗ ví theo yêu cầu. Nút refresh dữ liệu không phải lệnh giao dịch.
+Web vẫn có truy cập Binance: ba API sổ vị thế khi chưa có `wb:ex`, khi bấm cập nhật, hoặc khi sổ quá 15 phút; cập nhật lãi lỗ ví theo yêu cầu. Nút refresh dữ liệu không phải lệnh giao dịch.
 
 ```mermaid
 flowchart LR

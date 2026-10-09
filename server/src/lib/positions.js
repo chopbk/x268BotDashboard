@@ -263,10 +263,25 @@ function applyLiveMarks(rows, priceOf) {
     return { rows: next, priced };
 }
 
+const EXCHANGE_MAX_AGE_MS = 15 * 60 * 1000;
+
 function asExchangeBook(snap) {
+    if (!snap || snap.error || snap.source === "monitor") return null;
+    if (snap.source === "rest" || snap.source === "exchange") {
+        if (!Array.isArray(snap.positions)) return null;
+        return snap;
+    }
     const usable = usableExchangeSnap(snap);
     if (!usable || usable.source === "monitor") return null;
     return usable;
+}
+
+function freshExchangeBook(snap, now = Date.now(), maxAge = EXCHANGE_MAX_AGE_MS) {
+    const book = asExchangeBook(snap);
+    if (!book) return null;
+    const age = ageMs(book.at, now);
+    if (age == null || age < 0 || age > maxAge) return null;
+    return book;
 }
 
 async function eachLimit(items, limit, fn) {
@@ -500,14 +515,16 @@ async function loadPositions(actor, query = {}, deps = {}) {
         if (!grouped.has(owner)) grouped.set(owner, []);
         grouped.get(owner).push(doc);
     }
+    const force = query.refresh === "1" || query.refresh === "true";
+    const maxAge = deps.exchangeMaxAgeMs || EXCHANGE_MAX_AGE_MS;
     const books = new Map();
-    const cachedBook = asExchangeBook(snap);
+    const cachedBook = force ? null : freshExchangeBook(snap, now, maxAge);
     if (cachedBook) books.set(account, cachedBook);
     if (!account && deps.snapshots) {
         try {
             const extra = await deps.snapshots(selected);
             for (const [name, book] of Object.entries(extra || {})) {
-                const usable = asExchangeBook(book);
+                const usable = force ? null : freshExchangeBook(book, now, maxAge);
                 if (usable) books.set(name, usable);
             }
         } catch (error) {
@@ -515,8 +532,9 @@ async function loadPositions(actor, query = {}, deps = {}) {
         }
     }
     const exchangeErrors = [];
-    if (deps.exchange) {
-        const fetched = await eachLimit(selected, 4, async (name) => {
+    const needExchange = deps.exchange ? (force ? selected : selected.filter((name) => !books.has(name))) : [];
+    if (needExchange.length) {
+        const fetched = await eachLimit(needExchange, 4, async (name) => {
             try {
                 return { name, book: await deps.exchange(name) };
             } catch (error) {
@@ -526,8 +544,16 @@ async function loadPositions(actor, query = {}, deps = {}) {
         });
         for (const item of fetched) {
             const book = asExchangeBook(item.book);
-            if (book) books.set(item.name, book);
-            else if (item.error) exchangeErrors.push({ account: item.name, error: item.error });
+            if (book) {
+                books.set(item.name, book);
+                if (deps.saveExchange) {
+                    try {
+                        await deps.saveExchange(item.name, book);
+                    } catch (error) {
+                        console.error("[loadPositions]", error.message);
+                    }
+                }
+            } else if (item.error) exchangeErrors.push({ account: item.name, error: item.error });
         }
     }
     const rows = [];
@@ -575,6 +601,7 @@ function monitorDetail(doc, heartbeatFreshNow, now) {
 
 module.exports = {
     HEARTBEAT_MS,
+    EXCHANGE_MAX_AGE_MS,
     buildPositionView,
     applyLiveMarks,
     filterRows,

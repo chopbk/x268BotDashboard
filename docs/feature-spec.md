@@ -50,7 +50,7 @@ Hiển thị position cha theo account/symbol/side và monitor con. Phân biệt
 
 Danh sách vị thế là `positionRisk` của sàn. `monitor_positions` chỉ bổ sung thời gian vào lệnh, signal và qty riêng. Vị thế sàn không có monitor vẫn hiện. Monitor không còn trên sàn chỉ được gắn đã đóng khi sổ sàn tải được. Snapshot do monitor dựng không phải sổ sàn. Redis thiếu key hoặc API sàn lỗi thì vẫn hiện monitor và báo lỗi, không biến các dòng đó thành đã đóng.
 
-REST tải dữ liệu ban đầu; WebSocket nhận snapshot cho account được chọn. Server nạp mark price từ premiumIndex rồi giữ stream `wss://fstream.binance.com/market/ws/!markPrice@arr@1s`. Khi trang Position đang mở, mark và PnL tính lại mỗi 15 giây từ cache đó, không giữ giá lưu trong monitor. Qty và monitor lấy từ Redis `wb:pos` khi có; thay đổi qty được đẩy ngay qua `wb:pos:notify`. Lệnh sàn do websocket user-data của binance-bot ghi vào `wb:ord` và báo `wb:ord:notify`, không mở thêm listenKey trên web. Cache Redis quá hạn hoặc không có có nhánh fallback Binance REST; UI có polling khi socket lỗi hoặc khi chưa chọn tài khoản. Trạng thái `live`, `polling`, `stale` phản ánh nguồn/độ mới, không bảo đảm monitor đang bảo vệ mọi vị thế. Không có mutation mở/đóng position trong router hiện tại.
+`positionRisk`, `openOrders` và `openAlgoOrders` chỉ gọi khi chưa có sổ `wb:ex`, khi bấm Cập nhật sàn, hoặc khi sổ quá 15 phút. Binance-bot vá qty từ ACCOUNT_UPDATE vào `wb:ex` và báo `wb:ex:notify`. Web đọc Redis đó. Mark price là stream public, tính lại trên view mỗi 15 giây, không gọi ba API trên. Lệnh sàn vẫn qua `wb:ord`. Không đặt hay đóng lệnh từ trang này.
 
 ## Số liệu: không so sánh khác nguồn như cùng một chỉ số
 

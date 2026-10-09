@@ -382,10 +382,11 @@ async function binanceClient(account) {
 }
 
 const exchangeCache = new Map();
-const EXCHANGE_CACHE_MS = 12_000;
+const EXCHANGE_CACHE_MS = 15 * 60 * 1000;
 
 async function loadExchangeBook(account, deps = {}) {
     const now = typeof deps.now === "function" ? deps.now() : Date.now();
+    if (deps.force) exchangeCache.delete(account);
     const hit = exchangeCache.get(account);
     if (hit && now - hit.at < EXCHANGE_CACHE_MS) {
         if (hit.error) throw hit.error;

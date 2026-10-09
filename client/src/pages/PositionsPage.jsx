@@ -64,6 +64,7 @@ export default function PositionsPage() {
   const [detail, setDetail] = useState(null);
   const [detailError, setDetailError] = useState("");
   const [monitorId, setMonitorId] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   function go(mutate, { replace = false, layer = false } = {}) {
     const next = new URLSearchParams(location.search);
@@ -296,6 +297,19 @@ export default function PositionsPage() {
             <option value="notpsl">NOTPSL</option>
           </select>
         </label>
+        <button type="button" disabled={refreshing} onClick={async () => {
+          setRefreshing(true);
+          try {
+            const view = await api("/api/positions/refresh", { method: "POST", body: { account, audience, book }, timeoutMs: 60000 });
+            setPayload(view);
+            setError("");
+          } catch (err) {
+            console.error("[positions]", err);
+            setError(err.message || "Không cập nhật được sổ sàn");
+          } finally {
+            setRefreshing(false);
+          }
+        }}>{refreshing ? "Đang cập nhật…" : "Cập nhật sàn"}</button>
         <label>Bất thường
           <select value={params.get("warn") || ""} onChange={(event) => setFilter("warn", event.target.value)}>
             <option value="">Tất cả</option>

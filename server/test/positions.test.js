@@ -201,7 +201,7 @@ test("pubsub notice is only a version marker and a gap keeps the last snapshot",
     const stopB = watch("V", () => {});
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(subs, ["wb:pos:notify:V", "wb:ord:notify:V"]);
+    assert.deepEqual(subs, ["wb:pos:notify:V", "wb:ex:notify:V", "wb:ord:notify:V"]);
     assert.equal(seen.at(-1).version, 4);
     assert.equal(seen.at(-1).positions.length, 1);
     version = 4;
@@ -212,7 +212,7 @@ test("pubsub notice is only a version marker and a gap keeps the last snapshot",
     assert.equal(seen.at(-1).positions[0].symbol, "BTCUSDT");
     assert.equal(JSON.stringify(seen).includes("leak"), false);
     stopA();
-    assert.equal(subs.length, 2);
+    assert.equal(subs.length, 3);
     stopB();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(subs.length, 0);
@@ -389,6 +389,57 @@ test("exchange book cache does not call the exchange twice inside the window", a
     assert.equal(book.source, "rest");
     assert.equal(book.positions[0].symbol, "SOLUSDT");
     resetExchangeCache();
+});
+
+test("a fresh exchange book skips the Binance call until it is old or refreshed", async () => {
+    const originals = { users: UserAccount.find, monitors: MonitorPosition.find, beats: ProcessHeartbeat.find };
+    UserAccount.find = () => query([{ username: "V", accounts: ["V1"], ownerUserId: "u1", active: true }]);
+    MonitorPosition.find = () => query([]);
+    ProcessHeartbeat.find = () => query([]);
+    const actorV = { id: "u1", role: "admin", username: "me", email: "me@x.com", botUsernames: ["V"] };
+    const deps = { UserAccount, Monitor: MonitorPosition, Heartbeat: ProcessHeartbeat, now };
+    const stored = {
+        source: "exchange",
+        at: new Date(now).toISOString(),
+        positions: [{ symbol: "SOLUSDT", positionSide: "SHORT", positionAmt: "1", entryPrice: "20", markPrice: "18", unRealizedProfit: "2" }],
+        openOrders: [],
+        algoOrders: [],
+    };
+    let calls = 0;
+    try {
+        const kept = await loadPositions(actorV, {}, {
+            ...deps,
+            snapshots: async () => ({ V: stored }),
+            exchange: async () => { calls += 1; throw new Error("không được gọi"); },
+        });
+        assert.equal(calls, 0);
+        assert.equal(kept.rows.some((row) => row.symbol === "SOLUSDT"), true);
+        const refreshed = await loadPositions(actorV, { refresh: "1" }, {
+            ...deps,
+            snapshots: async () => ({ V: stored }),
+            exchange: async () => {
+                calls += 1;
+                return { source: "rest", at: new Date(now).toISOString(), positions: [{ symbol: "ADAUSDT", positionSide: "LONG", positionAmt: "1", entryPrice: "1", markPrice: "1", unRealizedProfit: "0" }], openOrders: [], algoOrders: [] };
+            },
+        });
+        assert.equal(calls, 1);
+        assert.equal(refreshed.rows.some((row) => row.symbol === "ADAUSDT"), true);
+        calls = 0;
+        await loadPositions(actorV, {}, {
+            ...deps,
+            exchangeMaxAgeMs: 1000,
+            snapshots: async () => ({ V: { ...stored, at: new Date(now - 5000).toISOString() } }),
+            exchange: async () => {
+                calls += 1;
+                return { source: "rest", at: new Date(now).toISOString(), positions: [], openOrders: [], algoOrders: [] };
+            },
+        });
+        assert.equal(calls, 1);
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.find = originals.monitors;
+        ProcessHeartbeat.find = originals.beats;
+    }
 });
 
 test("live mark updates pnl and leaves exchange qty alone", () => {

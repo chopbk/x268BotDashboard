@@ -6,7 +6,7 @@ const WebUser = require("../models/web-user");
 const { loadPositions } = require("./positions");
 const live = require("./position-live");
 const { markOf } = require("./mark-prices");
-const { loadExchangeBook } = require("./position-feed");
+const { readExchangeBook } = require("./position-live");
 
 function readCookie(header, name) {
     const parts = String(header || "").split(/; */);
@@ -102,7 +102,10 @@ function openSocket(ws, user) {
         stop?.();
         stop = live.watch(account, async (snap) => {
             try {
-                const view = await loadPositions(user, viewQuery, { snapshot: async () => snap, exchange: loadExchangeBook, priceOf: markOf });
+                const view = await loadPositions(user, viewQuery, {
+                    snapshot: async () => snap?.source === "exchange" || snap?.source === "rest" ? snap : readExchangeBook(account),
+                    priceOf: markOf,
+                });
                 send({ type: "snapshot", ...view });
             } catch (error) {
                 console.error("[positionWs]", error.message);

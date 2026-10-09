@@ -1,9 +1,12 @@
 const { snapshotKey, notifyChannel, parseNotice, decorateSnapshot, decideUpdate } = require("./position-cache");
-const { loadBinanceSnapshot } = require("./position-feed");
 
 const ORDER_KEY = "wb:ord:";
 const ORDER_CHANNEL = "wb:ord:notify:";
+const EXCHANGE_KEY = "wb:ex:";
+const EXCHANGE_CHANNEL = "wb:ex:notify:";
+const EXCHANGE_TTL_SEC = 20 * 60;
 const QUOTE_MS = 15_000;
+const EXCHANGE_REFRESH_MS = 15 * 60 * 1000;
 
 const feeds = new Map();
 let reader = null;
@@ -37,6 +40,52 @@ async function readRedis(account) {
         console.error("[positionLive]", error.message);
         return null;
     }
+}
+
+async function readExchangeBook(account) {
+    if (!reader?.isReady || !account) return null;
+    try {
+        const raw = await reader.get(EXCHANGE_KEY + account);
+        if (!raw) return null;
+        const book = JSON.parse(raw);
+        if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
+        return book;
+    } catch (error) {
+        console.error("[positionLive]", error.message);
+        return null;
+    }
+}
+
+async function readExchangeBooks(names) {
+    if (!reader?.isReady || !names?.length) return {};
+    try {
+        const values = await reader.mGet(names.map((name) => EXCHANGE_KEY + name));
+        const out = {};
+        for (let index = 0; index < names.length; index += 1) {
+            if (!values[index]) continue;
+            try {
+                const book = JSON.parse(values[index]);
+                if (book?.source === "exchange" && Array.isArray(book.positions)) out[names[index]] = book;
+            } catch (error) {
+                console.error("[positionLive]", error.message);
+            }
+        }
+        return out;
+    } catch (error) {
+        console.error("[positionLive]", error.message);
+        return {};
+    }
+}
+
+async function saveExchangeBook(account, book) {
+    if (!reader?.isReady || !account || !book) return;
+    const stored = {
+        ...book,
+        source: "exchange",
+        account,
+        at: book.at || new Date().toISOString(),
+    };
+    await reader.set(EXCHANGE_KEY + account, JSON.stringify(stored), { EX: EXCHANGE_TTL_SEC });
 }
 
 async function readOrders(account) {
@@ -141,6 +190,15 @@ async function subscribe(account) {
         if (!notice || notice.account !== account) return;
         applyStored(account, notice).catch((error) => console.error("[positionLive]", error.message));
     });
+    await sub.subscribe(EXCHANGE_CHANNEL + account, () => {
+        const current = feeds.get(account);
+        if (!current) return;
+        readExchangeBook(account).then(async (book) => {
+            if (!book) return;
+            current.last = await withOrders(account, book);
+            publish(current);
+        }).catch((error) => console.error("[positionLive]", error.message));
+    });
     await sub.subscribe(ORDER_CHANNEL + account, () => {
         const feed = feeds.get(account);
         if (!feed?.last) return;
@@ -157,74 +215,52 @@ async function unsubscribe(account) {
     feed.subscribed = false;
     try {
         await subscriber.unsubscribe(notifyChannel(account));
+        await subscriber.unsubscribe(EXCHANGE_CHANNEL + account);
         await subscriber.unsubscribe(ORDER_CHANNEL + account);
     } catch (error) {
         console.error("[positionLive]", error.message);
     }
 }
 
-async function restFallback(account, feed) {
-    if (Date.now() - feed.restAt < 15_000 && feed.last) return feed.last;
-    feed.restAt = Date.now();
-    try {
-        const loaded = await loadBinanceSnapshot(account);
-        feed.last = decorateSnapshot({
-            version: feed.last?.version || 0,
-            at: new Date().toISOString(),
-            source: "rest",
-            account,
-            positions: loaded.positions,
-            openOrders: loaded.openOrders,
-            algoOrders: loaded.algoOrders,
-            monitors: feed.last?.monitors || [],
-        });
-        feed.last.status = "polling";
-        feed.last.stale = false;
-    } catch (error) {
-        console.error("[positionLive]", error.message);
-        feed.last = { ...(feed.last || { positions: [], openOrders: [], algoOrders: [], monitors: [] }), stale: true, status: "stale", error: "Không lấy được snapshot" };
-    }
-    return feed.last;
-}
-
 function startQuote(account, feed) {
     if (feed.quoteTimer) return;
     const tick = async () => {
         if (!feed.viewers.size) return;
-        const cached = await readRedis(account);
-        if (cached) feed.last = await withOrders(account, cached);
+        const exchange = await readExchangeBook(account);
+        if (exchange) feed.last = await withOrders(account, exchange);
         else if (feed.last) feed.last = await withOrders(account, feed.last);
         publish(feed);
     };
     feed.quoteTimer = setInterval(() => tick().catch((error) => console.error("[positionLive]", error.message)), QUOTE_MS);
+    feed.quoteTimer.unref?.();
 }
 
-function startRest(account, feed) {
-    if (feed.polling) return;
-    const tick = async () => {
-        if (!feed.viewers.size) return;
-        const cached = await readRedis(account);
-        if (cached && !cached.stale) {
-            feed.last = await withOrders(account, cached);
-            publish(feed);
-            return;
-        }
-        await restFallback(account, feed);
-        publish(feed);
-    };
-    tick().catch((error) => console.error("[positionLive]", error.message));
-    feed.polling = setInterval(() => tick().catch((error) => console.error("[positionLive]", error.message)), 15_000);
+function startExchangeRefresh(account, feed) {
+    if (feed.exchangeTimer) return;
+    const { loadExchangeBook } = require("./position-feed");
+    feed.exchangeTimer = setInterval(() => {
+        loadExchangeBook(account, { force: true })
+            .then((book) => saveExchangeBook(account, book))
+            .then(() => refresh(account))
+            .then(() => publish(feed))
+            .catch((error) => console.error("[positionLive]", error.message));
+    }, EXCHANGE_REFRESH_MS);
+    feed.exchangeTimer.unref?.();
 }
 
 async function refresh(account) {
     const feed = feedFor(account);
+    const exchange = await readExchangeBook(account);
+    if (exchange) {
+        feed.last = await withOrders(account, exchange);
+        return feed.last;
+    }
     const cachedSnap = await readRedis(account);
     if (cachedSnap) {
         feed.last = await withOrders(account, cachedSnap);
         return feed.last;
     }
-    if (feed.last?.stale === false && feed.last?.source === "rest") return feed.last;
-    return restFallback(account, feed);
+    return feed.last;
 }
 
 function watch(account, viewer) {
@@ -233,16 +269,18 @@ function watch(account, viewer) {
     subscribe(account).catch((error) => console.error("[positionLive]", error.message));
     refresh(account).then((snap) => {
         if (feed.viewers.has(viewer)) viewer(snap || feed.last);
-        if (!snap || snap.stale || snap.source !== "monitor") startRest(account, feed);
         startQuote(account, feed);
+        startExchangeRefresh(account, feed);
     }).catch((error) => console.error("[positionLive]", error.message));
     return function unwatch() {
         feed.viewers.delete(viewer);
         if (feed.viewers.size > 0) return;
         if (feed.polling) clearInterval(feed.polling);
         if (feed.quoteTimer) clearInterval(feed.quoteTimer);
+        if (feed.exchangeTimer) clearInterval(feed.exchangeTimer);
         feed.polling = null;
         feed.quoteTimer = null;
+        feed.exchangeTimer = null;
         unsubscribe(account).catch((error) => console.error("[positionLive]", error.message));
     };
 }
@@ -261,6 +299,7 @@ function resetLive() {
     for (const feed of feeds.values()) {
         if (feed.polling) clearInterval(feed.polling);
         if (feed.quoteTimer) clearInterval(feed.quoteTimer);
+        if (feed.exchangeTimer) clearInterval(feed.exchangeTimer);
     }
     feeds.clear();
     reader = null;
@@ -268,4 +307,4 @@ function resetLive() {
     subscriberReady = null;
 }
 
-module.exports = { watch, refresh, cached, readBooks, bindRedis, applyStored, resetLive, ORDER_KEY, ORDER_CHANNEL };
+module.exports = { watch, refresh, cached, readBooks, readExchangeBook, readExchangeBooks, saveExchangeBook, bindRedis, applyStored, resetLive, ORDER_KEY, ORDER_CHANNEL, EXCHANGE_KEY, EXCHANGE_CHANNEL };
