@@ -182,11 +182,79 @@ function attachRecorded(parent) {
         parent.recordedNet = null;
         return;
     }
-    const realized = parts.reduce((sum, part) => sum + part.realized, 0);
-    const fee = parts.reduce((sum, part) => sum + part.fee, 0);
-    const funding = parts.reduce((sum, part) => sum + part.funding, 0);
+    const same = parts.length > 1 && parts.every((part) => part.realized === parts[0].realized && part.fee === parts[0].fee && part.funding === parts[0].funding);
+    const realized = same ? parts[0].realized : parts.reduce((sum, part) => sum + part.realized, 0);
+    const fee = same ? parts[0].fee : parts.reduce((sum, part) => sum + part.fee, 0);
+    const funding = same ? parts[0].funding : parts.reduce((sum, part) => sum + part.funding, 0);
     parent.recorded = { realized, fee, funding, net: realized + fee + funding };
     parent.recordedNet = parent.recorded.net;
+}
+
+function signedFee(value) {
+    const fee = Number(value);
+    if (!Number.isFinite(fee) || fee === 0) return 0;
+    return fee > 0 ? -fee : fee;
+}
+
+function grossFromPrices(side, qty, entry, close) {
+    const amount = Math.abs(Number(qty));
+    const entryPrice = Number(entry);
+    const closePrice = Number(close);
+    if (!(amount > 0) || !(entryPrice > 0) || !(closePrice > 0)) return null;
+    const sign = String(side || "").toUpperCase() === "SHORT" ? -1 : 1;
+    return (closePrice - entryPrice) * amount * sign;
+}
+
+function historyPart(row) {
+    const side = String(row?.positionSide || row?.side || "BOTH").toUpperCase();
+    const fromPrices = grossFromPrices(side, row?.closedVolume ?? row?.closedQty ?? row?.qty, row?.entryPrice ?? row?.avgEntryPrice, row?.avgClosePrice ?? row?.closePrice);
+    const given = Number(row?.realizedPnl ?? row?.realizedProfit ?? row?.pnl);
+    const realized = Number.isFinite(given) ? given : (fromPrices || 0);
+    return {
+        symbol: String(row?.symbol || "").toUpperCase(),
+        side,
+        realized,
+        fee: signedFee(row?.commission ?? row?.fee),
+        funding: Number(row?.fundingFee ?? row?.funding) || 0,
+        time: Number(row?.updateTime || row?.closedTime || row?.time || 0),
+    };
+}
+
+function tradePart(row) {
+    const side = String(row?.positionSide || "BOTH").toUpperCase();
+    const orderSide = String(row?.side || "").toUpperCase();
+    const closing = side === "SHORT" ? orderSide === "BUY" : side === "LONG" ? orderSide === "SELL" : Math.abs(Number(row?.realizedPnl)) > 0;
+    return {
+        symbol: String(row?.symbol || "").toUpperCase(),
+        side,
+        realized: closing ? (Number(row?.realizedPnl) || 0) : 0,
+        fee: signedFee(row?.commission),
+        time: Number(row?.time || 0),
+    };
+}
+
+function sameSide(parentSide, rowSide) {
+    const side = String(rowSide || "BOTH").toUpperCase();
+    return side === "BOTH" || side === parentSide;
+}
+
+function inWindow(time, since) {
+    if (!since) return true;
+    if (!time) return true;
+    return time >= since;
+}
+
+function sumParts(rows) {
+    return rows.reduce((total, row) => ({
+        realized: total.realized + (Number(row.realized) || 0),
+        fee: total.fee + (Number(row.fee) || 0),
+        funding: total.funding + (Number(row.funding) || 0),
+    }), { realized: 0, fee: 0, funding: 0 });
+}
+
+function recordedBundle(parts, source) {
+    const net = parts.realized + parts.fee + parts.funding;
+    return { ...parts, net, source };
 }
 
 function publicOrder(row, kind) {
@@ -366,6 +434,8 @@ function buildPositionView({
     connection = "snapshot",
     exchangeLoaded = false,
     income = [],
+    positionHistory = [],
+    trades = [],
 }) {
     const parents = [];
     const used = new Set();
@@ -435,8 +505,36 @@ function buildPositionView({
         parents.push(parent);
         placed.add(`${identity.symbol}|${identity.side}`);
     }
-    for (const parent of parents) applyIncome(parent, income);
+    for (const parent of parents) {
+        applyIncome(parent, income);
+        applyFillRecord(parent, positionHistory, trades, income);
+    }
     return parents;
+}
+
+function applyFillRecord(parent, history, trades, income) {
+    const since = (parent.monitors || [])
+        .map((monitor) => new Date(monitor.openedAt).getTime())
+        .filter((time) => time > 0);
+    const opened = since.length ? Math.min(...since) : 0;
+    const historyRows = (Array.isArray(history) ? history : [])
+        .map(historyPart)
+        .filter((row) => row.symbol === parent.symbol && sameSide(parent.side, row.side) && inWindow(row.time, opened));
+    if (historyRows.length) {
+        const parts = sumParts(historyRows);
+        parent.recorded = recordedBundle(parts, "positionHistory");
+        parent.recordedNet = parent.recorded.net;
+        return;
+    }
+    const fills = (Array.isArray(trades) ? trades : [])
+        .map(tradePart)
+        .filter((row) => row.symbol === parent.symbol && sameSide(parent.side, row.side) && inWindow(row.time, opened));
+    if (!fills.length) return;
+    const parts = sumParts(fills);
+    const fundingRows = (Array.isArray(income) ? income : []).filter((row) => String(row?.symbol || "").toUpperCase() === parent.symbol && String(row?.incomeType || "") === "FUNDING_FEE" && inWindow(Number(row?.time), opened));
+    parts.funding = fundingRows.reduce((sum, row) => sum + (Number(row.income) || 0), 0);
+    parent.recorded = recordedBundle(parts, "trades");
+    parent.recordedNet = parent.recorded.net;
 }
 
 function qtyMismatch(parent) {
@@ -604,6 +702,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         }
     }
     const exchangeErrors = [];
+    const freshAccounts = new Set();
     const needExchange = deps.exchange ? (force ? selected : selected.filter((name) => !books.has(name))) : [];
     if (needExchange.length) {
         const fetched = await eachLimit(needExchange, 4, async (name) => {
@@ -618,6 +717,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
             const book = asExchangeBook(item.book);
             if (book) {
                 books.set(item.name, book);
+                freshAccounts.add(item.name);
                 if (deps.saveExchange) {
                     try {
                         await deps.saveExchange(item.name, book);
@@ -642,6 +742,8 @@ async function loadPositions(actor, query = {}, deps = {}) {
             openOrders: current?.openOrders || [],
             algoOrders: current?.algoOrders || [],
             income: current?.income || [],
+            positionHistory: current?.positionHistory || [],
+            trades: current?.trades || [],
             heartbeatFresh: fromMonitor || fresh,
             now,
             connection: current?.stale ? "stale" : (name === account ? connection : "idle"),
@@ -650,6 +752,13 @@ async function loadPositions(actor, query = {}, deps = {}) {
     }
     const viewed = filterRows(rows, query);
     const priced = applyLiveMarks(viewed, deps.priceOf);
+    if (freshAccounts.size) {
+        try {
+            await rememberRecorded(priced.rows.filter((row) => freshAccounts.has(row.account)), deps.Monitor);
+        } catch (error) {
+            console.error("[loadPositions]", error.message);
+        }
+    }
     return {
         accounts: bots.map((row) => ({ username: row.username, accounts: row.accounts || [] })),
         rows: priced.rows,
@@ -673,6 +782,32 @@ function monitorDetail(doc, heartbeatFreshNow, now) {
         stats: sanitize(doc.stats || null),
         config: sanitize(doc.config || null),
     };
+}
+
+async function rememberRecorded(rows, Monitor) {
+    const model = Monitor || require("../models/monitor-position");
+    if (!model || typeof model.updateMany !== "function") return;
+    for (const row of rows || []) {
+        const recorded = row?.recorded;
+        if (!recorded || !recorded.source) continue;
+        const ids = (row.monitors || []).map((monitor) => monitor.id).filter(Boolean);
+        if (!ids.length) continue;
+        try {
+            await model.updateMany(
+                { _id: { $in: ids } },
+                {
+                    $set: {
+                        "stats.realizedPnl": recorded.realized,
+                        "stats.commission": recorded.fee,
+                        "stats.funding": recorded.funding,
+                        "stats.pnlIncludesFees": true,
+                    },
+                },
+            );
+        } catch (error) {
+            console.error("[rememberRecorded]", error.message);
+        }
+    }
 }
 
 async function createMonitorRecord(actor, input, deps = {}) {

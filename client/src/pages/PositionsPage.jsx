@@ -417,9 +417,10 @@ export default function PositionsPage() {
             <tbody>
               {rows.map((row) => {
                 const roi = roiOf(row);
+                const recordedFrom = row.recorded?.source === "positionHistory" ? "Position history" : row.recorded?.source === "trades" ? "Lệnh đóng" : row.recorded?.source === "income" ? "Income" : "Monitor";
                 const recordedTitle = row.recorded
-                  ? `${row.recorded.source === "income" ? "Income Binance" : "Monitor"} · chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
-                  : "Chưa có income hoặc stats";
+                  ? `${recordedFrom} · chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
+                  : "Chưa có position history, lệnh đóng hoặc stats";
                 return (
                 <Fragment key={row.key}>
                   <tr className={row.warnings.length ? "pos-alert" : ""}>

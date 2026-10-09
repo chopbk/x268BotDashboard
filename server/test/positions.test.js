@@ -44,6 +44,45 @@ test("pnl uses the current monitor snapshot, not the opening own qty", () => {
     assert.equal(priced.rows[0].unrealized, 1106);
 });
 
+test("closing fills record price pnl minus commission and funding", () => {
+    const rows = buildPositionView({
+        account: "B5",
+        now,
+        connection: "snapshot",
+        exchangeLoaded: true,
+        exchangePositions: [{ symbol: "NEARUSDT", positionSide: "LONG", positionAmt: "1106", entryPrice: "4.517", markPrice: "4.86" }],
+        monitors: [{ _id: "near", env: "B5", symbol: "NEARUSDT", side: "LONG", positionAmt: "1106", closed: false, startTime: new Date(now - 1000).toISOString() }],
+        trades: [{
+            symbol: "NEARUSDT",
+            positionSide: "LONG",
+            side: "SELL",
+            qty: "866",
+            price: "4.8159",
+            realizedPnl: "258.8474",
+            commission: "3.83",
+            time: now,
+        }],
+        income: [{ symbol: "NEARUSDT", incomeType: "FUNDING_FEE", income: "-0.0074", time: now }],
+    });
+    assert.equal(rows[0].recorded.source, "trades");
+    assert.ok(Math.abs(rows[0].recorded.realized - 258.8474) < 0.001);
+    assert.equal(rows[0].recorded.fee, -3.83);
+    assert.ok(Math.abs(rows[0].recorded.net - 255.01) < 0.02);
+});
+
+test("position history is the recorded pnl when the endpoint returns it", () => {
+    const rows = buildPositionView({
+        account: "B5",
+        now,
+        exchangeLoaded: true,
+        exchangePositions: [{ symbol: "NEARUSDT", positionSide: "LONG", positionAmt: "1", entryPrice: "4.517", markPrice: "4.8" }],
+        positionHistory: [{ symbol: "NEARUSDT", positionSide: "LONG", closedVolume: "866", entryPrice: "4.517", avgClosePrice: "4.8159", realizedPnl: "255.01", time: now }],
+        trades: [{ symbol: "NEARUSDT", positionSide: "LONG", side: "SELL", realizedPnl: "1", commission: "1", time: now }],
+    });
+    assert.equal(rows[0].recorded.source, "positionHistory");
+    assert.equal(rows[0].recorded.net, 255.01);
+});
+
 test("binance income fills recorded pnl when the monitor has none", () => {
     const rows = buildPositionView({
         account: "V",

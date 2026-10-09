@@ -404,6 +404,8 @@ async function loadExchangeBook(account, deps = {}) {
             openOrders: Array.isArray(loaded?.openOrders) ? loaded.openOrders : [],
             algoOrders: Array.isArray(loaded?.algoOrders) ? loaded.algoOrders : [],
             income: Array.isArray(loaded?.income) ? loaded.income : [],
+            positionHistory: Array.isArray(loaded?.positionHistory) ? loaded.positionHistory : [],
+            trades: Array.isArray(loaded?.trades) ? loaded.trades : [],
         };
         exchangeCache.set(account, { at: now, book });
         return book;
@@ -415,6 +417,51 @@ async function loadExchangeBook(account, deps = {}) {
 
 function resetExchangeCache() {
     exchangeCache.clear();
+}
+
+async function loadFillHistory(client, positions) {
+    const startTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let history = [];
+    try {
+        const raw = await client.signedGet("/fapi/v1/positionHistory", { startTime, limit: 100 });
+        const rows = Array.isArray(raw) ? raw : (raw?.rows || raw?.list || []);
+        history = rows.map((row) => ({
+            symbol: row.symbol,
+            positionSide: row.positionSide,
+            realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.pnl,
+            commission: row.commission ?? row.fee,
+            fundingFee: row.fundingFee ?? row.funding,
+            closedVolume: row.closedVolume ?? row.closedQty ?? row.qty,
+            entryPrice: row.entryPrice ?? row.avgEntryPrice,
+            avgClosePrice: row.avgClosePrice ?? row.closePrice,
+            time: row.updateTime || row.closedTime || row.time,
+        }));
+    } catch (error) {
+        console.error("[loadBinanceSnapshot]", error.message);
+    }
+    const symbols = [...new Set((positions || []).map((row) => String(row.symbol || "").toUpperCase()).filter(Boolean))].slice(0, 15);
+    const trades = [];
+    for (const symbol of symbols) {
+        try {
+            const rows = await client.signedGet("/fapi/v1/userTrades", { symbol, startTime, limit: 1000 });
+            if (!Array.isArray(rows)) continue;
+            for (const row of rows) {
+                trades.push({
+                    symbol: row.symbol,
+                    positionSide: row.positionSide,
+                    side: row.side,
+                    realizedPnl: row.realizedPnl,
+                    commission: row.commission,
+                    qty: row.qty,
+                    price: row.price,
+                    time: row.time,
+                });
+            }
+        } catch (error) {
+            console.error("[loadBinanceSnapshot]", `${symbol} ${error.message}`);
+        }
+    }
+    return { history, trades };
 }
 
 async function loadBinanceSnapshot(account) {
@@ -431,8 +478,10 @@ async function loadBinanceSnapshot(account) {
             return [];
         }),
     ]);
+    const openPositions = (Array.isArray(positions) ? positions : []).filter((row) => Math.abs(num(row.positionAmt)) > 0);
+    const fills = await loadFillHistory(client, openPositions);
     return {
-        positions: (Array.isArray(positions) ? positions : []).filter((row) => Math.abs(num(row.positionAmt)) > 0),
+        positions: openPositions,
         openOrders: Array.isArray(openOrders) ? openOrders : [],
         algoOrders: Array.isArray(algoRaw) ? algoRaw : (algoRaw?.orders || []),
         income: (Array.isArray(incomeRaw) ? incomeRaw : []).map((row) => ({
@@ -441,6 +490,8 @@ async function loadBinanceSnapshot(account) {
             income: row.income,
             time: row.time,
         })),
+        positionHistory: fills.history,
+        trades: fills.trades,
     };
 }
 
