@@ -35,8 +35,8 @@ test("system summary ranks account-static profit without listing every identity"
         assert.deepEqual(match.env.$in, ["A", "B", "C"]);
         assert.equal(match.day.$gte.toISOString(), "2026-10-04T00:00:00.000Z");
         return [
-            { _id: "A", profit: 11, balance: 500, roi: 2.5 },
-            { _id: "C", profit: 4, balance: 80, roi: -1 },
+            { _id: "A", profit: 11, balance: 500, firstBalance: 440, firstProfit: 0 },
+            { _id: "C", profit: 4, balance: 80, firstBalance: 400, firstProfit: 0 },
         ];
     });
     t.mock.method(AccountStatic, "aggregate", async (pipeline) => {
@@ -84,7 +84,7 @@ test("system summary ranks account-static profit without listing every identity"
         bestUser: { name: "alpha", profit: 11, trades: 4, winRate: 75 },
         userRanks: [
             { name: "alpha", profit: 11, balance: 500, roi: 2.5, volume: 400, trades: 4, wins: 3, losses: 1, winRate: 75 },
-            { name: "beta", profit: 4, balance: 80, roi: -1, volume: 600, trades: 6, wins: 3, losses: 3, winRate: 50 },
+            { name: "beta", profit: 4, balance: 80, roi: 1, volume: 600, trades: 6, wins: 3, losses: 3, winRate: 50 },
         ],
         bestSymbol: { name: "BTCUSDT", profit: 20, trades: 3, winRate: (2 / 3) * 100 },
         range: "3d", from: new Date("2026-10-04T12:00:00.000Z"), to: new Date("2026-10-07T12:00:00.000Z"),
@@ -92,6 +92,30 @@ test("system summary ranks account-static profit without listing every identity"
     });
     assert.equal(Object.hasOwn(result, "envs"), false);
     assert.equal(Object.hasOwn(result, "usernames"), false);
+});
+
+test("wallet profit and balance are counted once when several configs store the same wallet", async (t) => {
+    t.mock.method(UserAccount, "find", () => findQuery([
+        { username: "V", accounts: ["V", "V1"], visibility: "public", active: true },
+    ]));
+    t.mock.method(AccountConfig, "countDocuments", async () => 0);
+    t.mock.method(MonitorPosition, "countDocuments", async () => 0);
+    t.mock.method(AccountStatic, "aggregate", async () => [{
+        byEnv: [
+            { _id: "V", volume: 10, trades: 1, wins: 1, losses: 0 },
+            { _id: "V1", volume: 20, trades: 2, wins: 1, losses: 1 },
+        ],
+    }]);
+    t.mock.method(FuturesProfit, "aggregate", async () => [
+        { _id: "V", profit: 100, balance: 1000, firstBalance: 900, firstProfit: 10, updatedAt: new Date("2026-10-08T00:00:00.000Z") },
+        { _id: "V1", profit: 100, balance: 1000, firstBalance: 900, firstProfit: 10, updatedAt: new Date("2026-10-09T00:00:00.000Z") },
+    ]);
+    const result = await getSystemSummary("30d", new Date("2026-10-09T03:00:00.000Z"));
+    assert.equal(result.userRanks.length, 1);
+    assert.equal(result.userRanks[0].profit, 100);
+    assert.equal(result.userRanks[0].balance, 1000);
+    assert.equal(result.userRanks[0].volume, 30);
+    assert.equal(result.userRanks[0].roi, (100 * 100) / (900 - 10));
 });
 
 test("UTC day boundary is stable for profit-today aggregation", () => {
@@ -130,7 +154,7 @@ test("scoped summary keeps only accounts the actor may view", async (t) => {
     t.mock.method(AccountStatic, "aggregate", async () => [{ byEnv: [] }]);
     t.mock.method(FuturesProfit, "aggregate", async (pipeline) => {
         assert.deepEqual(pipeline[0].$match.env.$in, ["A"]);
-        return [{ _id: "A", profit: 9, balance: 120, roi: 3 }];
+        return [{ _id: "A", profit: 9, balance: 120, firstBalance: 300, firstProfit: 0 }];
     });
     const result = await getSystemSummary("today", new Date("2026-10-07T12:00:00.000Z"), {
         id: "member-id", role: "member", botUsernames: [],

@@ -5,6 +5,7 @@ const RuntimeLog = require("../models/runtime-log");
 const SummarySnapshot = require("../models/summary-snapshot");
 const config = require("../config");
 const { rateLimitStoreStatus } = require("./rate-limit-store");
+const { FORMULA_VERSION } = require("./summary-snapshots");
 
 const STALE_MS = 90 * 1000;
 const CREDENTIAL_MS = 30 * 60 * 1000;
@@ -21,6 +22,22 @@ function fresh(row, now) {
 
 function service(id, label, status, detail, at) {
     return { id, label, status, detail, at: at || null };
+}
+
+function currentSnapshots(rows) {
+    const byRange = new Map();
+    for (const row of rows || []) {
+        if (row?.formulaVersion && row.formulaVersion !== FORMULA_VERSION) continue;
+        const id = String(row?._id || "");
+        if (!row?.formulaVersion && id && !id.startsWith(`${FORMULA_VERSION}:`)) continue;
+        const key = row?.range || id;
+        if (!key) continue;
+        const prev = byRange.get(key);
+        const at = new Date(row?.generatedAt || 0).getTime();
+        const prevAt = new Date(prev?.generatedAt || 0).getTime();
+        if (!prev || at >= prevAt) byRange.set(key, row);
+    }
+    return [...byRange.values()];
 }
 
 function assessHealth(input = {}) {
@@ -52,7 +69,7 @@ function assessHealth(input = {}) {
     if (input.redisConfigured && redis === "memory") {
         alerts.push({ level: "warn", code: "redis", message: "Redis fallback về memory" });
     }
-    for (const snap of input.snapshots || []) {
+    for (const snap of currentSnapshots(input.snapshots)) {
         const stale = snap.staleAt && new Date(snap.staleAt).getTime() <= now;
         if (snap.status === "error" || stale) {
             alerts.push({
@@ -153,4 +170,4 @@ async function loadSystemHealth() {
     return { checkedAt: now.toISOString(), staleMs: STALE_MS, ...health };
 }
 
-module.exports = { assessHealth, loadSystemHealth, STALE_MS };
+module.exports = { assessHealth, loadSystemHealth, currentSnapshots, STALE_MS };

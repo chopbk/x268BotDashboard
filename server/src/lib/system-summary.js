@@ -5,6 +5,7 @@ const FuturesProfit = require("../models/futures-profit");
 const MonitorPosition = require("../models/monitor-position");
 const SummaryCache = require("../models/summary-cache");
 const { PERMISSIONS, canAccessResource } = require("../auth/access-control");
+const { ledgerEnv } = require("./account-ledger");
 const { httpError } = require("./http");
 
 const RANGE_DAYS = Object.freeze({ today: 0, "3d": 3, "7d": 7, "30d": 30, "90d": 90, all: null });
@@ -105,21 +106,38 @@ function ownsEnv(bot, env) {
 function blankRank(username) {
     return {
         name: username, profit: 0, volume: 0, trades: 0, wins: 0, losses: 0,
-        balance: 0, balanceKnown: false, roiAcc: 0, roiWeight: 0,
+        balance: 0, balanceKnown: false, roi: null,
     };
 }
 
-function addFutures(current, row) {
+function periodRoi(row) {
+    const firstBalance = Number(row?.firstBalance);
+    const firstProfit = Number(row?.firstProfit) || 0;
+    if (!Number.isFinite(firstBalance)) return null;
+    const start = firstBalance - firstProfit;
+    if (!(start > 0)) return null;
+    return ((Number(row?.profit) || 0) * 100) / start;
+}
+
+function pickWalletFutures(bot, futures) {
+    const accounts = [...new Set((bot?.accounts || []).map(envKey).filter(Boolean))];
+    const preferred = envKey(ledgerEnv(bot));
+    if (preferred && futures.has(preferred)) return futures.get(preferred);
+    const copies = accounts
+        .filter((key) => key !== preferred && futures.has(key))
+        .map((key) => futures.get(key))
+        .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+    return copies[0] || null;
+}
+
+function applyWallet(current, row) {
     if (!row) return;
-    current.profit += row.profit || 0;
-    if (row.balance != null) {
-        current.balance += row.balance;
+    current.profit = Number(row.profit) || 0;
+    if (row.balance != null && Number.isFinite(Number(row.balance))) {
+        current.balance = Number(row.balance);
         current.balanceKnown = true;
     }
-    if (row.roi != null && Number(row.balance) > 0) {
-        current.roiAcc += row.roi * row.balance;
-        current.roiWeight += row.balance;
-    }
+    current.roi = periodRoi(row);
 }
 
 function rankUsers(byEnv, bots, futuresRows) {
@@ -129,7 +147,6 @@ function rankUsers(byEnv, bots, futuresRows) {
         if (key) futures.set(key, row);
     }
     const totals = new Map();
-    const seen = new Set();
     function ownersOf(env) {
         return (bots || []).filter((bot) => isActiveBot(bot) && ownsEnv(bot, env));
     }
@@ -138,29 +155,19 @@ function rankUsers(byEnv, bots, futuresRows) {
         return totals.get(owner.username);
     }
     for (const bot of bots || []) {
-        if (isActiveBot(bot)) ensure(bot);
+        if (!isActiveBot(bot)) continue;
+        const current = ensure(bot);
+        applyWallet(current, pickWalletFutures(bot, futures));
     }
     for (const row of byEnv || []) {
         const env = String(row?._id || "").trim();
         if (!env) continue;
-        const key = envKey(env);
         for (const owner of ownersOf(env)) {
             const current = ensure(owner);
             current.volume += row.volume || 0;
             current.trades += row.trades || 0;
             current.wins += row.wins || 0;
             current.losses += row.losses || 0;
-            if (!seen.has(`${owner.username}:${key}`)) addFutures(current, futures.get(key));
-            seen.add(`${owner.username}:${key}`);
-        }
-        seen.add(key);
-    }
-    for (const [key, row] of futures) {
-        if (seen.has(key)) continue;
-        for (const owner of ownersOf(key)) {
-            if (seen.has(`${owner.username}:${key}`)) continue;
-            addFutures(ensure(owner), row);
-            seen.add(`${owner.username}:${key}`);
         }
     }
     return [...totals.values()]
@@ -168,7 +175,7 @@ function rankUsers(byEnv, bots, futuresRows) {
             name: row.name,
             profit: row.profit,
             balance: row.balanceKnown ? row.balance : null,
-            roi: row.roiWeight > 0 ? row.roiAcc / row.roiWeight : null,
+            roi: row.roi,
             volume: row.volume,
             trades: row.trades,
             wins: row.wins,
@@ -300,13 +307,25 @@ async function getSystemSummary(rangeInput = "today", now = new Date(), actor = 
         ]),
         FuturesProfit.aggregate([
             { $match: { ...futuresEnvFilter, ...(selectedDates ? { day: { $gte: startOfUtcDay(selectedDates.$gte), $lte: selectedDates.$lte } } : {}) } },
-            { $sort: { day: 1 } },
+            { $addFields: { envKey: { $toUpper: { $ifNull: ["$env", ""] } } } },
+            { $sort: { day: 1, updatedAt: -1 } },
             {
                 $group: {
-                    _id: { $toUpper: { $ifNull: ["$env", ""] } },
-                    profit: { $sum: { $ifNull: ["$profit", 0] } },
+                    _id: { env: "$envKey", day: "$day" },
+                    profit: { $first: { $ifNull: ["$profit", 0] } },
+                    balance: { $first: "$balance" },
+                    updatedAt: { $first: "$updatedAt" },
+                },
+            },
+            { $sort: { "_id.day": 1 } },
+            {
+                $group: {
+                    _id: "$_id.env",
+                    profit: { $sum: "$profit" },
                     balance: { $last: "$balance" },
-                    roi: { $last: "$roi" },
+                    firstBalance: { $first: "$balance" },
+                    firstProfit: { $first: "$profit" },
+                    updatedAt: { $max: "$updatedAt" },
                 },
             },
         ]),

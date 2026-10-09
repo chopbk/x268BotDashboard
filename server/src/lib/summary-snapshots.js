@@ -4,7 +4,7 @@ const SummarySnapshot = require("../models/summary-snapshot");
 const { getSystemSummary, normalizeSummaryRange } = require("./system-summary");
 const { ensureSummaryIndexes } = require("./summary-indexes");
 
-const FORMULA_VERSION = "v3";
+const FORMULA_VERSION = "v4";
 const PRECOMPUTED_RANGES = Object.freeze(["today", "3d", "7d", "30d", "90d"]);
 const ALL_RANGES = Object.freeze([...PRECOMPUTED_RANGES, "all"]);
 const REGULAR_TTL_MS = 2 * 60 * 1000;
@@ -100,9 +100,15 @@ async function refreshDueSnapshots(now = new Date()) {
     }));
 }
 
+async function dropOldSnapshots() {
+    const result = await SummarySnapshot.deleteMany({ formulaVersion: { $ne: FORMULA_VERSION } });
+    if (result.deletedCount) console.log("[dropOldSnapshots]", result.deletedCount);
+}
+
 async function startSummarySnapshotJob() {
     if (scheduler) return scheduler;
     await ensureSummaryIndexes();
+    await dropOldSnapshots();
     refreshDueSnapshots().catch((error) => console.error("[summary-snapshot-job:init]", error.message || error));
     scheduler = setInterval(() => refreshDueSnapshots().catch((error) => console.error("[summary-snapshot-job]", error.message || error)), SCHEDULER_INTERVAL_MS);
     scheduler.unref?.();
@@ -125,4 +131,4 @@ async function forceSummarySnapshot(rangeInput, now = new Date()) {
     throw error;
 }
 
-module.exports = { FORMULA_VERSION, PRECOMPUTED_RANGES, ALL_RANGES, REGULAR_TTL_MS, ALL_TTL_MS, LEASE_MS, snapshotKey, ttlFor, acquireLease, refreshSummarySnapshot, getSummarySnapshot, forceSummarySnapshot, refreshDueSnapshots, startSummarySnapshotJob, stopSummarySnapshotJob };
+module.exports = { FORMULA_VERSION, PRECOMPUTED_RANGES, ALL_RANGES, REGULAR_TTL_MS, ALL_TTL_MS, LEASE_MS, snapshotKey, ttlFor, acquireLease, refreshSummarySnapshot, getSummarySnapshot, forceSummarySnapshot, refreshDueSnapshots, dropOldSnapshots, startSummarySnapshotJob, stopSummarySnapshotJob };

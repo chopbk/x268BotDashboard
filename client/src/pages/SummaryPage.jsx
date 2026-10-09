@@ -204,7 +204,7 @@ export default function SummaryPage() {
           <Stat label="Profit Short" value={money(summary.shortProfit)} tone={summary.shortProfit < 0 ? "negative" : "positive"} note="Cùng nguồn và kỳ" />
         </div>
         <h2 className="summary-section-title">Xếp hạng trong kỳ</h2>
-        <p className="muted">Thẻ tín hiệu và symbol theo Account Static. Bảng user: profit cộng futures_profits trong kỳ, balance và ROI là ngày cuối có số. Bấm tên để mở giao dịch, config hoặc lịch sử signal của đúng kỳ.</p>
+        <p className="muted">Thẻ tín hiệu và symbol theo Account Static. Bảng user lấy một ví futures_profits cho mỗi user, không cộng các config. Profit là tổng ngày trong kỳ, balance là số dư ngày cuối, ROI là profit kỳ chia số dư đầu kỳ. Bấm tên để mở giao dịch, config hoặc lịch sử signal của đúng kỳ.</p>
         <div className="stats-grid summary-grid">
           <Stat rank label="Tín hiệu tốt nhất" value={rankValue(summary.bestSignal)} href={signalHref(summary.bestSignal?.name)} note={rankNote(summary.bestSignal)} tone={rankTone(summary.bestSignal)} />
           <Stat rank label="Tín hiệu kém nhất" value={rankValue(summary.worstSignal)} href={signalHref(summary.worstSignal?.name)} note={rankNote(summary.worstSignal)} tone={rankTone(summary.worstSignal)} />
@@ -247,7 +247,7 @@ export default function SummaryPage() {
             </table>
           </div>
         ) : <div className="card empty">Chưa có user active có lệnh trong kỳ.</div>}
-        <p className="summary-updated muted">Mốc tính: {when(summary.snapshot?.generatedAt || summary.generatedAt)}. Cột profit, balance và ROI lấy futures_profits. Các thẻ profit phía trên vẫn là Account Static.</p>
+        <p className="summary-updated muted">Mốc tính: {when(summary.snapshot?.generatedAt || summary.generatedAt)}. Cột profit, balance và ROI là một ví futures_profits mỗi user. Các thẻ profit phía trên vẫn là Account Static.</p>
       </> : null}
     </section>
   );

@@ -76,3 +76,26 @@ test("alerts cover mqtt, listener, redis fallback, snapshot, position and creden
     assert.equal(JSON.stringify(health).includes("api_secret"), false);
     assert.equal(health.services.find((item) => item.id === "telegram-v2").status, "down");
 });
+
+test("old formula snapshots stay out of the alert list", () => {
+    const past = new Date(now.getTime() - 60 * 1000);
+    const future = new Date(now.getTime() + 60 * 1000);
+    const quiet = assessHealth({
+        now,
+        snapshots: [
+            { _id: "v1:today", range: "today", formulaVersion: "v1", status: "ready", staleAt: past },
+            { _id: "v2:today", range: "today", formulaVersion: "v2", status: "ready", staleAt: past },
+            { _id: "v4:today", range: "today", formulaVersion: "v4", status: "ready", staleAt: future },
+        ],
+    });
+    assert.equal(quiet.alerts.some((item) => item.code === "snapshot"), false);
+    const due = assessHealth({
+        now,
+        snapshots: [
+            { _id: "v1:today", range: "today", formulaVersion: "v1", status: "ready", staleAt: past },
+            { _id: "v3:today", range: "today", formulaVersion: "v3", status: "ready", staleAt: past },
+            { _id: "v4:today", range: "today", formulaVersion: "v4", status: "ready", staleAt: past },
+        ],
+    });
+    assert.equal(due.alerts.filter((item) => item.code === "snapshot").length, 1);
+});
