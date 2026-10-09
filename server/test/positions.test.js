@@ -21,30 +21,22 @@ function query(value) {
     };
 }
 
-test("notpsl pnl uses the synced amount instead of the opening snapshot", () => {
+test("pnl uses the current monitor snapshot, not the opening own qty", () => {
     const rows = buildPositionView({
         account: "V",
         now,
         connection: "snapshot",
-        exchangeLoaded: true,
+        exchangeLoaded: false,
         heartbeatFresh: false,
-        exchangePositions: [{
-            symbol: "NEARUSDT",
-            positionSide: "LONG",
-            positionAmt: "100",
-            entryPrice: "4",
-            markPrice: "5",
-            unRealizedProfit: "100",
-        }],
         monitors: [{
             _id: "near",
             env: "V",
             symbol: "NEARUSDT",
             side: "LONG",
             type: "NOTPSL",
-            positionAmt: "1106",
+            positionAmt: "100",
             closed: false,
-            position: { positionAmt: "100", entryPrice: "4" },
+            position: { positionAmt: "1106", entryPrice: "4", markPrice: "5" },
         }],
     });
     assert.equal(rows[0].exchangeQty, 1106);

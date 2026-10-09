@@ -339,8 +339,7 @@ function applyMonitorQuote(parent, doc) {
     const entry = num(pos.entryPrice) || null;
     const mark = num(pos.markPrice) || null;
     const snap = Math.abs(num(pos.positionAmt));
-    const own = ownQty(doc);
-    const qty = isNotpsl(doc) && own > 0 ? own : snap;
+    const qty = snap > QTY_EPS ? snap : ownQty(doc);
     if (parent.entry == null && entry) parent.entry = entry;
     if (parent.mark == null && mark) parent.mark = mark;
     if (parent.leverage == null && pos.leverage != null && pos.leverage !== "") parent.leverage = num(pos.leverage) || null;
@@ -386,8 +385,6 @@ function buildPositionView({
         if (!parent.monitors.length) parent.warnings.push("no-monitor");
         if (Math.abs(managed - parent.exchangeQty) > QTY_EPS) parent.warnings.push("qty-mismatch");
         parent.notpsl = parent.monitors.some((monitor) => monitor.notpsl);
-        const synced = parent.monitors.length === 1 && parent.monitors[0].notpsl ? parent.monitors[0].ownQty : 0;
-        if (synced > (parent.exchangeQty || 0)) parent.exchangeQty = synced;
         attachRecorded(parent);
         parents.push(parent);
     }
