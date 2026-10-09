@@ -190,6 +190,17 @@ a.link-btn:hover { background: var(--surface-2); }
 
 .dash-block { margin-top: 16px; display: grid; gap: 10px; }
 .dash-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.dash-guide, .dash-data {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 10px;
+  font: inherit;
+}
+.dash-guide { min-height: 88px; resize: vertical; }
+.dash-data { max-height: 180px; overflow: auto; white-space: pre-wrap; color: var(--muted); font-size: 0.8rem; }
 
 .role {
   border: 1px solid var(--line);

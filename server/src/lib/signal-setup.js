@@ -1,6 +1,7 @@
 const UserAccount = require("../models/user-account");
 const AccountConfig = require("../models/account-config");
 const AccountStatic = require("../models/account-static");
+const FuturesProfit = require("../models/futures-profit");
 const TelegramClient = require("../models/telegram-client");
 const RuntimeLog = require("../models/runtime-log");
 const { PERMISSIONS, hasPermission, scopeForPermission } = require("../auth/access-control");
@@ -54,67 +55,127 @@ function roundMoney(value) {
     return Math.round(n * 100) / 100;
 }
 
-function startOfVnDay(now = new Date()) {
-    const shifted = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 7 * 60 * 60 * 1000);
+function startOfUtcDay(now = new Date()) {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-function foldSignals(rows, todayOnly) {
-    const bySignal = new Map();
-    for (const row of rows || []) {
-        const today = row?._id?.today === true;
-        if (todayOnly && !today) continue;
-        const signal = String(row?._id?.signal || "").trim().toUpperCase();
-        if (!signal) continue;
-        const count = row.count || 0;
-        const wins = row.wins || 0;
-        const profit = roundMoney(row.profit);
-        const bucket = bySignal.get(signal) || { signal, count: 0, wins: 0, profit: 0 };
-        bucket.count += count;
-        bucket.wins += wins;
-        bucket.profit = roundMoney(bucket.profit + profit);
-        bySignal.set(signal, bucket);
-    }
-    return [...bySignal.values()].map((row) => ({
+function walletEnv(bot) {
+    const accounts = (bot?.accounts || []).map((item) => String(item || "").trim()).filter(Boolean);
+    const name = String(bot?.username || "").trim();
+    const upper = new Set(accounts.map((item) => item.toUpperCase()));
+    if (name && upper.has(name.toUpperCase())) return accounts.find((item) => item.toUpperCase() === name.toUpperCase()) || name;
+    return accounts[0] || name;
+}
+
+function presentTrade(row) {
+    const count = row.count || 0;
+    return {
+        username: row.username,
+        env: row.env,
         signal: row.signal,
-        count: row.count,
-        winRate: row.count ? (row.wins / row.count) * 100 : 0,
-        profit: row.profit,
-    }));
+        count,
+        winRate: count ? (row.wins / count) * 100 : 0,
+        profit: roundMoney(row.profit),
+    };
 }
 
-async function listPerformance(mine) {
-    const envs = [...new Set(mine.flatMap((bot) => bot.accounts || []).map((env) => String(env || "").trim()).filter(Boolean))];
+function foldTrades(rows, envUser, todayOnly) {
+    const grouped = new Map();
+    for (const row of rows || []) {
+        if (todayOnly && row?._id?.today !== true) continue;
+        const env = String(row?._id?.env || "").trim();
+        const signal = String(row?._id?.signal || "").trim().toUpperCase();
+        if (!env || !signal) continue;
+        const username = envUser.get(env) || envUser.get(env.toUpperCase()) || "";
+        const key = `${username || env}\n${env}\n${signal}`;
+        const bucket = grouped.get(key) || {
+            username,
+            env,
+            signal,
+            count: 0,
+            wins: 0,
+            profit: 0,
+        };
+        bucket.count += row.count || 0;
+        bucket.wins += row.wins || 0;
+        bucket.profit += Number(row.profit) || 0;
+        grouped.set(key, bucket);
+    }
+    return [...grouped.values()].map(presentTrade);
+}
+
+async function listPerformance(bots) {
+    const envUser = new Map();
+    const walletByUser = new Map();
+    for (const bot of bots || []) {
+        if (!bot?.username) continue;
+        walletByUser.set(bot.username, walletEnv(bot));
+        for (const env of bot.accounts || []) {
+            const name = String(env || "").trim();
+            if (!name) continue;
+            if (!envUser.has(name)) envUser.set(name, bot.username);
+            if (!envUser.has(name.toUpperCase())) envUser.set(name.toUpperCase(), bot.username);
+        }
+        if (!envUser.has(bot.username)) envUser.set(bot.username, bot.username);
+    }
+    const envs = [...envUser.keys()];
     const from = new Date(Date.now() - 7 * DAY_MS);
-    const todayFrom = startOfVnDay();
-    const empty = { from, todayFrom, to: new Date(), todayLosing: [], losingSignals: [], lowWinRate: [] };
+    const todayFrom = startOfUtcDay();
+    const empty = { from, todayFrom, to: new Date(), accountLosses: [], todayLosing: [], losingSignals: [], lowWinRate: [] };
     if (!envs.length) return empty;
-    const grouped = await AccountStatic.aggregate([
-        { $match: { env: { $in: envs }, openTime: { $gte: from }, isPaper: { $ne: true } } },
-        { $group: {
-            _id: {
-                signal: "$typeSignal",
-                today: { $cond: [{ $gte: ["$openTime", todayFrom] }, true, false] },
-            },
-            count: { $sum: 1 },
-            wins: { $sum: { $cond: [{ $eq: ["$status", "WIN"] }, 1, 0] } },
-            profit: { $sum: { $ifNull: ["$profit", 0] } },
-        } },
+    const recent = {
+        env: { $in: envs },
+        isPaper: { $ne: true },
+        $or: [{ closeTime: { $gte: from } }, { openTime: { $gte: from } }],
+    };
+    const [grouped, wallets] = await Promise.all([
+        AccountStatic.aggregate([
+            { $match: recent },
+            { $group: {
+                _id: {
+                    env: "$env",
+                    signal: "$typeSignal",
+                    today: { $cond: [{ $or: [{ $gte: ["$closeTime", todayFrom] }, { $gte: ["$openTime", todayFrom] }] }, true, false] },
+                },
+                count: { $sum: 1 },
+                wins: { $sum: { $cond: [{ $eq: ["$status", "WIN"] }, 1, 0] } },
+                profit: { $sum: { $ifNull: ["$profit", 0] } },
+            } },
+        ]),
+        FuturesProfit.find({
+            env: { $in: [...new Set([...walletByUser.values(), ...walletByUser.keys()].flatMap((item) => {
+                const name = String(item || "").trim();
+                return name ? [name, name.toUpperCase()] : [];
+            }))] },
+            day: { $gte: todayFrom, $lt: new Date(todayFrom.getTime() + DAY_MS) },
+        }).select("env profit").lean(),
     ]);
-    const week = foldSignals(grouped, false);
-    const today = foldSignals(grouped, true);
-    const byLoss = (rows) => rows.filter((row) => row.profit < 0).sort((a, b) => a.profit - b.profit || b.count - a.count);
+    const byLoss = (rows) => rows.filter((row) => row.profit < 0).sort((a, b) => a.profit - b.profit || b.count - a.count || a.username.localeCompare(b.username));
+    const todayLosing = byLoss(foldTrades(grouped, envUser, true)).slice(0, 12);
+    const week = foldTrades(grouped, envUser, false);
+    const losingSignals = byLoss(week).slice(0, 12);
     const lowWinRate = week
         .filter((row) => row.count >= 3 && row.winRate < 50)
-        .sort((a, b) => a.winRate - b.winRate || a.profit - b.profit);
-    return {
-        from,
-        todayFrom,
-        to: new Date(),
-        todayLosing: byLoss(today).slice(0, 8),
-        losingSignals: byLoss(week).slice(0, 8),
-        lowWinRate: lowWinRate.slice(0, 8),
-    };
+        .sort((a, b) => a.winRate - b.winRate || a.profit - b.profit)
+        .slice(0, 12);
+    const profitByEnv = new Map();
+    for (const doc of wallets || []) {
+        const key = String(doc?.env || "").toUpperCase();
+        if (!key || profitByEnv.has(key)) continue;
+        profitByEnv.set(key, roundMoney(doc.profit));
+    }
+    const accountLosses = [...walletByUser.entries()]
+        .map(([username, env]) => {
+            const walletKey = String(env || "").toUpperCase();
+            const userKey = String(username || "").toUpperCase();
+            const profit = profitByEnv.has(walletKey) ? profitByEnv.get(walletKey) : profitByEnv.has(userKey) ? profitByEnv.get(userKey) : null;
+            const signals = todayLosing.filter((row) => row.username === username).slice(0, 5);
+            return { username, env, profit, signals };
+        })
+        .filter((row) => row.profit != null && row.profit < 0)
+        .sort((a, b) => a.profit - b.profit || a.username.localeCompare(b.username))
+        .slice(0, 8);
+    return { from, todayFrom, to: new Date(), accountLosses, todayLosing, losingSignals, lowWinRate };
 }
 
 function seesAll(actor) {
@@ -295,7 +356,7 @@ async function listSignalSetup(actor, input = {}) {
     ]);
     const stats = buildSignalStats(docs, mineEnvs, channels, parseErrors, removed);
     const performance = hasPermission(actor, PERMISSIONS.STATISTICS_VIEW)
-        ? await listPerformance(mine)
+        ? await listPerformance(visible)
         : null;
     return {
         bots,

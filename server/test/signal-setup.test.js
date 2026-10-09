@@ -6,6 +6,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
 const AccountStatic = require("../src/models/account-static");
+const FuturesProfit = require("../src/models/futures-profit");
 const TelegramClient = require("../src/models/telegram-client");
 const RuntimeLog = require("../src/models/runtime-log");
 const { mergeSignals, listSignalSetup, applySignals } = require("../src/lib/signal-setup");
@@ -37,6 +38,7 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         logs: RuntimeLog.find,
         aggregate: RuntimeLog.aggregate,
         statics: AccountStatic.aggregate,
+        wallets: FuturesProfit.find,
     };
     let parseMatch;
     UserAccount.findOne = async () => ({ username: "V", accounts: ["V1"], ownerUserId: "other", visibility: "public", active: true });
@@ -61,7 +63,8 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         parseMatch = pipeline[0].$match;
         return [{ _id: "ROSE", count: 4, lastAt: new Date("2026-10-02T00:00:00Z"), sample: "Parse thiếu side hoặc symbol ROSE" }];
     };
-    AccountStatic.aggregate = async () => [{ _id: { env: "V1", signal: "ROSE" }, count: 4, wins: 1, profit: -12 }];
+    AccountStatic.aggregate = async () => [{ _id: { env: "V1", signal: "ROSE", today: true }, count: 4, wins: 1, profit: -12 }];
+    FuturesProfit.find = () => query([{ env: "V1", profit: -40 }]);
     try {
         const view = await listSignalSetup(operator, { username: "V" });
         assert.deepEqual(view.bots.map((row) => row.username), ["V"]);
@@ -78,10 +81,15 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         assert.equal(view.usage[0].autoRemove, 1);
         assert.equal(view.usage[0].parseErrors, 4);
         assert.equal(view.usage[0].removed, 1);
+        assert.equal(view.performance.losingSignals[0].username, "V");
         assert.equal(view.performance.losingSignals[0].signal, "ROSE");
         assert.equal(view.performance.losingSignals[0].profit, -12);
         assert.equal(view.performance.lowWinRate[0].signal, "ROSE");
         assert.equal(view.performance.lowWinRate[0].winRate, 25);
+        assert.equal(view.performance.accountLosses[0].username, "V");
+        assert.equal(view.performance.accountLosses[0].profit, -40);
+        assert.equal(view.performance.accountLosses[0].signals[0].signal, "ROSE");
+        assert.equal(view.performance.accountLosses[0].profit, -40);
         assert.deepEqual(parseMatch.signal.$in, ["ROSE"]);
         assert.deepEqual(view.removed.map((row) => row.env), ["V1"]);
     } finally {
@@ -92,11 +100,12 @@ test("listSignalSetup lists channels without secrets and scopes parse errors to 
         RuntimeLog.find = originals.logs;
         RuntimeLog.aggregate = originals.aggregate;
         AccountStatic.aggregate = originals.statics;
+        FuturesProfit.find = originals.wallets;
     }
 });
 
 test("catalog counts signals only on owned or assigned accounts", async () => {
-    const originals = { users: UserAccount.find, configs: AccountConfig.find, channels: TelegramClient.find, logs: RuntimeLog.find, aggregate: RuntimeLog.aggregate, statics: AccountStatic.aggregate };
+    const originals = { users: UserAccount.find, configs: AccountConfig.find, channels: TelegramClient.find, logs: RuntimeLog.find, aggregate: RuntimeLog.aggregate, statics: AccountStatic.aggregate, wallets: FuturesProfit.find };
     UserAccount.find = () => query([
         { username: "OWN", accounts: ["O1"], ownerUserId: "admin", visibility: "public", active: true },
         { username: "ELSE", accounts: ["E1"], ownerUserId: "other", visibility: "public", active: true },
@@ -109,6 +118,7 @@ test("catalog counts signals only on owned or assigned accounts", async () => {
     RuntimeLog.find = () => query([]);
     RuntimeLog.aggregate = async () => [];
     AccountStatic.aggregate = async () => [];
+    FuturesProfit.find = () => query([]);
     try {
         const view = await listSignalSetup(admin, {});
         assert.deepEqual(view.bots.map((row) => row.username), ["OWN"]);
@@ -122,6 +132,7 @@ test("catalog counts signals only on owned or assigned accounts", async () => {
         RuntimeLog.find = originals.logs;
         RuntimeLog.aggregate = originals.aggregate;
         AccountStatic.aggregate = originals.statics;
+        FuturesProfit.find = originals.wallets;
     }
 });
 

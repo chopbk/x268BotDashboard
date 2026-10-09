@@ -53,9 +53,10 @@ export default function SignalStatsPanel({ onFindConfig }) {
   const wanted = (row) => !signalSet.size || signalSet.has(String(row.signal || "").toUpperCase());
   const usage = (data?.usage || []).filter(wanted);
   const performance = data?.performance || null;
-  const todayLosing = (performance?.todayLosing || []).filter(wanted);
-  const losingSignals = (performance?.losingSignals || []).filter(wanted);
-  const lowWinRate = (performance?.lowWinRate || []).filter(wanted);
+  const accountLosses = (performance?.accountLosses || []).filter((row) => !fromEnv || (row.signals || []).some((item) => item.env === fromEnv) || row.env === fromEnv);
+  const todayLosing = (performance?.todayLosing || []).filter((row) => wanted(row) && (!fromEnv || row.env === fromEnv));
+  const losingSignals = (performance?.losingSignals || []).filter((row) => wanted(row) && (!fromEnv || row.env === fromEnv));
+  const lowWinRate = (performance?.lowWinRate || []).filter((row) => wanted(row) && (!fromEnv || row.env === fromEnv));
   const channels = data?.channels || [];
   const orphanChannels = data?.orphanChannels || [];
   const parseErrors = (data?.parseErrors || []).filter(wanted);
@@ -85,27 +86,27 @@ export default function SignalStatsPanel({ onFindConfig }) {
           {" · "}{summary.parseErrors || 0} lỗi parse trong 7 ngày
           {" · "}{summary.removed || 0} lần bị gỡ trong 14 ngày
         </p>
-        <p className="muted">Số liệu lấy trên account bạn sở hữu hoặc được gán. Lỗi parse và lần bị gỡ chỉ có sau khi listener và monitor chạy bản mới.</p>
+        <p className="muted">Bảng phía dưới lấy account bạn sở hữu hoặc được gán. Phần lỗ lãi gồm mọi user bạn được xem, ngày UTC cùng sổ /income. Lỗi parse và lần bị gỡ chỉ có sau khi listener và monitor chạy bản mới.</p>
         {performance ? (
           <>
-            <p>Hôm nay lỗ nhiều</p>
+            <p>Tài khoản lỗ hôm nay</p>
+            {accountLosses.length ? accountLosses.map((row) => (
+              <p key={`acct-${row.username}`}>{row.username} lỗ {money(row.profit)} trên tài khoản. {row.signals?.length ? `Signal lỗ: ${row.signals.map((item) => `${item.env} · ${item.signal} ${money(item.profit)} · ${item.count} lệnh · win rate ${pct(item.winRate)}`).join("; ")}.` : "Chưa có signal live lỗ trong ngày này, cần xem income của tài khoản."}</p>
+            )) : <p className="muted">Hôm nay chưa có tài khoản lỗ trên sổ income.</p>}
+            <p>Signal lỗ theo user, hôm nay (UTC)</p>
             {todayLosing.length ? todayLosing.map((row) => (
-              <p key={`today-${row.signal}`}>{row.signal} {money(row.profit)} · {row.count} lệnh · win rate {pct(row.winRate)}</p>
+              <p key={`today-${row.username}-${row.env}-${row.signal}`}>{row.username} · {row.env} · {row.signal} {money(row.profit)} · {row.count} lệnh · win rate {pct(row.winRate)}</p>
             )) : <p className="muted">Hôm nay chưa có signal lỗ.</p>}
-            <p>7 ngày lỗ nhiều</p>
+            <p>Signal lỗ theo user, 7 ngày</p>
             {losingSignals.length ? losingSignals.map((row) => (
-              <p key={`week-${row.signal}`}>{row.signal} {money(row.profit)} · {row.count} lệnh · win rate {pct(row.winRate)}</p>
+              <p key={`week-${row.username}-${row.env}-${row.signal}`}>{row.username} · {row.env} · {row.signal} {money(row.profit)} · {row.count} lệnh · win rate {pct(row.winRate)}</p>
             )) : <p className="muted">7 ngày chưa có signal lỗ.</p>}
-            <p>Win rate thấp, 7 ngày, từ 3 lệnh</p>
+            <p>Win rate thấp theo user, 7 ngày, từ 3 lệnh</p>
             {lowWinRate.length ? lowWinRate.map((row) => (
-              <p key={`wr-${row.signal}`}>{row.signal} win rate {pct(row.winRate)} · {row.count} lệnh · {money(row.profit)}</p>
+              <p key={`wr-${row.username}-${row.env}-${row.signal}`}>{row.username} · {row.env} · {row.signal} win rate {pct(row.winRate)} · {row.count} lệnh · {money(row.profit)}</p>
             )) : <p className="muted">Không có signal dưới 50% trong 7 ngày.</p>}
           </>
         ) : <p className="muted">Cần quyền xem thống kê để thấy signal lỗ và win rate.</p>}
-        <p>Lỗi parse</p>
-        {parseErrors.length ? parseErrors.map((row) => (
-          <p key={`parse-${row.signal || row.sample}`}>{row.signal || "Không rõ signal"} lỗi parse {row.count} lần trong 7 ngày</p>
-        )) : <p className="muted">Không có lỗi parse trong 7 ngày.</p>}
         {signalSet.size || fromEnv ? <p className="muted">Số tổng phía trên là cả user. Các bảng bên dưới chỉ giữ signal và config đang xem.</p> : null}
       </section>
       <section className="card">
