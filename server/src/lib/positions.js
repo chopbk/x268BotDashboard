@@ -589,12 +589,12 @@ function filterRows(rows, query = {}) {
         if (signal && !(row.monitors || []).some((monitor) => `${monitor.signal || ""} ${monitor.type || ""}`.toUpperCase().includes(signal))) return false;
         if (side && row.side !== side) return false;
         if (book === "all") {
-            // giữ live và paper
+            if (row.book === "pending") return false;
         } else if (book === "notpsl") {
             if (!row.notpsl && !row.monitors.some((monitor) => monitor.notpsl)) return false;
         } else if (book === "paper" || book === "pending") {
             if (row.book !== book) return false;
-        } else if (row.book === "paper") return false;
+        } else if (row.book === "paper" || row.book === "pending") return false;
         if (env && !row.monitors.some((monitor) => monitor.env === env)) return false;
         if (warn && !row.warnings.length) return false;
         return true;

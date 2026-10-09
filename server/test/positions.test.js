@@ -399,6 +399,10 @@ test("default audience is mine and paper stays out until asked", async () => {
         });
         assert.equal(closed.length, 0);
         assert.equal(filterRows([{ book: "paper", symbol: "ETHUSDT", side: "LONG", monitors: [], warnings: [] }], {}).length, 0);
+        const resting = { book: "pending", symbol: "ETHUSDT", side: "LONG", monitors: [], warnings: [] };
+        assert.equal(filterRows([resting], {}).length, 0);
+        assert.equal(filterRows([resting], { book: "all" }).length, 0);
+        assert.equal(filterRows([resting], { book: "pending" }).length, 1);
     } finally {
         UserAccount.find = originals.users;
         MonitorPosition.find = originals.monitors;

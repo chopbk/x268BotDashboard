@@ -44,12 +44,12 @@ function matches(row, params) {
   if (signal && !(row.monitors || []).some((monitor) => `${monitor.signal || ""} ${monitor.type || ""}`.toUpperCase().includes(signal))) return false;
   if (side && row.side !== side) return false;
   if (book === "all") {
-    // live và paper
+    if (row.book === "pending") return false;
   } else if (book === "notpsl") {
     if (!row.notpsl && !row.monitors.some((monitor) => monitor.notpsl)) return false;
   } else if (book === "paper" || book === "pending") {
     if (row.book !== book) return false;
-  } else if (row.book === "paper") return false;
+  } else if (row.book === "paper" || row.book === "pending") return false;
   if (env && !row.monitors.some((monitor) => monitor.env === env)) return false;
   if (params.get("warn") === "1" && !row.warnings.length) return false;
   return true;
@@ -429,7 +429,7 @@ export default function PositionsPage() {
                     <td>
                       <span className="pos-inline">
                         <button type="button" className="linkish" data-row={row.key} onClick={(event) => { setMonitorId(""); go((query) => query.set("panel", row.key), { layer: true }); event.currentTarget.blur(); }}>{row.symbol}</button>
-                        <span className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}</span>
+                        <span className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}{row.book === "pending" ? " · lệnh chờ" : ""}</span>
                       </span>
                     </td>
                     <td>{qtyOf(row) == null ? "—" : fmt(qtyOf(row))}</td>
