@@ -888,6 +888,29 @@ td.negative { color: var(--danger); }
   .audit-search { width: 100%; }
 }
 
+.pos-toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+}
+.pos-toast {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel, #12141a);
+  color: inherit;
+  text-align: left;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 28%, transparent);
+  cursor: pointer;
+  font: inherit;
+}
+.pos-toast-close { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.pos-toast-open { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.pos-toast-size { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .pos-status { margin: 8px 0; font-size: 0.85rem; }
 .pos-stale { color: var(--danger); }
 .pos-up { color: var(--ok); }

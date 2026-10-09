@@ -50,7 +50,7 @@ Hiển thị position cha theo account/symbol/side, tối đa hai dòng: số li
 
 Danh sách vị thế là `positionRisk` của sàn. `monitor_positions` chỉ bổ sung thời gian vào lệnh, signal và qty riêng. Vị thế sàn không có monitor vẫn hiện. Monitor không còn trên sổ sàn thì không hiện ở danh sách. Hai monitor cùng một vị thế mà mỗi bản ghi đang lưu amount cả sàn thì không báo lệch qty. Snapshot do monitor dựng không phải sổ sàn. Redis thiếu key hoặc API sàn lỗi thì vẫn hiện monitor và báo lỗi, không biến các dòng đó thành đã đóng.
 
-WebSocket chạy cho một tài khoản hoặc Tất cả các tài khoản được phép. Ẩn tab dừng watcher; mở lại/reconnect đối chiếu sàn, dùng chung theo tài khoản. Có HTTP fallback nếu 30 giây không nhận snapshot. REST thường lấy `positionRisk`, `openOrders`, `openAlgoOrders`; income/history/trades bổ sung khi thiếu cache hoặc bấm Cập nhật sàn. Mark price public cập nhật view mỗi 15 giây, không làm mới tuổi dữ liệu vị thế. Xem [protocol và backoff](flows.md#4-position-live).
+Khi sổ live đổi (đóng, mở, đổi size), trang Position hiện toast trong trang. Tab đang ẩn thì dùng thông báo trình duyệt nếu user đã bấm Bật thông báo trình duyệt. Đổi bộ lọc tài khoản không tạo toast giả. WebSocket chạy cho một tài khoản hoặc Tất cả các tài khoản được phép. Ẩn tab dừng watcher; mở lại/reconnect đối chiếu sàn, dùng chung theo tài khoản. Có HTTP fallback nếu 30 giây không nhận snapshot. REST thường lấy `positionRisk`, `openOrders`, `openAlgoOrders`; income/history/trades bổ sung khi thiếu cache hoặc bấm Cập nhật sàn. Mark price public cập nhật view mỗi 15 giây, không làm mới tuổi dữ liệu vị thế. Xem [protocol và backoff](flows.md#4-position-live).
 
 ## Số liệu: không so sánh khác nguồn như cùng một chỉ số
 

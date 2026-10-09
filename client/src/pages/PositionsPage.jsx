@@ -1,8 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useEscape } from "../navigation";
+import { alertText, positionAlerts } from "../position-alerts";
 import { POSITION_COLUMNS, qtyOf, roiOf, sortedRows, volumeOf } from "../position-sort";
 import PositionHistory from "./PositionHistory";
 
@@ -91,6 +92,42 @@ export default function PositionsPage() {
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [historyAccounts, setHistoryAccounts] = useState([]);
+  const [notices, setNotices] = useState([]);
+  const [notifyReady, setNotifyReady] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted");
+  const watchKeyRef = useRef("");
+
+  function pushNotices(alerts) {
+    if (!alerts.length) return;
+    setNotices((prev) => [...alerts, ...prev].slice(0, 8));
+    for (const alert of alerts) {
+      window.setTimeout(() => {
+        setNotices((prev) => prev.filter((item) => item.id !== alert.id));
+      }, 8000);
+      if (document.visibilityState !== "hidden") continue;
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") continue;
+      try {
+        new Notification("Vị thế", { body: alertText(alert), tag: alert.id });
+      } catch (error) {
+        console.error("[positions]", error);
+      }
+    }
+  }
+
+  function acceptView(prev, view) {
+    if (!view) return prev;
+    const versions = new Map((prev?.sources || []).map((item) => [item.account, item.version]));
+    if ((view.sources || []).some((item) => item.version != null && versions.get(item.account) != null && item.version < versions.get(item.account))) {
+      return prev;
+    }
+    const key = `${account}|${audience}|${book}`;
+    if (watchKeyRef.current === key && prev) {
+      const alerts = positionAlerts(prev, view);
+      if (alerts.length) queueMicrotask(() => pushNotices(alerts));
+    } else {
+      watchKeyRef.current = key;
+    }
+    return view;
+  }
 
   function go(mutate, { replace = false, layer = false } = {}) {
     const next = new URLSearchParams(location.search);
@@ -128,12 +165,8 @@ export default function PositionsPage() {
     let pushRevision = 0;
 
     function apply(view) {
-      if (gone || document.visibilityState === "hidden" || !view) return;
-      setPayload((prev) => {
-        const versions = new Map((prev?.sources || []).map((item) => [item.account, item.version]));
-        if ((view.sources || []).some((item) => item.version != null && versions.get(item.account) != null && item.version < versions.get(item.account))) return prev;
-        return view;
-      });
+      if (gone || !view) return;
+      setPayload((prev) => acceptView(prev, view));
     }
 
     async function load() {
@@ -370,11 +403,7 @@ export default function PositionsPage() {
           setRefreshing(true);
           try {
             const view = await api("/api/positions/refresh", { method: "POST", body: { account, audience, book }, timeoutMs: 60000 });
-            setPayload((prev) => {
-              const versions = new Map((prev?.sources || []).map((item) => [item.account, item.version]));
-              if ((view.sources || []).some((item) => item.version != null && versions.get(item.account) != null && item.version < versions.get(item.account))) return prev;
-              return view;
-            });
+            setPayload((prev) => acceptView(prev, view));
             setError("");
           } catch (err) {
             console.error("[positions]", err);
@@ -384,6 +413,16 @@ export default function PositionsPage() {
           }
         }}>{refreshing ? "Đang cập nhật…" : "Cập nhật sàn"}</button>
         {canOpen && tab === "open" ? <button type="button" onClick={() => setDraft({ account: account || "", env: "", symbol: "", side: "LONG", signal: "NOTPSL", positionAmt: "" })}>Thêm monitor position</button> : null}
+        {tab === "open" && canPositions && typeof Notification !== "undefined" && !notifyReady ? (
+          <button type="button" className="ghost" title="Khi tab đang ẩn, trình duyệt sẽ hiện thông báo đóng/mở vị thế" onClick={async () => {
+            try {
+              const permission = await Notification.requestPermission();
+              setNotifyReady(permission === "granted");
+            } catch (error) {
+              console.error("[positions]", error);
+            }
+          }}>Bật thông báo trình duyệt</button>
+        ) : null}
         <label>Bất thường
           <select value={params.get("warn") || ""} disabled={tab === "history"} title={tab === "history" ? "Cảnh báo chỉ áp cho vị thế đang mở" : ""} onChange={(event) => setFilter("warn", event.target.value)}>
             <option value="">Tất cả</option>
@@ -393,7 +432,17 @@ export default function PositionsPage() {
       </form>
       {tab === "history" ? <PositionHistory params={params} go={go} canStats={canHistory} onAccounts={setHistoryAccounts} /> : null}
       {tab === "open" && !canPositions ? <p className="muted">Cần quyền positions.view để xem vị thế đang mở.</p> : null}
-      {tab === "open" && canPositions ? <><p className={stale ? "pos-status pos-stale" : "pos-status"}>
+      {tab === "open" && canPositions ? <>
+      {notices.length ? (
+        <div className="pos-toast-stack" aria-live="polite">
+          {notices.map((alert) => (
+            <button key={alert.id} type="button" className={`pos-toast pos-toast-${alert.kind}`} onClick={() => setNotices((prev) => prev.filter((item) => item.id !== alert.id))}>
+              {alertText(alert)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <p className={stale ? "pos-status pos-stale" : "pos-status"}>
         {account
           ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Dữ liệu vị thế chưa được xác minh gần đây" : "Snapshot")
           : (stale ? "Dữ liệu vị thế chưa được xác minh gần đây" : "Live · các tài khoản được phép xem")}
