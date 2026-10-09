@@ -890,7 +890,8 @@ td.negative { color: var(--danger); }
 .pos-alert { background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .pos-child td { color: var(--muted); font-size: 0.82rem; }
 .pos-table { width: 100%; border-collapse: collapse; }
-.pos-table th, .pos-table td { padding: 8px 10px; text-align: left; white-space: nowrap; }
+.pos-table th, .pos-table td { padding: 8px 10px; text-align: left; white-space: nowrap; vertical-align: top; }
+.pos-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }

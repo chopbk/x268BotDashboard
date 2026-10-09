@@ -1,7 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { useEscape } from "../navigation";
+import { POSITION_COLUMNS, qtyOf, roiOf, sortedRows, volumeOf } from "../position-sort";
 
 const WARN = {
   "no-monitor": "Chưa có monitor",
@@ -50,7 +52,19 @@ function matches(row, params) {
   return true;
 }
 
+const ACTION_NOTE = "Market, Limit, Reverse và thêm TP/SL chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
+
+function tpslText(row) {
+  const monitors = row.monitors || [];
+  const sl = monitors.map((monitor) => monitor.sl).find(Boolean);
+  const tp = monitors.map((monitor) => monitor.tp).find(Boolean);
+  if (!sl && !tp) return monitors.length ? "Chưa có TP/SL" : "—";
+  return `TP ${tp || "—"} / SL ${sl || "—"}`;
+}
+
 export default function PositionsPage() {
+  const { user } = useAuth();
+  const canClose = (user?.permissions || []).includes("positions.close");
   const location = useLocation();
   const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -65,6 +79,8 @@ export default function PositionsPage() {
   const [detailError, setDetailError] = useState("");
   const [monitorId, setMonitorId] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [sort, setSort] = useState({ key: "", dir: "desc" });
+  const [actionNote, setActionNote] = useState("");
 
   function go(mutate, { replace = false, layer = false } = {}) {
     const next = new URLSearchParams(location.search);
@@ -219,7 +235,17 @@ export default function PositionsPage() {
     return () => { gone = true; };
   }, [panel, monitorId]);
 
-  const rows = useMemo(() => (payload?.rows || []).filter((row) => matches(row, params)), [payload, params]);
+  const rows = useMemo(
+    () => sortedRows((payload?.rows || []).filter((row) => matches(row, params)), sort.key, sort.dir),
+    [payload, params, sort]
+  );
+
+  function toggleSort(key) {
+    setSort((prev) => {
+      if (prev.key !== key) return { key, dir: POSITION_COLUMNS.find((column) => column.id === key)?.text ? "asc" : "desc" };
+      return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+    });
+  }
   const selected = rows.find((row) => row.key === panel) || (payload?.rows || []).find((row) => row.key === panel);
   const envs = [...new Set((payload?.accounts || []).flatMap((item) => item.accounts || []))];
   const connection = payload?.connection || "idle";
@@ -253,11 +279,31 @@ export default function PositionsPage() {
     });
   }
 
+  async function removeMonitor(monitor) {
+    const label = `${monitor.env || "monitor"} ${monitor.signal || ""}`.trim();
+    if (!window.confirm(`Xoá bản ghi monitor ${label}? Lệnh trên sàn không bị đóng.`)) return;
+    try {
+      await api(`/api/positions/monitors/${encodeURIComponent(monitor.id)}`, { method: "DELETE" });
+      setPayload((prev) => prev && ({
+        ...prev,
+        rows: (prev.rows || []).map((row) => ({
+          ...row,
+          monitors: (row.monitors || []).filter((item) => item.id !== monitor.id),
+        })),
+      }));
+      setError("");
+      setActionNote("");
+    } catch (err) {
+      console.error("[positions]", err);
+      setError(err.message || "Không xoá được monitor");
+    }
+  }
+
   return (
     <section className="stack">
       <header>
         <h1>Position</h1>
-        <p className="muted">Danh sách là vị thế đang mở trên sàn. Monitor chỉ thêm thời gian vào lệnh, signal và qty riêng. Mặc định không gồm paper. Không đặt hay đóng lệnh từ đây.</p>
+        <p className="muted">Size, TP/SL và nút xoá lấy từ monitor position. Volume là qty × mark. Bấm tiêu đề cột để sắp xếp. Market, Limit và Reverse chưa gửi lệnh lên sàn.</p>
       </header>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
         <label>Phạm vi
@@ -325,6 +371,7 @@ export default function PositionsPage() {
         {payload?.version != null ? ` · v${payload.version}` : ""}
         {payload?.updatedAt ? ` · cập nhật ${when(payload.updatedAt)}` : ""}
       </p>
+      {actionNote ? <p className="muted">{actionNote}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       {payload?.exchangeErrors?.length ? <p className="form-error">{payload.exchangeErrors.map((item) => `${item.account}: ${item.error}`).join(" · ")}</p> : null}
       {!payload ? <p className="muted">Đang tải…</p> : null}
@@ -336,36 +383,62 @@ export default function PositionsPage() {
             <thead>
               <tr>
                 <th />
-                <th>Tài khoản</th>
-                <th>Symbol</th>
-                <th>Side</th>
-                <th>Qty sàn</th>
-                <th>Entry</th>
-                <th>Mark</th>
-                <th>PnL</th>
-                <th>Leverage</th>
-                <th>Liq</th>
+                {POSITION_COLUMNS.slice(0, 6).map((column) => (
+                  <th key={column.id} aria-sort={sort.key === column.id ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                    <button type="button" className="sort-col" title={column.title} onClick={() => toggleSort(column.id)}>
+                      {column.label}{sort.key === column.id ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
+                    </button>
+                  </th>
+                ))}
+                <th>Đóng</th>
+                <th>TP/SL</th>
+                {POSITION_COLUMNS.slice(6).map((column) => (
+                  <th key={column.id} aria-sort={sort.key === column.id ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                    <button type="button" className="sort-col" title={column.title} onClick={() => toggleSort(column.id)}>
+                      {column.label}{sort.key === column.id ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
+                    </button>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {rows.map((row) => {
+                const roi = roiOf(row);
+                return (
                 <Fragment key={row.key}>
                   <tr className={row.warnings.length ? "pos-alert" : ""}>
                     <td><button type="button" className="ghost" onClick={() => toggle(row.key)}>{open.has(row.key) ? "−" : "+"}</button></td>
                     <td>{row.account}</td>
-                    <td><button type="button" className="linkish" data-row={row.key} onClick={(event) => { setMonitorId(""); go((query) => query.set("panel", row.key), { layer: true }); event.currentTarget.blur(); }}>{row.symbol}</button></td>
-                    <td>{row.side} · {row.book}{row.notpsl ? " · NOTPSL" : ""}</td>
-                    <td>{row.exchangeQty == null ? "—" : fmt(row.exchangeQty)}</td>
+                    <td>
+                      <button type="button" className="linkish" data-row={row.key} onClick={(event) => { setMonitorId(""); go((query) => query.set("panel", row.key), { layer: true }); event.currentTarget.blur(); }}>{row.symbol}</button>
+                      <div className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}</div>
+                    </td>
+                    <td>{qtyOf(row) == null ? "—" : fmt(qtyOf(row))}</td>
                     <td>{fmt(row.entry)}</td>
                     <td>{fmt(row.mark)}</td>
-                    <td className={pnlClass(row.unrealized)}>{row.unrealized == null ? "—" : fmt(row.unrealized)}</td>
-                    <td>{row.leverage == null ? "—" : fmt(row.leverage, 2)}</td>
+                    <td className={pnlClass(row.unrealized)}>
+                      {row.unrealized == null ? "—" : fmt(row.unrealized, 2)}
+                      {roi == null ? null : <div>{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</div>}
+                    </td>
+                    <td className="pos-actions">
+                      <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Market</button>
+                      <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Limit</button>
+                      <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
+                      {canClose ? row.monitors.map((monitor) => (
+                        <button key={monitor.id} type="button" className="ghost" onClick={() => removeMonitor(monitor)}>Xoá {monitor.env || "monitor"}</button>
+                      )) : null}
+                    </td>
+                    <td>
+                      {tpslText(row)}
+                      <div><button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button></div>
+                    </td>
                     <td>{fmt(row.liquidation)}</td>
+                    <td>{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</td>
                   </tr>
                   {open.has(row.key) ? row.monitors.map((monitor) => (
                     <tr key={monitor.id} className="pos-child">
                       <td />
-                      <td colSpan={9}>
+                      <td colSpan={10}>
                         <button type="button" className="linkish" onClick={() => { setMonitorId(monitor.id); go((query) => query.set("panel", row.key), { layer: true }); }}>
                           {monitor.env || "config"}
                         </button>
@@ -383,10 +456,11 @@ export default function PositionsPage() {
                       </td>
                     </tr>
                   )) : null}
-                  {open.has(row.key) && !row.monitors.length ? <tr className="pos-child"><td /><td colSpan={9}>Không có monitor cho vị thế này.</td></tr> : null}
-                  {row.warnings.length ? <tr className="pos-child"><td /><td colSpan={9}>{row.warnings.map((item) => WARN[item] || item).join(" · ")}</td></tr> : null}
+                  {open.has(row.key) && !row.monitors.length ? <tr className="pos-child"><td /><td colSpan={10}>Không có monitor cho vị thế này.</td></tr> : null}
+                  {row.warnings.length ? <tr className="pos-child"><td /><td colSpan={10}>{row.warnings.map((item) => WARN[item] || item).join(" · ")}</td></tr> : null}
                 </Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -4,7 +4,8 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const { createRateLimit } = require("../middleware/rate-limit");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
-const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots } = require("../lib/positions");
+const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots, deleteMonitorRecord } = require("../lib/positions");
+const { safeRecordAudit } = require("../lib/audit");
 const { cached, readExchangeBook, readExchangeBooks, saveExchangeBook } = require("../lib/position-live");
 const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "positions" });
 const { loadExchangeBook } = require("../lib/position-feed");
@@ -50,6 +51,28 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
         }));
     } catch (error) {
         sendError(res, error, "POST /api/positions/refresh");
+    }
+});
+
+router.delete("/monitors/:id", requireAuth, requirePermission(PERMISSIONS.POSITIONS_CLOSE), async (req, res) => {
+    try {
+        const id = String(req.params.id || "");
+        if (!mongoose.Types.ObjectId.isValid(id)) throw httpError(404, "Không tìm thấy monitor");
+        const removed = await deleteMonitorRecord(req.webUser, id);
+        await safeRecordAudit({
+            action: "position.monitor_deleted",
+            actor: req.webUser,
+            targetType: "monitor_position",
+            target: { id: removed.id, username: removed.account },
+            changes: {
+                env: { from: removed.env, to: null },
+                symbol: { from: removed.symbol, to: null },
+                side: { from: removed.side, to: null },
+            },
+        });
+        res.json({ ok: true, ...removed });
+    } catch (error) {
+        sendError(res, error, "DELETE /api/positions/monitors/:id");
     }
 });
 

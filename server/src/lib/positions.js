@@ -599,6 +599,29 @@ function monitorDetail(doc, heartbeatFreshNow, now) {
     };
 }
 
+async function deleteMonitorRecord(actor, id, deps = {}) {
+    const UserAccount = deps.UserAccount || require("../models/user-account");
+    const Monitor = deps.Monitor || require("../models/monitor-position");
+    const doc = await Monitor.findById(id).lean();
+    if (!doc) throw httpError(404, "Không tìm thấy monitor");
+    const accounts = await UserAccount.find().select("username accounts ownerUserId visibility active").lean();
+    const active = (accounts || []).filter((row) => row?.username && row.active !== false);
+    const named = String(doc.futuresClientName || "").trim();
+    const owner = active.find((row) => row.username === named)
+        || active.find((row) => (row.accounts || []).includes(doc.env));
+    if (!owner || !canAccessResource(actor, PERMISSIONS.POSITIONS_CLOSE, owner)) {
+        throw httpError(403, "Không có quyền xoá monitor này");
+    }
+    await Monitor.deleteOne({ _id: doc._id });
+    return {
+        id: String(doc._id),
+        account: owner.username,
+        env: doc.env || "",
+        symbol: String(doc.symbol || "").toUpperCase(),
+        side: String(doc.side || "").toUpperCase(),
+    };
+}
+
 module.exports = {
     HEARTBEAT_MS,
     EXCHANGE_MAX_AGE_MS,
@@ -612,4 +635,5 @@ module.exports = {
     monitorOwner,
     heartbeatFresh,
     visibleBots,
+    deleteMonitorRecord,
 };

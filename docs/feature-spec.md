@@ -46,11 +46,11 @@ Thêm/gỡ signal giữ nguyên các tên không được yêu cầu xóa, tối
 
 ## Position
 
-Hiển thị position cha theo account/symbol/side và monitor con. Phân biệt qty tổng sàn với qty riêng từng monitor; không cộng nhầm snapshot tổng lặp lại ở các monitor. Có trạng thái pending, paper, không TP/SL và monitor chưa đồng bộ với sàn. Popup chi tiết lấy monitor, lệnh thường và algo orders đã lọc.
+Hiển thị position cha theo account/symbol/side và monitor con. Size, TP/SL và nút xoá lấy từ `monitor_positions`. Volume là qty nhân mark. Bấm tiêu đề cột để sắp xếp. Nút Market, Limit, Reverse và Add hiện trên dòng nhưng chưa gửi lệnh lên sàn. Xoá monitor cần `positions.close`, chỉ xoá bản ghi và không đóng lệnh sàn. Có trạng thái pending, paper, không TP/SL và monitor chưa đồng bộ với sàn. Popup chi tiết lấy monitor, lệnh thường và algo orders đã lọc.
 
 Danh sách vị thế là `positionRisk` của sàn. `monitor_positions` chỉ bổ sung thời gian vào lệnh, signal và qty riêng. Vị thế sàn không có monitor vẫn hiện. Monitor không còn trên sàn chỉ được gắn đã đóng khi sổ sàn tải được. Snapshot do monitor dựng không phải sổ sàn. Redis thiếu key hoặc API sàn lỗi thì vẫn hiện monitor và báo lỗi, không biến các dòng đó thành đã đóng.
 
-`positionRisk`, `openOrders` và `openAlgoOrders` chỉ gọi khi chưa có sổ `wb:ex`, khi bấm Cập nhật sàn, hoặc khi sổ quá 15 phút. Binance-bot vá qty từ ACCOUNT_UPDATE vào `wb:ex` và báo `wb:ex:notify`. Web đọc Redis đó. Mark price là stream public, tính lại trên view mỗi 15 giây, không gọi ba API trên. Lệnh sàn vẫn qua `wb:ord`. Không đặt hay đóng lệnh từ trang này.
+`positionRisk`, `openOrders` và `openAlgoOrders` chỉ gọi khi chưa có sổ `wb:ex`, khi bấm Cập nhật sàn, hoặc khi sổ quá 15 phút. Binance-bot vá qty từ ACCOUNT_UPDATE vào `wb:ex` và báo `wb:ex:notify`. Web đọc Redis đó. Mark price là stream public, tính lại trên view mỗi 15 giây, không gọi ba API trên. Lệnh sàn vẫn qua `wb:ord`. Nút Market, Limit và Reverse chưa gửi lệnh. Nút xoá chỉ xoá bản ghi monitor.
 
 ## Số liệu: không so sánh khác nguồn như cùng một chỉ số
 

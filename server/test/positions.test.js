@@ -6,7 +6,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 const UserAccount = require("../src/models/user-account");
 const MonitorPosition = require("../src/models/monitor-position");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
-const { buildPositionView, applyLiveMarks, filterRows, loadPositions, estimatedPnl } = require("../src/lib/positions");
+const { buildPositionView, applyLiveMarks, filterRows, loadPositions, estimatedPnl, deleteMonitorRecord } = require("../src/lib/positions");
 const { applyAccountUpdate, applyOrderUpdate, loadExchangeBook, resetExchangeCache } = require("../src/lib/position-feed");
 const { parseNotice, decideUpdate } = require("../src/lib/position-cache");
 const { watch, resetLive, bindRedis } = require("../src/lib/position-live");
@@ -389,6 +389,36 @@ test("exchange book cache does not call the exchange twice inside the window", a
     assert.equal(book.source, "rest");
     assert.equal(book.positions[0].symbol, "SOLUSDT");
     resetExchangeCache();
+});
+
+test("delete removes a monitor in scope and refuses a viewer", async () => {
+    const originals = {
+        users: UserAccount.find,
+        findById: MonitorPosition.findById,
+        deleteOne: MonitorPosition.deleteOne,
+    };
+    const doc = { _id: "m1", env: "V1", futuresClientName: "V", symbol: "BTCUSDT", side: "LONG" };
+    UserAccount.find = () => query([{ username: "V", accounts: ["V1"], ownerUserId: "u1", active: true }]);
+    MonitorPosition.findById = () => ({ lean: async () => doc });
+    let removed = null;
+    MonitorPosition.deleteOne = async (filter) => {
+        removed = filter;
+        return { deletedCount: 1 };
+    };
+    try {
+        const result = await deleteMonitorRecord(actor, "m1", { UserAccount, Monitor: MonitorPosition });
+        assert.equal(result.account, "V");
+        assert.equal(result.symbol, "BTCUSDT");
+        assert.equal(String(removed._id), "m1");
+        await assert.rejects(
+            () => deleteMonitorRecord({ id: "u1", role: "viewer", username: "me", botUsernames: ["V"] }, "m1", { UserAccount, Monitor: MonitorPosition }),
+            (error) => error.status === 403
+        );
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.findById = originals.findById;
+        MonitorPosition.deleteOne = originals.deleteOne;
+    }
 });
 
 test("a fresh exchange book skips the Binance call until it is old or refreshed", async () => {
