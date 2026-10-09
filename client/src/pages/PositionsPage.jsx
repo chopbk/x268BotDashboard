@@ -281,7 +281,7 @@ export default function PositionsPage() {
 
   async function removeMonitor(monitor) {
     const label = `${monitor.env || "monitor"} ${monitor.signal || ""}`.trim();
-    if (!window.confirm(`Xoá bản ghi monitor ${label}? Lệnh trên sàn không bị đóng.`)) return;
+    if (!window.confirm(`Xoá document monitor_positions trong MongoDB?\n_id ${monitor.id}\n${label}\nLệnh trên sàn không bị đóng.`)) return;
     try {
       await api(`/api/positions/monitors/${encodeURIComponent(monitor.id)}`, { method: "DELETE" });
       setPayload((prev) => prev && ({
@@ -432,7 +432,7 @@ export default function PositionsPage() {
                         <span>{tpslText(row)}</span>
                         <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
                         {canClose ? row.monitors.map((monitor) => (
-                          <button key={monitor.id} type="button" className="ghost" onClick={() => removeMonitor(monitor)}>Xoá {monitor.env || "monitor"}</button>
+                          <button key={monitor.id} type="button" className="ghost" title={`Xoá monitor_positions _id ${monitor.id}. Không đóng lệnh sàn.`} onClick={() => removeMonitor(monitor)}>Xoá id MongoDB</button>
                         )) : null}
                         {row.warnings.length ? <span className="muted">{row.warnings.map((item) => WARN[item] || item).join(" · ")}</span> : null}
                       </div>

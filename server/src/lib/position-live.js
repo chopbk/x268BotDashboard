@@ -49,6 +49,7 @@ async function readExchangeBook(account) {
         if (!raw) return null;
         const book = JSON.parse(raw);
         if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
+        if (typeof reader.expire === "function") reader.expire(EXCHANGE_KEY + account, EXCHANGE_TTL_SEC).catch((error) => console.error("[positionLive]", error.message));
         return book;
     } catch (error) {
         console.error("[positionLive]", error.message);

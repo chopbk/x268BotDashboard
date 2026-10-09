@@ -21,6 +21,53 @@ function query(value) {
     };
 }
 
+test("notpsl pnl uses the synced amount instead of the opening snapshot", () => {
+    const rows = buildPositionView({
+        account: "V",
+        now,
+        connection: "snapshot",
+        exchangeLoaded: true,
+        heartbeatFresh: false,
+        exchangePositions: [{
+            symbol: "NEARUSDT",
+            positionSide: "LONG",
+            positionAmt: "100",
+            entryPrice: "4",
+            markPrice: "5",
+            unRealizedProfit: "100",
+        }],
+        monitors: [{
+            _id: "near",
+            env: "V",
+            symbol: "NEARUSDT",
+            side: "LONG",
+            type: "NOTPSL",
+            positionAmt: "1106",
+            closed: false,
+            position: { positionAmt: "100", entryPrice: "4" },
+        }],
+    });
+    assert.equal(rows[0].exchangeQty, 1106);
+    const priced = applyLiveMarks(rows, () => 5);
+    assert.equal(priced.rows[0].unrealized, 1106);
+});
+
+test("binance income fills recorded pnl when the monitor has none", () => {
+    const rows = buildPositionView({
+        account: "V",
+        now,
+        connection: "snapshot",
+        exchangeLoaded: true,
+        exchangePositions: [{ symbol: "ETHUSDT", positionSide: "LONG", positionAmt: "1", entryPrice: "100", markPrice: "110" }],
+        income: [
+            { symbol: "ETHUSDT", incomeType: "REALIZED_PNL", income: "3" },
+            { symbol: "ETHUSDT", incomeType: "COMMISSION", income: "-0.2" },
+            { symbol: "BTCUSDT", incomeType: "FUNDING_FEE", income: "9" },
+        ],
+    });
+    assert.equal(rows[0].recorded.net, 2.8);
+});
+
 test("recorded pnl adds realized, fee and funding from the monitor", () => {
     const rows = buildPositionView({
         account: "V",

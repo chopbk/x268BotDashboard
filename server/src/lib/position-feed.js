@@ -403,6 +403,7 @@ async function loadExchangeBook(account, deps = {}) {
             positions: Array.isArray(loaded?.positions) ? loaded.positions : [],
             openOrders: Array.isArray(loaded?.openOrders) ? loaded.openOrders : [],
             algoOrders: Array.isArray(loaded?.algoOrders) ? loaded.algoOrders : [],
+            income: Array.isArray(loaded?.income) ? loaded.income : [],
         };
         exchangeCache.set(account, { at: now, book });
         return book;
@@ -418,10 +419,14 @@ function resetExchangeCache() {
 
 async function loadBinanceSnapshot(account) {
     const client = await binanceClient(account);
-    const [positions, openOrders, algoRaw] = await Promise.all([
+    const [positions, openOrders, algoRaw, incomeRaw] = await Promise.all([
         client.signedGet("/fapi/v2/positionRisk"),
         client.signedGet("/fapi/v1/openOrders"),
         client.signedGet("/fapi/v1/openAlgoOrders").catch((error) => {
+            console.error("[loadBinanceSnapshot]", error.message);
+            return [];
+        }),
+        client.signedGet("/fapi/v1/income", { startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, limit: 1000 }).catch((error) => {
             console.error("[loadBinanceSnapshot]", error.message);
             return [];
         }),
@@ -430,6 +435,12 @@ async function loadBinanceSnapshot(account) {
         positions: (Array.isArray(positions) ? positions : []).filter((row) => Math.abs(num(row.positionAmt)) > 0),
         openOrders: Array.isArray(openOrders) ? openOrders : [],
         algoOrders: Array.isArray(algoRaw) ? algoRaw : (algoRaw?.orders || []),
+        income: (Array.isArray(incomeRaw) ? incomeRaw : []).map((row) => ({
+            symbol: row.symbol,
+            incomeType: row.incomeType,
+            income: row.income,
+            time: row.time,
+        })),
     };
 }
 

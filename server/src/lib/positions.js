@@ -167,7 +167,7 @@ function publicMonitor(doc, heartbeatFresh, now, mark) {
 function recordedFromDoc(doc) {
     const stats = doc?.stats;
     if (!stats || typeof stats !== "object") return null;
-    const present = ["realizedPnl", "commission", "funding"].filter((key) => stats[key] != null && stats[key] !== "");
+    const present = ["realizedPnl", "commission", "funding"].filter((key) => stats[key] != null && stats[key] !== "" && Number(stats[key]) !== 0);
     if (!present.length) return null;
     const realized = num(stats.realizedPnl);
     const fee = num(stats.commission);
@@ -338,7 +338,9 @@ function applyMonitorQuote(parent, doc) {
     const pos = doc?.position && typeof doc.position === "object" ? doc.position : {};
     const entry = num(pos.entryPrice) || null;
     const mark = num(pos.markPrice) || null;
-    const qty = Math.abs(num(pos.positionAmt));
+    const snap = Math.abs(num(pos.positionAmt));
+    const own = ownQty(doc);
+    const qty = isNotpsl(doc) && own > 0 ? own : snap;
     if (parent.entry == null && entry) parent.entry = entry;
     if (parent.mark == null && mark) parent.mark = mark;
     if (parent.leverage == null && pos.leverage != null && pos.leverage !== "") parent.leverage = num(pos.leverage) || null;
@@ -364,6 +366,7 @@ function buildPositionView({
     now = Date.now(),
     connection = "snapshot",
     exchangeLoaded = false,
+    income = [],
 }) {
     const parents = [];
     const used = new Set();
@@ -383,6 +386,8 @@ function buildPositionView({
         if (!parent.monitors.length) parent.warnings.push("no-monitor");
         if (Math.abs(managed - parent.exchangeQty) > QTY_EPS) parent.warnings.push("qty-mismatch");
         parent.notpsl = parent.monitors.some((monitor) => monitor.notpsl);
+        const synced = parent.monitors.length === 1 && parent.monitors[0].notpsl ? parent.monitors[0].ownQty : 0;
+        if (synced > (parent.exchangeQty || 0)) parent.exchangeQty = synced;
         attachRecorded(parent);
         parents.push(parent);
     }
@@ -438,7 +443,39 @@ function buildPositionView({
         parents.push(parent);
         placed.add(`${identity.symbol}|${identity.side}`);
     }
+    for (const parent of parents) applyIncome(parent, income);
     return parents;
+}
+
+function applyIncome(parent, income) {
+    if (parent.recorded) return;
+    const opened = (parent.monitors || [])
+        .map((monitor) => new Date(monitor.openedAt).getTime())
+        .filter((time) => time > 0);
+    const since = opened.length ? Math.min(...opened) : 0;
+    const rows = (Array.isArray(income) ? income : []).filter((row) => {
+        if (String(row?.symbol || "").toUpperCase() !== parent.symbol) return false;
+        if (!since) return true;
+        const time = Number(row?.time);
+        return time >= since;
+    });
+    if (!rows.length) return;
+    let realized = 0;
+    let fee = 0;
+    let funding = 0;
+    let any = false;
+    for (const row of rows) {
+        const amount = num(row.income);
+        const type = String(row.incomeType || "");
+        if (type === "REALIZED_PNL") realized += amount;
+        else if (type === "COMMISSION") fee += amount;
+        else if (type === "FUNDING_FEE") funding += amount;
+        else continue;
+        any = true;
+    }
+    if (!any) return;
+    parent.recorded = { realized, fee, funding, net: realized + fee + funding };
+    parent.recordedNet = parent.recorded.net;
 }
 
 function filterRows(rows, query = {}) {
@@ -601,6 +638,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
             exchangePositions: current?.positions || [],
             openOrders: current?.openOrders || [],
             algoOrders: current?.algoOrders || [],
+            income: current?.income || [],
             heartbeatFresh: fromMonitor || fresh,
             now,
             connection: current?.stale ? "stale" : (name === account ? connection : "idle"),
