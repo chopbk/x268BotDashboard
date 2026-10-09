@@ -124,7 +124,11 @@ export default function PositionsPage() {
 
     function startPoll() {
       if (poll) return;
-      poll = window.setInterval(load, 15000);
+      poll = window.setInterval(() => {
+        if (document.visibilityState === "hidden") return;
+        if (account && socket?.readyState === WebSocket.OPEN) return;
+        load();
+      }, 15000);
     }
 
     function send(type) {
@@ -140,8 +144,6 @@ export default function PositionsPage() {
       current.onopen = () => {
         if (socket !== current) return;
         attempt = 0;
-        if (poll) window.clearInterval(poll);
-        poll = null;
         send("watch");
       };
       current.onmessage = (event) => {
@@ -168,7 +170,6 @@ export default function PositionsPage() {
           return { ...prev, stale: true, connection: "stale" };
         });
         if (gone || document.visibilityState === "hidden") return;
-        startPoll();
         const wait = Math.min(10000, 1000 * (2 ** attempt));
         attempt += 1;
         retry = window.setTimeout(openSocket, wait);
@@ -182,8 +183,7 @@ export default function PositionsPage() {
         poll = null;
         return;
       }
-      if (poll) window.clearInterval(poll);
-      poll = null;
+      startPoll();
       if (!account) return;
       if (socket?.readyState === WebSocket.OPEN) send("resume");
       else openSocket();
@@ -191,6 +191,7 @@ export default function PositionsPage() {
 
     load();
     openSocket();
+    startPoll();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       gone = true;
@@ -306,6 +307,7 @@ export default function PositionsPage() {
         {account
           ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Mất kết nối, giữ dữ liệu cuối" : "Snapshot")
           : "Đang hiện monitor. Chọn tài khoản để nhận live"}
+        {payload?.priceFeed === "live" ? " · giá mark" : ""}
         {payload?.version != null ? ` · v${payload.version}` : ""}
         {payload?.updatedAt ? ` · cập nhật ${when(payload.updatedAt)}` : ""}
       </p>

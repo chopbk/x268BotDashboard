@@ -10,6 +10,7 @@ const { createConcurrencyLimit, requestTimeout, sessionIdentity } = require("./m
 const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
 const { connectRateLimitStore, rateLimitStoreStatus, getRedisClient } = require("./lib/rate-limit-store");
 const { bindRedis } = require("./lib/position-live");
+const { startMarkPrices } = require("./lib/mark-prices");
 const { attachPositionSocket } = require("./lib/position-ws");
 
 async function main() {
@@ -25,6 +26,7 @@ async function main() {
         await connect(config.mongodb);
         await connectRateLimitStore(config.redisUrl);
         bindRedis(getRedisClient());
+        startMarkPrices();
         await bootstrapAdmin();
         await startSummarySnapshotJob();
 

@@ -1,6 +1,10 @@
 const { snapshotKey, notifyChannel, parseNotice, decorateSnapshot, decideUpdate } = require("./position-cache");
 const { loadBinanceSnapshot } = require("./position-feed");
 
+const ORDER_KEY = "wb:ord:";
+const ORDER_CHANNEL = "wb:ord:notify:";
+const QUOTE_MS = 15_000;
+
 const feeds = new Map();
 let reader = null;
 let subscriber = null;
@@ -32,6 +36,52 @@ async function readRedis(account) {
     } catch (error) {
         console.error("[positionLive]", error.message);
         return null;
+    }
+}
+
+async function readOrders(account) {
+    if (!reader?.isReady || !account || typeof reader.hGetAll !== "function") return [];
+    try {
+        const rows = await reader.hGetAll(ORDER_KEY + account);
+        return Object.values(rows || {}).flatMap((raw) => {
+            try {
+                const order = JSON.parse(raw);
+                return order?.orderId ? [order] : [];
+            } catch (error) {
+                console.error("[positionLive]", error.message);
+                return [];
+            }
+        });
+    } catch (error) {
+        console.error("[positionLive]", error.message);
+        return [];
+    }
+}
+
+async function withOrders(account, snap) {
+    if (!snap) return snap;
+    const orders = await readOrders(account);
+    if (!orders.length) return snap;
+    return { ...snap, openOrders: orders };
+}
+
+async function readBooks(names) {
+    if (!reader?.isReady || !names?.length) return {};
+    try {
+        const values = await reader.mGet(names.map((name) => snapshotKey(name)));
+        const out = {};
+        for (let index = 0; index < names.length; index += 1) {
+            if (!values[index]) continue;
+            try {
+                out[names[index]] = await withOrders(names[index], decorateSnapshot(JSON.parse(values[index])));
+            } catch (error) {
+                console.error("[positionLive]", error.message);
+            }
+        }
+        return out;
+    } catch (error) {
+        console.error("[positionLive]", error.message);
+        return {};
     }
 }
 
@@ -91,6 +141,14 @@ async function subscribe(account) {
         if (!notice || notice.account !== account) return;
         applyStored(account, notice).catch((error) => console.error("[positionLive]", error.message));
     });
+    await sub.subscribe(ORDER_CHANNEL + account, () => {
+        const feed = feeds.get(account);
+        if (!feed?.last) return;
+        withOrders(account, feed.last).then((snap) => {
+            feed.last = snap;
+            publish(feed);
+        }).catch((error) => console.error("[positionLive]", error.message));
+    });
 }
 
 async function unsubscribe(account) {
@@ -99,6 +157,7 @@ async function unsubscribe(account) {
     feed.subscribed = false;
     try {
         await subscriber.unsubscribe(notifyChannel(account));
+        await subscriber.unsubscribe(ORDER_CHANNEL + account);
     } catch (error) {
         console.error("[positionLive]", error.message);
     }
@@ -128,13 +187,25 @@ async function restFallback(account, feed) {
     return feed.last;
 }
 
+function startQuote(account, feed) {
+    if (feed.quoteTimer) return;
+    const tick = async () => {
+        if (!feed.viewers.size) return;
+        const cached = await readRedis(account);
+        if (cached) feed.last = await withOrders(account, cached);
+        else if (feed.last) feed.last = await withOrders(account, feed.last);
+        publish(feed);
+    };
+    feed.quoteTimer = setInterval(() => tick().catch((error) => console.error("[positionLive]", error.message)), QUOTE_MS);
+}
+
 function startRest(account, feed) {
     if (feed.polling) return;
     const tick = async () => {
         if (!feed.viewers.size) return;
         const cached = await readRedis(account);
         if (cached && !cached.stale) {
-            feed.last = cached;
+            feed.last = await withOrders(account, cached);
             publish(feed);
             return;
         }
@@ -147,10 +218,10 @@ function startRest(account, feed) {
 
 async function refresh(account) {
     const feed = feedFor(account);
-    const cached = await readRedis(account);
-    if (cached) {
-        feed.last = cached;
-        return cached;
+    const cachedSnap = await readRedis(account);
+    if (cachedSnap) {
+        feed.last = await withOrders(account, cachedSnap);
+        return feed.last;
     }
     if (feed.last?.stale === false && feed.last?.source === "rest") return feed.last;
     return restFallback(account, feed);
@@ -163,12 +234,15 @@ function watch(account, viewer) {
     refresh(account).then((snap) => {
         if (feed.viewers.has(viewer)) viewer(snap || feed.last);
         if (!snap || snap.stale || snap.source !== "monitor") startRest(account, feed);
+        startQuote(account, feed);
     }).catch((error) => console.error("[positionLive]", error.message));
     return function unwatch() {
         feed.viewers.delete(viewer);
         if (feed.viewers.size > 0) return;
         if (feed.polling) clearInterval(feed.polling);
+        if (feed.quoteTimer) clearInterval(feed.quoteTimer);
         feed.polling = null;
+        feed.quoteTimer = null;
         unsubscribe(account).catch((error) => console.error("[positionLive]", error.message));
     };
 }
@@ -184,11 +258,14 @@ function bindRedis(client) {
 }
 
 function resetLive() {
-    for (const feed of feeds.values()) if (feed.polling) clearInterval(feed.polling);
+    for (const feed of feeds.values()) {
+        if (feed.polling) clearInterval(feed.polling);
+        if (feed.quoteTimer) clearInterval(feed.quoteTimer);
+    }
     feeds.clear();
     reader = null;
     subscriber = null;
     subscriberReady = null;
 }
 
-module.exports = { watch, refresh, cached, bindRedis, applyStored, resetLive };
+module.exports = { watch, refresh, cached, readBooks, bindRedis, applyStored, resetLive, ORDER_KEY, ORDER_CHANNEL };

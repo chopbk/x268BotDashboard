@@ -239,6 +239,30 @@ function emptyParent(account, identity, book, connection) {
     };
 }
 
+function applyLiveMarks(rows, priceOf) {
+    if (typeof priceOf !== "function") return { rows, priced: false };
+    let priced = false;
+    const next = rows.map((row) => {
+        if (row.closedOnExchange) return row;
+        const mark = num(priceOf(row.symbol)) || null;
+        if (!mark) return row;
+        priced = true;
+        const qty = row.exchangeQty != null
+            ? row.exchangeQty
+            : row.monitors.reduce((sum, monitor) => sum + num(monitor.ownQty), 0);
+        return {
+            ...row,
+            mark,
+            unrealized: estimatedPnl(row.side, row.entry, mark, qty),
+            monitors: row.monitors.map((monitor) => ({
+                ...monitor,
+                estimatedPnl: estimatedPnl(row.side, monitor.entry, mark, monitor.ownQty),
+            })),
+        };
+    });
+    return { rows: next, priced };
+}
+
 function usableExchangeSnap(snap) {
     if (!snap || typeof snap !== "object" || snap.error) return null;
     if (snap.source === "monitor") return snap;
@@ -455,12 +479,27 @@ async function loadPositions(actor, query = {}, deps = {}) {
         if (!grouped.has(owner)) grouped.set(owner, []);
         grouped.get(owner).push(doc);
     }
-    if (account && snap?.source === "monitor" && Array.isArray(snap.monitors)) {
-        grouped.set(account, snap.monitors.filter((doc) => monitorOwner(doc, envOwners) === account));
+    const books = new Map();
+    if (snap) books.set(account, snap);
+    if (!account && deps.snapshots) {
+        try {
+            const extra = await deps.snapshots(selected);
+            for (const [name, book] of Object.entries(extra || {})) {
+                const usable = usableExchangeSnap(book);
+                if (usable) books.set(name, usable);
+            }
+        } catch (error) {
+            console.error("[loadPositions]", error.message);
+        }
+    }
+    for (const [name, book] of books) {
+        if (book?.source === "monitor" && Array.isArray(book.monitors)) {
+            grouped.set(name, book.monitors.filter((doc) => monitorOwner(doc, envOwners) === name));
+        }
     }
     const rows = [];
     for (const name of selected) {
-        const current = name === account ? snap : null;
+        const current = books.get(name) || null;
         const fromMonitor = current?.source === "monitor" && ageMs(current.at, now) != null && ageMs(current.at, now) <= HEARTBEAT_MS;
         rows.push(...buildPositionView({
             account: name,
@@ -474,13 +513,16 @@ async function loadPositions(actor, query = {}, deps = {}) {
             exchangeLoaded: Boolean(current),
         }));
     }
+    const viewed = filterRows(rows, query);
+    const priced = applyLiveMarks(viewed, deps.priceOf);
     return {
         accounts: bots.map((row) => ({ username: row.username, accounts: row.accounts || [] })),
-        rows: filterRows(rows, query),
+        rows: priced.rows,
         connection,
         updatedAt,
         stale,
         audience,
+        priceFeed: priced.priced ? "live" : "idle",
         version: snap?.version == null ? null : Number(snap.version),
     };
 }
@@ -500,6 +542,7 @@ function monitorDetail(doc, heartbeatFreshNow, now) {
 module.exports = {
     HEARTBEAT_MS,
     buildPositionView,
+    applyLiveMarks,
     filterRows,
     isMine,
     estimatedPnl,

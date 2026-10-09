@@ -4,7 +4,8 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
 const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots } = require("../lib/positions");
-const { refresh, cached } = require("../lib/position-live");
+const { refresh, cached, readBooks } = require("../lib/position-live");
+const { markOf } = require("../lib/mark-prices");
 const UserAccount = require("../models/user-account");
 const MonitorPosition = require("../models/monitor-position");
 const ProcessHeartbeat = require("../models/process-heartbeat");
@@ -23,7 +24,14 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), asyn
             }
         }
         res.json(await loadPositions(req.webUser, req.query, {
-            snapshot: (name) => cached(name),
+            snapshot: async (name) => {
+                const live = cached(name);
+                if (live?.source && !live.error) return live;
+                const books = await readBooks([name]);
+                return books[name] || live;
+            },
+            snapshots: readBooks,
+            priceOf: markOf,
         }));
     } catch (error) {
         sendError(res, error, "GET /api/positions");

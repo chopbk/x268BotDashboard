@@ -6,7 +6,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 const UserAccount = require("../src/models/user-account");
 const MonitorPosition = require("../src/models/monitor-position");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
-const { buildPositionView, filterRows, loadPositions, estimatedPnl } = require("../src/lib/positions");
+const { buildPositionView, applyLiveMarks, filterRows, loadPositions, estimatedPnl } = require("../src/lib/positions");
 const { applyAccountUpdate, applyOrderUpdate } = require("../src/lib/position-feed");
 const { parseNotice, decideUpdate } = require("../src/lib/position-cache");
 const { watch, resetLive, bindRedis } = require("../src/lib/position-live");
@@ -191,8 +191,8 @@ test("pubsub notice is only a version marker and a gap keeps the last snapshot",
             return {
                 on() {},
                 async connect() { this.isReady = true; return this; },
-                async subscribe(channel, fn) { subs.push(channel); handler = fn; },
-                async unsubscribe(channel) { subs.splice(subs.indexOf(channel), 1); handler = null; },
+                async subscribe(channel, fn) { subs.push(channel); if (channel.startsWith("wb:pos:notify:")) handler = fn; },
+                async unsubscribe(channel) { subs.splice(subs.indexOf(channel), 1); },
             };
         },
     });
@@ -201,7 +201,7 @@ test("pubsub notice is only a version marker and a gap keeps the last snapshot",
     const stopB = watch("V", () => {});
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(subs, ["wb:pos:notify:V"]);
+    assert.deepEqual(subs, ["wb:pos:notify:V", "wb:ord:notify:V"]);
     assert.equal(seen.at(-1).version, 4);
     assert.equal(seen.at(-1).positions.length, 1);
     version = 4;
@@ -212,7 +212,7 @@ test("pubsub notice is only a version marker and a gap keeps the last snapshot",
     assert.equal(seen.at(-1).positions[0].symbol, "BTCUSDT");
     assert.equal(JSON.stringify(seen).includes("leak"), false);
     stopA();
-    assert.equal(subs.length, 1);
+    assert.equal(subs.length, 2);
     stopB();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(subs.length, 0);
@@ -323,6 +323,28 @@ test("a missing exchange book shows the stored monitor instead of closed-on-exch
         MonitorPosition.find = originals.monitors;
         ProcessHeartbeat.find = originals.beats;
     }
+});
+
+test("live mark updates pnl and leaves exchange qty alone", () => {
+    const view = applyLiveMarks([
+        {
+            symbol: "ETHUSDT",
+            side: "LONG",
+            entry: 100,
+            mark: 110,
+            exchangeQty: 2,
+            unrealized: 1,
+            monitors: [{ ownQty: 1, entry: 100, estimatedPnl: 1 }],
+        },
+        { symbol: "XRPUSDT", side: "SHORT", entry: 1, mark: 1, exchangeQty: null, closedOnExchange: true, unrealized: null, monitors: [] },
+    ], (symbol) => (symbol === "ETHUSDT" ? 130 : null));
+    assert.equal(view.priced, true);
+    assert.equal(view.rows[0].exchangeQty, 2);
+    assert.equal(view.rows[0].mark, 130);
+    assert.equal(view.rows[0].unrealized, 60);
+    assert.equal(view.rows[0].monitors[0].ownQty, 1);
+    assert.equal(view.rows[1].mark, 1);
+    assert.equal(view.rows[1].closedOnExchange, true);
 });
 
 test("account and order events patch the cached position", () => {

@@ -50,7 +50,7 @@ Hiển thị position cha theo account/symbol/side và monitor con. Phân biệt
 
 Mở trang là hiện monitor đang mở trong `monitor_positions`: entry, mark, qty sàn, PnL, leverage và liquidation lấy từ `position` đã lưu. Redis thiếu key hoặc fallback sàn lỗi không biến các dòng này thành “đã đóng trên sàn”. Cảnh báo đó chỉ khi snapshot sàn thật (`source` monitor hoặc REST thành công) không còn qty.
 
-REST tải dữ liệu ban đầu; WebSocket nhận snapshot cho account được chọn. Cache Redis quá hạn hoặc không có có nhánh fallback Binance REST; UI có polling khi socket lỗi. Trạng thái `live`, `polling`, `stale` phản ánh nguồn/độ mới, không bảo đảm monitor đang bảo vệ mọi vị thế. Không có mutation mở/đóng position trong router hiện tại.
+REST tải dữ liệu ban đầu; WebSocket nhận snapshot cho account được chọn. Server giữ một stream public `!markPrice@arr@1s` và, khi trang Position đang mở, tính lại mark và PnL mỗi 15 giây. Qty và monitor lấy từ Redis `wb:pos` khi có; thay đổi qty được đẩy ngay qua `wb:pos:notify`. Lệnh sàn do websocket user-data của binance-bot ghi vào `wb:ord` và báo `wb:ord:notify`, không mở thêm listenKey trên web. Cache Redis quá hạn hoặc không có có nhánh fallback Binance REST; UI có polling khi socket lỗi hoặc khi chưa chọn tài khoản. Trạng thái `live`, `polling`, `stale` phản ánh nguồn/độ mới, không bảo đảm monitor đang bảo vệ mọi vị thế. Không có mutation mở/đóng position trong router hiện tại.
 
 ## Số liệu: không so sánh khác nguồn như cùng một chỉ số
 
