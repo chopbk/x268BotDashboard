@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, usersForAudience, ledgerEnv, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows } = require("../src/lib/account-ledger");
+const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -46,6 +46,18 @@ test("mine is owned plus assigned, all adds bots the actor may view", async () =
     } finally {
         UserAccount.find = original;
     }
+});
+
+test("ranges cover today, three days, this month, quarter and year", () => {
+    const now = new Date("2026-02-15T18:00:00.000Z");
+    const day = (value) => ledgerWindow(value, now).from.toISOString().slice(0, 10);
+    assert.equal(day("today"), "2026-02-15");
+    assert.equal(day("3"), "2026-02-13");
+    assert.equal(day("month"), "2026-02-01");
+    assert.equal(day("quarter"), "2026-01-01");
+    assert.equal(day("year"), "2026-01-01");
+    assert.equal(ledgerWindow("nope", now).range, "14");
+    assert.equal(ledgerWindow("quarter", new Date("2026-05-10T00:00:00.000Z")).from.toISOString().slice(0, 10), "2026-04-01");
 });
 
 test("ledger uses the user name as the shared wallet env", () => {

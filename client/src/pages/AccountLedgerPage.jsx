@@ -106,7 +106,7 @@ export default function AccountLedgerPage() {
     try {
       const result = await api(`/api/account-ledger/${encodeURIComponent(data.username)}/refresh`, {
         method: "POST",
-        body: { days: Number(days) },
+        body: { days },
       });
       setData(result);
     } catch (err) {
@@ -157,10 +157,15 @@ export default function AccountLedgerPage() {
           <label>
             Số ngày
             <select value={days} onChange={(event) => setDays(event.target.value)}>
+              <option value="today">Hôm nay</option>
+              <option value="3">3 ngày</option>
               <option value="7">7 ngày</option>
               <option value="14">14 ngày</option>
               <option value="30">30 ngày</option>
               <option value="90">90 ngày</option>
+              <option value="month">Tháng này</option>
+              <option value="quarter">Quý này</option>
+              <option value="year">Năm này</option>
             </select>
           </label>
           <button type="button" disabled={busy || !data?.username} onClick={refresh}>{busy ? "Đang cập nhật…" : "Cập nhật hôm nay"}</button>

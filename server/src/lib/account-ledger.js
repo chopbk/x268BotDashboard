@@ -13,7 +13,7 @@ const {
 } = require("./binance-futures");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DAY_CHOICES = new Set([1, 7, 14, 30, 90]);
+const DAY_CHOICES = new Set([1, 3, 7, 14, 30, 90]);
 const TRADING_TYPES = new Set([
     "REALIZED_PNL",
     "COMMISSION",
@@ -47,6 +47,30 @@ function addUtcDays(date, days) {
 
 function ymd(date) {
     return new Date(date).toISOString().slice(0, 10);
+}
+
+function ledgerWindow(raw, now = new Date()) {
+    const today = startOfUtcDay(now);
+    const to = addUtcDays(today, 1);
+    const text = String(raw ?? "").trim().toLowerCase();
+    if (text === "today" || text === "1") {
+        return { range: "today", days: 1, from: today, to, today };
+    }
+    if (text === "month") {
+        const from = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+        return { range: "month", days: Math.round((to - from) / DAY_MS), from, to, today };
+    }
+    if (text === "quarter") {
+        const month = Math.floor(today.getUTCMonth() / 3) * 3;
+        const from = new Date(Date.UTC(today.getUTCFullYear(), month, 1));
+        return { range: "quarter", days: Math.round((to - from) / DAY_MS), from, to, today };
+    }
+    if (text === "year") {
+        const from = new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+        return { range: "year", days: Math.round((to - from) / DAY_MS), from, to, today };
+    }
+    const days = DAY_CHOICES.has(Number(text)) ? Number(text) : 14;
+    return { range: String(days), days, from: addUtcDays(today, 1 - days), to, today };
 }
 
 function ledgerEnv(user) {
@@ -308,13 +332,11 @@ async function staticProfit(accounts, from, to) {
 }
 
 async function loadLedger(actor, query = {}) {
-    const days = DAY_CHOICES.has(Number(query.days)) ? Number(query.days) : 14;
+    const window = ledgerWindow(query.days);
+    const { days, from, to, today } = window;
     const users = await visibleUsers(actor);
     const user = pickUser(users, query.username, actor);
-    const today = startOfUtcDay(new Date());
-    const from = addUtcDays(today, 1 - days);
-    const to = addUtcDays(today, 1);
-    const empty = { users: [], username: null, env: null, days, from: ymd(from), to: ymd(today), series: [], totals: summarizeLedger([]).totals, live: {}, compare: {}, flows: [] };
+    const empty = { users: [], username: null, env: null, range: window.range, days, from: ymd(from), to: ymd(today), series: [], totals: summarizeLedger([]).totals, live: {}, compare: {}, flows: [] };
     if (!user) return empty;
     const env = ledgerEnv(user);
     const docs = await FuturesProfit.find({
@@ -332,6 +354,7 @@ async function loadLedger(actor, query = {}) {
         users: users.map((item) => ({ username: item.username, active: item.active, mine: isOwnUser(actor, item) })),
         username: user.username,
         env,
+        range: window.range,
         days,
         from: ymd(from),
         to: ymd(today),
@@ -360,11 +383,9 @@ function rowsForTarget(docs, target) {
 }
 
 async function loadCombinedLedger(actor, query = {}) {
-    const days = DAY_CHOICES.has(Number(query.days)) ? Number(query.days) : 14;
+    const window = ledgerWindow(query.days);
+    const { days, from, to, today } = window;
     const users = await visibleUsers(actor);
-    const today = startOfUtcDay(new Date());
-    const from = addUtcDays(today, 1 - days);
-    const to = addUtcDays(today, 1);
     const picked = audienceUsers(users, actor, query);
     const targets = walletTargets(picked);
     const envKeys = [...new Set(targets.flatMap((item) => [item.env, item.username].filter(Boolean)))];
@@ -380,6 +401,7 @@ async function loadCombinedLedger(actor, query = {}) {
         included: targets.map((item) => ({ username: item.username, env: item.env })),
         username: null,
         env: null,
+        range: window.range,
         days,
         from: ymd(from),
         to: ymd(today),
@@ -540,8 +562,7 @@ async function refreshLedger(actor, username, options = {}) {
         target: { username: user.username },
         changes: { balance: { from: before, to: r3(wallet) }, day: { from: null, to: ymd(today) } },
     });
-    const days = [7, 14, 30, 90].includes(Number(options.days)) ? Number(options.days) : 14;
-    return loadLedger(actor, { username: user.username, days });
+    return loadLedger(actor, { username: user.username, days: options.days });
 }
 
 async function loadAssignedIncome(actor, audience = "assigned") {
@@ -587,6 +608,7 @@ async function loadAssignedIncome(actor, audience = "assigned") {
 }
 
 module.exports = {
+    ledgerWindow,
     ledgerEnv,
     isOwnedUser,
     isOwnUser,
