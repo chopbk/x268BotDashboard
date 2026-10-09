@@ -300,7 +300,7 @@ export default function PositionsPage() {
   }
 
   return (
-    <section className="stack">
+    <section className="stack pos-screen">
       <header>
         <h1>Position</h1>
         <p className="muted">Size, TP/SL và nút xoá lấy từ monitor position. Volume là qty × mark. Bấm tiêu đề cột để sắp xếp. Market, Limit và Reverse chưa gửi lệnh lên sàn.</p>
@@ -409,16 +409,16 @@ export default function PositionsPage() {
                   <tr className={row.warnings.length ? "pos-alert" : ""}>
                     <td><button type="button" className="ghost" onClick={() => toggle(row.key)}>{open.has(row.key) ? "−" : "+"}</button></td>
                     <td>{row.account}</td>
-                    <td>
+                    <td className="pos-inline">
                       <button type="button" className="linkish" data-row={row.key} onClick={(event) => { setMonitorId(""); go((query) => query.set("panel", row.key), { layer: true }); event.currentTarget.blur(); }}>{row.symbol}</button>
-                      <div className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}</div>
+                      <span className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}</span>
                     </td>
                     <td>{qtyOf(row) == null ? "—" : fmt(qtyOf(row))}</td>
                     <td>{fmt(row.entry)}</td>
                     <td>{fmt(row.mark)}</td>
-                    <td className={pnlClass(row.unrealized)}>
-                      {row.unrealized == null ? "—" : fmt(row.unrealized, 2)}
-                      {roi == null ? null : <div>{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</div>}
+                    <td className={`pos-inline ${pnlClass(row.unrealized)}`}>
+                      <span>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</span>
+                      {roi == null ? null : <span>{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</span>}
                     </td>
                     <td className="pos-actions">
                       <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Market</button>
@@ -428,9 +428,9 @@ export default function PositionsPage() {
                         <button key={monitor.id} type="button" className="ghost" onClick={() => removeMonitor(monitor)}>Xoá {monitor.env || "monitor"}</button>
                       )) : null}
                     </td>
-                    <td>
-                      {tpslText(row)}
-                      <div><button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button></div>
+                    <td className="pos-inline">
+                      <span>{tpslText(row)}</span>
+                      <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
                     </td>
                     <td>{fmt(row.liquidation)}</td>
                     <td>{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</td>
