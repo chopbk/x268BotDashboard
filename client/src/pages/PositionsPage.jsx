@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { useEscape } from "../navigation";
 import { POSITION_COLUMNS, qtyOf, roiOf, sortedRows, volumeOf } from "../position-sort";
+import PositionHistory from "./PositionHistory";
 
 const WARN = {
   "no-monitor": "Chưa có monitor",
@@ -68,6 +69,8 @@ export default function PositionsPage() {
   const { user } = useAuth();
   const canClose = (user?.permissions || []).includes("positions.close");
   const canOpen = (user?.permissions || []).includes("positions.open");
+  const canPositions = (user?.permissions || []).includes("positions.view");
+  const canHistory = (user?.permissions || []).includes("statistics.view");
   const location = useLocation();
   const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -75,6 +78,7 @@ export default function PositionsPage() {
   const audience = params.get("audience") === "all" ? "all" : "mine";
   const book = params.get("book") || "";
   const panel = params.get("panel") || "";
+  const tab = params.get("tab") === "history" ? "history" : "open";
   const [payload, setPayload] = useState(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(() => new Set());
@@ -86,6 +90,7 @@ export default function PositionsPage() {
   const [actionNote, setActionNote] = useState("");
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [historyAccounts, setHistoryAccounts] = useState([]);
 
   function go(mutate, { replace = false, layer = false } = {}) {
     const next = new URLSearchParams(location.search);
@@ -113,6 +118,7 @@ export default function PositionsPage() {
   useEscape(Boolean(panel), closePanel);
 
   useEffect(() => {
+    if (!canPositions || tab === "history") return undefined;
     let socket = null;
     let poll = null;
     let retry = null;
@@ -223,7 +229,7 @@ export default function PositionsPage() {
       if (retry) window.clearTimeout(retry);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [account, audience, book]);
+  }, [account, audience, book, canPositions, tab]);
 
   useEffect(() => {
     if (!panel || !monitorId) {
@@ -252,7 +258,8 @@ export default function PositionsPage() {
     });
   }
   const selected = rows.find((row) => row.key === panel) || (payload?.rows || []).find((row) => row.key === panel);
-  const envs = [...new Set((payload?.accounts || []).flatMap((item) => item.accounts || []))];
+  const accountRows = tab === "history" ? historyAccounts : (payload?.accounts || []);
+  const envs = [...new Set(accountRows.flatMap((item) => item.accounts || []))];
   const connection = payload?.connection || "idle";
   const stale = payload?.stale || connection === "stale";
 
@@ -310,6 +317,10 @@ export default function PositionsPage() {
         <h1>Position</h1>
         <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận lấy từ income Binance lúc mở trang và lúc bấm Cập nhật sàn. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
       </header>
+      <div className="history-tabs" role="tablist">
+        <button type="button" className={tab === "open" ? "active" : ""} onClick={() => go((query) => { query.delete("tab"); query.delete("trade"); })}>Đang mở</button>
+        {canHistory ? <button type="button" className={tab === "history" ? "active" : ""} onClick={() => go((query) => { query.set("tab", "history"); query.delete("panel"); })}>Lịch sử</button> : null}
+      </div>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
         <label>Phạm vi
           <select value={audience} onChange={(event) => setFilter("audience", event.target.value)}>
@@ -320,7 +331,7 @@ export default function PositionsPage() {
         <label>Tài khoản
           <select value={account} onChange={(event) => setFilter("account", event.target.value)}>
             <option value="">Tất cả</option>
-            {(payload?.accounts || []).map((item) => <option key={item.username} value={item.username}>{item.username}</option>)}
+            {accountRows.map((item) => <option key={item.username} value={item.username}>{item.username}</option>)}
           </select>
         </label>
         <label>Config
@@ -347,11 +358,11 @@ export default function PositionsPage() {
             <option value="">Live</option>
             <option value="paper">Paper</option>
             <option value="all">Live và paper</option>
-            <option value="pending">Lệnh chờ</option>
-            <option value="notpsl">NOTPSL</option>
+            <option value="pending" disabled={tab === "history"}>Lệnh chờ</option>
+            <option value="notpsl" disabled={tab === "history"}>NOTPSL</option>
           </select>
         </label>
-        <button type="button" disabled={refreshing} onClick={async () => {
+        <button type="button" disabled={tab === "history" || refreshing} title={tab === "history" ? "Cập nhật sàn chỉ dùng cho vị thế đang mở" : ""} onClick={async () => {
           setRefreshing(true);
           try {
             const view = await api("/api/positions/refresh", { method: "POST", body: { account, audience, book }, timeoutMs: 60000 });
@@ -364,15 +375,17 @@ export default function PositionsPage() {
             setRefreshing(false);
           }
         }}>{refreshing ? "Đang cập nhật…" : "Cập nhật sàn"}</button>
-        {canOpen ? <button type="button" onClick={() => setDraft({ account: account || "", env: "", symbol: "", side: "LONG", signal: "NOTPSL", positionAmt: "" })}>Thêm monitor position</button> : null}
+        {canOpen && tab === "open" ? <button type="button" onClick={() => setDraft({ account: account || "", env: "", symbol: "", side: "LONG", signal: "NOTPSL", positionAmt: "" })}>Thêm monitor position</button> : null}
         <label>Bất thường
-          <select value={params.get("warn") || ""} onChange={(event) => setFilter("warn", event.target.value)}>
+          <select value={params.get("warn") || ""} disabled={tab === "history"} title={tab === "history" ? "Cảnh báo chỉ áp cho vị thế đang mở" : ""} onChange={(event) => setFilter("warn", event.target.value)}>
             <option value="">Tất cả</option>
             <option value="1">Chỉ cảnh báo</option>
           </select>
         </label>
       </form>
-      <p className={stale ? "pos-status pos-stale" : "pos-status"}>
+      {tab === "history" ? <PositionHistory params={params} go={go} canStats={canHistory} onAccounts={setHistoryAccounts} /> : null}
+      {tab === "open" && !canPositions ? <p className="muted">Cần quyền positions.view để xem vị thế đang mở.</p> : null}
+      {tab === "open" && canPositions ? <><p className={stale ? "pos-status pos-stale" : "pos-status"}>
         {account
           ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Mất kết nối, giữ dữ liệu cuối" : "Snapshot")
           : "Đang hiện monitor. Chọn tài khoản để nhận live"}
@@ -476,7 +489,7 @@ export default function PositionsPage() {
             </tbody>
           </table>
         </div>
-      ) : null}
+      ) : null}</> : null}
       {draft ? (
         <div className="modal-backdrop" onClick={() => { if (!saving) setDraft(null); }}>
           <form className="modal-card stack" onClick={(event) => event.stopPropagation()} onSubmit={async (event) => {
@@ -542,7 +555,7 @@ export default function PositionsPage() {
           </form>
         </div>
       ) : null}
-      {panel && selected ? (
+      {tab === "open" && panel && selected ? (
         <div className="modal-backdrop" onClick={closePanel}>
           <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="pos-title" onClick={(event) => event.stopPropagation()}>
             <header>

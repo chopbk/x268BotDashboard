@@ -83,7 +83,7 @@ function Shell({ children }) {
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/bots">Danh sách</NavLink> : null}
           {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
-          {hasPermission(user, POSITIONS_VIEW) ? <NavLink to="/positions">Position</NavLink> : null}
+          {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/positions">Position</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Account Static</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
@@ -164,11 +164,11 @@ function AppRoutes() {
       <Route
         path="/positions"
         element={
-          <Protected permission={POSITIONS_VIEW}>
+          <ProtectedAny permissions={[POSITIONS_VIEW, STATISTICS_VIEW]}>
             <Shell>
               <PositionsPage />
             </Shell>
-          </Protected>
+          </ProtectedAny>
         }
       />
       <Route

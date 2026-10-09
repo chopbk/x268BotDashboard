@@ -5,6 +5,7 @@ const { createRateLimit } = require("../middleware/rate-limit");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
 const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots, deleteMonitorRecord, createMonitorRecord } = require("../lib/positions");
+const { listPositionHistory, getPositionHistory } = require("../lib/position-history");
 const { safeRecordAudit } = require("../lib/audit");
 const { cached, readExchangeBook, readExchangeBooks, saveExchangeBook } = require("../lib/position-live");
 const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "positions" });
@@ -94,6 +95,22 @@ router.delete("/monitors/:id", requireAuth, requirePermission(PERMISSIONS.POSITI
         res.json({ ok: true, ...removed });
     } catch (error) {
         sendError(res, error, "DELETE /api/positions/monitors/:id");
+    }
+});
+
+router.get("/history", requireAuth, requirePermission(PERMISSIONS.STATISTICS_VIEW), async (req, res) => {
+    try {
+        res.json(await listPositionHistory(req.webUser, req.query));
+    } catch (error) {
+        sendError(res, error, "GET /api/positions/history");
+    }
+});
+
+router.get("/history/:id", requireAuth, requirePermission(PERMISSIONS.STATISTICS_VIEW), async (req, res) => {
+    try {
+        res.json(await getPositionHistory(req.webUser, req.params.id, req.query));
+    } catch (error) {
+        sendError(res, error, "GET /api/positions/history/:id");
     }
 });
 
