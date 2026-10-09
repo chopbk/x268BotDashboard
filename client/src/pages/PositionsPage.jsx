@@ -124,14 +124,15 @@ export default function PositionsPage() {
     let retry = null;
     let gone = false;
     let attempt = 0;
+    let lastPush = 0;
+    let pushRevision = 0;
 
     function apply(view) {
-      if (gone || !view) return;
+      if (gone || document.visibilityState === "hidden" || !view) return;
       setPayload((prev) => {
-        if (view?.stale && !view.rows?.length && prev?.rows?.length) {
-          return { ...prev, stale: true, connection: "stale", version: view.version ?? prev.version };
-        }
-        return { ...view, accounts: view.accounts?.length ? view.accounts : (prev?.accounts || []) };
+        const versions = new Map((prev?.sources || []).map((item) => [item.account, item.version]));
+        if ((view.sources || []).some((item) => item.version != null && versions.get(item.account) != null && item.version < versions.get(item.account))) return prev;
+        return view;
       });
     }
 
@@ -141,7 +142,9 @@ export default function PositionsPage() {
         query.set("audience", audience);
         if (book) query.set("book", book);
         if (account) query.set("account", account);
-        apply(await api(`/api/positions?${query}`));
+        const before = pushRevision;
+        const view = await api(`/api/positions?${query}`);
+        if (before === pushRevision) apply(view);
         setError("");
       } catch (err) {
         console.error("[positions]", err);
@@ -154,18 +157,18 @@ export default function PositionsPage() {
       if (poll) return;
       poll = window.setInterval(() => {
         if (document.visibilityState === "hidden") return;
-        if (account && socket?.readyState === WebSocket.OPEN) return;
+        if (socket?.readyState === WebSocket.OPEN && Date.now() - lastPush < 30_000) return;
         load();
       }, 15000);
     }
 
     function send(type) {
-      if (!socket || socket.readyState !== WebSocket.OPEN || !account) return;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify({ type, account, audience, book }));
     }
 
     function openSocket() {
-      if (!account || document.visibilityState === "hidden") return;
+      if (document.visibilityState === "hidden") return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const current = new WebSocket(`${proto}//${window.location.host}/api/positions/ws`);
       socket = current;
@@ -183,6 +186,8 @@ export default function PositionsPage() {
             return;
           }
           if (message.type === "snapshot") {
+            lastPush = Date.now();
+            pushRevision += 1;
             apply(message);
             setError("");
           }
@@ -212,7 +217,6 @@ export default function PositionsPage() {
         return;
       }
       startPoll();
-      if (!account) return;
       if (socket?.readyState === WebSocket.OPEN) send("resume");
       else openSocket();
     }
@@ -366,7 +370,11 @@ export default function PositionsPage() {
           setRefreshing(true);
           try {
             const view = await api("/api/positions/refresh", { method: "POST", body: { account, audience, book }, timeoutMs: 60000 });
-            setPayload(view);
+            setPayload((prev) => {
+              const versions = new Map((prev?.sources || []).map((item) => [item.account, item.version]));
+              if ((view.sources || []).some((item) => item.version != null && versions.get(item.account) != null && item.version < versions.get(item.account))) return prev;
+              return view;
+            });
             setError("");
           } catch (err) {
             console.error("[positions]", err);
@@ -387,11 +395,12 @@ export default function PositionsPage() {
       {tab === "open" && !canPositions ? <p className="muted">Cần quyền positions.view để xem vị thế đang mở.</p> : null}
       {tab === "open" && canPositions ? <><p className={stale ? "pos-status pos-stale" : "pos-status"}>
         {account
-          ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Mất kết nối, giữ dữ liệu cuối" : "Snapshot")
-          : "Đang hiện monitor. Chọn tài khoản để nhận live"}
+          ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Dữ liệu vị thế chưa được xác minh gần đây" : "Snapshot")
+          : (stale ? "Dữ liệu vị thế chưa được xác minh gần đây" : "Live · các tài khoản được phép xem")}
         {payload?.priceFeed === "live" ? " · giá mark" : ""}
         {payload?.version != null ? ` · v${payload.version}` : ""}
-        {payload?.updatedAt ? ` · cập nhật ${when(payload.updatedAt)}` : ""}
+        {payload?.updatedAt ? ` · đối chiếu sàn ${when(payload.updatedAt)}` : ""}
+        {payload?.sources?.some((source) => source.stale) ? ` · cần đối chiếu: ${payload.sources.filter((source) => source.stale).map((source) => source.account).join(", ")}` : ""}
       </p>
       {actionNote ? <p className="muted">{actionNote}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}

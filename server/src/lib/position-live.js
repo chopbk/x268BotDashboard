@@ -4,9 +4,12 @@ const ORDER_KEY = "wb:ord:";
 const ORDER_CHANNEL = "wb:ord:notify:";
 const EXCHANGE_KEY = "wb:ex:";
 const EXCHANGE_CHANNEL = "wb:ex:notify:";
-const EXCHANGE_TTL_SEC = 20 * 60;
 const QUOTE_MS = 15_000;
-const EXCHANGE_REFRESH_MS = 15 * 60 * 1000;
+const EXCHANGE_REFRESH_MS = 45_000;
+const EXCHANGE_WRITE = require("fs").readFileSync(require("path").join(__dirname, "exchange-book.lua"), "utf8");
+const pendingRefresh = new Map();
+const localBooks = new Map();
+let cooldownUntil = 0;
 
 const feeds = new Map();
 let reader = null;
@@ -43,13 +46,14 @@ async function readRedis(account) {
 }
 
 async function readExchangeBook(account) {
-    if (!reader?.isReady || !account) return null;
+    if (!account) return null;
+    if (!reader?.isReady) return localBooks.get(account) || null;
     try {
         const raw = await reader.get(EXCHANGE_KEY + account);
         if (!raw) return null;
         const book = JSON.parse(raw);
         if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
-        if (typeof reader.expire === "function") reader.expire(EXCHANGE_KEY + account, EXCHANGE_TTL_SEC).catch((error) => console.error("[positionLive]", error.message));
+
         return book;
     } catch (error) {
         console.error("[positionLive]", error.message);
@@ -58,7 +62,8 @@ async function readExchangeBook(account) {
 }
 
 async function readExchangeBooks(names) {
-    if (!reader?.isReady || !names?.length) return {};
+    if (!names?.length) return {};
+    if (!reader?.isReady) return Object.fromEntries(names.filter((name) => localBooks.has(name)).map((name) => [name, localBooks.get(name)]));
     try {
         const values = await reader.mGet(names.map((name) => EXCHANGE_KEY + name));
         const out = {};
@@ -78,15 +83,62 @@ async function readExchangeBooks(names) {
     }
 }
 
-async function saveExchangeBook(account, book) {
-    if (!reader?.isReady || !account || !book) return;
-    const stored = {
-        ...book,
-        source: "exchange",
-        account,
-        at: book.at || new Date().toISOString(),
-    };
-    await reader.set(EXCHANGE_KEY + account, JSON.stringify(stored), { EX: EXCHANGE_TTL_SEC });
+async function saveExchangeBook(account, book, expectedVersion) {
+    if (!reader?.isReady || !account || !book || expectedVersion == null) return null;
+    const raw = await reader.eval(EXCHANGE_WRITE, {
+        keys: [EXCHANGE_KEY + account, EXCHANGE_KEY + account + ":ver", EXCHANGE_CHANNEL + account],
+        arguments: ["full", JSON.stringify(book), String(expectedVersion), book.at || new Date().toISOString(), account],
+    });
+    return raw ? JSON.parse(raw) : null;
+}
+
+async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_MS, details = false } = {}) {
+    if (pendingRefresh.has(account)) return pendingRefresh.get(account);
+    const job = (async () => {
+        let token = null;
+        const lock = `${EXCHANGE_KEY}${account}:refresh`;
+        try {
+            let current = await readExchangeBook(account);
+            const checked = new Date(current?.reconciledAt || current?.at || 0).getTime();
+            if (!force && current?.complete !== false && current && Date.now() - checked < maxAgeMs) return current;
+            if (Date.now() < cooldownUntil || (reader?.isReady && await reader.get("wb:ex:cooldown"))) return current;
+            if (reader?.isReady) {
+                token = require("crypto").randomUUID();
+                if (!await reader.set(lock, token, { NX: true, PX: 120_000 })) return current;
+                // Another instance may have completed between our first read and acquiring the lease.
+                current = await readExchangeBook(account);
+                const refreshedAt = new Date(current?.reconciledAt || current?.at || 0).getTime();
+                if (!force && current && current.complete !== false && Date.now() - refreshedAt < maxAgeMs) return current;
+            }
+            const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
+            const { loadBinanceSnapshot } = require("./position-feed");
+            const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });
+            const at = new Date().toISOString();
+            const book = { ...current, ...loaded, source: "exchange", status: "live", complete: true, stale: false, at, reconciledAt: at };
+            if (reader?.isReady) return await saveExchangeBook(account, book, expected) || current;
+            const stored = { ...book, version: null };
+            localBooks.set(account, stored);
+            return stored;
+        } catch (error) {
+            console.error("[positionReconcile]", account, error.message);
+            // Back off across instances too. A failed refresh keeps its lease until expiry.
+            if (error.status === 429) {
+                const delay = Math.max(120_000, error.retryAfterMs || 0);
+                cooldownUntil = Date.now() + delay;
+                if (reader?.isReady) await reader.set("wb:ex:cooldown", "1", { PX: delay }).catch(() => {});
+            }
+            token = null;
+            throw error;
+        } finally {
+            if (token && reader?.isReady) {
+                await reader.eval("if redis.call('GET',KEYS[1]) == ARGV[1] then return redis.call('DEL',KEYS[1]) end return 0", {
+                    keys: [lock], arguments: [token],
+                }).catch((error) => console.error("[positionReconcile]", error.message));
+            }
+        }
+    })();
+    pendingRefresh.set(account, job);
+    try { return await job; } finally { pendingRefresh.delete(account); }
 }
 
 async function readOrders(account) {
@@ -166,11 +218,19 @@ async function ensureSubscriber() {
     if (!reader?.isReady) return null;
     if (!subscriberReady) {
         const next = reader.duplicate();
+        next.on("ready", () => {
+            for (const [account, feed] of feeds) {
+                if (feed.viewers.size) reconcile(account, { maxAgeMs: 5_000 })
+                    .then(() => refresh(account)).then(() => publish(feed))
+                    .catch((error) => console.error("[positionLive]", error.message));
+            }
+        });
         next.on("error", (error) => console.error("[positionLive]", error.message));
         subscriber = next;
         subscriberReady = next.connect().then(() => next).catch((error) => {
             console.error("[positionLive]", error.message);
             subscriber = null;
+            subscriberReady = null;
             return null;
         });
     }
@@ -208,6 +268,7 @@ async function subscribe(account) {
             publish(feed);
         }).catch((error) => console.error("[positionLive]", error.message));
     });
+    if (!feed.viewers.size) await unsubscribe(account);
 }
 
 async function unsubscribe(account) {
@@ -218,6 +279,10 @@ async function unsubscribe(account) {
         await subscriber.unsubscribe(notifyChannel(account));
         await subscriber.unsubscribe(EXCHANGE_CHANNEL + account);
         await subscriber.unsubscribe(ORDER_CHANNEL + account);
+        if (feed.viewers.size) {
+            feed.subscribed = false;
+            await subscribe(account);
+        }
     } catch (error) {
         console.error("[positionLive]", error.message);
     }
@@ -227,6 +292,7 @@ function startQuote(account, feed) {
     if (feed.quoteTimer) return;
     const tick = async () => {
         if (!feed.viewers.size) return;
+        if (!feed.subscribed) await subscribe(account);
         const exchange = await readExchangeBook(account);
         if (exchange) feed.last = await withOrders(account, exchange);
         else if (feed.last) feed.last = await withOrders(account, feed.last);
@@ -238,12 +304,9 @@ function startQuote(account, feed) {
 
 function startExchangeRefresh(account, feed) {
     if (feed.exchangeTimer) return;
-    const { loadExchangeBook } = require("./position-feed");
     feed.exchangeTimer = setInterval(() => {
-        loadExchangeBook(account, { force: true })
-            .then((book) => saveExchangeBook(account, book))
-            .then(() => refresh(account))
-            .then(() => publish(feed))
+        if (!feed.viewers.size) return;
+        reconcile(account).then(() => refresh(account)).then(() => publish(feed))
             .catch((error) => console.error("[positionLive]", error.message));
     }, EXCHANGE_REFRESH_MS);
     feed.exchangeTimer.unref?.();
@@ -270,6 +333,7 @@ function watch(account, viewer) {
     subscribe(account).catch((error) => console.error("[positionLive]", error.message));
     refresh(account).then((snap) => {
         if (feed.viewers.has(viewer)) viewer(snap || feed.last);
+        if (!feed.viewers.size) return;
         startQuote(account, feed);
         startExchangeRefresh(account, feed);
     }).catch((error) => console.error("[positionLive]", error.message));
@@ -303,9 +367,11 @@ function resetLive() {
         if (feed.exchangeTimer) clearInterval(feed.exchangeTimer);
     }
     feeds.clear();
+    localBooks.clear();
+    cooldownUntil = 0;
     reader = null;
     subscriber = null;
     subscriberReady = null;
 }
 
-module.exports = { watch, refresh, cached, readBooks, readExchangeBook, readExchangeBooks, saveExchangeBook, bindRedis, applyStored, resetLive, ORDER_KEY, ORDER_CHANNEL, EXCHANGE_KEY, EXCHANGE_CHANNEL };
+module.exports = { reconcile, watch, refresh, cached, readBooks, readExchangeBook, readExchangeBooks, saveExchangeBook, bindRedis, applyStored, resetLive, ORDER_KEY, ORDER_CHANNEL, EXCHANGE_KEY, EXCHANGE_CHANNEL };

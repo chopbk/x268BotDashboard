@@ -6,7 +6,6 @@ const WebUser = require("../models/web-user");
 const { loadPositions } = require("./positions");
 const live = require("./position-live");
 const { markOf } = require("./mark-prices");
-const { readExchangeBook } = require("./position-live");
 
 function readCookie(header, name) {
     const parts = String(header || "").split(/; */);
@@ -60,7 +59,7 @@ function attachPositionSocket(server) {
                 socket.destroy();
                 return;
             }
-            wss.handleUpgrade(req, socket, head, (ws) => openSocket(ws, user));
+            wss.handleUpgrade(req, socket, head, (ws) => openSocket(ws, user, { authenticate: () => userFromUpgrade(req) }));
         } catch (error) {
             console.error("[positionWs]", error.message);
             socket.destroy();
@@ -68,54 +67,101 @@ function attachPositionSocket(server) {
     });
 }
 
-function openSocket(ws, user) {
-    let stop = null;
+function openSocket(ws, user, deps = {}) {
+    const load = deps.loadPositions || loadPositions;
+    const source = deps.live || live;
+    let generation = 0;
+    let stops = [];
+    let timer = null;
+    const clear = () => {
+        generation += 1;
+        clearTimeout(timer);
+        stops.forEach(({ stop }) => stop());
+        stops = [];
+    };
     const send = (body) => {
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(body));
     };
     ws.on("message", async (raw) => {
         let message;
-        try {
-            message = JSON.parse(String(raw));
-        } catch (error) {
-            return;
-        }
-        if (message?.type === "pause") {
-            stop?.();
-            stop = null;
-            return;
-        }
+        try { message = JSON.parse(String(raw)); } catch { return; }
+        if (message?.type === "pause") { clear(); return; }
         if (message?.type !== "watch" && message?.type !== "resume") return;
+        clear();
+        const epoch = generation;
         const account = String(message.account || "").trim();
-        if (!account) return;
         const viewQuery = {
             account,
             audience: message.audience === "all" ? "all" : "mine",
             book: message.book || "",
         };
-        try {
-            await loadPositions(user, viewQuery, { snapshot: async () => null });
-        } catch (error) {
-            send({ type: "error", error: error.status === 403 ? "Không có quyền với tài khoản này" : "Không xem được vị thế" });
-            return;
-        }
-        stop?.();
-        stop = live.watch(account, async (snap) => {
+        let running = false;
+        let dirty = false;
+        const actor = async () => {
+            const current = deps.authenticate ? await deps.authenticate() : user;
+            if (!current) throw Object.assign(new Error("Phiên đã hết hạn"), { status: 403 });
+            return current;
+        };
+        const emit = async () => {
+            if (epoch !== generation) return;
+            dirty = true;
+            if (running) return;
+            running = true;
             try {
-                const view = await loadPositions(user, viewQuery, {
-                    snapshot: async () => snap?.source === "exchange" || snap?.source === "rest" ? snap : readExchangeBook(account),
-                    priceOf: markOf,
-                });
-                send({ type: "snapshot", ...view });
+                while (dirty && epoch === generation) {
+                    dirty = false;
+                    // Serialize reads; a slow previous build must never overwrite a newer view.
+                    const view = await load(await actor(), viewQuery, {
+                        snapshot: source.readExchangeBook,
+                        snapshots: source.readExchangeBooks,
+                        priceOf: markOf,
+                    });
+                    if (epoch === generation) {
+                        const allowed = new Set(view.accounts.map((row) => row.username));
+                        stops = stops.filter((entry) => {
+                            if (allowed.has(entry.name)) return true;
+                            entry.stop();
+                            return false;
+                        });
+                        send({ type: "snapshot", ...view });
+                    }
+                }
             } catch (error) {
-                console.error("[positionWs]", error.message);
+                if (epoch === generation) {
+                    clear();
+                    send({ type: "error", error: "Không xem được vị thế hoặc quyền truy cập đã thay đổi" });
+                }
+            } finally { running = false; }
+        };
+        const queue = () => {
+            if (epoch !== generation) return;
+            clearTimeout(timer);
+            timer = setTimeout(emit, 50);
+        };
+        try {
+            const view = await load(await actor(), viewQuery, { snapshot: async () => null });
+            if (epoch !== generation) return;
+            const names = account ? [account] : view.accounts.map((row) => row.username);
+            stops = names.map((name) => ({ name, stop: source.watch(name, queue) }));
+            queue();
+            // Shared account reconciliation also runs on reconnect/resume. Bound concurrency.
+            let index = 0;
+            await Promise.all(Array.from({ length: Math.min(4, names.length) }, async () => {
+                while (index < names.length && epoch === generation) {
+                    const name = names[index++];
+                    try { await source.reconcile(name, { maxAgeMs: 5_000 }); }
+                    catch (error) { console.error("[positionWs]", error.message); }
+                    queue();
+                }
+            }));
+        } catch (error) {
+            if (epoch === generation) {
+                clear();
+                send({ type: "error", error: error.status === 403 ? "Không có quyền với tài khoản này" : "Không xem được vị thế" });
             }
-        });
+        }
     });
-    ws.on("close", () => {
-        stop?.();
-        stop = null;
-    });
+    ws.on("close", clear);
 }
 
-module.exports = { attachPositionSocket, readCookie };
+module.exports = { attachPositionSocket, readCookie, openSocket };

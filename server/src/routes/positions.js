@@ -7,9 +7,8 @@ const { sendError, httpError } = require("../lib/http");
 const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots, deleteMonitorRecord, createMonitorRecord } = require("../lib/positions");
 const { listPositionHistory, getPositionHistory } = require("../lib/position-history");
 const { safeRecordAudit } = require("../lib/audit");
-const { cached, readExchangeBook, readExchangeBooks, saveExchangeBook } = require("../lib/position-live");
+const { readExchangeBook, readExchangeBooks, reconcile } = require("../lib/position-live");
 const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "positions" });
-const { loadExchangeBook } = require("../lib/position-feed");
 const { markOf } = require("../lib/mark-prices");
 const UserAccount = require("../models/user-account");
 const MonitorPosition = require("../models/monitor-position");
@@ -19,13 +18,10 @@ const router = express.Router();
 
 router.get("/", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
     try {
-        const account = String(req.query.account || "").trim();
-        if (account) await loadPositions(req.webUser, { account }, { snapshot: async () => null });
         res.json(await loadPositions(req.webUser, req.query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            exchange: (name) => loadExchangeBook(name, { force: req.query.refresh === "1" }),
-            saveExchange: saveExchangeBook,
+            exchange: (name) => reconcile(name, { force: req.query.refresh === "1" }),
             priceOf: markOf,
         }));
     } catch (error) {
@@ -42,12 +38,10 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
             book: req.body?.book || "",
             refresh: "1",
         };
-        if (account) await loadPositions(req.webUser, { account }, { snapshot: async () => null });
         res.json(await loadPositions(req.webUser, query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            exchange: (name) => loadExchangeBook(name, { force: true }),
-            saveExchange: saveExchangeBook,
+            exchange: (name) => reconcile(name, { force: true, details: true }),
             priceOf: markOf,
         }));
     } catch (error) {

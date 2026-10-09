@@ -357,7 +357,7 @@ function applyLiveMarks(rows, priceOf) {
     return { rows: next, priced };
 }
 
-const EXCHANGE_MAX_AGE_MS = 15 * 60 * 1000;
+const EXCHANGE_MAX_AGE_MS = 60 * 1000;
 
 function asExchangeBook(snap) {
     if (!snap || snap.error || snap.source === "monitor") return null;
@@ -373,7 +373,8 @@ function asExchangeBook(snap) {
 function freshExchangeBook(snap, now = Date.now(), maxAge = EXCHANGE_MAX_AGE_MS) {
     const book = asExchangeBook(snap);
     if (!book) return null;
-    const age = ageMs(book.at, now);
+    if (book.complete === false) return null;
+    const age = ageMs(book.reconciledAt || book.at, now);
     if (age == null || age < 0 || age > maxAge) return null;
     return book;
 }
@@ -396,8 +397,9 @@ async function eachLimit(items, limit, fn) {
 function usableExchangeSnap(snap) {
     if (!snap || typeof snap !== "object" || snap.error) return null;
     if (snap.source === "monitor") return snap;
+    if ((snap.source === "exchange" || snap.source === "rest") && Array.isArray(snap.positions)) return snap;
     if (snap.stale === true || snap.status === "stale") return null;
-    if (snap.source === "rest" || snap.status === "live" || snap.status === "polling") return snap;
+    if (snap.status === "live" || snap.status === "polling") return snap;
     if (Array.isArray(snap.positions) && snap.positions.length > 0) return snap;
     return null;
 }
@@ -690,7 +692,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         const book = asExchangeBook(raw);
         if (!book) return;
         remembered.set(name, book);
-        if (!force && freshExchangeBook(book, now, maxAge)) books.set(name, book);
+        if (!force && (!deps.exchange || freshExchangeBook(book, now, maxAge))) books.set(name, book);
     };
     if (account) keepBook(account, snap);
     if (!account && deps.snapshots) {
@@ -746,8 +748,8 @@ async function loadPositions(actor, query = {}, deps = {}) {
             trades: current?.trades || [],
             heartbeatFresh: fromMonitor || fresh,
             now,
-            connection: current?.stale ? "stale" : (name === account ? connection : "idle"),
-            exchangeLoaded: Boolean(current),
+            connection: !current || current.complete === false || current.stale || ageMs(current.reconciledAt || current.at, now) == null || ageMs(current.reconciledAt || current.at, now) > 90_000 ? "stale" : "live",
+            exchangeLoaded: Boolean(current) && current.complete !== false,
         }));
     }
     const viewed = filterRows(rows, query);
@@ -759,7 +761,17 @@ async function loadPositions(actor, query = {}, deps = {}) {
             console.error("[loadPositions]", error.message);
         }
     }
+    const sources = selected.map((name) => {
+        const book = books.get(name);
+        const checkedAt = book?.reconciledAt || book?.at || null;
+        return { account: name, version: book?.version ?? null, checkedAt,
+            stale: !book || book.complete === false || book.stale === true || ageMs(checkedAt, now) == null || ageMs(checkedAt, now) > 90_000 };
+    });
+    stale = sources.some((source) => source.stale);
+    connection = stale ? "stale" : "live";
+    updatedAt = sources.map((source) => source.checkedAt).filter(Boolean).sort()[0] || null;
     return {
+        sources,
         accounts: bots.map((row) => ({ username: row.username, accounts: row.accounts || [] })),
         rows: priced.rows,
         connection,

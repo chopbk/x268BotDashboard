@@ -437,6 +437,7 @@ async function loadFillHistory(client, positions) {
             time: row.updateTime || row.closedTime || row.time,
         }));
     } catch (error) {
+        if (error.status === 429) throw error;
         console.error("[loadBinanceSnapshot]", error.message);
     }
     const symbols = [...new Set((positions || []).map((row) => String(row.symbol || "").toUpperCase()).filter(Boolean))].slice(0, 15);
@@ -458,28 +459,33 @@ async function loadFillHistory(client, positions) {
                 });
             }
         } catch (error) {
+            if (error.status === 429) throw error;
             console.error("[loadBinanceSnapshot]", `${symbol} ${error.message}`);
         }
     }
     return { history, trades };
 }
 
-async function loadBinanceSnapshot(account) {
+async function loadBinanceSnapshot(account, { liveOnly = false } = {}) {
     const client = await binanceClient(account);
     const [positions, openOrders, algoRaw, incomeRaw] = await Promise.all([
         client.signedGet("/fapi/v2/positionRisk"),
         client.signedGet("/fapi/v1/openOrders"),
         client.signedGet("/fapi/v1/openAlgoOrders").catch((error) => {
+            if (error.status === 429) throw error;
             console.error("[loadBinanceSnapshot]", error.message);
             return [];
         }),
-        client.signedGet("/fapi/v1/income", { startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, limit: 1000 }).catch((error) => {
+        liveOnly ? [] : client.signedGet("/fapi/v1/income", { startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, limit: 1000 }).catch((error) => {
+            if (error.status === 429) throw error;
             console.error("[loadBinanceSnapshot]", error.message);
             return [];
         }),
     ]);
-    const openPositions = (Array.isArray(positions) ? positions : []).filter((row) => Math.abs(num(row.positionAmt)) > 0);
-    const fills = await loadFillHistory(client, openPositions);
+    if (!Array.isArray(positions)) throw new Error("Sổ vị thế sàn không hợp lệ");
+    const openPositions = positions.filter((row) => Math.abs(num(row.positionAmt)) > 0);
+    const fills = liveOnly ? { history: [], trades: [] } : await loadFillHistory(client, openPositions);
+    if (liveOnly) return { positions: openPositions, openOrders: Array.isArray(openOrders) ? openOrders : [], algoOrders: Array.isArray(algoRaw) ? algoRaw : (algoRaw?.orders || []) };
     return {
         positions: openPositions,
         openOrders: Array.isArray(openOrders) ? openOrders : [],

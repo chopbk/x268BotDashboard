@@ -71,8 +71,8 @@ Tên model mặc định trong code là cấu hình implementation, không phả
 
 ## Giới hạn hiện tại
 
-- REST kiểm tra user/quyền mới từ Mongo mỗi request. WebSocket xác thực user khi upgrade rồi dùng actor đã lấy cho socket; không mô tả nó như cơ chế refresh quyền liên tục tương đương REST.
-- [Nginx mẫu](../deploy/nginx.conf) và [mẫu IP](../deploy/nginx-ip.conf) hiện chưa có header Upgrade/Connection riêng cho WebSocket. Cần cấu hình reverse proxy hỗ trợ upgrade nếu muốn position WS hoạt động; REST fallback tồn tại nhưng không thay thế việc kiểm tra WS.
+- REST kiểm tra user/quyền mỗi request. WebSocket xác thực khi upgrade và đọc lại session/user từ Mongo trước mỗi snapshot; mỗi view lọc lại scope tài khoản.
+- [Nginx mẫu](../deploy/nginx.conf) và [mẫu IP](../deploy/nginx-ip.conf) có location WebSocket riêng. Với host đã cài, cần bổ sung location này vào config hiện tại rồi `nginx -t` và reload; không chép đè cấu hình TLS của Certbot. REST fallback không thay thế kiểm tra upgrade 101.
 - `position-feed.js` chứa cả hub stream sàn. Luồng đang nối vào server là `position-ws → position-live`, dùng `loadBinanceSnapshot` từ position-feed để fallback. Không suy ra mọi hàm export đều đang chạy.
 - Có permission `positions.open`, `positions.close`, `bots.operate` trong catalog không có nghĩa project đã cung cấp endpoint mở/đóng lệnh hay quản lý PM2.
 - Deploy hiện restart tại chỗ, có gián đoạn ngắn; không tự rollback dependency/backend khi lỗi. Các file mới trên GitHub chưa đồng nghĩa frontend đã xuất thành công.

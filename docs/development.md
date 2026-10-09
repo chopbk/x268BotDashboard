@@ -82,3 +82,15 @@ Log có thể chứa thông tin vận hành; che token, credential và dữ li�
 ## Khi sửa docs
 
 Đổi route thì cập nhật [API](api-data-reference.md); đổi menu/hành vi thì cập nhật [tính năng](feature-spec.md); đổi cách truyền/lưu dữ liệu thì cập nhật [luồng](flows.md) và [kiến trúc](architecture.md). Auth giữ [spec authoritative](auth-rbac-spec.md). Không biến docs tổng quan thành bản sao toàn bộ field map dễ lỗi thời.
+
+
+### Regression Position sync
+
+`npm --prefix server test` gồm test Lua với Redis tạm (`redis-server` phải có trong PATH).
+Fixture dùng Unix socket, tắt persistence, không dùng REDIS_URL hoặc gọi sàn thật.
+Sandbox chặn Unix socket thì chạy test ngoài sandbox. Test gồm snapshot rỗng, CAS giữa
+writers, dedup/lease/backoff, WebSocket nhiều account và loại snapshot subscription cũ.
+Binance-bot chạy `node --test services/monitors/position/position-snapshot.test.js`.
+Khi triển khai, cập nhật cả hai repo và mọi process ghi `wb:ex`; kiểm tra WebSocket 101
+trên proxy, mở/đóng vị thế thử được phép và kiểm tra sources.checkedAt. Không tự đặt lệnh
+thật để kiểm thử. Xem protocol trong [flows](flows.md#4-position-live).

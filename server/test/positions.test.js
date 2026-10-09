@@ -458,8 +458,8 @@ test("a missing exchange book shows the stored monitor instead of closed-on-exch
             UserAccount, Monitor: MonitorPosition, Heartbeat: ProcessHeartbeat, now,
             snapshot: async () => failed,
         });
-        assert.equal(view.connection, "monitor");
-        assert.equal(view.stale, false);
+        assert.equal(view.connection, "stale");
+        assert.equal(view.stale, true);
         assert.equal(view.rows[0].symbol, "ETHUSDT");
         assert.equal(view.rows[0].closedOnExchange, undefined);
         assert.equal(view.rows[0].entry, 100);
@@ -689,4 +689,28 @@ test("account and order events patch the cached position", () => {
         o: { i: 8, X: "NEW", s: "ETHUSDT", S: "SELL", ps: "SHORT", o: "STOP", q: "1" },
     });
     assert.equal(orders.length, 2);
+});
+
+
+test("empty exchange snapshots clear live monitors and source age is independent of mark prices", async () => {
+    const deps = {
+        now,
+        UserAccount: { find: () => query([{ username: "V", accounts: ["V1"] }]) },
+        Monitor: { find: () => query([{ _id: "open", env: "V1", symbol: "BTCUSDT", side: "LONG", positionAmt: "1" }]) },
+        Heartbeat: { find: () => query([]) },
+        snapshot: async () => ({ source: "exchange", positions: [], version: 4, at: new Date(now).toISOString() }),
+        priceOf: () => 100,
+    };
+    const empty = await loadPositions(actor, { account: "V" }, deps);
+    assert.deepEqual(empty.rows, []);
+    assert.equal(empty.stale, false);
+    deps.snapshot = async () => ({ source: "exchange", positions: [], version: 5,
+        at: new Date(now).toISOString(), reconciledAt: new Date(now - 120_000).toISOString() });
+    const aged = await loadPositions(actor, { account: "V" }, deps);
+    assert.deepEqual(aged.rows, []);
+    assert.equal(aged.stale, true);
+    assert.equal(aged.sources[0].version, 5);
+    const all = await loadPositions(actor, {}, { ...deps, snapshots: async () => ({ V: await deps.snapshot() }) });
+    assert.deepEqual(all.rows, []);
+    assert.equal(all.stale, true);
 });

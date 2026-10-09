@@ -39,7 +39,12 @@ async function requestJson(url, headers, fetchImpl, method = "GET") {
     try {
         const res = await fetchImpl(url, { method, headers, signal: controller.signal });
         const body = await res.json().catch(() => ({}));
-        if (!res.ok || (body && body.code && body.msg)) throw binanceError(res.status, body);
+        if (!res.ok || (body && body.code && body.msg)) {
+            const error = binanceError(res.status, body);
+            const retry = res.headers?.get?.("retry-after");
+            if (retry) error.retryAfterMs = /^\d+$/.test(retry) ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now());
+            throw error;
+        }
         return body;
     } catch (error) {
         if (error.status) throw error;

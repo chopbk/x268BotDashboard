@@ -128,13 +128,15 @@ Danh sách trên là các input để đọc hiểu, không liệt kê mọi gi�
 
 ## WebSocket position
 
-Upgrade path: `/api/positions/ws`, xử lý ở [position-ws.js](../server/src/lib/position-ws.js), không phải `router.get`. JWT cookie được đọc lúc upgrade. Sau đó `loadPositions` kiểm tra quyền/account cho subscription.
+Upgrade path: `/api/positions/ws`, xử lý ở [position-ws.js](../server/src/lib/position-ws.js), không phải `router.get`. JWT cookie được đọc lúc upgrade và trước mỗi snapshot, user hiện tại được đọc lại từ Mongo. `loadPositions` lọc quyền/account cho subscription và mọi view.
 
 Ví dụ message (dữ liệu giả):
 
 ```json
 {"type":"watch","account":"bot-demo","audience":"mine","book":"live"}
 ```
+
+`account:""` hoặc bỏ account theo dõi tất cả tài khoản được phép trong audience. View có `sources:[{account,version,checkedAt,stale}]`; `checkedAt` là lần đối chiếu sàn, không phải lần cập nhật giá. `positions:[]` từ sổ sàn là snapshot hợp lệ.
 
 `resume` mang cùng lựa chọn; `pause` dừng watcher. Server trả `{type:"snapshot", ...view}` hoặc `{type:"error", error:...}`. Không dùng socket này để gửi lệnh giao dịch. Xem [luồng và giới hạn](flows.md#4-position-live).
 
