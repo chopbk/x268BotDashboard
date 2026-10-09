@@ -111,9 +111,84 @@ function dayRow(doc) {
     };
 }
 
-function summarizeLedger(docs, staticProfit = 0) {
-    const days = (docs || []).filter((doc) => doc && doc.day).map(dayRow);
-    const totals = days.reduce((sum, day) => {
+function sumPresent(values) {
+    const nums = values.filter((value) => value != null && Number.isFinite(Number(value)));
+    if (!nums.length) return null;
+    return r3(nums.reduce((sum, value) => sum + Number(value), 0));
+}
+
+function mergeDayRows(rows) {
+    const source = (rows || []).filter((row) => row && row.ymd);
+    if (!source.length) return null;
+    const incomeByType = {};
+    for (const row of source) {
+        for (const [type, raw] of Object.entries(row.incomeByType || {})) {
+            incomeByType[type] = r3((incomeByType[type] || 0) + toNum(raw));
+        }
+    }
+    const asOf = source.map((row) => row.asOf).filter(Boolean).sort().at(-1) || null;
+    return {
+        ymd: source[0].ymd,
+        balance: sumPresent(source.map((row) => row.balance)),
+        profit: r3(source.reduce((sum, row) => sum + toNum(row.profit), 0)),
+        fee: r3(source.reduce((sum, row) => sum + toNum(row.fee), 0)),
+        funding: r3(source.reduce((sum, row) => sum + toNum(row.funding), 0)),
+        rebate: r3(source.reduce((sum, row) => sum + toNum(row.rebate), 0)),
+        trading: r3(source.reduce((sum, row) => sum + toNum(row.trading), 0)),
+        cashIn: r3(source.reduce((sum, row) => sum + toNum(row.cashIn), 0)),
+        cashOut: r3(source.reduce((sum, row) => sum + toNum(row.cashOut), 0)),
+        transferIn: r3(source.reduce((sum, row) => sum + toNum(row.transferIn), 0)),
+        transferOut: r3(source.reduce((sum, row) => sum + toNum(row.transferOut), 0)),
+        conversion: r3(source.reduce((sum, row) => sum + toNum(row.conversion), 0)),
+        incomeByType,
+        unrealized: sumPresent(source.map((row) => row.unrealized)),
+        available: sumPresent(source.map((row) => row.available)),
+        margin: sumPresent(source.map((row) => row.margin)),
+        exchangeBalance: sumPresent(source.map((row) => row.exchangeBalance)),
+        dbBalanceBefore: sumPresent(source.map((row) => row.dbBalanceBefore)),
+        asOf,
+        cashEntries: source.flatMap((row) => row.cashEntries || []).slice(-80),
+    };
+}
+
+function combineDayGroups(groups) {
+    const byDay = new Map();
+    for (const rows of groups || []) {
+        for (const row of rows || []) {
+            if (!row?.ymd) continue;
+            const list = byDay.get(row.ymd) || [];
+            list.push(row);
+            byDay.set(row.ymd, list);
+        }
+    }
+    return [...byDay.keys()].sort().map((key) => mergeDayRows(byDay.get(key)));
+}
+
+function walletTargets(users) {
+    const seen = new Set();
+    const targets = [];
+    for (const user of users || []) {
+        const env = ledgerEnv(user);
+        const key = String(env || "").toUpperCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        targets.push({ username: user.username, env, accounts: user.accounts || [] });
+    }
+    return targets;
+}
+
+function audienceUsers(users, actor, options = {}) {
+    const others = options.others === true || options.others === "1" || options.others === "true";
+    const inactive = options.inactive === true || options.inactive === "1" || options.inactive === "true";
+    return (users || []).filter((user) => {
+        if (!inactive && user.active === false) return false;
+        if (!others && !isOwnUser(actor, user)) return false;
+        return true;
+    });
+}
+
+function summarizeFromDays(days, staticProfit = 0) {
+    const totals = (days || []).reduce((sum, day) => {
         sum.trading += day.trading;
         sum.profit += day.profit;
         sum.fee += day.fee;
@@ -150,8 +225,13 @@ function summarizeLedger(docs, staticProfit = 0) {
             before: last?.dbBalanceBefore ?? null,
             diff: exchange == null || last?.dbBalanceBefore == null ? null : r3(exchange - last.dbBalanceBefore),
         },
-        flows: days.filter((day) => day.cashIn || day.cashOut || day.conversion || day.cashEntries.length),
+        flows: (days || []).filter((day) => day.cashIn || day.cashOut || day.conversion || day.cashEntries.length),
     };
+}
+
+function summarizeLedger(docs, staticProfit = 0) {
+    const days = (docs || []).filter((doc) => doc && doc.day).map(dayRow);
+    return summarizeFromDays(days, staticProfit);
 }
 
 async function visibleUsers(actor) {
@@ -260,6 +340,54 @@ async function loadLedger(actor, query = {}) {
         live: summary.live,
         compare: summary.compare,
         flows: summary.flows,
+    };
+}
+
+function rowsForTarget(docs, target) {
+    const env = String(target.env || "").toUpperCase();
+    const name = String(target.username || "").toUpperCase();
+    const matched = (docs || []).filter((doc) => {
+        const value = String(doc?.env || "").toUpperCase();
+        return value === env || value === name;
+    });
+    const byDay = new Map();
+    for (const doc of matched) {
+        const key = ymd(doc.day);
+        const current = byDay.get(key);
+        if (!current || String(doc.env).toUpperCase() === env) byDay.set(key, doc);
+    }
+    return [...byDay.values()].map(dayRow);
+}
+
+async function loadCombinedLedger(actor, query = {}) {
+    const days = DAY_CHOICES.has(Number(query.days)) ? Number(query.days) : 14;
+    const users = await visibleUsers(actor);
+    const today = startOfUtcDay(new Date());
+    const from = addUtcDays(today, 1 - days);
+    const to = addUtcDays(today, 1);
+    const picked = audienceUsers(users, actor, query);
+    const targets = walletTargets(picked);
+    const envKeys = [...new Set(targets.flatMap((item) => [item.env, item.username].filter(Boolean)))];
+    const docs = envKeys.length
+        ? await FuturesProfit.find({ env: { $in: envKeys }, day: { $gte: from, $lt: to } }).sort({ day: 1 }).lean()
+        : [];
+    const series = combineDayGroups(targets.map((target) => rowsForTarget(docs, target)));
+    const tradeEnvs = targets.flatMap((item) => (item.accounts.length ? item.accounts : [item.env]));
+    const rebuilt = summarizeFromDays(series, await staticProfit(tradeEnvs, from, to));
+    return {
+        view: "all",
+        users: users.map((item) => ({ username: item.username, active: item.active, mine: isOwnUser(actor, item) })),
+        included: targets.map((item) => ({ username: item.username, env: item.env })),
+        username: null,
+        env: null,
+        days,
+        from: ymd(from),
+        to: ymd(today),
+        series: rebuilt.days,
+        totals: rebuilt.totals,
+        live: rebuilt.live,
+        compare: rebuilt.compare,
+        flows: rebuilt.flows,
     };
 }
 
@@ -462,11 +590,15 @@ module.exports = {
     ledgerEnv,
     isOwnedUser,
     isOwnUser,
+    audienceUsers,
+    walletTargets,
+    mergeDayRows,
     usersForAudience,
     assignedUsers,
     classifyIncome,
     summarizeLedger,
     loadLedger,
+    loadCombinedLedger,
     loadAssignedIncome,
     refreshLedger,
 };

@@ -21,6 +21,8 @@ function tone(value) {
   return n > 0 ? "positive" : "negative";
 }
 
+const ALL = "__all__";
+
 function filterUsers(users, showOthers, showInactive) {
   return (users || []).filter((item) => {
     if (!showInactive && item.active === false) return false;
@@ -56,7 +58,11 @@ export default function AccountLedgerPage() {
     let cancelled = false;
     const controller = new AbortController();
     const params = new URLSearchParams({ days });
-    if (username) params.set("username", username);
+    if (username === ALL) {
+      params.set("view", "all");
+      if (showOthers) params.set("others", "1");
+      if (showInactive) params.set("inactive", "1");
+    } else if (username) params.set("username", username);
     setLoading(true);
     api(`/api/account-ledger?${params}`, { signal: controller.signal })
       .then((result) => {
@@ -82,12 +88,12 @@ export default function AccountLedgerPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [days, username]);
+  }, [days, username, username === ALL ? showOthers : false, username === ALL ? showInactive : false]);
 
   const choices = filterUsers(data?.users, showOthers, showInactive);
 
   useEffect(() => {
-    if (!data) return;
+    if (!data || username === ALL) return;
     const next = filterUsers(data.users, showOthers, showInactive);
     if (next.some((item) => item.username === username)) return;
     setUsername(next[0]?.username || "");
@@ -133,7 +139,8 @@ export default function AccountLedgerPage() {
         <div className="ledger-tools">
           <label>
             User
-            <select value={choices.some((item) => item.username === username) ? username : ""} onChange={(event) => setUsername(event.target.value)}>
+            <select value={username === ALL || choices.some((item) => item.username === username) ? username : ""} onChange={(event) => setUsername(event.target.value)}>
+              <option value={ALL}>Tất cả</option>
               {choices.map((item) => (
                 <option key={item.username} value={item.username}>{item.username}{item.active ? "" : " (tắt)"}</option>
               ))}
@@ -162,9 +169,11 @@ export default function AccountLedgerPage() {
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
       {!loading && data && !choices.length ? <p className="muted">{showOthers ? "Không có user khác trong quyền xem." : "Bạn chưa có user bot đang active. Tick để xem người khác hoặc account đang tắt."}</p> : null}
-      {data?.username && choices.some((item) => item.username === data.username) ? (
+      {(username === ALL ? data?.view === "all" && choices.length : data?.username && choices.some((item) => item.username === data.username)) ? (
         <>
-          <p className="muted">User {data.username} · ví ghi ở env {data.env}. Kỳ {data.from} → {data.to} UTC. Số dư và income lấy futures_profits{live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.</p>
+          <p className="muted">{data.view === "all"
+            ? `Tổng ${(data.included || []).map((item) => `${item.username} (${item.env})`).join(", ") || "không có ví"}. Kỳ ${data.from} → ${data.to} UTC. Hai user trùng env chỉ tính một lần. Cập nhật sàn vẫn chọn từng user.`
+            : `User ${data.username} · ví ghi ở env ${data.env}. Kỳ ${data.from} → ${data.to} UTC. Số dư và income lấy futures_profits${live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.`}</p>
           <div className="stats-grid summary-grid">
             <article className="card summary-stat"><small>Ví futures · futures_profits</small><strong>{plain(live.wallet)}</strong></article>
             <article className="card summary-stat"><small>Khả dụng · sàn lúc cập nhật</small><strong>{plain(live.available)}</strong></article>

@@ -2,7 +2,7 @@ const express = require("express");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
-const { loadLedger, loadAssignedIncome, refreshLedger } = require("../lib/account-ledger");
+const { loadLedger, loadAssignedIncome, loadCombinedLedger, refreshLedger } = require("../lib/account-ledger");
 const { createRateLimit } = require("../middleware/rate-limit");
 
 const router = express.Router();
@@ -13,7 +13,13 @@ router.use(requireAuth, requirePermission(PERMISSIONS.STATISTICS_VIEW));
 router.get("/", async (req, res) => {
     try {
         const scope = String(req.query.scope || "").trim();
-        res.json(scope === "all" || scope === "mine" || scope === "assigned" ? await loadAssignedIncome(req.webUser, scope) : await loadLedger(req.webUser, req.query));
+        const view = String(req.query.view || "").trim();
+        const payload = scope === "all" || scope === "mine" || scope === "assigned"
+            ? await loadAssignedIncome(req.webUser, scope)
+            : view === "all"
+                ? await loadCombinedLedger(req.webUser, req.query)
+                : await loadLedger(req.webUser, req.query);
+        res.json(payload);
     } catch (error) {
         sendError(res, error, "GET /api/account-ledger");
     }

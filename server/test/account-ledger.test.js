@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, usersForAudience, ledgerEnv, summarizeLedger, refreshLedger } = require("../src/lib/account-ledger");
+const { isOwnUser, usersForAudience, ledgerEnv, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -51,6 +51,28 @@ test("mine is owned plus assigned, all adds bots the actor may view", async () =
 test("ledger uses the user name as the shared wallet env", () => {
     assert.equal(ledgerEnv({ username: "v", accounts: ["v1", "V"] }), "V");
     assert.equal(ledgerEnv({ username: "vx268", accounts: ["a1"] }), "A1");
+});
+
+test("all view sums each wallet and keeps one row when two users share an env", () => {
+    const actor = { id: "vx", username: "vx268", botUsernames: ["B2"] };
+    const users = [
+        { username: "B1", accounts: ["B1"], active: true, ownerUserId: "vx" },
+        { username: "B2", accounts: ["B2"], active: true, ownerUserId: "other" },
+        { username: "B3", accounts: ["B1"], active: true, ownerUserId: "vx" },
+        { username: "OLD", accounts: ["OLD"], active: false, ownerUserId: "vx" },
+    ];
+    assert.deepEqual(audienceUsers(users, actor, {}).map((item) => item.username), ["B1", "B2", "B3"]);
+    assert.deepEqual(walletTargets(audienceUsers(users, actor, {})).map((item) => item.env), ["B1", "B2"]);
+    const merged = mergeDayRows([
+        { ymd: "2026-10-08", balance: 100, profit: 5, fee: -1, funding: 0, rebate: 0, trading: 4, cashIn: 10, cashOut: 0, transferIn: 0, transferOut: 0, conversion: 0, unrealized: 1, available: 40, margin: 10, exchangeBalance: 100, dbBalanceBefore: 90, incomeByType: {}, cashEntries: [] },
+        { ymd: "2026-10-08", balance: 50, profit: -2, fee: -0.5, funding: 0, rebate: 0, trading: -2.5, cashIn: 0, cashOut: -3, transferIn: 0, transferOut: 0, conversion: 0, unrealized: -1, available: 20, margin: 5, exchangeBalance: 50, dbBalanceBefore: 40, incomeByType: {}, cashEntries: [] },
+    ]);
+    assert.equal(merged.balance, 150);
+    assert.equal(merged.trading, 1.5);
+    assert.equal(merged.available, 60);
+    assert.equal(merged.unrealized, 0);
+    assert.equal(merged.cashIn, 10);
+    assert.equal(merged.cashOut, -3);
 });
 
 test("stored days separate trading pnl from cash flow", () => {
