@@ -159,8 +159,34 @@ function publicMonitor(doc, heartbeatFresh, now, mark) {
         closed: doc.closed === true,
         estimatedPnl: estimatedPnl(identity.side, entry, mark, ownQty(doc)),
         estimatedLabel: "ước tính",
+        recorded: recordedFromDoc(doc),
         expectedOrders: expectedOrders(doc),
     };
+}
+
+function recordedFromDoc(doc) {
+    const stats = doc?.stats;
+    if (!stats || typeof stats !== "object") return null;
+    const present = ["realizedPnl", "commission", "funding"].filter((key) => stats[key] != null && stats[key] !== "");
+    if (!present.length) return null;
+    const realized = num(stats.realizedPnl);
+    const fee = num(stats.commission);
+    const funding = num(stats.funding);
+    return { realized, fee, funding, net: realized + fee + funding };
+}
+
+function attachRecorded(parent) {
+    const parts = (parent.monitors || []).map((monitor) => monitor.recorded).filter(Boolean);
+    if (!parts.length) {
+        parent.recorded = null;
+        parent.recordedNet = null;
+        return;
+    }
+    const realized = parts.reduce((sum, part) => sum + part.realized, 0);
+    const fee = parts.reduce((sum, part) => sum + part.fee, 0);
+    const funding = parts.reduce((sum, part) => sum + part.funding, 0);
+    parent.recorded = { realized, fee, funding, net: realized + fee + funding };
+    parent.recordedNet = parent.recorded.net;
 }
 
 function publicOrder(row, kind) {
@@ -357,6 +383,7 @@ function buildPositionView({
         if (!parent.monitors.length) parent.warnings.push("no-monitor");
         if (Math.abs(managed - parent.exchangeQty) > QTY_EPS) parent.warnings.push("qty-mismatch");
         parent.notpsl = parent.monitors.some((monitor) => monitor.notpsl);
+        attachRecorded(parent);
         parents.push(parent);
     }
 
@@ -375,6 +402,7 @@ function buildPositionView({
         } else if (!exchangeLoaded) {
             applyMonitorQuote(parent, doc);
         }
+        attachRecorded(parent);
         parents.push(parent);
     });
 
@@ -406,6 +434,7 @@ function buildPositionView({
         parent.key = key;
         if (order.kind === "algo") parent.algoOrders = [order];
         else parent.exchangeOrders = [order];
+        attachRecorded(parent);
         parents.push(parent);
         placed.add(`${identity.symbol}|${identity.side}`);
     }
@@ -518,15 +547,18 @@ async function loadPositions(actor, query = {}, deps = {}) {
     const force = query.refresh === "1" || query.refresh === "true";
     const maxAge = deps.exchangeMaxAgeMs || EXCHANGE_MAX_AGE_MS;
     const books = new Map();
-    const cachedBook = force ? null : freshExchangeBook(snap, now, maxAge);
-    if (cachedBook) books.set(account, cachedBook);
+    const remembered = new Map();
+    const keepBook = (name, raw) => {
+        const book = asExchangeBook(raw);
+        if (!book) return;
+        remembered.set(name, book);
+        if (!force && freshExchangeBook(book, now, maxAge)) books.set(name, book);
+    };
+    if (account) keepBook(account, snap);
     if (!account && deps.snapshots) {
         try {
             const extra = await deps.snapshots(selected);
-            for (const [name, book] of Object.entries(extra || {})) {
-                const usable = force ? null : freshExchangeBook(book, now, maxAge);
-                if (usable) books.set(name, usable);
-            }
+            for (const [name, book] of Object.entries(extra || {})) keepBook(name, book);
         } catch (error) {
             console.error("[loadPositions]", error.message);
         }
@@ -556,6 +588,9 @@ async function loadPositions(actor, query = {}, deps = {}) {
             } else if (item.error) exchangeErrors.push({ account: item.name, error: item.error });
         }
     }
+    for (const name of selected) {
+        if (!books.has(name) && remembered.has(name)) books.set(name, { ...remembered.get(name), stale: true });
+    }
     const rows = [];
     for (const name of selected) {
         const current = books.get(name) || null;
@@ -568,7 +603,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
             algoOrders: current?.algoOrders || [],
             heartbeatFresh: fromMonitor || fresh,
             now,
-            connection: name === account ? connection : "idle",
+            connection: current?.stale ? "stale" : (name === account ? connection : "idle"),
             exchangeLoaded: Boolean(current),
         }));
     }

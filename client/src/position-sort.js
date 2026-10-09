@@ -4,7 +4,8 @@ export const POSITION_COLUMNS = [
   { id: "size", label: "Size" },
   { id: "entry", label: "Entry" },
   { id: "mark", label: "Mark" },
-  { id: "unrealized", label: "PnL" },
+  { id: "unrealized", label: "PnL", title: "Size × (mark − entry)" },
+  { id: "recorded", label: "PnL ghi nhận", title: "Lãi đã chốt + fee + funding trên monitor" },
   { id: "liquidation", label: "Liq" },
   { id: "volume", label: "Volume", title: "qty × mark" },
 ];
@@ -27,10 +28,13 @@ export function volumeOf(row) {
 
 export function roiOf(row) {
   const pnl = Number(row?.unrealized);
-  const volume = volumeOf(row);
+  const qty = qtyOf(row);
+  const entry = Number(row?.entry);
   const leverage = Number(row?.leverage);
-  if (!Number.isFinite(pnl) || !volume || !leverage) return null;
-  return (pnl * leverage / volume) * 100;
+  if (!Number.isFinite(pnl) || !qty || !entry || !leverage) return null;
+  const margin = Math.abs(qty * entry) / leverage;
+  if (!margin) return null;
+  return (pnl / margin) * 100;
 }
 
 export function sortedRows(rows, key, dir) {
@@ -38,8 +42,8 @@ export function sortedRows(rows, key, dir) {
   const sign = dir === "asc" ? 1 : -1;
   const text = POSITION_COLUMNS.find((column) => column.id === key)?.text;
   return [...rows].sort((a, b) => {
-    const av = key === "volume" ? volumeOf(a) : key === "size" ? qtyOf(a) : a[key];
-    const bv = key === "volume" ? volumeOf(b) : key === "size" ? qtyOf(b) : b[key];
+    const av = key === "volume" ? volumeOf(a) : key === "size" ? qtyOf(a) : key === "recorded" ? a.recordedNet : a[key];
+    const bv = key === "volume" ? volumeOf(b) : key === "size" ? qtyOf(b) : key === "recorded" ? b.recordedNet : b[key];
     const missingA = av == null || av === "";
     const missingB = bv == null || bv === "";
     if (missingA || missingB) {

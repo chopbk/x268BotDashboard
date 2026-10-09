@@ -8,7 +8,7 @@ test("volume is qty times mark and falls back to monitor qty", () => {
   assert.equal(volumeOf({ exchangeQty: null, mark: 10 }), null);
   assert.equal(volumeOf({ exchangeQty: null, mark: 10, monitors: [{ ownQty: 3 }] }), 30);
   assert.equal(volumeOf({ exchangeQty: 2, mark: null }), null);
-  assert.equal(roiOf({ exchangeQty: 2, mark: 10, unrealized: 4, leverage: 5 }), 100);
+  assert.equal(roiOf({ exchangeQty: 2, entry: 10, mark: 12, unrealized: 4, leverage: 5 }), 100);
 });
 
 test("column sort toggles numeric volume and keeps rows without a price last", () => {

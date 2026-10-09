@@ -21,6 +21,29 @@ function query(value) {
     };
 }
 
+test("recorded pnl adds realized, fee and funding from the monitor", () => {
+    const rows = buildPositionView({
+        account: "V",
+        now,
+        connection: "monitor",
+        exchangeLoaded: false,
+        heartbeatFresh: false,
+        exchangePositions: [],
+        monitors: [{
+            _id: "m",
+            env: "V1",
+            symbol: "ETHUSDT",
+            side: "LONG",
+            positionAmt: "1",
+            closed: false,
+            position: { positionAmt: "2", entryPrice: "100", markPrice: "110" },
+            stats: { realizedPnl: 3, commission: -0.4, funding: -0.1 },
+        }],
+    });
+    assert.equal(rows[0].recorded.net, 2.5);
+    assert.equal(rows[0].exchangeQty, 2);
+});
+
 test("exchange pnl is counted once when several monitors share a position", () => {
     const rows = buildPositionView({
         account: "V",
@@ -465,6 +488,16 @@ test("a fresh exchange book skips the Binance call until it is old or refreshed"
             },
         });
         assert.equal(calls, 1);
+        calls = 0;
+        const keptAfterFailure = await loadPositions(actorV, {}, {
+            ...deps,
+            exchangeMaxAgeMs: 1000,
+            snapshots: async () => ({ V: { ...stored, at: new Date(now - 5000).toISOString() } }),
+            exchange: async () => { calls += 1; throw new Error("sàn lỗi"); },
+        });
+        assert.equal(calls, 1);
+        assert.equal(keptAfterFailure.rows.some((row) => row.symbol === "SOLUSDT"), true);
+        assert.equal(keptAfterFailure.rows[0].warnings.includes("stale"), true);
     } finally {
         UserAccount.find = originals.users;
         MonitorPosition.find = originals.monitors;

@@ -303,7 +303,7 @@ export default function PositionsPage() {
     <section className="stack pos-screen">
       <header>
         <h1>Position</h1>
-        <p className="muted">Size, TP/SL và nút xoá lấy từ monitor position. Volume là qty × mark. Bấm tiêu đề cột để sắp xếp. Market, Limit và Reverse chưa gửi lệnh lên sàn.</p>
+        <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận là lãi đã chốt, fee và funding trên monitor. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
       </header>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
         <label>Phạm vi
@@ -383,16 +383,7 @@ export default function PositionsPage() {
             <thead>
               <tr>
                 <th />
-                {POSITION_COLUMNS.slice(0, 6).map((column) => (
-                  <th key={column.id} aria-sort={sort.key === column.id ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                    <button type="button" className="sort-col" title={column.title} onClick={() => toggleSort(column.id)}>
-                      {column.label}{sort.key === column.id ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
-                    </button>
-                  </th>
-                ))}
-                <th>Đóng</th>
-                <th>TP/SL</th>
-                {POSITION_COLUMNS.slice(6).map((column) => (
+                {POSITION_COLUMNS.map((column) => (
                   <th key={column.id} aria-sort={sort.key === column.id ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
                     <button type="button" className="sort-col" title={column.title} onClick={() => toggleSort(column.id)}>
                       {column.label}{sort.key === column.id ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
@@ -404,41 +395,53 @@ export default function PositionsPage() {
             <tbody>
               {rows.map((row) => {
                 const roi = roiOf(row);
+                const recordedTitle = row.recorded
+                  ? `chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
+                  : "Monitor chưa ghi lãi chốt, fee hoặc funding";
                 return (
                 <Fragment key={row.key}>
                   <tr className={row.warnings.length ? "pos-alert" : ""}>
                     <td><button type="button" className="ghost" onClick={() => toggle(row.key)}>{open.has(row.key) ? "−" : "+"}</button></td>
                     <td>{row.account}</td>
-                    <td className="pos-inline">
-                      <button type="button" className="linkish" data-row={row.key} onClick={(event) => { setMonitorId(""); go((query) => query.set("panel", row.key), { layer: true }); event.currentTarget.blur(); }}>{row.symbol}</button>
-                      <span className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}</span>
+                    <td>
+                      <span className="pos-inline">
+                        <button type="button" className="linkish" data-row={row.key} onClick={(event) => { setMonitorId(""); go((query) => query.set("panel", row.key), { layer: true }); event.currentTarget.blur(); }}>{row.symbol}</button>
+                        <span className="muted">{row.side}{row.leverage == null ? "" : ` · ${fmt(row.leverage, 0)}x`}{row.notpsl ? " · NOTPSL" : ""}</span>
+                      </span>
                     </td>
                     <td>{qtyOf(row) == null ? "—" : fmt(qtyOf(row))}</td>
                     <td>{fmt(row.entry)}</td>
                     <td>{fmt(row.mark)}</td>
-                    <td className={`pos-inline ${pnlClass(row.unrealized)}`}>
-                      <span>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</span>
-                      {roi == null ? null : <span>{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</span>}
+                    <td className={pnlClass(row.unrealized)} title="Size × (mark − entry)">
+                      <span className="pos-inline">
+                        <span>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</span>
+                        {roi == null ? null : <span>{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</span>}
+                      </span>
                     </td>
-                    <td className="pos-actions">
-                      <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Market</button>
-                      <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Limit</button>
-                      <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
-                      {canClose ? row.monitors.map((monitor) => (
-                        <button key={monitor.id} type="button" className="ghost" onClick={() => removeMonitor(monitor)}>Xoá {monitor.env || "monitor"}</button>
-                      )) : null}
-                    </td>
-                    <td className="pos-inline">
-                      <span>{tpslText(row)}</span>
-                      <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
-                    </td>
+                    <td className={pnlClass(row.recorded?.net)} title={recordedTitle}>{row.recorded ? fmt(row.recorded.net, 2) : "—"}</td>
                     <td>{fmt(row.liquidation)}</td>
                     <td>{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</td>
+                  </tr>
+                  <tr className={row.warnings.length ? "pos-sub pos-alert" : "pos-sub"}>
+                    <td />
+                    <td colSpan={9}>
+                      <div className="pos-actions">
+                        <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Market</button>
+                        <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Limit</button>
+                        <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
+                        <span>{tpslText(row)}</span>
+                        <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
+                        {canClose ? row.monitors.map((monitor) => (
+                          <button key={monitor.id} type="button" className="ghost" onClick={() => removeMonitor(monitor)}>Xoá {monitor.env || "monitor"}</button>
+                        )) : null}
+                        {row.warnings.length ? <span className="muted">{row.warnings.map((item) => WARN[item] || item).join(" · ")}</span> : null}
+                      </div>
+                    </td>
                   </tr>
                   {open.has(row.key) ? row.monitors.map((monitor) => (
                     <tr key={monitor.id} className="pos-child">
                       <td />
-                      <td colSpan={10}>
+                      <td colSpan={9}>
                         <button type="button" className="linkish" onClick={() => { setMonitorId(monitor.id); go((query) => query.set("panel", row.key), { layer: true }); }}>
                           {monitor.env || "config"}
                         </button>
@@ -456,8 +459,7 @@ export default function PositionsPage() {
                       </td>
                     </tr>
                   )) : null}
-                  {open.has(row.key) && !row.monitors.length ? <tr className="pos-child"><td /><td colSpan={10}>Không có monitor cho vị thế này.</td></tr> : null}
-                  {row.warnings.length ? <tr className="pos-child"><td /><td colSpan={10}>{row.warnings.map((item) => WARN[item] || item).join(" · ")}</td></tr> : null}
+                  {open.has(row.key) && !row.monitors.length ? <tr className="pos-child"><td /><td colSpan={9}>Không có monitor cho vị thế này.</td></tr> : null}
                 </Fragment>
                 );
               })}
