@@ -148,6 +148,19 @@ test("exchange pnl is counted once when several monitors share a position", () =
     assert.equal(rows[0].monitors[1].watching, false);
     assert.equal(rows[0].monitors[0].expectedOrders[0].confirmed, false);
     assert.equal(rows[0].warnings.includes("qty-mismatch"), false);
+    const shared = buildPositionView({
+        account: "B2",
+        now,
+        connection: "live",
+        exchangeLoaded: true,
+        exchangePositions: [{ symbol: "ENAUSDT", positionSide: "LONG", positionAmt: "100", entryPrice: "1", markPrice: "1", unRealizedProfit: "0" }],
+        monitors: [
+            { _id: "f", env: "B2F", symbol: "ENAUSDT", side: "LONG", positionAmt: "100", signal: "GAULS", closed: false },
+            { _id: "l", env: "B2L", symbol: "ENAUSDT", side: "LONG", positionAmt: "100", signal: "GAULS", closed: false },
+        ],
+    });
+    assert.equal(shared[0].monitors.length, 2);
+    assert.equal(shared[0].warnings.includes("qty-mismatch"), false);
 });
 
 test("long and short stay apart, paper and notpsl are not merged into exchange pnl", () => {
@@ -200,9 +213,7 @@ test("warnings cover a position without a monitor, qty drift, and a monitor with
     const xrp = rows.find((row) => row.symbol === "XRPUSDT");
     assert.equal(btc.warnings.includes("qty-mismatch"), true);
     assert.equal(btc.warnings.includes("stale"), true);
-    assert.equal(xrp.warnings.includes("closed-on-exchange"), true);
-    assert.equal(xrp.closedOnExchange, true);
-    assert.equal(xrp.exchangeQty, null);
+    assert.equal(xrp, undefined);
     const naked = buildPositionView({
         account: "V",
         exchangePositions: [{ symbol: "BNBUSDT", positionAmt: "1", entryPrice: "1", markPrice: "1", unRealizedProfit: "0" }],
@@ -347,9 +358,7 @@ test("default audience is mine and paper stays out until asked", async () => {
                 { _id: "shut", env: "V1", symbol: "ADAUSDT", side: "LONG", positionAmt: "1", isClosed: true, closed: false },
             ],
         });
-        assert.equal(closed.length, 1);
-        assert.equal(closed[0].closedOnExchange, true);
-        assert.equal(filterRows(closed, {}).length, 1);
+        assert.equal(closed.length, 0);
         assert.equal(filterRows([{ book: "paper", symbol: "ETHUSDT", side: "LONG", monitors: [], warnings: [] }], {}).length, 0);
     } finally {
         UserAccount.find = originals.users;
@@ -452,7 +461,7 @@ test("the exchange book lists a live position that has no monitor", async () => 
         assert.equal(btc.monitors[0].openedAt, "2026-10-01T00:00:00.000Z");
         assert.equal(sol.warnings.includes("no-monitor"), true);
         assert.equal(sol.exchangeQty, 1);
-        assert.equal(xrp.closedOnExchange, true);
+        assert.equal(xrp, undefined);
         const failed = await loadPositions(actorV, { account: "V" }, {
             ...deps,
             exchange: async () => { throw new Error("API key không gọi được futures"); },

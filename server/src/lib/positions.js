@@ -381,9 +381,8 @@ function buildPositionView({
             parent.monitors.push(publicMonitor(doc, heartbeatFresh, now, parent.mark));
             used.add(index);
         });
-        const managed = parent.monitors.reduce((sum, monitor) => sum + monitor.ownQty, 0);
         if (!parent.monitors.length) parent.warnings.push("no-monitor");
-        if (Math.abs(managed - parent.exchangeQty) > QTY_EPS) parent.warnings.push("qty-mismatch");
+        if (qtyMismatch(parent)) parent.warnings.push("qty-mismatch");
         parent.notpsl = parent.monitors.some((monitor) => monitor.notpsl);
         attachRecorded(parent);
         parents.push(parent);
@@ -398,12 +397,8 @@ function buildPositionView({
         const monitor = publicMonitor(doc, heartbeatFresh, now, null);
         parent.monitors.push(monitor);
         parent.notpsl = monitor.notpsl;
-        if (book === "live" && exchangeLoaded) {
-            parent.warnings.push("closed-on-exchange");
-            parent.closedOnExchange = true;
-        } else if (!exchangeLoaded) {
-            applyMonitorQuote(parent, doc);
-        }
+        if (book === "live" && exchangeLoaded) return;
+        if (!exchangeLoaded) applyMonitorQuote(parent, doc);
         attachRecorded(parent);
         parents.push(parent);
     });
@@ -442,6 +437,16 @@ function buildPositionView({
     }
     for (const parent of parents) applyIncome(parent, income);
     return parents;
+}
+
+function qtyMismatch(parent) {
+    const monitors = parent.monitors || [];
+    if (!monitors.length || parent.exchangeQty == null) return false;
+    const owns = monitors.map((monitor) => monitor.ownQty);
+    const managed = owns.reduce((sum, qty) => sum + qty, 0);
+    if (Math.abs(managed - parent.exchangeQty) <= QTY_EPS) return false;
+    const shared = monitors.length > 1 && owns.every((qty) => Math.abs(qty - parent.exchangeQty) <= QTY_EPS);
+    return !shared;
 }
 
 function applyIncome(parent, income) {
