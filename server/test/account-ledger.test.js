@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows } = require("../src/lib/account-ledger");
+const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows, loadLedger } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -45,6 +45,29 @@ test("mine is owned plus assigned, all adds bots the actor may view", async () =
         assert.deepEqual((await usersForAudience(supervisor, "all")).map((row) => row.username), ["HIEN", "MINE", "ZED"]);
     } finally {
         UserAccount.find = original;
+    }
+});
+
+test("a member sees an assigned bot on the ledger", async () => {
+    const original = UserAccount.find;
+    const originalProfit = FuturesProfit.find;
+    const originalStatic = AccountStatic.aggregate;
+    UserAccount.find = () => chain([
+        { username: "HOA", accounts: ["HOA"], ownerUserId: "other", visibility: "public", active: true },
+        { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public", active: true },
+    ]);
+    FuturesProfit.find = () => chain([{ env: "HOA", day: new Date("2026-10-09T00:00:00.000Z"), profit: 3, balance: 100 }]);
+    AccountStatic.aggregate = async () => [];
+    try {
+        const apex = { id: "apex", role: "member", username: "apex", botUsernames: ["HOA"] };
+        const ledger = await loadLedger(apex, { username: "HOA", days: "14" });
+        assert.equal(ledger.username, "HOA");
+        assert.deepEqual(ledger.users.map((item) => item.username), ["HOA"]);
+        await assert.rejects(() => loadLedger(apex, { username: "ZED" }), (error) => error.status === 404);
+    } finally {
+        UserAccount.find = original;
+        FuturesProfit.find = originalProfit;
+        AccountStatic.aggregate = originalStatic;
     }
 });
 

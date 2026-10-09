@@ -261,7 +261,12 @@ function summarizeLedger(docs, staticProfit = 0) {
 async function visibleUsers(actor) {
     const rows = await UserAccount.find({}).select("username accounts ownerUserId visibility active").lean();
     return rows
-        .filter((row) => row?.username && canAccessResource(actor, PERMISSIONS.STATISTICS_VIEW, row))
+        .filter((row) => {
+            if (!row?.username) return false;
+            const user = { username: row.username, ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null };
+            if (isOwnUser(actor, user)) return true;
+            return canAccessResource(actor, PERMISSIONS.STATISTICS_VIEW, row);
+        })
         .map((row) => ({
             username: row.username,
             accounts: row.accounts || [],
