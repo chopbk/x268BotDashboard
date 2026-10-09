@@ -2,6 +2,15 @@
 
 Web UI cho bot, gồm client React/Vite và server Express/MongoDB.
 
+## Đọc hiểu project trước khi sửa
+
+- Bắt đầu ở `docs/index.md`; kiến trúc trong `docs/architecture.md`, tính năng trong
+  `docs/feature-spec.md`, luồng gọi trong `docs/flows.md`.
+- Tra route/collection ở `docs/api-data-reference.md`, quy trình kiểm tra ở
+  `docs/development.md`. Đối chiếu source hiện tại; không suy ra API từ tên menu.
+- Khi đổi tính năng, route hoặc nguồn dữ liệu, cập nhật tài liệu liên quan cùng thay đổi.
+  Không đưa secret, tài khoản thật hoặc tên signal riêng vào ví dụ/tài liệu.
+
 ## Quy tắc bắt buộc với auth và phân quyền
 
 Trước khi sửa bất kỳ phần nào liên quan đăng ký, đăng nhập, cookie/JWT, user, role,

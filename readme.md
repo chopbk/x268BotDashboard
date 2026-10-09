@@ -8,6 +8,19 @@ Web dashboard quản lý và theo dõi hệ thống bot giao dịch. Frontend d�
 - Theo dõi lịch sử signal, giao dịch, hiệu suất và lãi lỗ ví.
 - Quản lý thông tin API sàn, tài khoản web và quyền truy cập theo phạm vi.
 - Xem lịch sử chỉnh sửa; hỗ trợ sao chép và đồng bộ cấu hình.
+- Position live qua Redis/WebSocket với REST fallback; theo dõi heartbeat và log runtime.
+- Dashboard tổng quan, bốn tab Signal và gợi ý AI tùy cấu hình provider.
+
+## Đọc hiểu project
+
+Bắt đầu tại [mục lục tài liệu](docs/index.md):
+
+- [Kiến trúc và cấu trúc source](docs/architecture.md).
+- [Đặc tả tính năng và nguồn số liệu](docs/feature-spec.md).
+- [Luồng UI → API → MongoDB/Redis/sàn](docs/flows.md).
+- [Danh mục API và mô hình dữ liệu](docs/api-data-reference.md).
+- [Hướng dẫn phát triển, test và chẩn đoán](docs/development.md).
+- [Spec auth/RBAC](docs/auth-rbac-spec.md) và [deploy Debian](docs/deploy-debian.md).
 
 ## Chạy local
 
