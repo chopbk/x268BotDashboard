@@ -85,9 +85,11 @@ async function readExchangeBooks(names) {
 
 async function saveExchangeBook(account, book, expectedVersion) {
     if (!reader?.isReady || !account || !book || expectedVersion == null) return null;
+    const nowMs = Date.now();
+    const at = book.at || new Date(nowMs).toISOString();
     const raw = await reader.eval(EXCHANGE_WRITE, {
         keys: [EXCHANGE_KEY + account, EXCHANGE_KEY + account + ":ver", EXCHANGE_CHANNEL + account],
-        arguments: ["full", JSON.stringify(book), String(expectedVersion), book.at || new Date().toISOString(), account],
+        arguments: ["full", JSON.stringify(book), String(expectedVersion), at, account, String(nowMs)],
     });
     return raw ? JSON.parse(raw) : null;
 }
