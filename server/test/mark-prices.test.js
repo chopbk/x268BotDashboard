@@ -12,5 +12,7 @@ test("the all-market mark stream keeps the latest price per symbol", () => {
     assert.equal(store.get("ETHUSDT"), 130.5);
     assert.equal(store.has("BTCUSDT"), false);
     assert.equal(store.get("SOLUSDT"), 20);
-    assert.equal(MARK_URL.includes("!markPrice@arr@1s"), true);
+    assert.equal(MARK_URL.includes("/market/ws/!markPrice@arr@1s"), true);
+    ingestMarkPrices({ symbol: "ETHUSDT", markPrice: "2500" }, store);
+    assert.equal(store.get("ETHUSDT"), 2500);
 });

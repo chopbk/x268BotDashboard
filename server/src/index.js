@@ -26,7 +26,7 @@ async function main() {
         await connect(config.mongodb);
         await connectRateLimitStore(config.redisUrl);
         bindRedis(getRedisClient());
-        startMarkPrices();
+        await startMarkPrices();
         await bootstrapAdmin();
         await startSummarySnapshotJob();
 
