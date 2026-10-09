@@ -64,6 +64,12 @@ test("web reconciliation deduplicates viewers, shares its Redis lease and reject
     assert.ok(await redis.pTTL("wb:ex:cooldown") > 120000);
     await live.reconcile("B", { force: true });
     assert.equal(calls, 2, "IP cooldown applies to other accounts too");
+    await redis.del("wb:ex:cooldown");
+    live.resetLive();
+    live.bindRedis(redis);
+    feed.loadBinanceSnapshot = async () => { throw Object.assign(new Error("API key rejected"), { status: 401 }); };
+    await assert.rejects(live.reconcile("C", { force: true }), /API key rejected/);
+    assert.equal(await redis.get("wb:ex:C:refresh"), null, "non-429 errors must release the refresh lease");
 });
 
 function socket() {

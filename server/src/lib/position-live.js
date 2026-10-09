@@ -4,12 +4,18 @@ const ORDER_KEY = "wb:ord:";
 const ORDER_CHANNEL = "wb:ord:notify:";
 const EXCHANGE_KEY = "wb:ex:";
 const EXCHANGE_CHANNEL = "wb:ex:notify:";
+const EXCHANGE_TTL_SEC = 20 * 60;
 const QUOTE_MS = 15_000;
 const EXCHANGE_REFRESH_MS = 45_000;
 const EXCHANGE_WRITE = require("fs").readFileSync(require("path").join(__dirname, "exchange-book.lua"), "utf8");
 const pendingRefresh = new Map();
 const localBooks = new Map();
 let cooldownUntil = 0;
+
+function touchBook(account) {
+    if (!reader?.isReady || !account || typeof reader.expire !== "function") return;
+    reader.expire(EXCHANGE_KEY + account, EXCHANGE_TTL_SEC).catch((error) => console.error("[positionLive]", error.message));
+}
 
 const feeds = new Map();
 let reader = null;
@@ -53,7 +59,7 @@ async function readExchangeBook(account) {
         if (!raw) return null;
         const book = JSON.parse(raw);
         if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
-
+        touchBook(account);
         return book;
     } catch (error) {
         console.error("[positionLive]", error.message);
@@ -71,7 +77,10 @@ async function readExchangeBooks(names) {
             if (!values[index]) continue;
             try {
                 const book = JSON.parse(values[index]);
-                if (book?.source === "exchange" && Array.isArray(book.positions)) out[names[index]] = book;
+                if (book?.source === "exchange" && Array.isArray(book.positions)) {
+                    out[names[index]] = book;
+                    touchBook(names[index]);
+                }
             } catch (error) {
                 console.error("[positionLive]", error.message);
             }
@@ -123,13 +132,14 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
             return stored;
         } catch (error) {
             console.error("[positionReconcile]", account, error.message);
-            // Back off across instances too. A failed refresh keeps its lease until expiry.
+            // Only 429 keeps the lease so we do not hammer Binance. Other errors release the lock
+            // immediately — otherwise a missing book stays empty for the full 120s.
             if (error.status === 429) {
                 const delay = Math.max(120_000, error.retryAfterMs || 0);
                 cooldownUntil = Date.now() + delay;
                 if (reader?.isReady) await reader.set("wb:ex:cooldown", "1", { PX: delay }).catch(() => {});
+                token = null;
             }
-            token = null;
             throw error;
         } finally {
             if (token && reader?.isReady) {
