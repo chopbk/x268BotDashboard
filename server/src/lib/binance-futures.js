@@ -27,7 +27,8 @@ function binanceError(status, body) {
         return httpError(429, "Sàn đang giới hạn tần suất, thử lại sau");
     }
     if (code === -2015 || code === -2014 || status === 401) {
-        return httpError(400, "API key không gọi được futures");
+        const detail = body?.msg ? `: ${body.msg}` : "";
+        return httpError(400, `API key không gọi được futures${detail}`);
     }
     return httpError(502, "Không lấy được số liệu sàn");
 }

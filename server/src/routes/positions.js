@@ -5,6 +5,7 @@ const { PERMISSIONS } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
 const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots } = require("../lib/positions");
 const { refresh, cached, readBooks } = require("../lib/position-live");
+const { loadExchangeBook } = require("../lib/position-feed");
 const { markOf } = require("../lib/mark-prices");
 const UserAccount = require("../models/user-account");
 const MonitorPosition = require("../models/monitor-position");
@@ -31,6 +32,7 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), asyn
                 return books[name] || live;
             },
             snapshots: readBooks,
+            exchange: loadExchangeBook,
             priceOf: markOf,
         }));
     } catch (error) {

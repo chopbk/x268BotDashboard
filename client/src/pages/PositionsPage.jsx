@@ -256,7 +256,7 @@ export default function PositionsPage() {
     <section className="stack">
       <header>
         <h1>Position</h1>
-        <p className="muted">Mặc định là vị thế live của bot bạn sở hữu hoặc được gán, không gồm paper. Tất cả thêm bot mà quyền xem Position cho phép. Không đặt hay đóng lệnh từ đây.</p>
+        <p className="muted">Danh sách là vị thế đang mở trên sàn. Monitor chỉ thêm thời gian vào lệnh, signal và qty riêng. Mặc định không gồm paper. Không đặt hay đóng lệnh từ đây.</p>
       </header>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
         <label>Phạm vi
@@ -312,6 +312,7 @@ export default function PositionsPage() {
         {payload?.updatedAt ? ` · cập nhật ${when(payload.updatedAt)}` : ""}
       </p>
       {error ? <p className="form-error">{error}</p> : null}
+      {payload?.exchangeErrors?.length ? <p className="form-error">{payload.exchangeErrors.map((item) => `${item.account}: ${item.error}`).join(" · ")}</p> : null}
       {!payload ? <p className="muted">Đang tải…</p> : null}
       {payload && !rows.length && !stale ? <p className="muted">Không có vị thế trong bộ lọc này.</p> : null}
       {payload && !rows.length && stale ? <p className="pos-stale">Chưa có snapshot mới. Không coi đây là hết vị thế.</p> : null}

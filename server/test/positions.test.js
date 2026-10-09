@@ -7,7 +7,7 @@ const UserAccount = require("../src/models/user-account");
 const MonitorPosition = require("../src/models/monitor-position");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
 const { buildPositionView, applyLiveMarks, filterRows, loadPositions, estimatedPnl } = require("../src/lib/positions");
-const { applyAccountUpdate, applyOrderUpdate } = require("../src/lib/position-feed");
+const { applyAccountUpdate, applyOrderUpdate, loadExchangeBook, resetExchangeCache } = require("../src/lib/position-feed");
 const { parseNotice, decideUpdate } = require("../src/lib/position-cache");
 const { watch, resetLive, bindRedis } = require("../src/lib/position-live");
 
@@ -323,6 +323,72 @@ test("a missing exchange book shows the stored monitor instead of closed-on-exch
         MonitorPosition.find = originals.monitors;
         ProcessHeartbeat.find = originals.beats;
     }
+});
+
+test("the exchange book lists a live position that has no monitor", async () => {
+    const originals = { users: UserAccount.find, monitors: MonitorPosition.find, beats: ProcessHeartbeat.find };
+    UserAccount.find = () => query([{ username: "V", accounts: ["V1"], ownerUserId: "u1", active: true }]);
+    MonitorPosition.find = () => query([
+        { _id: "btc", env: "V1", futuresClientName: "V", symbol: "BTCUSDT", side: "LONG", positionAmt: "1", signal: "ROSE", startTime: "2026-10-01T00:00:00.000Z", closed: false },
+        { _id: "gone", env: "V1", futuresClientName: "V", symbol: "XRPUSDT", side: "SHORT", positionAmt: "1", signal: "TITAN", closed: false },
+    ]);
+    ProcessHeartbeat.find = () => query([]);
+    const actorV = { id: "u1", role: "admin", username: "me", email: "me@x.com", botUsernames: ["V"] };
+    const deps = { UserAccount, Monitor: MonitorPosition, Heartbeat: ProcessHeartbeat, now };
+    try {
+        const view = await loadPositions(actorV, { account: "V" }, {
+            ...deps,
+            snapshot: async () => ({ source: "monitor", status: "live", stale: false, positions: [], monitors: [] }),
+            exchange: async () => ({
+                source: "rest",
+                status: "polling",
+                stale: false,
+                positions: [
+                    { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "3", entryPrice: "10", markPrice: "12", unRealizedProfit: "6" },
+                    { symbol: "SOLUSDT", positionSide: "SHORT", positionAmt: "1", entryPrice: "20", markPrice: "18", unRealizedProfit: "2" },
+                ],
+                openOrders: [],
+                algoOrders: [],
+            }),
+        });
+        const btc = view.rows.find((row) => row.symbol === "BTCUSDT");
+        const sol = view.rows.find((row) => row.symbol === "SOLUSDT");
+        const xrp = view.rows.find((row) => row.symbol === "XRPUSDT");
+        assert.equal(btc.exchangeQty, 3);
+        assert.equal(btc.monitors[0].signal, "ROSE");
+        assert.equal(btc.monitors[0].openedAt, "2026-10-01T00:00:00.000Z");
+        assert.equal(sol.warnings.includes("no-monitor"), true);
+        assert.equal(sol.exchangeQty, 1);
+        assert.equal(xrp.closedOnExchange, true);
+        const failed = await loadPositions(actorV, { account: "V" }, {
+            ...deps,
+            exchange: async () => { throw new Error("API key không gọi được futures"); },
+        });
+        assert.equal(failed.exchangeErrors[0].account, "V");
+        assert.equal(failed.rows.some((row) => row.closedOnExchange), false);
+        assert.equal(failed.rows.some((row) => row.symbol === "SOLUSDT"), false);
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.find = originals.monitors;
+        ProcessHeartbeat.find = originals.beats;
+    }
+});
+
+test("exchange book cache does not call the exchange twice inside the window", async () => {
+    resetExchangeCache();
+    let calls = 0;
+    const book = await loadExchangeBook("V", {
+        now: () => 1_000,
+        load: async () => {
+            calls += 1;
+            return { positions: [{ symbol: "SOLUSDT", positionAmt: "1" }], openOrders: [], algoOrders: [] };
+        },
+    });
+    await loadExchangeBook("V", { now: () => 2_000, load: async () => { calls += 1; return { positions: [] }; } });
+    assert.equal(calls, 1);
+    assert.equal(book.source, "rest");
+    assert.equal(book.positions[0].symbol, "SOLUSDT");
+    resetExchangeCache();
 });
 
 test("live mark updates pnl and leaves exchange qty alone", () => {

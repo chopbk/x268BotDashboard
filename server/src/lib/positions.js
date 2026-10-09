@@ -263,6 +263,27 @@ function applyLiveMarks(rows, priceOf) {
     return { rows: next, priced };
 }
 
+function asExchangeBook(snap) {
+    const usable = usableExchangeSnap(snap);
+    if (!usable || usable.source === "monitor") return null;
+    return usable;
+}
+
+async function eachLimit(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    async function worker() {
+        while (next < items.length) {
+            const index = next;
+            next += 1;
+            results[index] = await fn(items[index]);
+        }
+    }
+    const width = Math.max(1, Math.min(limit, items.length));
+    if (items.length) await Promise.all(Array.from({ length: width }, () => worker()));
+    return results;
+}
+
 function usableExchangeSnap(snap) {
     if (!snap || typeof snap !== "object" || snap.error) return null;
     if (snap.source === "monitor") return snap;
@@ -480,21 +501,33 @@ async function loadPositions(actor, query = {}, deps = {}) {
         grouped.get(owner).push(doc);
     }
     const books = new Map();
-    if (snap) books.set(account, snap);
+    const cachedBook = asExchangeBook(snap);
+    if (cachedBook) books.set(account, cachedBook);
     if (!account && deps.snapshots) {
         try {
             const extra = await deps.snapshots(selected);
             for (const [name, book] of Object.entries(extra || {})) {
-                const usable = usableExchangeSnap(book);
+                const usable = asExchangeBook(book);
                 if (usable) books.set(name, usable);
             }
         } catch (error) {
             console.error("[loadPositions]", error.message);
         }
     }
-    for (const [name, book] of books) {
-        if (book?.source === "monitor" && Array.isArray(book.monitors)) {
-            grouped.set(name, book.monitors.filter((doc) => monitorOwner(doc, envOwners) === name));
+    const exchangeErrors = [];
+    if (deps.exchange) {
+        const fetched = await eachLimit(selected, 4, async (name) => {
+            try {
+                return { name, book: await deps.exchange(name) };
+            } catch (error) {
+                console.error("[loadPositions]", `${name} ${error.message}`);
+                return { name, error: error.message || "Không lấy được sổ sàn" };
+            }
+        });
+        for (const item of fetched) {
+            const book = asExchangeBook(item.book);
+            if (book) books.set(item.name, book);
+            else if (item.error) exchangeErrors.push({ account: item.name, error: item.error });
         }
     }
     const rows = [];
@@ -522,6 +555,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         updatedAt,
         stale,
         audience,
+        exchangeErrors,
         priceFeed: priced.priced ? "live" : "idle",
         version: snap?.version == null ? null : Number(snap.version),
     };

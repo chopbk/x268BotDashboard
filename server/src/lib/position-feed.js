@@ -381,6 +381,40 @@ async function binanceClient(account) {
     return createBinanceFutures({ apiKey: api.api_key, apiSecret: api.api_secret });
 }
 
+const exchangeCache = new Map();
+const EXCHANGE_CACHE_MS = 12_000;
+
+async function loadExchangeBook(account, deps = {}) {
+    const now = typeof deps.now === "function" ? deps.now() : Date.now();
+    const hit = exchangeCache.get(account);
+    if (hit && now - hit.at < EXCHANGE_CACHE_MS) {
+        if (hit.error) throw hit.error;
+        return hit.book;
+    }
+    try {
+        const load = deps.load || loadBinanceSnapshot;
+        const loaded = await load(account);
+        const book = {
+            source: "rest",
+            status: "polling",
+            stale: false,
+            at: new Date(now).toISOString(),
+            positions: Array.isArray(loaded?.positions) ? loaded.positions : [],
+            openOrders: Array.isArray(loaded?.openOrders) ? loaded.openOrders : [],
+            algoOrders: Array.isArray(loaded?.algoOrders) ? loaded.algoOrders : [],
+        };
+        exchangeCache.set(account, { at: now, book });
+        return book;
+    } catch (error) {
+        exchangeCache.set(account, { at: now, error });
+        throw error;
+    }
+}
+
+function resetExchangeCache() {
+    exchangeCache.clear();
+}
+
 async function loadBinanceSnapshot(account) {
     const client = await binanceClient(account);
     const [positions, openOrders, algoRaw] = await Promise.all([
@@ -447,6 +481,8 @@ module.exports = {
     createPositionHub,
     getPositionHub,
     loadBinanceSnapshot,
+    loadExchangeBook,
+    resetExchangeCache,
     applyAccountUpdate,
     applyOrderUpdate,
     applyMark,
