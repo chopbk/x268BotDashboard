@@ -12,6 +12,7 @@ const WARN = {
 };
 
 function fmt(value, digits = 4) {
+  if (value == null || value === "") return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
@@ -162,7 +163,10 @@ export default function PositionsPage() {
       current.onclose = () => {
         if (socket !== current) return;
         socket = null;
-        setPayload((prev) => (prev ? { ...prev, stale: true, connection: "stale" } : prev));
+        setPayload((prev) => {
+          if (!prev || prev.connection === "monitor" || prev.connection === "idle") return prev;
+          return { ...prev, stale: true, connection: "stale" };
+        });
         if (gone || document.visibilityState === "hidden") return;
         startPoll();
         const wait = Math.min(10000, 1000 * (2 ** attempt));
@@ -299,7 +303,9 @@ export default function PositionsPage() {
         </label>
       </form>
       <p className={stale ? "pos-status pos-stale" : "pos-status"}>
-        {account ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : stale ? "Mất kết nối, giữ dữ liệu cuối" : "Snapshot") : "Chọn tài khoản để nhận live"}
+        {account
+          ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Mất kết nối, giữ dữ liệu cuối" : "Snapshot")
+          : "Đang hiện monitor. Chọn tài khoản để nhận live"}
         {payload?.version != null ? ` · v${payload.version}` : ""}
         {payload?.updatedAt ? ` · cập nhật ${when(payload.updatedAt)}` : ""}
       </p>

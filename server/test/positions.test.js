@@ -265,6 +265,66 @@ test("default audience is mine and paper stays out until asked", async () => {
     }
 });
 
+test("a missing exchange book shows the stored monitor instead of closed-on-exchange", async () => {
+    const rows = buildPositionView({
+        account: "B5",
+        now,
+        connection: "monitor",
+        exchangeLoaded: false,
+        monitors: [{
+            _id: "eth",
+            env: "B5",
+            symbol: "ETHUSDT",
+            side: "LONG",
+            type: "NOTPSL",
+            positionAmt: "2",
+            closed: false,
+            position: { positionAmt: "2", entryPrice: "100", markPrice: "110", unRealizedProfit: "20", leverage: "5", liquidationPrice: "80" },
+        }],
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].closedOnExchange, undefined);
+    assert.equal(rows[0].warnings.includes("closed-on-exchange"), false);
+    assert.equal(rows[0].entry, 100);
+    assert.equal(rows[0].mark, 110);
+    assert.equal(rows[0].exchangeQty, 2);
+    assert.equal(rows[0].unrealized, 20);
+    assert.equal(rows[0].leverage, 5);
+    assert.equal(rows[0].liquidation, 80);
+
+    const originals = { users: UserAccount.find, monitors: MonitorPosition.find, beats: ProcessHeartbeat.find };
+    UserAccount.find = () => query([{ username: "B5", accounts: ["B5"], ownerUserId: "u1", active: true }]);
+    MonitorPosition.find = () => query([{
+        _id: "eth",
+        env: "B5",
+        futuresClientName: "B5",
+        symbol: "ETHUSDT",
+        side: "LONG",
+        type: "NOTPSL",
+        positionAmt: "2",
+        closed: false,
+        position: { positionAmt: "2", entryPrice: "100", markPrice: "110", unRealizedProfit: "20", leverage: "5", liquidationPrice: "80" },
+    }]);
+    ProcessHeartbeat.find = () => query([]);
+    const actorB5 = { id: "u1", role: "admin", username: "me", email: "me@x.com", botUsernames: ["B5"] };
+    const failed = { positions: [], openOrders: [], algoOrders: [], monitors: [], stale: true, status: "stale", error: "Không lấy được snapshot" };
+    try {
+        const view = await loadPositions(actorB5, { account: "B5" }, {
+            UserAccount, Monitor: MonitorPosition, Heartbeat: ProcessHeartbeat, now,
+            snapshot: async () => failed,
+        });
+        assert.equal(view.connection, "monitor");
+        assert.equal(view.stale, false);
+        assert.equal(view.rows[0].symbol, "ETHUSDT");
+        assert.equal(view.rows[0].closedOnExchange, undefined);
+        assert.equal(view.rows[0].entry, 100);
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.find = originals.monitors;
+        ProcessHeartbeat.find = originals.beats;
+    }
+});
+
 test("account and order events patch the cached position", () => {
     const positions = applyAccountUpdate([
         { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "1", entryPrice: "10", markPrice: "11" },

@@ -54,7 +54,7 @@ flowchart TD
 
 Source: [position-ws](../server/src/lib/position-ws.js), [position-live](../server/src/lib/position-live.js), [position-cache](../server/src/lib/position-cache.js), [positions](../server/src/lib/positions.js).
 
-Redis key `wb:pos:<account>`, channel `wb:pos:notify:<account>`; notice mang account/version/at. Web đọc snapshot, không lấy nội dung notice làm toàn bộ vị thế. Snapshot có age tối đa 90 giây để coi là fresh. Nhánh fallback có chu kỳ 15 giây khi có viewer. Các message client: `watch`, `resume`, `pause`; server trả `snapshot` hoặc `error`. Đóng socket bỏ watcher.
+Redis key `wb:pos:<account>`, channel `wb:pos:notify:<account>`; notice mang account/version/at. Web đọc snapshot, không lấy nội dung notice làm toàn bộ vị thế. Snapshot có age tối đa 90 giây để coi là fresh. Nhánh fallback có chu kỳ 15 giây khi có viewer. Không có snapshot dùng được thì view vẫn là monitor Mongo, không đánh dấu đã đóng trên sàn. Các message client: `watch`, `resume`, `pause`; server trả `snapshot` hoặc `error`. Đóng socket bỏ watcher.
 
 REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dùng `/api/positions/detail?id=...`. Phân quyền không được bỏ qua vì dữ liệu lấy từ cache. Đọc [giới hạn WS](architecture.md#giới-hạn-hiện-tại) trước khi sửa auth/proxy.
 

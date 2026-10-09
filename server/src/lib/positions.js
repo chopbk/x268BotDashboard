@@ -239,6 +239,35 @@ function emptyParent(account, identity, book, connection) {
     };
 }
 
+function usableExchangeSnap(snap) {
+    if (!snap || typeof snap !== "object" || snap.error) return null;
+    if (snap.source === "monitor") return snap;
+    if (snap.stale === true || snap.status === "stale") return null;
+    if (snap.source === "rest" || snap.status === "live" || snap.status === "polling") return snap;
+    if (Array.isArray(snap.positions) && snap.positions.length > 0) return snap;
+    return null;
+}
+
+function applyMonitorQuote(parent, doc) {
+    const pos = doc?.position && typeof doc.position === "object" ? doc.position : {};
+    const entry = num(pos.entryPrice) || null;
+    const mark = num(pos.markPrice) || null;
+    const qty = Math.abs(num(pos.positionAmt));
+    if (parent.entry == null && entry) parent.entry = entry;
+    if (parent.mark == null && mark) parent.mark = mark;
+    if (parent.leverage == null && pos.leverage != null && pos.leverage !== "") parent.leverage = num(pos.leverage) || null;
+    if (parent.liquidation == null) {
+        const liq = num(pos.liquidationPrice) || null;
+        if (liq) parent.liquidation = liq;
+    }
+    if (parent.exchangeQty == null && qty > QTY_EPS) parent.exchangeQty = qty;
+    if (parent.unrealized == null) {
+        parent.unrealized = pos.unRealizedProfit == null || pos.unRealizedProfit === ""
+            ? estimatedPnl(parent.side, entry, mark, qty || ownQty(doc))
+            : num(pos.unRealizedProfit);
+    }
+}
+
 function buildPositionView({
     account,
     monitors = [],
@@ -283,6 +312,8 @@ function buildPositionView({
         if (book === "live" && exchangeLoaded) {
             parent.warnings.push("closed-on-exchange");
             parent.closedOnExchange = true;
+        } else if (!exchangeLoaded) {
+            applyMonitorQuote(parent, doc);
         }
         parents.push(parent);
     });
@@ -402,13 +433,13 @@ async function loadPositions(actor, query = {}, deps = {}) {
     const monitors = (found || []).filter((doc) => selected.includes(monitorOwner(doc, envOwners)));
     const beats = await Heartbeat.find({ "flags.monitor": true }).select("at flags").lean();
     const fresh = heartbeatFresh(beats, now);
-    let connection = account ? "snapshot" : "idle";
+    let connection = account ? "monitor" : "idle";
     let updatedAt = null;
     let stale = false;
     let snap = null;
     if (account && deps.snapshot) {
         try {
-            snap = await deps.snapshot(account);
+            snap = usableExchangeSnap(await deps.snapshot(account));
             if (snap) {
                 connection = snap.status || (snap.source === "monitor" ? "live" : "snapshot");
                 updatedAt = snap.at || null;
@@ -416,8 +447,6 @@ async function loadPositions(actor, query = {}, deps = {}) {
             }
         } catch (error) {
             console.error("[loadPositions]", error.message);
-            connection = "stale";
-            stale = true;
         }
     }
     const grouped = new Map(selected.map((name) => [name, []]));
@@ -442,7 +471,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
             heartbeatFresh: fromMonitor || fresh,
             now,
             connection: name === account ? connection : "idle",
-            exchangeLoaded: Boolean(current && (current.positions || current.source === "monitor")),
+            exchangeLoaded: Boolean(current),
         }));
     }
     return {
