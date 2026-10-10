@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { canEditResource } from "../access";
 import { Crumbs, useEscape, useLeaveGuard } from "../navigation";
+import { applyStatusLabel, waitForApply } from "../applyStatus";
 
 const CONFIG_EDIT = "config.edit";
 const SIGNALS_HISTORY = "signals.history";
@@ -315,41 +316,6 @@ function VolumeField({ id, form, onChange, disabled, note }) {
 function optionalNumber(value) {
   if (value === "" || value == null) return undefined;
   return Number(value);
-}
-
-function applyStatusLabel(apply) {
-  if (!apply?.requestId && apply?.status === "failed") {
-    return "Đã lưu DB — chờ áp dụng (không gửi được MQTT)";
-  }
-  if (!apply) return "Đã lưu DB";
-  if (apply.status === "succeeded" && apply.terminal) return "Đã áp dụng lên bot";
-  if (apply.status === "failed" && apply.terminal) {
-    return `Đã lưu DB — chờ áp dụng (${apply.error?.message || "bot báo lỗi"})`;
-  }
-  if (apply.status === "expired" && apply.terminal) {
-    return "Đã lưu DB — chờ áp dụng (bot không ACK kịp)";
-  }
-  if (["queued", "published", "received", "running"].includes(apply.status)) {
-    return `Đã lưu DB — đang áp dụng (${apply.status})`;
-  }
-  return `Đã lưu DB — ${apply.status || "chờ áp dụng"}`;
-}
-
-async function waitForApply(username, requestId, { signal, timeoutMs = 35_000 } = {}) {
-  if (!requestId) return null;
-  const started = Date.now();
-  let last = null;
-  while (Date.now() - started < timeoutMs) {
-    if (signal?.aborted) break;
-    const data = await api(`/api/bots/${encodeURIComponent(username)}/commands/${encodeURIComponent(requestId)}`, {
-      signal,
-      timeoutMs: 10_000,
-    });
-    last = data.command || null;
-    if (last?.terminal) return last;
-    await new Promise((resolve) => setTimeout(resolve, 800));
-  }
-  return last;
 }
 
 export default function AccountConfigPage() {

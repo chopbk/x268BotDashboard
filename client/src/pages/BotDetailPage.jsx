@@ -5,6 +5,7 @@ import useDebouncedValue from "../hooks/useDebouncedValue";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { canEditResource } from "../access";
+import { applyStatusLabel, summarizeApplies, waitForApply, waitForApplies } from "../applyStatus";
 
 const CONFIG_VIEW = "config.view";
 const CONFIG_EDIT = "config.edit";
@@ -127,6 +128,7 @@ export default function BotDetailPage() {
   const [bot, setBot] = useState(null);
   const canEditConfig = canEditResource(user, CONFIG_EDIT, bot);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [editUserName, setEditUserName] = useState(username);
   const [visibility, setVisibility] = useState("public");
@@ -333,6 +335,7 @@ export default function BotDetailPage() {
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {notice ? <p className="muted">{notice}</p> : null}
       {bot ? (
         <article className="card bot-detail">
           {canEditBot ? (
@@ -408,8 +411,10 @@ export default function BotDetailPage() {
                   const names = [...picked];
                   if (!window.confirm(`Xoá ${names.length} config khỏi ${bot.username}?`)) return;
                   run(async () => {
+                    setNotice("");
                     let latest = bot;
                     const removed = [];
+                    const applies = [];
                     try {
                       for (const account of names) {
                         const data = await api(
@@ -418,6 +423,7 @@ export default function BotDetailPage() {
                         );
                         latest = data.bot;
                         removed.push(account);
+                        if (data.apply) applies.push(data.apply);
                       }
                     } finally {
                       setBot(latest);
@@ -429,6 +435,11 @@ export default function BotDetailPage() {
                         });
                       }
                     }
+                    let done = applies;
+                    if (done.some((a) => a?.requestId && !a.terminal)) {
+                      done = await waitForApplies(bot.username, done);
+                    }
+                    setNotice(summarizeApplies(done) || "Đã gỡ config");
                   });
                 }}
               >
@@ -462,6 +473,7 @@ export default function BotDetailPage() {
                 }
                 if (!window.confirm(`Áp config nhanh cho ${names.length} account?`)) return;
                 run(async () => {
+                  setNotice("");
                   const data = await api(`/api/bots/${encodeURIComponent(bot.username)}/configs/bulk`, {
                     method: "POST",
                     body,
@@ -471,6 +483,11 @@ export default function BotDetailPage() {
                   if (data.failed?.length) {
                     setError(data.failed.map((row) => `${row.env}: ${row.error}`).join("; "));
                   }
+                  let applies = data.applies || [];
+                  if (applies.some((a) => a?.requestId && !a.terminal)) {
+                    applies = await waitForApplies(bot.username, applies);
+                  }
+                  setNotice(summarizeApplies(applies) || (applies[0] ? applyStatusLabel(applies[0]) : "Đã lưu DB"));
                 });
               }}
             >
@@ -510,7 +527,7 @@ export default function BotDetailPage() {
                 <input value={quick.signals} placeholder="Giữ nguyên" onChange={(event) => setQuick((prev) => ({ ...prev, signals: event.target.value }))} />
               </label>
               <button type="submit" disabled={busy}>Áp dụng {picked.size} config</button>
-              <p className="muted">Ô để trống giữ nguyên. Signal điền vào sẽ thay cả danh sách signal. Bot nhận bản mới sau khi restart.</p>
+              <p className="muted">Ô để trống giữ nguyên. Signal điền vào sẽ thay cả danh sách signal. Lưu xong tự đồng bộ lên bot qua MQTT.</p>
             </form>
           ) : null}
           {accounts.length > 0 ? (
@@ -593,6 +610,7 @@ export default function BotDetailPage() {
                 onSubmit={(event) => {
                   event.preventDefault();
                   run(async () => {
+                    setNotice("");
                     const data = await api(
                       `/api/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`,
                       { method: "PATCH", body: { env: envDraft } }
@@ -600,6 +618,11 @@ export default function BotDetailPage() {
                     setBot(data.bot);
                     setEditEnv(null);
                     setEnvDraft("");
+                    let apply = data.apply || null;
+                    if (apply?.requestId && !apply.terminal) {
+                      apply = await waitForApply(bot.username, apply.requestId);
+                    }
+                    if (apply) setNotice(applyStatusLabel(apply));
                   });
                 }}
               >
@@ -672,11 +695,17 @@ export default function BotDetailPage() {
                           onClick={() => {
                             if (!window.confirm(`Xoá config ${account} khỏi ${bot.username}?`)) return;
                             run(async () => {
+                              setNotice("");
                               const data = await api(
                                 `/api/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(account)}`,
                                 { method: "DELETE" }
                               );
                               setBot(data.bot);
+                              let apply = data.apply || null;
+                              if (apply?.requestId && !apply.terminal) {
+                                apply = await waitForApply(bot.username, apply.requestId);
+                              }
+                              if (apply) setNotice(applyStatusLabel(apply));
                             });
                           }}
                         >
@@ -695,12 +724,18 @@ export default function BotDetailPage() {
               onSubmit={(event) => {
                 event.preventDefault();
                 run(async () => {
+                  setNotice("");
                   const data = await api(`/api/bots/${encodeURIComponent(bot.username)}/accounts`, {
                     method: "POST",
                     body: { env: draft },
                   });
                   setBot(data.bot);
                   setDraft("");
+                  let apply = data.apply || null;
+                  if (apply?.requestId && !apply.terminal) {
+                    apply = await waitForApply(bot.username, apply.requestId);
+                  }
+                  setNotice(apply ? applyStatusLabel(apply) : "Đã thêm config");
                 });
               }}
             >

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { applyStatusLabel, summarizeApplies, waitForApplies } from "../applyStatus";
 
 export default function SignalSetupPanel({ onFindConfig }) {
   const [data, setData] = useState(null);
@@ -53,11 +54,15 @@ export default function SignalSetupPanel({ onFindConfig }) {
       const changed = (result.updated || []).filter((row) => row.changed).map((row) => row.env);
       const skipped = (result.updated || []).filter((row) => !row.changed).map((row) => row.env);
       const failed = result.failed || [];
+      let applies = result.applies || [];
+      if (applies.some((a) => a?.requestId && !a.terminal)) {
+        applies = await waitForApplies(username, applies);
+      }
       setNotice([
         changed.length ? `Đã ${action === "add" ? "thêm" : "xoá"} trên ${changed.join(", ")}` : "",
         skipped.length ? `Giữ nguyên ${skipped.join(", ")}` : "",
         failed.length ? failed.map((row) => `${row.env}: ${row.error}`).join("; ") : "",
-        "Bot nhận bản mới sau khi restart.",
+        summarizeApplies(applies) || (changed.length ? applyStatusLabel(applies[0]) : ""),
       ].filter(Boolean).join(". "));
       const fresh = await api(`/api/signal-config?username=${encodeURIComponent(username)}`);
       setData(fresh);

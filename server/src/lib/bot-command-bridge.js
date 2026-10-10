@@ -28,34 +28,25 @@ const ALLOWLIST = Object.freeze({
         permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
     },
-    GET_RUNTIME_CONFIG: {
-        kind: "command",
-        permission: PERMISSIONS.CONFIG_VIEW,
-        mapCommand: (env) => `${env}/C`,
+    /** Thêm account trên web → bot load RAM + handler (env mới chưa isLoaded). */
+    LOAD_ACCOUNT: {
+        kind: "account_runtime",
+        runtimeAction: "load",
+        permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
     },
-    GET_POSITIONS: {
-        kind: "command",
-        permission: PERMISSIONS.POSITIONS_VIEW,
-        mapCommand: (env) => `${env}/P`,
+    /** Gỡ account trên web → bot unload RAM (không xóa Mongo lần 2). */
+    UNLOAD_ACCOUNT: {
+        kind: "account_runtime",
+        runtimeAction: "unload",
+        permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
     },
-    GET_BALANCE: {
-        kind: "command",
-        permission: PERMISSIONS.STATISTICS_VIEW,
-        mapCommand: (env) => `${env}/B`,
-        requiredRoles: ["TRADER"],
-    },
-    GET_MONITORS: {
-        kind: "command",
-        permission: PERMISSIONS.POSITIONS_VIEW,
-        mapCommand: (env) => `${env}/M`,
-        requiredRoles: ["TRADER"],
-    },
-    GET_ORDERS: {
-        kind: "command",
-        permission: PERMISSIONS.POSITIONS_VIEW,
-        mapCommand: (env) => `${env}/OD`,
+    /** Đổi tên env trên web → unload cũ + load mới. */
+    RENAME_ACCOUNT: {
+        kind: "account_runtime",
+        runtimeAction: "rename",
+        permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
     },
 });
@@ -120,7 +111,8 @@ async function assertActionAccess(actor, username, targetEnv, action) {
     const bot = await requireBot(actor, username, spec.permission);
     const env = String(targetEnv || "").toUpperCase();
     const accounts = (bot.accounts || []).map((a) => String(a).toUpperCase());
-    if (!accounts.includes(env)) {
+    // UNLOAD: web có thể đã gỡ env khỏi user_accounts trước khi sync runtime.
+    if (action !== "UNLOAD_ACCOUNT" && !accounts.includes(env)) {
         throw httpError(404, `Không có account ${env}`);
     }
     return { bot, env, spec };
@@ -143,7 +135,13 @@ async function applyResponsePayload(payload) {
         }
 
         const processRole = String(payload.processRole || "TRADER").toUpperCase();
-        const roleResult = roleTerminalFromPayload(payload, doc.targetEnv);
+        const requireApplied = [
+            "APPLY_CONFIG",
+            "LOAD_ACCOUNT",
+            "UNLOAD_ACCOUNT",
+            "RENAME_ACCOUNT",
+        ].includes(doc.action);
+        const roleResult = roleTerminalFromPayload(payload, doc.targetEnv, { requireApplied });
         if (!roleResult) return;
 
         const msgEntry = {
@@ -370,6 +368,7 @@ async function publishOutbox(doc) {
         const fresh = await BotCommand.findOne({ requestId }).lean();
         if (!fresh || fresh.terminal) return BotCommand.findOne({ requestId });
 
+        const spec = ALLOWLIST[fresh.action];
         if (fresh.action === "APPLY_CONFIG") {
             const followers =
                 Array.isArray(fresh.params?.followers) && fresh.params.followers.length
@@ -383,11 +382,21 @@ async function publishOutbox(doc) {
                 requestId: fresh.requestId,
                 ts: Date.now(),
             });
-        } else {
-            const spec = ALLOWLIST[fresh.action];
-            if (!spec || spec.kind !== "command") {
-                throw new Error(`Action không publish được: ${fresh.action}`);
-            }
+        } else if (spec?.kind === "account_runtime") {
+            const runtimeAction = spec.runtimeAction || fresh.params?.runtimeAction || "load";
+            await publishConfigSync({
+                type: "account_runtime",
+                action: runtimeAction,
+                username: fresh.username,
+                env:
+                    runtimeAction === "rename"
+                        ? String(fresh.params?.fromEnv || fresh.targetEnv).toUpperCase()
+                        : fresh.targetEnv,
+                nextEnv: runtimeAction === "rename" ? fresh.targetEnv : undefined,
+                requestId: fresh.requestId,
+                ts: Date.now(),
+            });
+        } else if (spec?.kind === "command") {
             await publishNewCommand({
                 command: fresh.mappedCommand || spec.mapCommand(fresh.targetEnv),
                 cmdInfo: {
@@ -397,6 +406,8 @@ async function publishOutbox(doc) {
                     action: fresh.action,
                 },
             });
+        } else {
+            throw new Error(`Action không publish được: ${fresh.action}`);
         }
     } catch (error) {
         await BotCommand.updateOne(
@@ -438,6 +449,43 @@ async function enqueueApplyConfig(actor, username, targetEnv) {
         return publicCommand(after);
     } catch (error) {
         console.error("[enqueueApplyConfig]", error.message);
+        return {
+            requestId: null,
+            status: "failed",
+            terminal: true,
+            error: { code: "ENQUEUE", message: error.message },
+            message: error.message,
+        };
+    }
+}
+
+/**
+ * Đồng bộ account runtime: load / unload / rename trên process TRADER đang RUN user đó.
+ */
+async function enqueueAccountRuntime(actor, username, action, env, nextEnv = "") {
+    try {
+        bindResponseListener();
+        const act = String(action || "").toUpperCase();
+        if (!["LOAD_ACCOUNT", "UNLOAD_ACCOUNT", "RENAME_ACCOUNT"].includes(act)) {
+            throw httpError(400, `Action account không hợp lệ: ${action}`);
+        }
+        const from = String(env || "").toUpperCase();
+        const to = String(nextEnv || "").toUpperCase();
+        const targetEnv = act === "RENAME_ACCOUNT" ? to || from : from;
+        const doc = await createOutbox({
+            actor,
+            username,
+            targetEnv,
+            action: act,
+            params:
+                act === "RENAME_ACCOUNT"
+                    ? { fromEnv: from, nextEnv: to }
+                    : { runtimeAction: ALLOWLIST[act].runtimeAction },
+        });
+        const after = await publishOutbox(doc);
+        return publicCommand(after);
+    } catch (error) {
+        console.error("[enqueueAccountRuntime]", error.message);
         return {
             requestId: null,
             status: "failed",
@@ -507,6 +555,14 @@ async function dispatchCommand(actor, username, targetEnv, body) {
     if (action === "APPLY_CONFIG") {
         return enqueueApplyConfig(actor, username, targetEnv);
     }
+    if (action === "LOAD_ACCOUNT" || action === "UNLOAD_ACCOUNT") {
+        return enqueueAccountRuntime(actor, username, action, targetEnv);
+    }
+    if (action === "RENAME_ACCOUNT") {
+        const fromEnv = body?.params?.fromEnv || body?.fromEnv || targetEnv;
+        const nextEnv = body?.params?.nextEnv || body?.nextEnv || targetEnv;
+        return enqueueAccountRuntime(actor, username, action, fromEnv, nextEnv);
+    }
     const doc = await createOutbox({
         actor,
         username,
@@ -534,6 +590,7 @@ module.exports = {
     listReloadEnvs,
     enqueueApplyConfig,
     enqueueApplyConfigMany,
+    enqueueAccountRuntime,
     getCommand,
     retryApply,
     dispatchCommand,

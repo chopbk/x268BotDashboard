@@ -13,14 +13,13 @@ const {
     roleTerminalFromPayload: roleTerm,
 } = require("../src/lib/bot-command-status");
 
-test("allowlist không lộ OPEN/CLOSE và map đúng quyền", () => {
+test("allowlist chỉ sync config/account — không lộ OPEN/CLOSE hay status Telegram", () => {
     assert.equal(ALLOWLIST.OPEN, undefined);
     assert.equal(ALLOWLIST.CLOSE, undefined);
+    assert.equal(ALLOWLIST.GET_POSITIONS, undefined);
     assert.equal(ALLOWLIST.APPLY_CONFIG.permission, "config.edit");
     assert.deepEqual(ALLOWLIST.APPLY_CONFIG.requiredRoles, ["TRADER"]);
-    assert.equal(ALLOWLIST.GET_POSITIONS.permission, "positions.view");
-    assert.equal(ALLOWLIST.GET_BALANCE.permission, "statistics.view");
-    assert.equal(ALLOWLIST.GET_POSITIONS.mapCommand("DEMO_1"), "DEMO_1/P");
+    assert.equal(ALLOWLIST.LOAD_ACCOUNT.permission, "config.edit");
 });
 
 test("publicCommand null-safe", () => {
@@ -88,20 +87,22 @@ describe("role ACK aggregation", () => {
 });
 
 describe("roleTerminalFromPayload / applied", () => {
-    test("succeeded mà targetEnv không trong applied → failed", () => {
+    test("succeeded mà targetEnv không trong applied → failed khi requireApplied", () => {
         const r = roleTerminalFromPayload(
             {
                 status: "succeeded",
                 terminal: true,
                 applied: ["OTHER"],
             },
-            "DEMO_1"
+            "DEMO_1",
+            { requireApplied: true }
         );
         assert.equal(r.status, "failed");
         assert.equal(r.terminal, true);
         assert.equal(roleTerm(
             { status: "succeeded", terminal: true, applied: ["OTHER"] },
-            "DEMO_1"
+            "DEMO_1",
+            { requireApplied: true }
         ).status, "failed");
     });
 
@@ -112,7 +113,8 @@ describe("roleTerminalFromPayload / applied", () => {
                 terminal: true,
                 applied: ["DEMO_1", "DEMO_1_COPY"],
             },
-            "DEMO_1"
+            "DEMO_1",
+            { requireApplied: true }
         );
         assert.equal(r.status, "succeeded");
         assert.equal(r.terminal, true);
@@ -122,5 +124,11 @@ describe("roleTerminalFromPayload / applied", () => {
         const r = roleTerminalFromPayload({ status: "running", terminal: false }, "DEMO_1");
         assert.equal(r.status, "running");
         assert.equal(r.terminal, false);
+    });
+
+    test("allowlist có LOAD/UNLOAD/RENAME account", () => {
+        assert.equal(ALLOWLIST.LOAD_ACCOUNT.kind, "account_runtime");
+        assert.equal(ALLOWLIST.UNLOAD_ACCOUNT.runtimeAction, "unload");
+        assert.equal(ALLOWLIST.RENAME_ACCOUNT.runtimeAction, "rename");
     });
 });

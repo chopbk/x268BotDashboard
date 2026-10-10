@@ -88,21 +88,21 @@ function evaluateRoleAcks(requiredRoles, roleAcks) {
 }
 
 /**
- * targetEnv phải nằm trong applied mới coi role succeeded.
+ * targetEnv phải nằm trong applied mới coi role succeeded (khi requireApplied).
  */
-function roleTerminalFromPayload(payload, targetEnv) {
+function roleTerminalFromPayload(payload, targetEnv, { requireApplied = false } = {}) {
     const status = mapOutboxStatus(payload?.status);
     if (!status) return null;
     const env = String(targetEnv || "").toUpperCase();
     const applied = Array.isArray(payload?.applied)
         ? payload.applied.map((e) => String(e).toUpperCase())
         : [];
-    if (status === "succeeded" && payload?.terminal === true) {
-        if (env && applied.length && !applied.includes(env)) {
+    if (requireApplied && status === "succeeded" && payload?.terminal === true) {
+        if (!env || !applied.includes(env)) {
             return {
                 status: "failed",
                 terminal: true,
-                message: `ACK succeeded nhưng ${env} không nằm trong applied`,
+                message: `ACK succeeded nhưng ${env || "?"} không nằm trong applied`,
                 error: { code: "ACK_MISSING_TARGET", message: `${env} not in applied` },
             };
         }

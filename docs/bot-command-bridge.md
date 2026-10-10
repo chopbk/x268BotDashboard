@@ -211,12 +211,12 @@ Chỉ các `action` sau được chấp nhận ở API. Mọi giá trị khác �
 
 | `action` | Map nội bộ | Permission | Phase |
 |---|---|---|---|
-| `APPLY_CONFIG` | MQTT `config/sync` (không qua `/SC` trừ khi cần) | `config.edit` + scope | 1 |
-| `GET_RUNTIME_CONFIG` | `{ENV}/C` hoặc tương đương đọc config RAM | `config.view` + scope | 2 |
-| `GET_POSITIONS` | `{ENV}/P` | `positions.view` + scope | 2 |
-| `GET_BALANCE` | `{ENV}/B` | `statistics.view` + scope | 2 |
-| `GET_MONITORS` | `{ENV}/M` | `positions.view` + scope | 2 |
-| `GET_ORDERS` | `{ENV}/OD` | `positions.view` + scope | 2 |
+| `APPLY_CONFIG` | MQTT `config/sync` reload env đã load | `config.edit` + scope | sync config/signal |
+| `LOAD_ACCOUNT` | MQTT `config/sync` `type=account_runtime` action=load | `config.edit` | thêm/copy account |
+| `UNLOAD_ACCOUNT` | `account_runtime` unload | `config.edit` | gỡ account |
+| `RENAME_ACCOUNT` | `account_runtime` rename | `config.edit` | đổi tên env |
+
+Mục tiêu bridge: đồng bộ config / signal / account web ↔ bot. Không dùng làm cổng lệnh status Telegram (`P`/`B`…).
 
 Ghi chú quyền:
 

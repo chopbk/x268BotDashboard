@@ -30,6 +30,7 @@ const { isOwnUser } = require("../lib/account-ledger");
 const {
     enqueueApplyConfig,
     enqueueApplyConfigMany,
+    enqueueAccountRuntime,
     getCommand,
     retryApply,
     dispatchCommand,
@@ -172,7 +173,10 @@ router.post(
                     mode: { from: null, to: mode },
                 },
             });
-            const apply = await enqueueApplyConfig(req.webUser, copied.username, copied.env);
+            // Copy tạo/ghi env: load RAM nếu mới, reload nếu replace.
+            const apply = copied.replaced
+                ? await enqueueApplyConfig(req.webUser, copied.username, copied.env)
+                : await enqueueAccountRuntime(req.webUser, copied.username, "LOAD_ACCOUNT", copied.env);
             res.status(201).json({ ...copied, apply });
         } catch (error) {
             sendError(res, error, "POST /api/bots/:username/configs/:env/copy");
@@ -362,7 +366,8 @@ router.post(
                 env, PERMISSIONS.CONFIG_EDIT
             );
             await safeRecordAudit({ action: "bot.account_added", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: null, to: env } } });
-            res.status(201).json({ bot });
+            const apply = await enqueueAccountRuntime(req.webUser, username, "LOAD_ACCOUNT", env);
+            res.status(201).json({ bot, apply });
         } catch (error) {
             sendError(res, error, "POST /api/bots/:username/accounts");
         }
@@ -385,7 +390,11 @@ router.patch(
                 nextEnv, PERMISSIONS.CONFIG_EDIT
             );
             if (env !== nextEnv) await safeRecordAudit({ action: "bot.account_renamed", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: env, to: nextEnv } } });
-            res.json({ bot });
+            const apply =
+                env !== nextEnv
+                    ? await enqueueAccountRuntime(req.webUser, username, "RENAME_ACCOUNT", env, nextEnv)
+                    : null;
+            res.json({ bot, apply });
         } catch (error) {
             sendError(res, error, "PATCH /api/bots/:username/accounts/:env");
         }
@@ -406,7 +415,8 @@ router.delete(
                 env, PERMISSIONS.CONFIG_EDIT
             );
             await safeRecordAudit({ action: "bot.account_deleted", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: env, to: null } } });
-            res.json({ bot });
+            const apply = await enqueueAccountRuntime(req.webUser, username, "UNLOAD_ACCOUNT", env);
+            res.json({ bot, apply });
         } catch (error) {
             sendError(res, error, "DELETE /api/bots/:username/accounts/:env");
         }
