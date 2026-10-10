@@ -6,6 +6,8 @@ import { useEscape } from "../navigation";
 import { alertText, positionAlerts } from "../position-alerts";
 import { POSITION_COLUMNS, qtyOf, roiOf, sortedRows, volumeOf } from "../position-sort";
 import PositionHistory from "./PositionHistory";
+import OpenOrdersTab from "../components/OpenOrdersTab";
+import OrderHistoryTab from "../components/OrderHistoryTab";
 
 const WARN = {
   "no-monitor": "Chưa có monitor",
@@ -72,6 +74,7 @@ export default function PositionsPage() {
   const canOpen = (user?.permissions || []).includes("positions.open");
   const canPositions = (user?.permissions || []).includes("positions.view");
   const canHistory = (user?.permissions || []).includes("statistics.view");
+  const canOrders = (user?.permissions || []).includes("orders.view");
   const location = useLocation();
   const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -79,7 +82,8 @@ export default function PositionsPage() {
   const audience = params.get("audience") === "all" ? "all" : "mine";
   const book = params.get("book") || "";
   const panel = params.get("panel") || "";
-  const tab = params.get("tab") === "history" ? "history" : "open";
+  const tabParam = params.get("tab") || "open";
+  const tab = ["open", "history", "orders", "order-history"].includes(tabParam) ? tabParam : "open";
   const [payload, setPayload] = useState(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(() => new Set());
@@ -356,7 +360,9 @@ export default function PositionsPage() {
       </header>
       <div className="history-tabs" role="tablist">
         <button type="button" className={tab === "open" ? "active" : ""} onClick={() => go((query) => { query.delete("tab"); query.delete("trade"); })}>Đang mở</button>
-        {canHistory ? <button type="button" className={tab === "history" ? "active" : ""} onClick={() => go((query) => { query.set("tab", "history"); query.delete("panel"); })}>Lịch sử</button> : null}
+        {canHistory ? <button type="button" className={tab === "history" ? "active" : ""} onClick={() => go((query) => { query.set("tab", "history"); query.delete("panel"); })}>Lịch sử vị thế</button> : null}
+        {canOrders ? <button type="button" className={tab === "orders" ? "active" : ""} onClick={() => go((query) => { query.set("tab", "orders"); query.delete("panel"); })}>Order đang mở</button> : null}
+        {canOrders ? <button type="button" className={tab === "order-history" ? "active" : ""} onClick={() => go((query) => { query.set("tab", "order-history"); query.delete("panel"); })}>Lịch sử order</button> : null}
       </div>
       <form className="signal-filters" onSubmit={(event) => event.preventDefault()}>
         <label>Phạm vi
@@ -431,6 +437,10 @@ export default function PositionsPage() {
         </label>
       </form>
       {tab === "history" ? <PositionHistory params={params} go={go} canStats={canHistory} onAccounts={setHistoryAccounts} /> : null}
+      {tab === "orders" && canOrders ? <OpenOrdersTab params={params} go={go} accounts={payload?.accounts} audience={audience} /> : null}
+      {tab === "orders" && !canOrders ? <p className="muted">Cần quyền orders.view để xem order đang mở.</p> : null}
+      {tab === "order-history" && canOrders ? <OrderHistoryTab params={params} go={go} accounts={payload?.accounts} /> : null}
+      {tab === "order-history" && !canOrders ? <p className="muted">Cần quyền orders.view để xem lịch sử order.</p> : null}
       {tab === "open" && !canPositions ? <p className="muted">Cần quyền positions.view để xem vị thế đang mở.</p> : null}
       {tab === "open" && canPositions ? <>
       {notices.length ? (

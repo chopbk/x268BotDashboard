@@ -37,6 +37,8 @@ erDiagram
 | `signal_infos` | Producer signal phía bot | Lịch sử signal |
 | `account_statics` | Bot ghi kết quả lệnh | Static, tìm config, tổng hợp hiệu suất |
 | `monitor_positions` | Monitor phía bot | Position/monitor và thống kê |
+| `web_exchange_order_events` | Web consumer từ user stream/reconcile | Order history read model |
+| `web_exchange_fills` | Web consumer từ user stream/reconcile | Fill/trade history |
 | `futures_profits` | Bot và thao tác refresh ledger của web | Ví, income, số dư và dòng tiền |
 | `futures_symbols` | Dữ liệu symbol phía bot | Tick/step/precision khi hiển thị |
 | `telegram_clients` | Cấu hình listener | Web chỉ chọn thông tin channel cần thiết, không trả session/API hash |
@@ -94,6 +96,9 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/positions/monitors` | [positions](../server/src/routes/positions.js) |
 | DELETE | `/api/positions/monitors/:id` | [positions](../server/src/routes/positions.js) |
 | GET | `/api/positions/detail` | [positions](../server/src/routes/positions.js) |
+| GET | `/api/orders/open` | [orders](../server/src/routes/orders.js) |
+| GET | `/api/orders/history` | [orders](../server/src/routes/orders.js) |
+| GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | GET | `/api/summary` | [summary](../server/src/routes/summary.js) |
 | POST | `/api/summary/refresh` | [summary](../server/src/routes/summary.js) |
 | GET | `/api/signal-history` | [signal-history](../server/src/routes/signal-history.js) |

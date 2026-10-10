@@ -18,6 +18,7 @@ const PERMISSIONS = Object.freeze({
   POSITIONS_VIEW: "positions.view",
   POSITIONS_OPEN: "positions.open",
   POSITIONS_CLOSE: "positions.close",
+  ORDERS_VIEW: "orders.view",
   CREDENTIALS_VIEW: "credentials.view",
   CREDENTIALS_MANAGE: "credentials.manage",
   USERS_VIEW: "users.view",
@@ -106,6 +107,12 @@ const DEFINITIONS = [
     [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
   ],
   [
+    PERMISSIONS.ORDERS_VIEW,
+    "Xem order đang mở và lịch sử order",
+    "order",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
+  [
     PERMISSIONS.CREDENTIALS_VIEW,
     "Xem API/credential",
     "api",
@@ -163,6 +170,7 @@ const VIEWER_PERMISSIONS = [
   PERMISSIONS.SIGNALS_HISTORY,
   PERMISSIONS.STATISTICS_VIEW,
   PERMISSIONS.POSITIONS_VIEW,
+  PERMISSIONS.ORDERS_VIEW,
 ];
 const OPERATOR_PERMISSIONS = [
   ...VIEWER_PERMISSIONS,

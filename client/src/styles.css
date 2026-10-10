@@ -927,3 +927,24 @@ button.linkish { background: none; border: 0; padding: 0; color: var(--accent); 
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }
 .pos-detail pre { max-height: 180px; overflow: auto; background: var(--bg); border-radius: 10px; padding: 10px; }
+
+/* Orders Tab */
+.orders-tab { padding: 0; }
+.orders-table { font-size: 0.88rem; }
+.orders-table tr.clickable { cursor: pointer; }
+.orders-table tr.clickable:hover { background: var(--hover); }
+.order-symbol { display: inline-flex; align-items: center; gap: 4px; }
+.order-kind { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: var(--line); }
+.order-kind-algo { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.order-kind-regular { background: var(--line); }
+.order-buy { color: var(--ok); }
+.order-sell { color: var(--danger); }
+.order-long { border-left: 3px solid var(--ok); }
+.order-short { border-left: 3px solid var(--danger); }
+.order-status { font-size: 0.82rem; padding: 2px 6px; border-radius: 4px; }
+.order-status-filled { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.order-status-canceled, .order-status-expired { background: color-mix(in srgb, var(--muted) 15%, transparent); color: var(--muted); }
+.order-status-open, .order-status-new, .order-status-partially_filled { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.order-detail dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 12px 0; }
+.order-detail dt { color: var(--muted); }
+.order-detail dd { margin: 0; }
