@@ -360,13 +360,17 @@ router.post(
         try {
             const username = normalizeName(req.params.username);
             const env = normalizeName(req.body?.env);
+            const before = await getBot(req.webUser, username, PERMISSIONS.CONFIG_EDIT);
+            const previousAccounts = before.accounts || [];
             const bot = await addAccount(
                 req.webUser,
                 username,
                 env, PERMISSIONS.CONFIG_EDIT
             );
             await safeRecordAudit({ action: "bot.account_added", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: null, to: env } } });
-            const apply = await enqueueAccountRuntime(req.webUser, username, "LOAD_ACCOUNT", env);
+            const apply = await enqueueAccountRuntime(req.webUser, username, "LOAD_ACCOUNT", env, "", {
+                previousAccounts: [...previousAccounts, env],
+            });
             res.status(201).json({ bot, apply });
         } catch (error) {
             sendError(res, error, "POST /api/bots/:username/accounts");
@@ -383,6 +387,8 @@ router.patch(
             const username = normalizeName(req.params.username);
             const env = normalizeName(req.params.env);
             const nextEnv = normalizeName(req.body?.env);
+            const before = await getBot(req.webUser, username, PERMISSIONS.CONFIG_EDIT);
+            const previousAccounts = before.accounts || [];
             const bot = await renameAccount(
                 req.webUser,
                 username,
@@ -392,7 +398,9 @@ router.patch(
             if (env !== nextEnv) await safeRecordAudit({ action: "bot.account_renamed", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: env, to: nextEnv } } });
             const apply =
                 env !== nextEnv
-                    ? await enqueueAccountRuntime(req.webUser, username, "RENAME_ACCOUNT", env, nextEnv)
+                    ? await enqueueAccountRuntime(req.webUser, username, "RENAME_ACCOUNT", env, nextEnv, {
+                          previousAccounts,
+                      })
                     : null;
             res.json({ bot, apply });
         } catch (error) {
@@ -409,13 +417,17 @@ router.delete(
         try {
             const username = normalizeName(req.params.username);
             const env = normalizeName(req.params.env);
+            const before = await getBot(req.webUser, username, PERMISSIONS.CONFIG_EDIT);
+            const previousAccounts = before.accounts || [];
             const bot = await deleteAccount(
                 req.webUser,
                 username,
                 env, PERMISSIONS.CONFIG_EDIT
             );
             await safeRecordAudit({ action: "bot.account_deleted", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: env, to: null } } });
-            const apply = await enqueueAccountRuntime(req.webUser, username, "UNLOAD_ACCOUNT", env);
+            const apply = await enqueueAccountRuntime(req.webUser, username, "UNLOAD_ACCOUNT", env, "", {
+                previousAccounts,
+            });
             res.json({ bot, apply });
         } catch (error) {
             sendError(res, error, "DELETE /api/bots/:username/accounts/:env");

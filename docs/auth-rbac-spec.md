@@ -360,8 +360,8 @@ Các invariant:
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.view` trên nguồn, `config.edit` trên đích. `mode=new` tạo `Account_Config` mới. `mode=replace` ghi đè config đích đã có và gỡ sync của đích. `mode=sync` tạo config mới, chép nội dung nguồn và đặt `sync_from` về nguồn |
 | `GET /api/bots/:username/commands/:requestId` | `requireAuth` | Actor của lệnh, hoặc `config.view`/`logs.view` + scope bot. Đọc outbox `web_bot_commands` |
-| `POST /api/bots/:username/accounts/:env/commands` | `requireAuth` | Typed `action` allowlist ([bot-command-bridge](bot-command-bridge.md)): `APPLY_CONFIG` → `config.edit`; status → `positions.view` / `config.view` / `statistics.view`. Không nhận lệnh thô |
-| `POST /api/bots/:username/accounts/:env/commands/:requestId/retry` | `requireAuth` | `config.edit` + scope; chỉ khi outbox `failed`/`expired` |
+| `POST /api/bots/:username/accounts/:env/commands` | `requireAuth` | Chỉ `APPLY_CONFIG` (`config.edit` + scope). `LOAD/UNLOAD/RENAME_ACCOUNT` không nhận từ client — chỉ hook sau mutation account ([bot-command-bridge](bot-command-bridge.md)) |
+| `POST /api/bots/:username/accounts/:env/commands/:requestId/retry` | `requireAuth` | `config.edit` + scope; chỉ khi outbox `failed`/`expired`; retry đúng `action` + params cũ |
 | `PATCH /api/bots/:username/configs/:env` (apply) | `requireAuth` | Sau khi lưu Mongo, tự enqueue `APPLY_CONFIG`; response thêm `apply` |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng; phân trang server bằng `page`, `limit`, tìm bằng `q`. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |

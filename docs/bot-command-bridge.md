@@ -1,6 +1,6 @@
 # Contract: web-bot ↔ binance-bot command bridge
 
-Spec cầu runtime giữa dashboard và process trader. Phase 1 (outbox + MQTT `command_response` + `APPLY_CONFIG`) đã có implementation — đối chiếu ngày 2026-10-10. Status action allowlist đã map sẵn; endpoint command đã mở, UI status Phase 2 chưa làm.
+Spec cầu runtime giữa dashboard và process trader. Outbox + MQTT `command_response` + `APPLY_CONFIG` + account runtime (load/unload/rename) đã có — đối chiếu 2026-10-11. `LOAD/UNLOAD/RENAME_ACCOUNT` chỉ tạo nội bộ sau mutation account; `POST .../commands` chỉ nhận `APPLY_CONFIG`.
 
 ## 1. Mục tiêu và ranh giới
 
@@ -209,14 +209,14 @@ Một số lệnh Telegram gửi “đang xử lý…” rồi kết quả: bot 
 
 Chỉ các `action` sau được chấp nhận ở API. Mọi giá trị khác → `400`.
 
-| `action` | Map nội bộ | Permission | Phase |
+| `action` | Map nội bộ | Permission | Client API |
 |---|---|---|---|
-| `APPLY_CONFIG` | MQTT `config/sync` reload env đã load | `config.edit` + scope | sync config/signal |
-| `LOAD_ACCOUNT` | MQTT `config/sync` `type=account_runtime` action=load | `config.edit` | thêm/copy account |
-| `UNLOAD_ACCOUNT` | `account_runtime` unload | `config.edit` | gỡ account |
-| `RENAME_ACCOUNT` | `account_runtime` rename | `config.edit` | đổi tên env |
+| `APPLY_CONFIG` | MQTT `config/sync` reload env đã load | `config.edit` + scope | `POST .../commands` + hook sau sửa config/signal |
+| `LOAD_ACCOUNT` | MQTT `config/sync` `type=account_runtime` action=load | `config.edit` | **Nội bộ** — sau thêm/copy account |
+| `UNLOAD_ACCOUNT` | `account_runtime` unload | `config.edit` | **Nội bộ** — sau gỡ account; outbox bắt buộc `previousAccounts` chứa env đã gỡ |
+| `RENAME_ACCOUNT` | `account_runtime` rename | `config.edit` | **Nội bộ** — sau đổi tên; `fromEnv` + `previousAccounts` từ route, không từ client tùy ý |
 
-Mục tiêu bridge: đồng bộ config / signal / account web ↔ bot. Không dùng làm cổng lệnh status Telegram (`P`/`B`…).
+Mục tiêu bridge: đồng bộ config / signal / account web ↔ bot. Không dùng làm cổng lệnh status Telegram (`P`/`B`…). Retry giữ nguyên `action` + payload an toàn từ outbox cũ, gắn `retryOfRequestId`.
 
 Ghi chú quyền:
 

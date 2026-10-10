@@ -20,6 +20,10 @@ test("allowlist chỉ sync config/account — không lộ OPEN/CLOSE hay status 
     assert.equal(ALLOWLIST.APPLY_CONFIG.permission, "config.edit");
     assert.deepEqual(ALLOWLIST.APPLY_CONFIG.requiredRoles, ["TRADER"]);
     assert.equal(ALLOWLIST.LOAD_ACCOUNT.permission, "config.edit");
+    assert.equal(ALLOWLIST.APPLY_CONFIG.clientExposed, true);
+    assert.equal(ALLOWLIST.LOAD_ACCOUNT.clientExposed, false);
+    assert.equal(ALLOWLIST.UNLOAD_ACCOUNT.clientExposed, false);
+    assert.equal(ALLOWLIST.RENAME_ACCOUNT.clientExposed, false);
 });
 
 test("publicCommand null-safe", () => {
@@ -131,4 +135,9 @@ describe("roleTerminalFromPayload / applied", () => {
         assert.equal(ALLOWLIST.UNLOAD_ACCOUNT.runtimeAction, "unload");
         assert.equal(ALLOWLIST.RENAME_ACCOUNT.runtimeAction, "rename");
     });
+});
+
+test("normalizeAccountList upper + unique", () => {
+    const { normalizeAccountList } = require("../src/lib/bot-command-bridge");
+    assert.deepEqual(normalizeAccountList(["a", "A", "b", ""]), ["A", "B"]);
 });

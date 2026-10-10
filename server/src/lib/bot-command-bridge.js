@@ -21,35 +21,42 @@ const {
 
 const DEFAULT_TTL_MS = 30_000;
 
-/** action → { kind, permission, mapCommand?, requiredRoles? } */
+/** action → { kind, permission, mapCommand?, requiredRoles?, clientExposed? } */
 const ALLOWLIST = Object.freeze({
     APPLY_CONFIG: {
         kind: "config_sync",
         permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
+        clientExposed: true,
     },
-    /** Thêm account trên web → bot load RAM + handler (env mới chưa isLoaded). */
+    /** Chỉ hook sau POST/PATCH/DELETE account — không qua POST .../commands. */
     LOAD_ACCOUNT: {
         kind: "account_runtime",
         runtimeAction: "load",
         permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
+        clientExposed: false,
     },
-    /** Gỡ account trên web → bot unload RAM (không xóa Mongo lần 2). */
     UNLOAD_ACCOUNT: {
         kind: "account_runtime",
         runtimeAction: "unload",
         permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
+        clientExposed: false,
     },
-    /** Đổi tên env trên web → unload cũ + load mới. */
     RENAME_ACCOUNT: {
         kind: "account_runtime",
         runtimeAction: "rename",
         permission: PERMISSIONS.CONFIG_EDIT,
         requiredRoles: ["TRADER"],
+        clientExposed: false,
     },
 });
+
+function normalizeAccountList(list) {
+    if (!Array.isArray(list)) return [];
+    return [...new Set(list.map((a) => String(a || "").toUpperCase()).filter(Boolean))];
+}
 
 let responseBound = false;
 let expireTimer = null;
@@ -87,6 +94,7 @@ function publicCommand(doc) {
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
         attempt: doc.attempt,
+        retryOfRequestId: doc.retryOfRequestId || null,
     };
 }
 
@@ -102,7 +110,12 @@ async function listReloadEnvs(targetEnv) {
     return names;
 }
 
-async function assertActionAccess(actor, username, targetEnv, action) {
+/**
+ * @param {object} [accessOpts]
+ * @param {string[]} [accessOpts.previousAccounts] — snapshot accounts trước mutation (UNLOAD/RENAME)
+ * @param {string} [accessOpts.fromEnv] — env cũ khi RENAME
+ */
+async function assertActionAccess(actor, username, targetEnv, action, accessOpts = {}) {
     const spec = ALLOWLIST[action];
     if (!spec) throw httpError(400, `Action không được phép: ${action}`);
     if (!hasPermission(actor, spec.permission)) {
@@ -111,11 +124,33 @@ async function assertActionAccess(actor, username, targetEnv, action) {
     const bot = await requireBot(actor, username, spec.permission);
     const env = String(targetEnv || "").toUpperCase();
     const accounts = (bot.accounts || []).map((a) => String(a).toUpperCase());
-    // UNLOAD: web có thể đã gỡ env khỏi user_accounts trước khi sync runtime.
-    if (action !== "UNLOAD_ACCOUNT" && !accounts.includes(env)) {
+    const previousAccounts = normalizeAccountList(
+        accessOpts.previousAccounts || accessOpts.params?.previousAccounts
+    );
+
+    if (action === "UNLOAD_ACCOUNT") {
+        if (!previousAccounts.includes(env)) {
+            throw httpError(403, "UNLOAD yêu cầu bằng chứng account từng thuộc bot");
+        }
+        return { bot, env, spec, previousAccounts };
+    }
+
+    if (action === "RENAME_ACCOUNT") {
+        const fromEnv = String(accessOpts.fromEnv || accessOpts.params?.fromEnv || "").toUpperCase();
+        if (!fromEnv) throw httpError(400, "Thiếu fromEnv");
+        if (!previousAccounts.includes(fromEnv)) {
+            throw httpError(403, "RENAME yêu cầu bằng chứng fromEnv từng thuộc bot");
+        }
+        if (!accounts.includes(env)) {
+            throw httpError(404, `Không có account ${env}`);
+        }
+        return { bot, env, spec, fromEnv, previousAccounts };
+    }
+
+    if (!accounts.includes(env)) {
         throw httpError(404, `Không có account ${env}`);
     }
-    return { bot, env, spec };
+    return { bot, env, spec, previousAccounts };
 }
 
 async function applyResponsePayload(payload) {
@@ -290,16 +325,29 @@ async function createOutbox({
     action,
     params = {},
     ttlMs = DEFAULT_TTL_MS,
+    accessOpts = {},
+    retryOfRequestId = null,
 }) {
-    const { bot, env, spec } = await assertActionAccess(actor, username, targetEnv, action);
+    const access = await assertActionAccess(actor, username, targetEnv, action, {
+        ...accessOpts,
+        params,
+    });
+    const { bot, env, spec } = access;
     const requestId = crypto.randomUUID();
     const mappedCommand = spec.kind === "command" ? spec.mapCommand(env) : "";
+    const safeParams = params && typeof params === "object" ? { ...params } : {};
+    if (access.previousAccounts?.length && !safeParams.previousAccounts) {
+        safeParams.previousAccounts = access.previousAccounts;
+    }
+    if (access.fromEnv && !safeParams.fromEnv) {
+        safeParams.fromEnv = access.fromEnv;
+    }
     const doc = await BotCommand.create({
         requestId,
         username: bot.username || normalizeName(username),
         targetEnv: env,
         action,
-        params: params && typeof params === "object" ? params : {},
+        params: safeParams,
         mappedCommand,
         status: "queued",
         terminal: false,
@@ -309,6 +357,7 @@ async function createOutbox({
         actorUsername: actor?.username || actor?.email || "",
         expiresAt: new Date(Date.now() + ttlMs),
         attempt: 1,
+        retryOfRequestId: retryOfRequestId || null,
         messages: [],
     });
     return doc;
@@ -460,9 +509,12 @@ async function enqueueApplyConfig(actor, username, targetEnv) {
 }
 
 /**
- * Đồng bộ account runtime: load / unload / rename trên process TRADER đang RUN user đó.
+ * Đồng bộ account runtime — chỉ gọi từ route mutation account (không từ POST /commands).
+ * @param {object} [proof]
+ * @param {string[]} [proof.previousAccounts] bắt buộc với UNLOAD/RENAME
+ * @param {string} [proof.mutationId] id audit tùy chọn
  */
-async function enqueueAccountRuntime(actor, username, action, env, nextEnv = "") {
+async function enqueueAccountRuntime(actor, username, action, env, nextEnv = "", proof = {}) {
     try {
         bindResponseListener();
         const act = String(action || "").toUpperCase();
@@ -472,15 +524,26 @@ async function enqueueAccountRuntime(actor, username, action, env, nextEnv = "")
         const from = String(env || "").toUpperCase();
         const to = String(nextEnv || "").toUpperCase();
         const targetEnv = act === "RENAME_ACCOUNT" ? to || from : from;
+        const previousAccounts = normalizeAccountList(proof.previousAccounts);
+        if ((act === "UNLOAD_ACCOUNT" || act === "RENAME_ACCOUNT") && !previousAccounts.includes(from)) {
+            throw httpError(403, "Thiếu bằng chứng account thuộc bot trước mutation");
+        }
+        const params = {
+            runtimeAction: ALLOWLIST[act].runtimeAction,
+            previousAccounts: previousAccounts.length ? previousAccounts : undefined,
+            mutationId: proof.mutationId || undefined,
+        };
+        if (act === "RENAME_ACCOUNT") {
+            params.fromEnv = from;
+            params.nextEnv = to;
+        }
         const doc = await createOutbox({
             actor,
             username,
             targetEnv,
             action: act,
-            params:
-                act === "RENAME_ACCOUNT"
-                    ? { fromEnv: from, nextEnv: to }
-                    : { runtimeAction: ALLOWLIST[act].runtimeAction },
+            params,
+            accessOpts: { previousAccounts, fromEnv: from },
         });
         const after = await publishOutbox(doc);
         return publicCommand(after);
@@ -536,15 +599,50 @@ async function retryApply(actor, username, targetEnv, requestId) {
     if (!["failed", "expired"].includes(prev.status)) {
         throw httpError(409, "Chỉ retry khi failed hoặc expired");
     }
-    const followers = await listReloadEnvs(targetEnv);
+    const action = String(prev.action || "APPLY_CONFIG").toUpperCase();
+    if (!ALLOWLIST[action]) throw httpError(400, `Action không được phép: ${action}`);
+
+    const retryOfRequestId = prev.requestId;
+    let params = {};
+    let accessOpts = {};
+
+    if (action === "APPLY_CONFIG") {
+        const followers =
+            Array.isArray(prev.params?.followers) && prev.params.followers.length
+                ? prev.params.followers.map((e) => String(e).toUpperCase())
+                : await listReloadEnvs(targetEnv);
+        params = { followers };
+    } else if (ALLOWLIST[action].kind === "account_runtime") {
+        const previousAccounts = normalizeAccountList(prev.params?.previousAccounts);
+        const fromEnv = String(prev.params?.fromEnv || (action === "RENAME_ACCOUNT" ? "" : prev.targetEnv)).toUpperCase();
+        const nextEnv = String(prev.params?.nextEnv || (action === "RENAME_ACCOUNT" ? prev.targetEnv : "")).toUpperCase();
+        params = {
+            runtimeAction: ALLOWLIST[action].runtimeAction,
+            previousAccounts: previousAccounts.length ? previousAccounts : undefined,
+            mutationId: prev.params?.mutationId,
+        };
+        if (action === "RENAME_ACCOUNT") {
+            params.fromEnv = fromEnv;
+            params.nextEnv = nextEnv || String(targetEnv).toUpperCase();
+        }
+        accessOpts = { previousAccounts, fromEnv: fromEnv || undefined };
+    } else {
+        params = prev.params && typeof prev.params === "object" ? { ...prev.params } : {};
+    }
+
     const doc = await createOutbox({
         actor,
         username,
         targetEnv,
-        action: "APPLY_CONFIG",
-        params: { followers },
+        action,
+        params,
+        accessOpts,
+        retryOfRequestId,
     });
-    await BotCommand.updateOne({ requestId: doc.requestId }, { $set: { attempt: (prev.attempt || 1) + 1 } });
+    await BotCommand.updateOne(
+        { requestId: doc.requestId },
+        { $set: { attempt: (prev.attempt || 1) + 1, retryOfRequestId } }
+    );
     const after = await publishOutbox(doc);
     return publicCommand(after);
 }
@@ -552,16 +650,11 @@ async function retryApply(actor, username, targetEnv, requestId) {
 async function dispatchCommand(actor, username, targetEnv, body) {
     const action = String(body?.action || "").trim().toUpperCase();
     if (!ALLOWLIST[action]) throw httpError(400, `Action không được phép: ${action}`);
+    if (ALLOWLIST[action].clientExposed === false) {
+        throw httpError(400, "Action account chỉ dùng nội bộ sau thêm/xóa/đổi tên account");
+    }
     if (action === "APPLY_CONFIG") {
         return enqueueApplyConfig(actor, username, targetEnv);
-    }
-    if (action === "LOAD_ACCOUNT" || action === "UNLOAD_ACCOUNT") {
-        return enqueueAccountRuntime(actor, username, action, targetEnv);
-    }
-    if (action === "RENAME_ACCOUNT") {
-        const fromEnv = body?.params?.fromEnv || body?.fromEnv || targetEnv;
-        const nextEnv = body?.params?.nextEnv || body?.nextEnv || targetEnv;
-        return enqueueAccountRuntime(actor, username, action, fromEnv, nextEnv);
     }
     const doc = await createOutbox({
         actor,
@@ -586,6 +679,7 @@ async function initBotCommandBridge() {
 
 module.exports = {
     ALLOWLIST,
+    normalizeAccountList,
     publicCommand,
     listReloadEnvs,
     enqueueApplyConfig,

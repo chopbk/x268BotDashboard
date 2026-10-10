@@ -59,6 +59,8 @@ const BotCommandSchema = new mongoose.Schema(
         publishedAt: { type: Date, default: null },
         expiresAt: { type: Date, required: true },
         attempt: { type: Number, default: 1 },
+        /** requestId lệnh failed/expired được retry (liên kết audit). */
+        retryOfRequestId: { type: String, default: null, index: true },
     },
     {
         versionKey: false,

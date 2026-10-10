@@ -31,8 +31,8 @@ async function findBot(username) {
     return UserAccount.findOne({ username });
 }
 
-async function getBot(actor, username) {
-    return toBot(await requireBot(actor, username, PERMISSIONS.BOTS_VIEW));
+async function getBot(actor, username, permission = PERMISSIONS.BOTS_VIEW) {
+    return toBot(await requireBot(actor, username, permission));
 }
 
 async function requireBot(user, username, permission) {
