@@ -11,45 +11,64 @@ const {
     publishNewCommand,
     isConnected,
 } = require("./bot-mqtt");
+const {
+    TERMINAL,
+    mapOutboxStatus,
+    resolveStatusTransition,
+    evaluateRoleAcks,
+    roleTerminalFromPayload,
+} = require("./bot-command-status");
 
 const DEFAULT_TTL_MS = 30_000;
-const TERMINAL = new Set(["succeeded", "failed", "expired"]);
 
-/** action → { kind, permission, mapCommand? } */
+/** action → { kind, permission, mapCommand?, requiredRoles? } */
 const ALLOWLIST = Object.freeze({
     APPLY_CONFIG: {
         kind: "config_sync",
         permission: PERMISSIONS.CONFIG_EDIT,
+        requiredRoles: ["TRADER"],
     },
     GET_RUNTIME_CONFIG: {
         kind: "command",
         permission: PERMISSIONS.CONFIG_VIEW,
         mapCommand: (env) => `${env}/C`,
+        requiredRoles: ["TRADER"],
     },
     GET_POSITIONS: {
         kind: "command",
         permission: PERMISSIONS.POSITIONS_VIEW,
         mapCommand: (env) => `${env}/P`,
+        requiredRoles: ["TRADER"],
     },
     GET_BALANCE: {
         kind: "command",
         permission: PERMISSIONS.STATISTICS_VIEW,
         mapCommand: (env) => `${env}/B`,
+        requiredRoles: ["TRADER"],
     },
     GET_MONITORS: {
         kind: "command",
         permission: PERMISSIONS.POSITIONS_VIEW,
         mapCommand: (env) => `${env}/M`,
+        requiredRoles: ["TRADER"],
     },
     GET_ORDERS: {
         kind: "command",
         permission: PERMISSIONS.POSITIONS_VIEW,
         mapCommand: (env) => `${env}/OD`,
+        requiredRoles: ["TRADER"],
     },
 });
 
 let responseBound = false;
 let expireTimer = null;
+
+function roleAcksToObject(roleAcks) {
+    if (!roleAcks) return {};
+    if (roleAcks instanceof Map) return Object.fromEntries(roleAcks.entries());
+    if (typeof roleAcks.toObject === "function") return roleAcks.toObject();
+    return { ...roleAcks };
+}
 
 function publicCommand(doc) {
     if (!doc) return null;
@@ -60,10 +79,14 @@ function publicCommand(doc) {
         action: doc.action,
         status: doc.status,
         terminal: !!doc.terminal,
+        requiredRoles: doc.requiredRoles || ["TRADER"],
+        roleAcks: roleAcksToObject(doc.roleAcks),
         messages: (doc.messages || []).map((m) => ({
             status: m.status,
             message: m.message,
             error: m.error || null,
+            processRole: m.processRole || null,
+            instanceId: m.instanceId || null,
             timestamp: m.timestamp || null,
             at: m.at,
         })),
@@ -103,52 +126,117 @@ async function assertActionAccess(actor, username, targetEnv, action) {
     return { bot, env, spec };
 }
 
-function mapOutboxStatus(mqttStatus) {
-    if (mqttStatus === "received") return "received";
-    if (mqttStatus === "running") return "running";
-    if (mqttStatus === "succeeded") return "succeeded";
-    if (mqttStatus === "failed") return "failed";
-    return null;
-}
-
 async function applyResponsePayload(payload) {
     try {
         if (!payload?.requestId || payload.version !== 1) return;
         const requestId = String(payload.requestId);
         const targetEnv = String(payload.targetEnv || "").toUpperCase();
         const doc = await BotCommand.findOne({ requestId });
-        if (!doc || doc.terminal) return;
+        if (!doc) return;
+        if (doc.terminal) return;
+        if (doc.status === "expired") return;
         if (targetEnv && doc.targetEnv !== targetEnv) {
             console.warn(
                 `[bot-command-bridge] ignore response env mismatch ${requestId} ${targetEnv}!=${doc.targetEnv}`
             );
             return;
         }
-        const next = mapOutboxStatus(payload.status);
-        if (!next) return;
-        doc.messages.push({
-            status: next,
-            message: payload.message == null ? "" : String(payload.message),
-            error: payload.error || null,
+
+        const processRole = String(payload.processRole || "TRADER").toUpperCase();
+        const roleResult = roleTerminalFromPayload(payload, doc.targetEnv);
+        if (!roleResult) return;
+
+        const msgEntry = {
+            status: roleResult.status,
+            message: roleResult.message == null ? "" : String(roleResult.message),
+            error: roleResult.error || null,
+            processRole,
+            instanceId: payload.instanceId ? String(payload.instanceId) : "",
             timestamp: payload.timestamp || Date.now(),
             at: new Date(),
-        });
-        if (payload.error) doc.error = payload.error;
-        if (payload.terminal === true || TERMINAL.has(next)) {
-            doc.status = next === "running" || next === "received" ? doc.status : next;
-            if (next === "succeeded" || next === "failed") {
-                doc.status = next;
-                doc.terminal = true;
-            } else if (payload.terminal === true) {
-                doc.status = next === "failed" ? "failed" : "succeeded";
-                doc.terminal = true;
-            } else {
-                doc.status = next;
-            }
-        } else {
-            doc.status = next;
+        };
+
+        const prevAck = doc.roleAcks?.get?.(processRole) || doc.roleAcks?.[processRole];
+        if (prevAck?.terminal) {
+            // Role đã terminal — chỉ ghi message audit, không đổi status tổng.
+            await BotCommand.updateOne(
+                { requestId, terminal: false },
+                { $push: { messages: msgEntry } }
+            );
+            return;
         }
-        await doc.save();
+
+        const roleAck = {
+            status: roleResult.status,
+            terminal: roleResult.terminal === true,
+            instanceId: msgEntry.instanceId,
+            applied: Array.isArray(payload.applied)
+                ? payload.applied.map((e) => String(e).toUpperCase())
+                : [],
+            skipped: Array.isArray(payload.skipped)
+                ? payload.skipped.map((e) => String(e).toUpperCase())
+                : [],
+            failed: Array.isArray(payload.failed) ? payload.failed : [],
+            message: msgEntry.message,
+            error: roleResult.error || null,
+            timestamp: msgEntry.timestamp,
+            at: msgEntry.at,
+        };
+
+        // Monotonic per-role: không cho running → received.
+        if (prevAck?.status) {
+            const roleTx = resolveStatusTransition(prevAck.status, roleAck.status);
+            if (!roleTx.accepted && !roleAck.terminal) {
+                await BotCommand.updateOne(
+                    { requestId, terminal: false },
+                    { $push: { messages: { ...msgEntry, message: `${msgEntry.message} (ignored regress)` } } }
+                );
+                return;
+            }
+            if (roleTx.accepted) roleAck.status = roleTx.status;
+        }
+
+        doc.roleAcks = doc.roleAcks || new Map();
+        if (typeof doc.roleAcks.set === "function") doc.roleAcks.set(processRole, roleAck);
+        else doc.roleAcks[processRole] = roleAck;
+
+        const required = doc.requiredRoles?.length ? doc.requiredRoles : ["TRADER"];
+        const aggregate = evaluateRoleAcks(required, roleAcksToObject(doc.roleAcks));
+        const roleIsRequired = required.map((r) => String(r).toUpperCase()).includes(processRole);
+
+        let nextStatus = doc.status;
+        if (aggregate.terminal && aggregate.status) {
+            // Chỉ terminal khi đủ requiredRoles (vd. TRADER) — MONITOR không được chốt giúp.
+            nextStatus = aggregate.status;
+        } else if (aggregate.status) {
+            const tx = resolveStatusTransition(doc.status, aggregate.status);
+            if (tx.accepted) nextStatus = tx.status;
+        } else if (roleIsRequired) {
+            const mapped = mapOutboxStatus(payload.status);
+            if (mapped && !TERMINAL.has(mapped)) {
+                const tx = resolveStatusTransition(doc.status, mapped);
+                if (tx.accepted) nextStatus = tx.status;
+            }
+        }
+
+        const setFields = {
+            status: nextStatus,
+            [`roleAcks.${processRole}`]: roleAck,
+        };
+        if (roleResult.error && roleIsRequired) setFields.error = roleResult.error;
+
+        if (aggregate.terminal) {
+            setFields.terminal = true;
+            setFields.status = aggregate.status;
+        }
+
+        await BotCommand.updateOne(
+            { requestId, terminal: false },
+            {
+                $set: setFields,
+                $push: { messages: msgEntry },
+            }
+        );
     } catch (error) {
         console.error("[bot-command-bridge] applyResponsePayload", error.message);
     }
@@ -156,34 +244,29 @@ async function applyResponsePayload(payload) {
 
 async function markExpired() {
     const now = new Date();
-    const rows = await BotCommand.find({
-        terminal: false,
-        expiresAt: { $lte: now },
-        status: { $nin: [...TERMINAL] },
-    })
-        .limit(100)
-        .lean();
-    for (const row of rows) {
-        await BotCommand.updateOne(
-            { requestId: row.requestId, terminal: false },
-            {
-                $set: {
+    await BotCommand.updateMany(
+        {
+            terminal: false,
+            expiresAt: { $lte: now },
+            status: { $nin: [...TERMINAL] },
+        },
+        {
+            $set: {
+                status: "expired",
+                terminal: true,
+                error: { code: "EXPIRED", message: "Hết hạn chờ ACK từ bot" },
+            },
+            $push: {
+                messages: {
                     status: "expired",
-                    terminal: true,
+                    message: "Hết hạn chờ ACK từ bot",
                     error: { code: "EXPIRED", message: "Hết hạn chờ ACK từ bot" },
+                    timestamp: Date.now(),
+                    at: now,
                 },
-                $push: {
-                    messages: {
-                        status: "expired",
-                        message: "Hết hạn chờ ACK từ bot",
-                        error: { code: "EXPIRED", message: "Hết hạn chờ ACK từ bot" },
-                        timestamp: Date.now(),
-                        at: now,
-                    },
-                },
-            }
-        );
-    }
+            },
+        }
+    );
 }
 
 function bindResponseListener() {
@@ -222,6 +305,8 @@ async function createOutbox({
         mappedCommand,
         status: "queued",
         terminal: false,
+        requiredRoles: spec.requiredRoles ? [...spec.requiredRoles] : ["TRADER"],
+        roleAcks: {},
         actorUserId: actor?.id || (actor?._id ? String(actor._id) : ""),
         actorUsername: actor?.username || actor?.email || "",
         expiresAt: new Date(Date.now() + ttlMs),
@@ -231,84 +316,113 @@ async function createOutbox({
     return doc;
 }
 
+/**
+ * Đánh published TRƯỚC khi MQTT publish — tránh ACK nhanh bị save() ghi đè về published.
+ * Sau publish luôn đọc lại document mới nhất.
+ */
 async function publishOutbox(doc) {
     bindResponseListener();
+    const requestId = doc.requestId;
+
     try {
         await startBotMqtt();
     } catch (error) {
-        doc.status = "failed";
-        doc.terminal = true;
-        doc.error = { code: "MQTT_CONNECT", message: error.message };
-        doc.messages.push({
-            status: "failed",
-            message: error.message,
-            error: doc.error,
-            timestamp: Date.now(),
-            at: new Date(),
-        });
-        await doc.save();
-        return doc;
+        await BotCommand.updateOne(
+            { requestId, terminal: false },
+            {
+                $set: {
+                    status: "failed",
+                    terminal: true,
+                    error: { code: "MQTT_CONNECT", message: error.message },
+                },
+                $push: {
+                    messages: {
+                        status: "failed",
+                        message: error.message,
+                        error: { code: "MQTT_CONNECT", message: error.message },
+                        timestamp: Date.now(),
+                        at: new Date(),
+                    },
+                },
+            }
+        );
+        return BotCommand.findOne({ requestId });
     }
 
+    const publishedAt = new Date();
+    await BotCommand.updateOne(
+        { requestId, terminal: false, status: "queued" },
+        {
+            $set: { status: "published", publishedAt },
+            $push: {
+                messages: {
+                    status: "published",
+                    message: "Đã gửi MQTT",
+                    error: null,
+                    timestamp: Date.now(),
+                    at: publishedAt,
+                },
+            },
+        }
+    );
+
     try {
-        if (doc.action === "APPLY_CONFIG") {
+        const fresh = await BotCommand.findOne({ requestId }).lean();
+        if (!fresh || fresh.terminal) return BotCommand.findOne({ requestId });
+
+        if (fresh.action === "APPLY_CONFIG") {
             const followers =
-                Array.isArray(doc.params?.followers) && doc.params.followers.length
-                    ? doc.params.followers.map((e) => String(e).toUpperCase())
-                    : await listReloadEnvs(doc.targetEnv);
-            if (!followers.includes(doc.targetEnv)) followers.unshift(doc.targetEnv);
+                Array.isArray(fresh.params?.followers) && fresh.params.followers.length
+                    ? fresh.params.followers.map((e) => String(e).toUpperCase())
+                    : await listReloadEnvs(fresh.targetEnv);
+            if (!followers.includes(fresh.targetEnv)) followers.unshift(fresh.targetEnv);
             await publishConfigSync({
-                source: doc.targetEnv,
-                targetEnv: doc.targetEnv,
+                source: fresh.targetEnv,
+                targetEnv: fresh.targetEnv,
                 followers,
-                requestId: doc.requestId,
+                requestId: fresh.requestId,
                 ts: Date.now(),
             });
         } else {
-            const spec = ALLOWLIST[doc.action];
+            const spec = ALLOWLIST[fresh.action];
             if (!spec || spec.kind !== "command") {
-                throw new Error(`Action không publish được: ${doc.action}`);
+                throw new Error(`Action không publish được: ${fresh.action}`);
             }
             await publishNewCommand({
-                command: doc.mappedCommand || spec.mapCommand(doc.targetEnv),
+                command: fresh.mappedCommand || spec.mapCommand(fresh.targetEnv),
                 cmdInfo: {
-                    requestId: doc.requestId,
+                    requestId: fresh.requestId,
                     source: "web",
-                    targetEnv: doc.targetEnv,
-                    action: doc.action,
+                    targetEnv: fresh.targetEnv,
+                    action: fresh.action,
                 },
             });
         }
-        doc.status = "published";
-        doc.publishedAt = new Date();
-        doc.messages.push({
-            status: "published",
-            message: "Đã gửi MQTT",
-            error: null,
-            timestamp: Date.now(),
-            at: new Date(),
-        });
-        await doc.save();
     } catch (error) {
-        doc.status = "failed";
-        doc.terminal = true;
-        doc.error = { code: "MQTT_PUBLISH", message: error.message };
-        doc.messages.push({
-            status: "failed",
-            message: error.message,
-            error: doc.error,
-            timestamp: Date.now(),
-            at: new Date(),
-        });
-        await doc.save();
+        await BotCommand.updateOne(
+            { requestId, terminal: false },
+            {
+                $set: {
+                    status: "failed",
+                    terminal: true,
+                    error: { code: "MQTT_PUBLISH", message: error.message },
+                },
+                $push: {
+                    messages: {
+                        status: "failed",
+                        message: error.message,
+                        error: { code: "MQTT_PUBLISH", message: error.message },
+                        timestamp: Date.now(),
+                        at: new Date(),
+                    },
+                },
+            }
+        );
     }
-    return doc;
+
+    return BotCommand.findOne({ requestId });
 }
 
-/**
- * Sau khi Mongo đã lưu config — tạo outbox APPLY_CONFIG và publish.
- * Không throw ra ngoài route lưu; trả public apply state.
- */
 async function enqueueApplyConfig(actor, username, targetEnv) {
     try {
         bindResponseListener();
@@ -320,8 +434,8 @@ async function enqueueApplyConfig(actor, username, targetEnv) {
             action: "APPLY_CONFIG",
             params: { followers },
         });
-        await publishOutbox(doc);
-        return publicCommand(doc);
+        const after = await publishOutbox(doc);
+        return publicCommand(after);
     } catch (error) {
         console.error("[enqueueApplyConfig]", error.message);
         return {
@@ -382,10 +496,9 @@ async function retryApply(actor, username, targetEnv, requestId) {
         action: "APPLY_CONFIG",
         params: { followers },
     });
-    doc.attempt = (prev.attempt || 1) + 1;
-    await doc.save();
-    await publishOutbox(doc);
-    return publicCommand(doc);
+    await BotCommand.updateOne({ requestId: doc.requestId }, { $set: { attempt: (prev.attempt || 1) + 1 } });
+    const after = await publishOutbox(doc);
+    return publicCommand(after);
 }
 
 async function dispatchCommand(actor, username, targetEnv, body) {
@@ -401,8 +514,8 @@ async function dispatchCommand(actor, username, targetEnv, body) {
         action,
         params: body?.params && typeof body.params === "object" ? body.params : {},
     });
-    await publishOutbox(doc);
-    return publicCommand(doc);
+    const after = await publishOutbox(doc);
+    return publicCommand(after);
 }
 
 async function initBotCommandBridge() {
@@ -426,4 +539,8 @@ module.exports = {
     dispatchCommand,
     initBotCommandBridge,
     applyResponsePayload,
+    publishOutbox,
+    resolveStatusTransition,
+    evaluateRoleAcks,
+    roleTerminalFromPayload,
 };

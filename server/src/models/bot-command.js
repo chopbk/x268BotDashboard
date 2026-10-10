@@ -10,6 +10,22 @@ const STATUSES = Object.freeze([
     "expired",
 ]);
 
+const RoleAckSchema = new mongoose.Schema(
+    {
+        status: String,
+        terminal: { type: Boolean, default: false },
+        instanceId: String,
+        applied: { type: [String], default: undefined },
+        skipped: { type: [String], default: undefined },
+        failed: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+        message: String,
+        error: mongoose.Schema.Types.Mixed,
+        timestamp: Number,
+        at: { type: Date, default: Date.now },
+    },
+    { _id: false }
+);
+
 const BotCommandSchema = new mongoose.Schema(
     {
         requestId: { type: String, required: true, unique: true },
@@ -20,12 +36,17 @@ const BotCommandSchema = new mongoose.Schema(
         mappedCommand: { type: String, default: "" },
         status: { type: String, enum: STATUSES, default: "queued", index: true },
         terminal: { type: Boolean, default: false },
+        /** Roles bắt buộc ACK terminal trước khi coi succeeded (APPLY_CONFIG mặc định TRADER). */
+        requiredRoles: { type: [String], default: () => ["TRADER"] },
+        roleAcks: { type: Map, of: RoleAckSchema, default: () => new Map() },
         messages: {
             type: [
                 {
                     status: String,
                     message: String,
                     error: mongoose.Schema.Types.Mixed,
+                    processRole: String,
+                    instanceId: String,
                     timestamp: Number,
                     at: { type: Date, default: Date.now },
                 },

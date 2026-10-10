@@ -178,7 +178,12 @@ Telegram path giữ nguyên: có `msgId` (+ `chatId`) thì reply Telegram như c
   "terminal": true,
   "message": "text hiển thị / log",
   "error": null,
-  "timestamp": 1791500000000
+  "timestamp": 1791500000000,
+  "processRole": "TRADER|MONITOR",
+  "instanceId": "host-pid",
+  "applied": ["DEMO_1"],
+  "skipped": [],
+  "failed": []
 }
 ```
 
@@ -192,8 +197,11 @@ Telegram path giữ nguyên: có `msgId` (+ `chatId`) thì reply Telegram như c
 | `message` | Text an toàn hiển thị; không secret |
 | `error` | `null` hoặc `{ "code", "message" }` |
 | `timestamp` | ms epoch |
+| `processRole` | `TRADER` hoặc `MONITOR` — web chỉ chốt `APPLY_CONFIG` khi đủ `requiredRoles` (mặc định `TRADER`) |
+| `instanceId` | Định danh process |
+| `applied` | Env thực sự reload OK; `succeeded` mà thiếu `targetEnv` → web coi failed |
 
-Web ignore response nếu `requestId` không có trong outbox, hoặc `targetEnv` không khớp document.
+Web ignore response nếu `requestId` không có trong outbox, hoặc `targetEnv` không khớp document. Status outbox một chiều: `queued → published → received → running → succeeded|failed|expired`. Đánh `published` trước khi MQTT publish (tránh ACK bị ghi đè).
 
 Một số lệnh Telegram gửi “đang xử lý…” rồi kết quả: bot phải emit ít nhất một `running`/`received` (`terminal: false`) và một terminal.
 
