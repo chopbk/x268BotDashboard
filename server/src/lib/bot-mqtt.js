@@ -5,10 +5,13 @@ const config = require("../config");
 const CONFIG_SYNC_TOPIC = "config/sync";
 const NEW_COMMAND_TOPIC = "new_command";
 const COMMAND_RESPONSE_TOPIC = "command_response";
+const TRADING_REQUEST_TOPIC = "trading/request/v1";
+const TRADING_RESPONSE_TOPIC = "trading/response/v1";
 
 let client = null;
 let starting = null;
 const responseHandlers = new Set();
+const tradingResponseHandlers = new Set();
 
 function mqttEnv() {
     return String(config.mqttEnv || process.env.MQTT || "DEFAULT").trim() || "DEFAULT";
@@ -30,6 +33,11 @@ async function loadBrokerUrl() {
 function onResponse(handler) {
     responseHandlers.add(handler);
     return () => responseHandlers.delete(handler);
+}
+
+function onTradingResponse(handler) {
+    tradingResponseHandlers.add(handler);
+    return () => tradingResponseHandlers.delete(handler);
 }
 
 async function startBotMqtt() {
@@ -57,24 +65,40 @@ async function startBotMqtt() {
                             console.log("[bot-mqtt] subscribed", COMMAND_RESPONSE_TOPIC);
                         }
                     });
+                    next.subscribe(TRADING_RESPONSE_TOPIC, { qos: 1 }, (err) => {
+                        if (err) {
+                            console.error("[bot-mqtt] subscribe trading_response", err.message);
+                        } else {
+                            console.log("[bot-mqtt] subscribed", TRADING_RESPONSE_TOPIC);
+                        }
+                    });
                     resolve();
                 };
                 next.once("error", onError);
                 next.once("connect", onConnect);
                 next.on("message", (topic, buf) => {
-                    if (topic !== COMMAND_RESPONSE_TOPIC) return;
                     let payload;
                     try {
                         payload = JSON.parse(buf.toString());
                     } catch (error) {
-                        console.warn("[bot-mqtt] invalid command_response JSON", error.message);
+                        console.warn("[bot-mqtt] invalid JSON on", topic, error.message);
                         return;
                     }
-                    for (const handler of responseHandlers) {
-                        try {
-                            handler(payload);
-                        } catch (error) {
-                            console.error("[bot-mqtt] response handler", error.message);
+                    if (topic === COMMAND_RESPONSE_TOPIC) {
+                        for (const handler of responseHandlers) {
+                            try {
+                                handler(payload);
+                            } catch (error) {
+                                console.error("[bot-mqtt] response handler", error.message);
+                            }
+                        }
+                    } else if (topic === TRADING_RESPONSE_TOPIC) {
+                        for (const handler of tradingResponseHandlers) {
+                            try {
+                                handler(payload);
+                            } catch (error) {
+                                console.error("[bot-mqtt] trading response handler", error.message);
+                            }
                         }
                     }
                 });
@@ -126,13 +150,22 @@ async function publishNewCommand(payload) {
     return publishJson(NEW_COMMAND_TOPIC, payload, { qos: 1 });
 }
 
+async function publishTradingRequest(payload) {
+    await startBotMqtt().catch(() => {});
+    return publishJson(TRADING_REQUEST_TOPIC, payload, { qos: 1 });
+}
+
 module.exports = {
     CONFIG_SYNC_TOPIC,
     NEW_COMMAND_TOPIC,
     COMMAND_RESPONSE_TOPIC,
+    TRADING_REQUEST_TOPIC,
+    TRADING_RESPONSE_TOPIC,
     startBotMqtt,
     isConnected,
     onResponse,
+    onTradingResponse,
     publishConfigSync,
     publishNewCommand,
+    publishTradingRequest,
 };

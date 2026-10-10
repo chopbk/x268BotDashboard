@@ -32,6 +32,8 @@ const BotCommandSchema = new mongoose.Schema(
         username: { type: String, required: true, index: true },
         targetEnv: { type: String, required: true, index: true },
         action: { type: String, required: true, index: true },
+        category: { type: String, enum: ["config_sync", "command", "trading"], default: "config_sync", index: true },
+        idempotencyKey: { type: String, sparse: true, index: true },
         params: { type: mongoose.Schema.Types.Mixed, default: {} },
         mappedCommand: { type: String, default: "" },
         status: { type: String, enum: STATUSES, default: "queued", index: true },

@@ -72,7 +72,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | Config | `config.view`, `config.edit` |
 | Signal/hiệu suất | `signals.history`, `statistics.view` |
 | Position | `positions.view`, `positions.open`, `positions.close` |
-| Order | `orders.view` |
+| Order | `orders.view`, `orders.create`, `orders.edit`, `orders.cancel` |
 | API | `credentials.view`, `credentials.manage` |
 | User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
 | Log | `logs.view` |
@@ -339,6 +339,16 @@ Các invariant:
 | `GET /api/orders/open` | `requireAuth` | `orders.view` + scope bot. Order đang mở từ Redis snapshot. Query `account`, `audience`, `symbol`, `kind`, `side`, `type`. Không mutation |
 | `GET /api/orders/history` | `requireAuth` | `orders.view` + scope bot. Lịch sử order từ Mongo `web_exchange_order_events`. Query `account`, `audience`, `symbol`, `kind`, `side`, `positionSide`, `type`, `status`, `from`, `to`, `page`, `limit`. Mặc định 7 ngày gần nhất |
 | `GET /api/orders/:kind/:symbol/:orderId` | `requireAuth` | `orders.view` + scope bot. Chi tiết một order và fills liên quan từ `web_exchange_fills`. Query `account` bắt buộc |
+| `POST /api/trading/orders/cancel` | `requireAuth` | `orders.cancel` + scope bot. Cancel một order qua MQTT trading/request/v1. Body: username, kind, symbol, orderId |
+| `POST /api/trading/orders/cancel-batch` | `requireAuth` | `orders.cancel` + scope bot. Cancel nhiều orders (tối đa 20). Body: username, orders[] |
+| `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
+| `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
+| `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |
+| `POST /api/trading/positions/close` | `requireAuth` | `positions.close` + scope bot. Đóng vị thế Market/Limit |
+| `POST /api/trading/positions/open` | `requireAuth` | `positions.open` + scope bot. Mở vị thế mới |
+| `POST /api/trading/positions/reverse` | `requireAuth` | `positions.open` + `positions.close` + scope bot. Reverse vị thế (saga) |
+| `POST /api/trading/orders` | `requireAuth` | `orders.create` + scope bot. Tạo order mới |
+| `PUT /api/trading/orders/:kind/:symbol/:orderId` | `requireAuth` | `orders.edit` + scope bot. Replace order |
 | `GET /api/summary` | `requireAuth` | `summary.view` hoặc `bots.view` hoặc `statistics.view`. `audience=mine` chỉ user bot đang active mà actor sở hữu hoặc được gán. `audience=system` (mặc định) lấy user bot active mà scope `bots.view` hoặc `statistics.view` cho phép, không dùng scope `summary.view`; bot private vẫn chỉ khi sở hữu hoặc được gán, trừ admin. Admin và `summary_viewer` với `audience=system` đọc snapshot toàn hệ thống. `audience=mine` luôn tính trực tiếp, không dùng snapshot chung. Mặc định hôm nay, `range=today\|3d\|7d\|30d\|90d\|all`, `today` là ngày UTC hiện tại. Position mở là `monitor_positions` có `closed` khác `true`, bỏ paper (`isPaper` hoặc `config.PAPER`). Profit, balance và ROI trong `userRanks` lấy một ví `futures_profits` mỗi user: env trùng username nếu username nằm trong `accounts`, không cộng các config vì lệnh `/i` có thể ghi cùng một ví lên nhiều env. Profit cộng các ngày UTC trong kỳ, sau khi gộp bản ghi trùng env và ngày. Balance là số dư ngày cuối của ví đó. ROI là profit kỳ chia số dư đầu ngày đầu tiên trong kỳ. Volume, số lệnh, win rate, profit thẻ và xếp hạng signal/symbol vẫn là `account_statics` lệnh đóng, không paper, theo `closeTime`. Signal trong kỳ là số tên signal khác nhau mà user bot trong phạm vi đã vào lệnh: `account_statics.typeSignal`, không paper, theo `openTime` |
 | `POST /api/summary/refresh` | `requireAuth` | Cùng quyền với GET. Cùng `range` và `audience` với GET. Admin và `summary_viewer` khi `audience=system` tính lại snapshot dùng chung. Các trường hợp còn lại chỉ tính lại đúng phạm vi, không ghi đè snapshot hệ thống. Giới hạn 6 lần / 15 phút |
 | `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Màn hình là tab Lịch sử trong Signal → Tìm Signal. Bấm một signal xem số lượng và lịch sử; nút Tìm config chuyển sang tìm config với đúng tên đó. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |

@@ -19,6 +19,10 @@ const PERMISSIONS = Object.freeze({
   POSITIONS_OPEN: "positions.open",
   POSITIONS_CLOSE: "positions.close",
   ORDERS_VIEW: "orders.view",
+  ORDERS_CREATE: "orders.create",
+  ORDERS_EDIT: "orders.edit",
+  ORDERS_CANCEL: "orders.cancel",
+  POSITIONS_TPSL: "positions.tpsl",
   CREDENTIALS_VIEW: "credentials.view",
   CREDENTIALS_MANAGE: "credentials.manage",
   USERS_VIEW: "users.view",
@@ -113,6 +117,30 @@ const DEFINITIONS = [
     [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
   ],
   [
+    PERMISSIONS.ORDERS_CREATE,
+    "Tạo order mới",
+    "order",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
+  [
+    PERMISSIONS.ORDERS_EDIT,
+    "Sửa/thay thế order",
+    "order",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
+  [
+    PERMISSIONS.ORDERS_CANCEL,
+    "Hủy order",
+    "order",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
+  [
+    PERMISSIONS.POSITIONS_TPSL,
+    "Tạo/thay/hủy TP, SL gắn với position",
+    "position",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
+  [
     PERMISSIONS.CREDENTIALS_VIEW,
     "Xem API/credential",
     "api",
@@ -178,6 +206,10 @@ const OPERATOR_PERMISSIONS = [
   PERMISSIONS.CONFIG_EDIT,
   PERMISSIONS.POSITIONS_OPEN,
   PERMISSIONS.POSITIONS_CLOSE,
+  PERMISSIONS.POSITIONS_TPSL,
+  PERMISSIONS.ORDERS_CREATE,
+  PERMISSIONS.ORDERS_EDIT,
+  PERMISSIONS.ORDERS_CANCEL,
   PERMISSIONS.LOGS_VIEW,
 ];
 const SELF_PROFILE_PERMISSIONS = [
