@@ -10,6 +10,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Biết màn hình làm gì, dữ liệu từ đâu | [Đặc tả tính năng](feature-spec.md) |
 | Lần theo một thao tác từ UI đến database | [Luồng xử lý](flows.md) |
 | Tra endpoint, model, collection và thuật ngữ | [API và dữ liệu](api-data-reference.md) |
+| Cầu runtime web → binance-bot (MQTT, outbox, allowlist) | [Command bridge](bot-command-bridge.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
 | Đăng ký, đăng nhập, quyền và scope | [Spec auth/RBAC](auth-rbac-spec.md) |
 | Cài Debian, Nginx, HTTPS, cập nhật server | [Deploy Debian](deploy-debian.md) |

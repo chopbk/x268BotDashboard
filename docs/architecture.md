@@ -69,10 +69,16 @@ Danh sách mẫu: [.env.example](../.env.example). Không đọc/commit file `.e
 
 Tên model mặc định trong code là cấu hình implementation, không phải danh sách model được nhà cung cấp bảo đảm hỗ trợ. Không đưa API key AI vào biến client `VITE_*`.
 
+## Cầu runtime tới bot giao dịch
+
+Dashboard ghi config/signal/account vào Mongo dùng chung; process trader giữ bản RAM riêng. Spec cầu MQTT (outbox, `command_response`, allowlist `action`, hot-reload `config/sync`) nằm ở [bot-command-bridge.md](bot-command-bridge.md). Khi chưa implement: lưu Mongo **không** đồng nghĩa bot đã áp dụng; UI vẫn cảnh báo restart/chờ apply.
+
+Invariant: publish MQTT thành công ≠ bot đã áp dụng. Chỉ báo applied khi ACK terminal khớp `requestId` + `targetEnv`.
+
 ## Giới hạn hiện tại
 
 - REST kiểm tra user/quyền mỗi request. WebSocket xác thực khi upgrade và đọc lại session/user từ Mongo trước mỗi snapshot; mỗi view lọc lại scope tài khoản.
 - [Nginx mẫu](../deploy/nginx.conf) và [mẫu IP](../deploy/nginx-ip.conf) có location WebSocket riêng. Với host đã cài, cần bổ sung location này vào config hiện tại rồi `nginx -t` và reload; không chép đè cấu hình TLS của Certbot. REST fallback không thay thế kiểm tra upgrade 101.
 - `position-feed.js` chứa cả hub stream sàn. Luồng đang nối vào server là `position-ws → position-live`, dùng `loadBinanceSnapshot` từ position-feed để fallback. Không suy ra mọi hàm export đều đang chạy.
-- Có permission `positions.open`, `positions.close`, `bots.operate` trong catalog không có nghĩa project đã cung cấp endpoint mở/đóng lệnh hay quản lý PM2.
+- Có permission `positions.open`, `positions.close`, `bots.operate` trong catalog không có nghĩa project đã cung cấp endpoint mở/đóng lệnh hay quản lý PM2. Status runtime qua bridge dùng quyền xem (`positions.view`, `config.view`, `statistics.view`), không bắt buộc `bots.operate` — xem [command bridge](bot-command-bridge.md#7-action-allowlist-phase-status--apply).
 - Deploy hiện restart tại chỗ, có gián đoạn ngắn; không tự rollback dependency/backend khi lỗi. Các file mới trên GitHub chưa đồng nghĩa frontend đã xuất thành công.

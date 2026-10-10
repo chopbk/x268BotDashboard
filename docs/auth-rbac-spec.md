@@ -359,6 +359,7 @@ Các invariant:
 | `POST /api/bots/:username/configs/bulk` | `requireAuth` | `config.edit` + scope; áp cùng một patch lên các env trong `envs` (tối đa 40). Field không gửi giữ nguyên. Mỗi config ghi audit `config.updated` |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.view` trên nguồn, `config.edit` trên đích. `mode=new` tạo `Account_Config` mới. `mode=replace` ghi đè config đích đã có và gỡ sync của đích. `mode=sync` tạo config mới, chép nội dung nguồn và đặt `sync_from` về nguồn |
+| Runtime bridge (dự kiến) | `requireAuth` | Typed `action` allowlist trong [bot-command-bridge](bot-command-bridge.md): status đọc dùng `positions.view` / `config.view` / `statistics.view` + scope; `APPLY_CONFIG` dùng `config.edit`. **Không** bắt buộc `bots.operate` cho status. Frontend không gửi lệnh thô `OPEN`/`CLOSE`. Chưa có endpoint cho đến khi implement |
 | `GET /api/user-apis` | `requireAuth` | `credentials.view` + scope riêng; phân trang server bằng `page`, `limit`, tìm bằng `q`. Response không có raw secret |
 | `GET /api/user-apis/:username` | `requireAuth` | `credentials.view` + cùng scope. Chỉ trả cờ đã có key/secret/passphrase |
 | `POST /api/user-apis` | `requireAuth` | `credentials.manage` + scope username; tạo document `user_apis` |

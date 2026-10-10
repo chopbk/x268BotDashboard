@@ -7,6 +7,7 @@
 | Menu/điều hướng/form | App.jsx → navigation.jsx → page → api.js | Build client, kiểm tra quyền và rời form |
 | User/session/phân quyền | auth-rbac-spec → access-control → middleware/auth → route → auth.jsx | auth-*, access-control, self-profile, security-middleware |
 | Bot/config/copy/bulk | routes/bots → bot-directory → account-config-view → models | bot-directory, account-config-view |
+| Command bridge MQTT/outbox | [bot-command-bridge](bot-command-bridge.md) → (sẽ có) mqtt client, outbox model, allowlist → binance-bot `responseCommand` / `config/sync` | test outbox + allowlist + RBAC theo action |
 | Tìm signal | SignalSearchPage → config-search → account_statics | config-search |
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
 | Số liệu lệnh/ví | account-statics / account-ledger / system-summary | account-statics, account-ledger, system-summary |

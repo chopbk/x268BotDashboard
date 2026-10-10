@@ -30,6 +30,8 @@ sequenceDiagram
 
 Bot giao dịch đọc cấu hình ở process riêng. Không nối mũi tên từ response lưu config sang “đã đổi lệnh trên sàn”. Bulk và thao tác Signal có danh sách lỗi từng env, không phải transaction tất cả hoặc không có gì.
 
+**Đích sau khi có command bridge** ([contract](bot-command-bridge.md)): sau khi Mongo ghi thành công, server tạo outbox `APPLY_CONFIG`, publish MQTT `config/sync` với `followers = [env vừa sửa, ...follower sync]`, chờ `command_response` terminal mới báo “đã áp dụng”. Publish thành công chưa đủ. Bot offline → “Đã lưu DB — chờ áp dụng” + retry.
+
 ## 3. Tìm rồi copy/sync config
 
 [SignalSearchPage](../client/src/pages/SignalSearchPage.jsx) → GET `/api/bots/config-search` → [config-search](../server/src/lib/config-search.js) → lọc bot được phép, account_configs + account_statics → bảng hiệu suất → popup GET config/Static → POST `/:username/configs/:env/copy` → [copyAccount](../server/src/lib/bot-directory.js) → ghi config đích và liên kết account → audit `config.copied`.
