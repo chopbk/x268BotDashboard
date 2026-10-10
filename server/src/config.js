@@ -13,6 +13,10 @@ const config = {
     clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
     trustProxy: process.env.WEB_TRUST_PROXY === "true",
     redisUrl: process.env.REDIS_URL || "",
+    /** Env trong collection mqtt_configs (cùng binance-bot). */
+    mqttEnv: process.env.MQTT || process.env.WEB_MQTT_ENV || "DEFAULT",
+    /** Ghi đè URL broker; để trống thì đọc từ mqtt_configs. */
+    mqttUrl: process.env.WEB_MQTT_URL || "",
     cookieName: "wb_token",
     csrfCookieName: "wb_csrf",
     jwtExpiresIn: "12h",

@@ -1,6 +1,6 @@
 # Contract: web-bot ↔ binance-bot command bridge
 
-Spec thiết kế cho cầu runtime giữa dashboard và process trader. **Chưa phải implementation** — đối chiếu ngày 2026-10-10. Khi code xong, cập nhật [API](api-data-reference.md), [luồng](flows.md) và bảng endpoint trong [auth/RBAC](auth-rbac-spec.md) cùng thay đổi.
+Spec cầu runtime giữa dashboard và process trader. Phase 1 (outbox + MQTT `command_response` + `APPLY_CONFIG`) đã có implementation — đối chiếu ngày 2026-10-10. Status action allowlist đã map sẵn; endpoint command đã mở, UI status Phase 2 chưa làm.
 
 ## 1. Mục tiêu và ranh giới
 

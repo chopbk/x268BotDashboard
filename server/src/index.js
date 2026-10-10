@@ -12,6 +12,7 @@ const { connectRateLimitStore, rateLimitStoreStatus, getRedisClient } = require(
 const { bindRedis } = require("./lib/position-live");
 const { startMarkPrices } = require("./lib/mark-prices");
 const { attachPositionSocket } = require("./lib/position-ws");
+const { initBotCommandBridge } = require("./lib/bot-command-bridge");
 
 async function main() {
     try {
@@ -29,6 +30,7 @@ async function main() {
         await startMarkPrices();
         await bootstrapAdmin();
         await startSummarySnapshotJob();
+        await initBotCommandBridge();
 
         const app = express();
         if (config.trustProxy) app.set("trust proxy", 1);

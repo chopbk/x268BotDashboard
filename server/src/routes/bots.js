@@ -27,6 +27,13 @@ const {
 const { pagination, escapeRegex } = require("../lib/pagination");
 const { searchConfigsBySignal } = require("../lib/config-search");
 const { isOwnUser } = require("../lib/account-ledger");
+const {
+    enqueueApplyConfig,
+    enqueueApplyConfigMany,
+    getCommand,
+    retryApply,
+    dispatchCommand,
+} = require("../lib/bot-command-bridge");
 
 const router = express.Router();
 
@@ -165,7 +172,8 @@ router.post(
                     mode: { from: null, to: mode },
                 },
             });
-            res.status(201).json(copied);
+            const apply = await enqueueApplyConfig(req.webUser, copied.username, copied.env);
+            res.status(201).json({ ...copied, apply });
         } catch (error) {
             sendError(res, error, "POST /api/bots/:username/configs/:env/copy");
         }
@@ -194,9 +202,14 @@ router.post(
                     changes,
                 });
             }
+            const applyEnvs = result.updated.map((row) => row.env);
+            const applies = applyEnvs.length
+                ? await enqueueApplyConfigMany(req.webUser, username, applyEnvs)
+                : [];
             res.json({
-                updated: result.updated.map((row) => row.env),
+                updated: applyEnvs,
                 failed: result.failed,
+                applies,
             });
         } catch (error) {
             sendError(res, error, "POST /api/bots/:username/configs/bulk");
@@ -224,9 +237,66 @@ router.patch(
                     changes,
                 });
             }
-            res.json({ config });
+            const apply = await enqueueApplyConfig(req.webUser, username, env);
+            res.json({ config, apply });
         } catch (error) {
             sendError(res, error, "PATCH /api/bots/:username/configs/:env");
+        }
+    }
+);
+
+router.get(
+    "/:username/commands/:requestId",
+    requireAuth,
+    async (req, res) => {
+        try {
+            const command = await getCommand(req.webUser, req.params.requestId);
+            if (
+                command.username &&
+                normalizeName(command.username) !== normalizeName(req.params.username)
+            ) {
+                return res.status(404).json({ error: "Không tìm thấy lệnh" });
+            }
+            res.json({ command });
+        } catch (error) {
+            sendError(res, error, "GET /api/bots/:username/commands/:requestId");
+        }
+    }
+);
+
+router.post(
+    "/:username/accounts/:env/commands",
+    requireAuth,
+    async (req, res) => {
+        try {
+            const command = await dispatchCommand(
+                req.webUser,
+                normalizeName(req.params.username),
+                normalizeName(req.params.env),
+                req.body || {}
+            );
+            res.status(202).json({ command });
+        } catch (error) {
+            sendError(res, error, "POST /api/bots/:username/accounts/:env/commands");
+        }
+    }
+);
+
+router.post(
+    "/:username/accounts/:env/commands/:requestId/retry",
+    requireAuth,
+    requirePermission(PERMISSIONS.CONFIG_EDIT),
+    async (req, res) => {
+        try {
+            const command = await retryApply(
+                req.webUser,
+                normalizeName(req.params.username),
+                normalizeName(req.params.env),
+                req.params.requestId
+            );
+            res.status(202).json({ command });
+        } catch (error) {
+            sendError(res, error, "POST /api/bots/:username/accounts/:env/commands/:requestId/retry");
         }
     }
 );

@@ -317,6 +317,41 @@ function optionalNumber(value) {
   return Number(value);
 }
 
+function applyStatusLabel(apply) {
+  if (!apply?.requestId && apply?.status === "failed") {
+    return "Đã lưu DB — chờ áp dụng (không gửi được MQTT)";
+  }
+  if (!apply) return "Đã lưu DB";
+  if (apply.status === "succeeded" && apply.terminal) return "Đã áp dụng lên bot";
+  if (apply.status === "failed" && apply.terminal) {
+    return `Đã lưu DB — chờ áp dụng (${apply.error?.message || "bot báo lỗi"})`;
+  }
+  if (apply.status === "expired" && apply.terminal) {
+    return "Đã lưu DB — chờ áp dụng (bot không ACK kịp)";
+  }
+  if (["queued", "published", "received", "running"].includes(apply.status)) {
+    return `Đã lưu DB — đang áp dụng (${apply.status})`;
+  }
+  return `Đã lưu DB — ${apply.status || "chờ áp dụng"}`;
+}
+
+async function waitForApply(username, requestId, { signal, timeoutMs = 35_000 } = {}) {
+  if (!requestId) return null;
+  const started = Date.now();
+  let last = null;
+  while (Date.now() - started < timeoutMs) {
+    if (signal?.aborted) break;
+    const data = await api(`/api/bots/${encodeURIComponent(username)}/commands/${encodeURIComponent(requestId)}`, {
+      signal,
+      timeoutMs: 10_000,
+    });
+    last = data.command || null;
+    if (last?.terminal) return last;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  return last;
+}
+
 export default function AccountConfigPage() {
   const { username = "", env = "" } = useParams();
   const navigate = useNavigate();
@@ -340,6 +375,7 @@ export default function AccountConfigPage() {
   const [copyName, setCopyName] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [applyState, setApplyState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const disabled = !editing || busy;
@@ -498,9 +534,44 @@ export default function AccountConfigPage() {
       applyConfig(data.config);
       setEditing(false);
       setSnapshot(null);
-      setSaved("Đã lưu. Bot đang chạy chỉ nhận config mới sau khi restart.");
+      let apply = data.apply || null;
+      setApplyState(apply);
+      setSaved(applyStatusLabel(apply));
+      if (apply?.requestId && !apply.terminal) {
+        apply = await waitForApply(username, apply.requestId);
+        if (apply) {
+          setApplyState(apply);
+          setSaved(applyStatusLabel(apply));
+        }
+      }
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryApply() {
+    if (!applyState?.requestId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api(
+        `/api/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}/commands/${encodeURIComponent(applyState.requestId)}/retry`,
+        { method: "POST", body: {} }
+      );
+      let apply = data.command || null;
+      setApplyState(apply);
+      setSaved(applyStatusLabel(apply));
+      if (apply?.requestId && !apply.terminal) {
+        apply = await waitForApply(username, apply.requestId);
+        if (apply) {
+          setApplyState(apply);
+          setSaved(applyStatusLabel(apply));
+        }
+      }
+    } catch (err) {
+      setError(err.message || "Thử lại thất bại");
     } finally {
       setBusy(false);
     }
@@ -610,7 +681,15 @@ export default function AccountConfigPage() {
           <h1>{env}</h1>
           {editing ? <p className="dirty-note muted">Có thay đổi chưa lưu.</p> : null}
           {help ? (
-            <p className="muted">Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Tab Cơ bản là cách vào lệnh. Tab Nâng cao là lọc, gồng, copy và sync. Bot nhận bản mới sau khi restart.</p>
+            <p className="muted">Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Tab Cơ bản là cách vào lệnh. Tab Nâng cao là lọc, gồng, copy và sync. Lưu xong hệ thống tự áp dụng lên bot qua MQTT.</p>
+          ) : null}
+          {saved ? <p className="muted">{saved}</p> : null}
+          {applyState && ["failed", "expired"].includes(applyState.status) && applyState.terminal ? (
+            <p>
+              <button type="button" className="ghost" onClick={retryApply} disabled={busy}>
+                Thử áp dụng lại
+              </button>
+            </p>
           ) : null}
         </div>
         <div className="config-toolbar">
@@ -683,7 +762,6 @@ export default function AccountConfigPage() {
       ) : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
-      {saved ? <p className="muted">{saved}</p> : null}
       {form ? (
         <HelpUi.Provider value={{ help, editing }}>
         <div className="config-tabs" role="tablist" aria-label="Nhóm cấu hình">
@@ -717,7 +795,7 @@ export default function AccountConfigPage() {
           </Section>
           <Section title="Cách tính vốn" stack>
             <div className="mode-pick">
-              <Select label="Mode" value={form.mode} options={MODES} onChange={(value) => setField("mode", value)} disabled={disabled} hint="FIX: volume = cost × đòn bẩy long. RATIO: cost lấy theo tỷ lệ ví. RISK: theo risk lệnh. LOSS và RR: size để chạm SL lỗ khoảng Fix loss. sl chỉ đặt giá cắt lỗ. Bot nhận bản mới sau khi restart." />
+              <Select label="Mode" value={form.mode} options={MODES} onChange={(value) => setField("mode", value)} disabled={disabled} hint="FIX: volume = cost × đòn bẩy long. RATIO: cost lấy theo tỷ lệ ví. RISK: theo risk lệnh. LOSS và RR: size để chạm SL lỗ khoảng Fix loss. sl chỉ đặt giá cắt lỗ. Lưu xong tự áp dụng lên bot." />
             </div>
             <p className="mode-lead">{volumeView.lead}</p>
             <div className="mode-box">

@@ -6,6 +6,7 @@ const { buildChanges, safeRecordAudit } = require("../lib/audit");
 const { AUDIT_FIELDS } = require("../lib/account-config-view");
 const { normalizeName } = require("../lib/bot-directory");
 const { listSignalSetup, applySignals } = require("../lib/signal-setup");
+const { enqueueApplyConfigMany } = require("../lib/bot-command-bridge");
 
 const router = express.Router();
 
@@ -40,10 +41,15 @@ router.post("/", requireAuth, requirePermission(PERMISSIONS.CONFIG_EDIT), async 
                 changes,
             });
         }
+        const changedEnvs = result.updated.filter((row) => row.changed).map((row) => row.env);
+        const applies = changedEnvs.length
+            ? await enqueueApplyConfigMany(req.webUser, username, changedEnvs)
+            : [];
         res.json({
             action: result.action,
             updated: result.updated.map((row) => ({ env: row.env, changed: row.changed, signals: row.signals })),
             failed: result.failed,
+            applies,
         });
     } catch (error) {
         sendError(res, error, "POST /api/signal-config");
