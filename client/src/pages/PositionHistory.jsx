@@ -188,13 +188,12 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
         <label>Lý do đóng
           <select value={params.get("reason") || ""} onChange={(event) => go((query) => { if (event.target.value) query.set("reason", event.target.value); else query.delete("reason"); query.delete("page"); })}>
             <option value="">Tất cả</option>
-            <option value="tp">TP</option>
-            <option value="sl">SL</option>
-            <option value="trailing">Trailing</option>
-            <option value="signal">Signal</option>
-            <option value="manual">Thủ công</option>
+            <option value="tp">Khớp hết TP</option>
+            <option value="sl">Khớp SL</option>
+            <option value="sl_profit">Khớp SL dương</option>
+            <option value="signal">Đóng theo tín hiệu</option>
+            <option value="manual">Người dùng tự đóng</option>
             <option value="max_loss">Max loss</option>
-            <option value="gone">Hết vị thế</option>
             <option value="unknown">Không xác định</option>
           </select>
         </label>

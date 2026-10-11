@@ -67,29 +67,56 @@ function collapseTrades(rows) {
     return [...byKey.values()];
 }
 
+/**
+ * Nhãn lý do đóng — đồng bộ binance-bot formatCloseReason
+ * (TP hết / SL dương / SL / tay / tín hiệu / max loss).
+ */
 function reasonLabel(reason) {
-    const text = String(reason || "").trim().toUpperCase();
-    if (!text || text === "END_MONITOR") return "Không xác định";
-    if (text.includes("MAX_LOSS")) return "Max loss";
-    if (text.includes("SIGNAL")) return "Signal";
-    if (text.includes("TRAIL")) return "Trailing";
-    if (text.includes("SL") || text.includes("STOP")) return "SL";
-    if (text.includes("MANUAL") || text.includes("COMMAND")) return "Thủ công";
-    if (text.includes("POSITION_GONE") || text.includes("DUST")) return "Hết vị thế trên sàn";
-    if (text.includes("TP")) return "TP";
-    return text;
+    const r = String(reason || "").trim().toUpperCase();
+    if (!r) return "Không xác định";
+    if (r === "TP_FILL" || r === "TP_ALL" || r === "TP_PARTIAL") return "Khớp hết TP";
+    if (r === "SL_PROFIT" || r === "HSL_PROFIT" || r === "TRAIL_SL") return "Khớp SL dương";
+    if (r === "SL_FILL" || r === "HSL_FILL" || r === "SL_LEFTOVER") return "Khớp SL";
+    if (r === "MAX_LOSS" || r === "MAX_LOSS_SKIP_SIBLING" || r.includes("MAX_LOSS")) return "Max loss";
+    if (r === "SIGNAL_CLOSE" || r.includes("SIGNAL")) return "Đóng theo tín hiệu";
+    if (
+        r === "MANUAL_CLOSE" ||
+        r === "POSITION_GONE" ||
+        r.includes("MANUAL") ||
+        r.includes("COMMAND")
+    ) {
+        return "Người dùng tự đóng";
+    }
+    if (r === "DUST_BOTH") return "Khớp hết vị thế";
+    if (r === "FETCH_FAIL" || r === "END_MONITOR") return "Đóng monitor";
+    // Legacy / fuzzy (dữ liệu cũ)
+    if (r.includes("TRAIL")) return "Khớp SL dương";
+    if (r.includes("SL") || r.includes("STOP")) return "Khớp SL";
+    if (r.includes("TP")) return "Khớp hết TP";
+    if (r.includes("DUST") || r.includes("POSITION_GONE")) return "Người dùng tự đóng";
+    return String(reason);
 }
 
 function reasonClause(reason) {
     const name = String(reason || "").trim().toLowerCase();
     if (name === "max_loss") return { closeReason: /MAX_LOSS/i };
     if (name === "signal") return { closeReason: /SIGNAL/i };
-    if (name === "trailing") return { closeReason: /TRAIL/i };
-    if (name === "sl") return { closeReason: /SL|STOP/i };
-    if (name === "manual") return { closeReason: /MANUAL|COMMAND/i };
-    if (name === "gone") return { closeReason: /POSITION_GONE|DUST_/i };
-    if (name === "tp") return { closeReason: /TP/i };
-    if (name === "unknown") return { $or: [{ closeReason: { $in: [null, "", "END_MONITOR"] } }, { closeReason: { $exists: false } }] };
+    if (name === "sl_profit" || name === "trailing") {
+        return { closeReason: /SL_PROFIT|HSL_PROFIT|TRAIL_SL|TRAIL/i };
+    }
+    if (name === "sl") return { closeReason: /SL_FILL|HSL_FILL|SL_LEFTOVER/i };
+    if (name === "manual" || name === "gone") {
+        return { closeReason: /MANUAL|COMMAND|POSITION_GONE/i };
+    }
+    if (name === "tp") return { closeReason: /TP_FILL|TP_ALL|TP_PARTIAL|(^|_)TP($|_)/i };
+    if (name === "unknown") {
+        return {
+            $or: [
+                { closeReason: { $in: [null, "", "END_MONITOR", "FETCH_FAIL"] } },
+                { closeReason: { $exists: false } },
+            ],
+        };
+    }
     return null;
 }
 
@@ -102,9 +129,13 @@ function narrateTrade(row) {
     if (messages.some((item) => /TAKE_PROFIT|\bTP\d/i.test(item))) bits.push("Log có khớp TP");
     if (events.has("TRAIL_SL")) bits.push("Có lần dời SL theo trailing");
     if (events.has("HP_SL")) bits.push("Có lần dời SL theo HP");
-    if (events.has("MAX_LOSS") || String(row?.closeReason || "").toUpperCase().includes("MAX_LOSS")) bits.push("Đóng bởi max loss");
-    else if (String(row?.closeReason || "").toUpperCase().includes("SIGNAL")) bits.push("Đóng theo signal");
-    else if (reasonLabel(row?.closeReason) !== "Không xác định") bits.push(`Lý do đóng đã ghi: ${reasonLabel(row.closeReason)}`);
+    if (events.has("MAX_LOSS") || String(row?.closeReason || "").toUpperCase().includes("MAX_LOSS")) {
+        bits.push("Đóng bởi max loss");
+    } else if (String(row?.closeReason || "").toUpperCase().includes("SIGNAL")) {
+        bits.push("Đóng theo tín hiệu");
+    } else if (reasonLabel(row?.closeReason) !== "Không xác định") {
+        bits.push(`Lý do đóng: ${reasonLabel(row.closeReason)}`);
+    }
     if (!bits.length) return "Không đủ log để diễn giải diễn biến.";
     return `${bits.join(". ")}.`;
 }

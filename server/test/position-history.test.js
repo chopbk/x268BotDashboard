@@ -37,9 +37,19 @@ test("summary skips missing profit and keeps live paper apart", () => {
 
 test("narrative and R stay inside recorded evidence", () => {
     assert.equal(reasonLabel(""), "Không xác định");
-    assert.equal(reasonLabel("END_MONITOR"), "Không xác định");
+    assert.equal(reasonLabel("END_MONITOR"), "Đóng monitor");
+    assert.equal(reasonLabel("TP_FILL"), "Khớp hết TP");
+    assert.equal(reasonLabel("SL_PROFIT"), "Khớp SL dương");
+    assert.equal(reasonLabel("SL_FILL"), "Khớp SL");
+    assert.equal(reasonLabel("HSL_FILL"), "Khớp SL");
+    assert.equal(reasonLabel("MANUAL_CLOSE"), "Người dùng tự đóng");
+    assert.equal(reasonLabel("POSITION_GONE"), "Người dùng tự đóng");
+    assert.equal(reasonLabel("SIGNAL_CLOSE"), "Đóng theo tín hiệu");
     assert.match(narrateTrade({ logs: [], closeReason: "" }), /Không đủ log/);
-    assert.match(narrateTrade({ logs: [{ event: "TRAIL_SL", message: "dời" }], closeReason: "END_MONITOR" }), /trailing/);
+    assert.match(
+        narrateTrade({ logs: [{ event: "TRAIL_SL", message: "dời" }], closeReason: "END_MONITOR" }),
+        /trailing/i
+    );
     assert.doesNotMatch(narrateTrade({ logs: [{ event: "CLOSE", message: "đóng" }], closeReason: "" }), /TP/);
     assert.equal(rMultiple({ entryPrice: 100, positionAmt: 2, profit: 10, stats: {} }), null);
     assert.equal(rMultiple({ entryPrice: 100, positionAmt: 2, profit: 10, stats: { slPriceOpen: 95 } }), 1);
