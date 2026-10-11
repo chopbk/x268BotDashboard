@@ -47,4 +47,34 @@ async function findSymbolInfo(symbol) {
     return toSymbolInfo(row);
 }
 
-module.exports = { decimalsFromStep, findSymbolInfo, toSymbolInfo };
+/** Floor qty xuống bội stepSize (Binance LOT_SIZE). */
+function floorToStep(value, step) {
+    const n = Number(value);
+    const size = Number(step);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (!Number.isFinite(size) || size <= 0) {
+        return String(Number(n.toPrecision(12)));
+    }
+    const decimals = decimalsFromStep(size);
+    const floored = Math.floor((n / size) + 1e-12) * size;
+    if (!(floored > 0)) return null;
+    if (decimals == null) return String(Number(floored.toPrecision(12)));
+    return floored.toFixed(decimals);
+}
+
+/** Round price về bội tickSize (Binance PRICE_FILTER). */
+function roundToTick(value, tick) {
+    const n = Number(value);
+    const size = Number(tick);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (!Number.isFinite(size) || size <= 0) {
+        return String(Number(n.toPrecision(12)));
+    }
+    const decimals = decimalsFromStep(size);
+    const rounded = Math.round(n / size) * size;
+    if (!(rounded > 0)) return null;
+    if (decimals == null) return String(Number(rounded.toPrecision(12)));
+    return rounded.toFixed(decimals);
+}
+
+module.exports = { decimalsFromStep, findSymbolInfo, toSymbolInfo, floorToStep, roundToTick };

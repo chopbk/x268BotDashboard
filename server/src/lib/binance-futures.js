@@ -23,12 +23,17 @@ function signQuery(secret, params) {
 
 function binanceError(status, body) {
     const code = body && body.code;
+    const msg = body?.msg ? String(body.msg) : "";
     if (status === 418 || status === 429 || code === -1003 || code === -1015) {
-        return httpError(429, "Sàn đang giới hạn tần suất, thử lại sau");
+        return httpError(429, msg || "Sàn đang giới hạn tần suất, thử lại sau");
     }
     if (code === -2015 || code === -2014 || status === 401) {
-        const detail = body?.msg ? `: ${body.msg}` : "";
-        return httpError(400, `API key không gọi được futures${detail}`);
+        return httpError(400, msg ? `API key không gọi được futures: ${msg}` : "API key không gọi được futures");
+    }
+    if (msg || code != null) {
+        const label = code != null ? `[${code}] ${msg || "Binance lỗi"}` : msg;
+        console.error("[binanceFutures]", status, label);
+        return httpError(status >= 400 && status < 500 ? status : 400, label);
     }
     return httpError(502, "Không lấy được số liệu sàn");
 }

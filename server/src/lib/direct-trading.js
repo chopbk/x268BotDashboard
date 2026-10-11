@@ -5,6 +5,7 @@
 const { httpError } = require("./http");
 const UserApi = require("../models/user-api");
 const { createBinanceFutures } = require("./binance-futures");
+const { findSymbolInfo, floorToStep, roundToTick } = require("./symbol-info");
 
 // Rate limit: tối đa 10 requests / 10s / account
 const accountLastCall = new Map();
@@ -129,25 +130,33 @@ async function closePositionDirect(target, params) {
         closeQty = positionAmt;
     }
 
+    const info = await findSymbolInfo(symbol);
+    const qtyText = floorToStep(closeQty, info?.stepSize);
+    if (!qtyText) throw httpError(400, "Số lượng đóng sau làm tròn = 0 (kiểm tra stepSize)");
+
     const isLong = parseFloat(position.positionAmt) > 0;
     const closeSide = isLong ? "SELL" : "BUY";
+    const type = String(orderType || "MARKET").toUpperCase();
 
     const posSide = position.positionSide || "BOTH";
     const orderParams = {
         symbol,
         side: closeSide,
         positionSide: posSide,
-        type: orderType || "MARKET",
-        quantity: String(closeQty),
+        type,
+        quantity: qtyText,
     };
     // One-way cần reduceOnly; hedge mode (LONG/SHORT) không gửi field này.
     if (posSide === "BOTH") orderParams.reduceOnly = "true";
 
-    if (orderType === "LIMIT" && price) {
-        orderParams.price = String(price);
+    if (type === "LIMIT") {
+        const priceText = roundToTick(price, info?.tickSize);
+        if (!priceText) throw httpError(400, "LIMIT close cần giá hợp lệ");
+        orderParams.price = priceText;
         orderParams.timeInForce = "GTC";
     }
 
+    console.log("[closePositionDirect]", account, symbol, type, orderParams);
     const result = await client.signed("POST", "/fapi/v1/order", orderParams);
     return { success: true, orderId: result?.orderId, result };
 }
