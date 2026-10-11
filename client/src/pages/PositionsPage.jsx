@@ -59,6 +59,7 @@ function matches(row, params) {
 }
 
 const ACTION_NOTE = "Reverse và thêm TP/SL chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
+const CLOSE_PERCENTS = [10, 25, 50, 75, 100];
 
 function tpslText(row) {
   const monitors = row.monitors || [];
@@ -75,10 +76,16 @@ function numInput(value) {
   return String(n);
 }
 
+function qtyAtPercent(fullQty, percent) {
+  const n = Number(fullQty) * (Number(percent) / 100);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(Number(n.toPrecision(12)));
+}
+
 function closeFormOf(forms, row) {
   const current = forms[row.key];
   if (current) return current;
-  return { price: numInput(row.mark), qty: numInput(qtyOf(row)) };
+  return { price: numInput(row.mark), qty: numInput(qtyOf(row)), percent: null };
 }
 
 export default function PositionsPage() {
@@ -107,6 +114,7 @@ export default function PositionsPage() {
   const [sort, setSort] = useState({ key: "", dir: "desc" });
   const [actionNote, setActionNote] = useState("");
   const [closeForms, setCloseForms] = useState({});
+  const [closePercentKey, setClosePercentKey] = useState("");
   const [closeConfirm, setCloseConfirm] = useState(null);
   const [closing, setClosing] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -355,6 +363,16 @@ export default function PositionsPage() {
     }));
   }
 
+  function applyClosePercent(row, percent) {
+    const fullQty = qtyOf(row);
+    patchCloseForm(row, {
+      percent,
+      qty: percent === 100 ? numInput(fullQty) : qtyAtPercent(fullQty, percent),
+    });
+    setClosePercentKey("");
+    setError("");
+  }
+
   function askClose(row, orderType) {
     if (!canClose) {
       setError("Thiếu quyền positions.close");
@@ -364,11 +382,13 @@ export default function PositionsPage() {
     const qty = Number(form.qty);
     const price = Number(form.price);
     const fullQty = Number(qtyOf(row));
-    if (!Number.isFinite(qty) || qty <= 0) {
+    const percent = Number(form.percent);
+    const usePercent = Number.isFinite(percent) && percent > 0 && percent <= 100;
+    if (!usePercent && (!Number.isFinite(qty) || qty <= 0)) {
       setError("Số lượng đóng phải > 0");
       return;
     }
-    if (Number.isFinite(fullQty) && qty > fullQty + 1e-12) {
+    if (!usePercent && Number.isFinite(fullQty) && qty > fullQty + 1e-12) {
       setError(`Số lượng đóng không được vượt position (${numInput(fullQty)})`);
       return;
     }
@@ -376,7 +396,11 @@ export default function PositionsPage() {
       setError("Limit close cần giá > 0");
       return;
     }
-    const quantityMode = Number.isFinite(fullQty) && Math.abs(qty - fullQty) < 1e-10 ? "ALL" : "QUANTITY";
+    let quantityMode = "QUANTITY";
+    if (usePercent && percent === 100) quantityMode = "ALL";
+    else if (usePercent) quantityMode = "PERCENT";
+    else if (Number.isFinite(fullQty) && Math.abs(qty - fullQty) < 1e-10) quantityMode = "ALL";
+    setClosePercentKey("");
     setError("");
     setCloseConfirm({
       account: row.account,
@@ -384,7 +408,8 @@ export default function PositionsPage() {
       positionSide: row.side,
       orderType,
       quantityMode,
-      quantity: String(qty),
+      quantity: Number.isFinite(qty) && qty > 0 ? String(qty) : undefined,
+      percent: quantityMode === "PERCENT" ? String(percent) : undefined,
       price: orderType === "LIMIT" ? String(price) : undefined,
       mark: row.mark,
       fullQty,
@@ -401,15 +426,21 @@ export default function PositionsPage() {
         positionSide: closeConfirm.positionSide,
         orderType: closeConfirm.orderType,
         quantityMode: closeConfirm.quantityMode,
-        quantity: closeConfirm.quantity,
       };
+      if (closeConfirm.quantityMode === "PERCENT") body.percent = closeConfirm.percent;
+      else if (closeConfirm.quantity != null) body.quantity = closeConfirm.quantity;
       if (closeConfirm.orderType === "LIMIT") body.price = closeConfirm.price;
       const result = await api("/api/trading/positions/close", { method: "POST", body });
       const orderId = result?.command?.result?.orderId || result?.command?.exchangeResult?.orderId;
+      const sizeText = closeConfirm.quantityMode === "PERCENT"
+        ? `${closeConfirm.percent}%`
+        : closeConfirm.quantityMode === "ALL"
+          ? "100%"
+          : `qty ${closeConfirm.quantity}`;
       setActionNote(
         result?.duplicate
           ? `Đóng ${closeConfirm.symbol} trùng request trước đó.`
-          : `Đã gửi đóng ${closeConfirm.orderType} ${closeConfirm.symbol} ${closeConfirm.positionSide} qty ${closeConfirm.quantity}${orderId ? ` · order ${orderId}` : ""}`
+          : `Đã gửi đóng ${closeConfirm.orderType} ${closeConfirm.symbol} ${closeConfirm.positionSide} ${sizeText}${orderId ? ` · order ${orderId}` : ""}`
       );
       setCloseConfirm(null);
       setError("");
@@ -608,6 +639,7 @@ export default function PositionsPage() {
                       <div className="pos-actions">
                         {canClose && row.book !== "paper" && row.book !== "pending" ? (() => {
                           const form = closeFormOf(closeForms, row);
+                          const showPercents = closePercentKey === row.key;
                           return (
                             <span className="pos-close-form">
                               <button type="button" className="pos-close-type" disabled={closing} onClick={() => askClose(row, "MARKET")}>Market</button>
@@ -619,18 +651,49 @@ export default function PositionsPage() {
                                 aria-label={`Giá đóng ${row.symbol}`}
                                 title="Giá limit"
                                 value={form.price}
+                                onFocus={() => setClosePercentKey("")}
                                 onChange={(event) => patchCloseForm(row, { price: event.target.value.replace(/,/g, "") })}
                                 placeholder="Giá"
                               />
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                aria-label={`Số lượng đóng ${row.symbol}`}
-                                title="Volume đóng"
-                                value={form.qty}
-                                onChange={(event) => patchCloseForm(row, { qty: event.target.value.replace(/,/g, "") })}
-                                placeholder="Volume"
-                              />
+                              <span className="pos-close-qty">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  aria-label={`Số lượng đóng ${row.symbol}`}
+                                  title="Volume đóng — bấm để chọn % như /close?per="
+                                  value={form.qty}
+                                  onFocus={() => setClosePercentKey(row.key)}
+                                  onBlur={() => {
+                                    window.setTimeout(() => {
+                                      setClosePercentKey((key) => (key === row.key ? "" : key));
+                                    }, 120);
+                                  }}
+                                  onChange={(event) => {
+                                    patchCloseForm(row, { qty: event.target.value.replace(/,/g, ""), percent: null });
+                                    setClosePercentKey(row.key);
+                                  }}
+                                  placeholder="Amount"
+                                />
+                                {form.percent != null ? <span className="pos-close-per muted">{form.percent}%</span> : null}
+                                {showPercents ? (
+                                  <span className="pos-close-percents" role="listbox" aria-label="Chọn % đóng">
+                                    {CLOSE_PERCENTS.map((percent) => (
+                                      <button
+                                        key={percent}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={form.percent === percent}
+                                        className={form.percent === percent ? "active" : ""}
+                                        disabled={closing || qtyOf(row) == null}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={() => applyClosePercent(row, percent)}
+                                      >
+                                        {percent}%
+                                      </button>
+                                    ))}
+                                  </span>
+                                ) : null}
+                              </span>
                             </span>
                           );
                         })() : (
@@ -691,8 +754,11 @@ export default function PositionsPage() {
               <br />
               {closeConfirm.orderType}
               {closeConfirm.orderType === "LIMIT" ? ` @ ${closeConfirm.price}` : " (giá thị trường)"}
-              {" · qty "}{closeConfirm.quantity}
-              {closeConfirm.quantityMode === "ALL" ? " (toàn bộ)" : ""}
+              {closeConfirm.quantityMode === "PERCENT"
+                ? ` · ${closeConfirm.percent}% (~${closeConfirm.quantity || "qty sàn"})`
+                : closeConfirm.quantityMode === "ALL"
+                  ? " · 100% (toàn bộ)"
+                  : ` · qty ${closeConfirm.quantity}`}
             </p>
             <p className="muted">Lệnh gửi thẳng lên Binance. Limit chưa khớp thì position vẫn còn.</p>
             <div className="pos-inline">

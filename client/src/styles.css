@@ -931,6 +931,32 @@ td.negative { color: var(--danger); }
   border-radius: 7px;
   font-size: 0.8rem;
 }
+.pos-close-qty { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.pos-close-per { font-size: 0.75rem; }
+.pos-close-percents {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel, #12141a);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.pos-close-percents button {
+  min-width: 42px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+.pos-close-percents button.active,
+.pos-close-percents button:hover:not(:disabled) {
+  border-color: #f0b90b;
+  color: #f0b90b;
+}
 .pos-close-type {
   background: none;
   border: 0;
