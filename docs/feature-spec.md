@@ -8,7 +8,7 @@
 |---|---|---|
 | Đăng nhập `/login`, đăng ký `/register` | LoginPage, RegisterPage | Login bằng identifier; đăng ký tạo pending. Pending có session nhưng chưa có quyền bot |
 | Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ |
-| Danh sách `/bots` | HomePage | Bot đang active, chọn phạm vi của mình/người khác theo quyền; lọc/sắp xếp/phân trang |
+| Danh sách `/bots` | HomePage | Bot đang active, chọn phạm vi của mình/người khác theo quyền; lọc/sắp xếp/phân trang; giao diện cùng skin Config Lab |
 | Bot `/bots/:username` | BotDetailPage | Account/config thuộc bot, thêm/đổi tên/gỡ account theo `config.edit` |
 | Config mới `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage experimental | Giao diện thử nghiệm 6 nhóm; cùng API/quyền và config thật, giữ nguyên giao diện cũ |
 | Config `/bots/:username/accounts/:env` | AccountConfigPage | Sửa các field trade/signal được hỗ trợ; cảnh báo rời form chưa lưu |

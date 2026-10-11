@@ -5,7 +5,8 @@ Trạng thái: spec triển khai + vòng đời, 2026-10-11.
 ## Mục tiêu
 
 Thêm menu riêng `/config-lab` để thử giao diện theo phong cách shadcn: màu trung tính,
-viền mảnh, chữ rõ, form theo nhóm nghiệp vụ giao dịch. Giữ nguyên menu và route config cũ.
+viền mảnh, chữ rõ (cỡ đọc được), khung gọn, form theo nhóm nghiệp vụ giao dịch.
+Tab Danh sách `/bots` dùng chung skin lab (heading, stats, filter, bảng). Giữ nguyên route config cũ.
 Không thêm framework/dependency. Hai giao diện dùng chung editor, field semantics, API và
 quyền. Thử nghiệm chỉ là giao diện: lưu sẽ sửa config thật, Live/Paper giữ đúng giá trị.
 

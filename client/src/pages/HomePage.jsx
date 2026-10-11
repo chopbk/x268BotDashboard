@@ -6,6 +6,7 @@ import Pager from "../components/Pager";
 import { canEditResource } from "../access";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useEscape, useLeaveGuard } from "../navigation";
+import "../components/config-lab/config-lab.css";
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -355,41 +356,59 @@ export default function HomePage() {
     }
   }
 
+  const privateCount = bots.filter((bot) => bot.visibility === "private").length;
+  const configCount = bots.reduce((sum, bot) => sum + (bot.accounts || []).length, 0);
+
   return (
-    <section>
-      <header className="page-head user-list-head">
-        <div>
-          <h1>Bot được phép xem</h1>
-          <p className="muted">{isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên danh sách, rồi bấm Lưu. " : ""}Chỉ hiện user đang active. User của tôi gồm bot sở hữu và bot được gán. Tất cả thêm bot mà quyền xem của bạn cho phép. Bấm tiêu đề cột để sắp xếp. {canViewStatistics ? "Static tất cả và Lãi lỗ tất cả cộng đúng phạm vi đang chọn, trong ngày UTC (GMT+0)." : "Config tất cả cộng đúng phạm vi đang chọn."}</p>
-          {canViewStatistics || canViewConfig ? (
-            <div className="history-range">
-              {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
-              {canViewConfig ? <button type="button" className="ghost" onClick={() => openPeek("account-all")}>Config tất cả</button> : null}
-              {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("profit-all")}>Lãi lỗ tất cả</button> : null}
-            </div>
-          ) : null}
+    <section className="config-lab lab-directory lab-bot-list">
+      <header className="lab-heading">
+        <div className="lab-heading-top">
+          <p className="lab-kicker">DANH SÁCH BOT</p>
+          <span className="lab-badge">{audience === "all" ? "Tất cả được phép xem" : "Của tôi / được gán"}</span>
         </div>
-        <div className="bot-list-tools">
+        <h1>Bot được phép xem</h1>
+        <p className="lab-intro">
+          {isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên bảng, rồi bấm Lưu. " : ""}
+          Chỉ hiện user đang active. User của tôi gồm bot sở hữu và được gán. Bấm tiêu đề cột để sắp xếp.
+          {canViewStatistics ? " Static / lãi lỗ theo ngày UTC (GMT+0)." : " Config tất cả theo phạm vi đang chọn."}
+        </p>
+        {canViewStatistics || canViewConfig ? (
+          <div className="lab-quick-actions">
+            {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("static-all")}>Static tất cả</button> : null}
+            {canViewConfig ? <button type="button" className="ghost" onClick={() => openPeek("account-all")}>Config tất cả</button> : null}
+            {canViewStatistics ? <button type="button" className="ghost" onClick={() => openPeek("profit-all")}>Lãi lỗ tất cả</button> : null}
+          </div>
+        ) : null}
+      </header>
+
+      <div className="lab-directory-stats">
+        <div><strong>{bots.length}</strong><span>User trong phạm vi</span></div>
+        <div><strong>{configCount}</strong><span>Tổng config</span></div>
+        <div><strong>{privateCount}</strong><span>Riêng tư</span></div>
+      </div>
+
+      <form className="lab-filterbar" onSubmit={(event) => event.preventDefault()}>
+        <label className="lab-search">Tìm user / config
+          <input type="search" value={query} placeholder="Tên user hoặc config…" onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <label>Phạm vi danh sách
           <select value={audience} onChange={(event) => commitList({ audience: event.target.value, page: 1 })} aria-label="Phạm vi danh sách">
             <option value="mine">User của tôi</option>
             <option value="all">Tất cả</option>
           </select>
+        </label>
+        <label>Công khai / riêng
           <select value={scope} onChange={(event) => commitList({ scope: event.target.value, page: 1 })} aria-label="Lọc phạm vi">
             <option value="">Mọi phạm vi</option>
             <option value="public">Công khai</option>
             <option value="private">Riêng tư</option>
           </select>
-          <input
-            className="user-search"
-            value={query}
-            placeholder="Tên user hoặc config"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-      </header>
+        </label>
+      </form>
+
       {canCreateBot ? (
         <form
-          className="card inline-create"
+          className="lab-create"
           onSubmit={(event) => {
             event.preventDefault();
             run(async () => {
@@ -413,50 +432,59 @@ export default function HomePage() {
             });
           }}
         >
-          <label>
-            User bot mới
-            <input value={newUser} onChange={(event) => setNewUser(event.target.value)} required />
-          </label>
-          <label>
-            Phạm vi
-            <select value={newBotVisibility} onChange={(event) => setNewBotVisibility(event.target.value)} aria-label="Phạm vi bot mới">
-              <option value="public">Công khai</option>
-              <option value="private">Riêng tư</option>
-            </select>
-            <small className="muted">
-              {newBotVisibility === "private"
-                ? "Chỉ chủ sở hữu, admin và người được gán."
-                : "Người có quyền xem tất cả vẫn thấy."}
-            </small>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={newBotActive} onChange={(event) => setNewBotActive(event.target.checked)} />
-            <span>Active</span>
-          </label>
-          <button type="submit" disabled={busy}>
-            Thêm
-          </button>
+          <div className="lab-title-row">
+            <h2>Tạo user bot</h2>
+            <span className="lab-caption">{newBotVisibility === "private" ? "Riêng tư: chỉ chủ, admin và người được gán." : "Công khai: người có quyền xem tất cả vẫn thấy."}</span>
+          </div>
+          <div className="lab-create-fields">
+            <label>
+              User bot mới
+              <input value={newUser} onChange={(event) => setNewUser(event.target.value)} required />
+            </label>
+            <label>
+              Phạm vi
+              <select value={newBotVisibility} onChange={(event) => setNewBotVisibility(event.target.value)} aria-label="Phạm vi bot mới">
+                <option value="public">Công khai</option>
+                <option value="private">Riêng tư</option>
+              </select>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={newBotActive} onChange={(event) => setNewBotActive(event.target.checked)} />
+              <span>Active</span>
+            </label>
+            <button type="submit" disabled={busy}>Thêm</button>
+          </div>
         </form>
       ) : null}
-      {loading ? <p className="muted">Đang tải…</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
-      {!loading && bots.length === 0 ? <div className="card empty">{audience === "all" ? "Không có bot nào trong quyền xem." : "Chưa có bot bạn sở hữu hoặc được gán."}</div> : null}
-      {!loading && bots.length > 0 && visibleBots.length === 0 ? (
-        <div className="card empty">Không có user khớp bộ lọc.</div>
+
+      {loading ? <p className="lab-empty" role="status">Đang tải danh sách…</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {!loading && bots.length === 0 ? (
+        <div className="lab-empty">
+          <h2>{audience === "all" ? "Không có bot trong quyền xem" : "Chưa có bot bạn sở hữu hoặc được gán"}</h2>
+          <p>Đổi phạm vi Tất cả hoặc kiểm tra quyền / gán bot.</p>
+        </div>
       ) : null}
+      {!loading && bots.length > 0 && visibleBots.length === 0 ? (
+        <div className="lab-empty">
+          <h2>Không có user khớp bộ lọc</h2>
+          <p>Thử đổi từ khóa hoặc phạm vi công khai/riêng tư.</p>
+        </div>
+      ) : null}
+
       {visibleBots.length > 0 && (canEditBot || canDeleteBot) ? (
-        <div className="bulk-bar bot-access-bar">
-          <div className="history-range">
+        <div className="lab-bulk-bar">
+          <div className="lab-bulk-tools">
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleNames))}>Chọn đang hiện</button>
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => (bot.visibility || "public") === "public").map((bot) => bot.username)))}>Chọn công khai</button>
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => bot.visibility === "private").map((bot) => bot.username)))}>Chọn riêng tư</button>
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => isActive(bot)).map((bot) => bot.username)))}>Chọn active</button>
             <button type="button" className="ghost" onClick={() => setPicked(new Set(visibleBots.filter((bot) => !isActive(bot)).map((bot) => bot.username)))}>Chọn không active</button>
             <button type="button" className="ghost" disabled={!picked.size} onClick={() => setPicked(new Set())}>Bỏ chọn</button>
-            <span className="muted">Đã chọn {picked.size}</span>
+            <span className="lab-caption">Đã chọn {picked.size}</span>
           </div>
           {canEditBot ? (
-            <div className="history-range">
+            <div className="lab-bulk-tools">
               <label>
                 Đặt phạm vi
                 <select
@@ -585,8 +613,14 @@ export default function HomePage() {
           ) : null}
         </div>
       ) : null}
+
       {visibleBots.length > 0 ? (
-        <div className="table-wrap bot-list">
+        <>
+        <div className="lab-list-heading">
+          <h2>{visibleBots.length} user trên trang</h2>
+          <span className="lab-caption">Bấm Static / Account / Lãi lỗ để xem nhanh · Sửa để mở chi tiết</span>
+        </div>
+        <div className="lab-table-wrap">
           <table>
             <thead>
               <tr>
@@ -637,6 +671,7 @@ export default function HomePage() {
                     ) : null}
                     <td>
                       <div className="account-title">
+                        <span>{bot.username}</span>
                         {canViewStatistics ? (
                           <button type="button" className="ghost" onClick={() => openPeek("static", bot.username)}>Static</button>
                         ) : null}
@@ -644,7 +679,6 @@ export default function HomePage() {
                         {canViewStatistics ? (
                           <button type="button" className="ghost" onClick={() => openPeek("profit", bot.username)}>Lãi lỗ</button>
                         ) : null}
-                        <span>{bot.username}</span>
                       </div>
                     </td>
                     <td>
@@ -656,7 +690,9 @@ export default function HomePage() {
                           aria-label={`Active ${bot.username}`}
                           onChange={(event) => patchDraft([bot.username], { active: event.target.checked })}
                         />
-                      ) : isActive(bot) ? "Bật" : "Tắt"}
+                      ) : (
+                        <span className={`lab-badge ${isActive(bot) ? "positive" : "off"}`}>{isActive(bot) ? "Active" : "Tắt"}</span>
+                      )}
                     </td>
                     <td>
                       {canEditBot ? (
@@ -669,7 +705,11 @@ export default function HomePage() {
                           <option value="public">Công khai</option>
                           <option value="private">Riêng tư</option>
                         </select>
-                      ) : draft.visibility === "private" ? "Riêng tư" : "Công khai"}
+                      ) : (
+                        <span className={`lab-badge ${draft.visibility === "private" ? "private" : ""}`}>
+                          {draft.visibility === "private" ? "Riêng tư" : "Công khai"}
+                        </span>
+                      )}
                     </td>
                     <td>
                       {isAdmin ? (
@@ -725,8 +765,9 @@ export default function HomePage() {
             </tbody>
           </table>
         </div>
+        </>
       ) : null}
-      {dirtyBots.length ? <p className="dirty-note muted">Đang sửa {dirtyBots.length} user. Đổi bộ lọc hoặc rời trang sẽ hỏi trước khi bỏ các bản nháp.</p> : null}
+      {dirtyBots.length ? <p className="dirty-note lab-caption">Đang sửa {dirtyBots.length} user. Đổi bộ lọc hoặc rời trang sẽ hỏi trước khi bỏ các bản nháp.</p> : null}
       <Pager page={page} total={total} limit={pageLimit} onChange={(next) => commitList({ page: next })} />
       {peek ? (
         <div className="modal-backdrop" onClick={() => setPeek(null)}>
