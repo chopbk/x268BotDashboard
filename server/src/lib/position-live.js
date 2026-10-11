@@ -10,6 +10,8 @@ const EXCHANGE_REFRESH_MS = 45_000;
 const EXCHANGE_WRITE = require("fs").readFileSync(require("path").join(__dirname, "exchange-book.lua"), "utf8");
 const pendingRefresh = new Map();
 const localBooks = new Map();
+const accountErrors = new Map(); // Cache error per account to avoid spam
+const ERROR_CACHE_MS = 60_000; // 1 phút không retry khi lỗi API key
 let cooldownUntil = 0;
 
 function touchBook(account) {
@@ -157,10 +159,19 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
                 }
             }
 
+            // Check cached error cho account (tránh spam khi API key lỗi)
+            const cachedError = accountErrors.get(account);
+            if (cachedError && Date.now() < cachedError.until) {
+                console.debug("[positionReconcile]", account, "skipping (cached error)");
+                return current;
+            }
+
             // Fallback: gọi trực tiếp Binance (nếu web-bot có API key)
             const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
             const { loadBinanceSnapshot } = require("./position-feed");
             const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });
+            // Thành công: xóa cached error
+            accountErrors.delete(account);
             const at = new Date().toISOString();
             const book = { ...current, ...loaded, source: "exchange", status: "live", complete: true, stale: false, at, reconciledAt: at };
             if (reader?.isReady) return await saveExchangeBook(account, book, expected) || current;
@@ -169,13 +180,16 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
             return stored;
         } catch (error) {
             console.error("[positionReconcile]", account, error.message);
-            // Only 429 keeps the lease so we do not hammer Binance. Other errors release the lock
-            // immediately — otherwise a missing book stays empty for the full 120s.
+            // Rate limit 429: global cooldown
             if (error.status === 429) {
                 const delay = Math.max(120_000, error.retryAfterMs || 0);
                 cooldownUntil = Date.now() + delay;
                 if (reader?.isReady) await reader.set("wb:ex:cooldown", "1", { PX: delay }).catch(() => {});
                 token = null;
+            }
+            // API key lỗi hoặc lỗi khác: cache per-account để không retry liên tục
+            if (error.message?.includes("API key") || error.message?.includes("Invalid") || error.message?.includes("permission")) {
+                accountErrors.set(account, { message: error.message, until: Date.now() + ERROR_CACHE_MS });
             }
             throw error;
         } finally {
