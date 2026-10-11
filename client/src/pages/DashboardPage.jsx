@@ -1,9 +1,35 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
+
+const LOGS_VIEW = "logs.view";
 
 function money(value) {
+  if (value == null) return "—";
   return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(Number(value) || 0)} $`;
+}
+
+function tone(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n === 0) return "";
+  return n > 0 ? "positive" : "negative";
+}
+
+function processLabel(value) {
+  if (value === "ok") return "OK";
+  if (value === "stale") return "Stale";
+  if (value === "degraded") return "Cảnh báo";
+  if (value === "off") return "Tắt hiển thị";
+  return "Không rõ";
+}
+
+function severityLabel(value) {
+  if (value === "critical") return "Gấp";
+  if (value === "high") return "Cao";
+  if (value === "medium") return "Vừa";
+  if (value === "low") return "Thấp";
+  return "";
 }
 
 function promptText(ai, guide) {
@@ -11,6 +37,9 @@ function promptText(ai, guide) {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const canSystem = (user?.permissions || []).includes(LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all";
+  const healthHref = canSystem ? "/system" : "/logs?kind=runtime";
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [guide, setGuide] = useState("");
@@ -36,6 +65,9 @@ export default function DashboardPage() {
 
   const bots = data?.bots;
   const configs = data?.configs;
+  const health = data?.health;
+  const openRisk = data?.openRisk;
+  const closedToday = data?.closedToday;
   const ai = data?.ai;
 
   async function sendToAi() {
@@ -67,31 +99,114 @@ export default function DashboardPage() {
       <header className="page-head">
         <div>
           <h1>Tổng quan</h1>
-          <p className="muted">Bot bạn sở hữu hoặc được gán. Profit hôm nay là lệnh đóng, không tính paper. Lãi lỗ ví là income trong ngày UTC.</p>
+          <p className="muted">
+            Bot bạn sở hữu hoặc được gán · ngày UTC. Đã chốt ≠ lãi lỗ ví ≠ chưa chốt.
+            Chi tiết vị thế / hệ thống / tổng kết mở tab tương ứng.
+          </p>
         </div>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
       {!data && !error ? <p className="muted">Đang tải…</p> : null}
       {data ? (
         <>
+          {health ? (
+            <section className="card dash-block dash-health">
+              <div className="dash-health-head">
+                <h2>Process</h2>
+                <Link className="ghost link-btn" to={healthHref}>{canSystem ? "Hệ thống" : "Lịch sử"}</Link>
+              </div>
+              <p className="muted">Heartbeat trader/monitor trong ~{Math.round((health.thresholdMs || 90000) / 1000)}s. Hiển thị bật ≠ process đang chạy.</p>
+              <div className="dash-chips">
+                <span className="dash-chip health-ok">OK {health.ok}</span>
+                <span className="dash-chip health-warn">Stale {health.stale}</span>
+                <span className="dash-chip health-off">Tắt {health.off}</span>
+                <span className="dash-chip">Không rõ {health.unknown}</span>
+              </div>
+            </section>
+          ) : null}
+
           <div className="stats-grid">
             <article className="card">
-              <span className="muted">Bot đang active</span>
+              <span className="muted">Bot hiển thị bật</span>
               <strong>{bots ? `${bots.active}/${bots.total}` : "—"}</strong>
             </article>
             <article className="card">
               <span className="muted">Config đang bật</span>
               <strong>{configs ? `${configs.on}/${configs.total}` : "—"}</strong>
             </article>
-            <article className="card">
-              <span className="muted">Profit hôm nay</span>
-              <strong>{data.profitToday == null ? "—" : money(data.profitToday)}</strong>
+            <article className={`card summary-stat ${tone(data.profitToday)}`}>
+              <span className="muted">Đã chốt hôm nay</span>
+              <strong>{money(data.profitToday)}</strong>
+              {closedToday ? (
+                <small className="muted">
+                  {closedToday.trades} lệnh
+                  {closedToday.winRate != null ? ` · thắng ${closedToday.winRate}%` : ""}
+                  {" · "}
+                  <Link to="/signals">Account Static</Link>
+                </small>
+              ) : null}
             </article>
-            <article className="card">
+            <article className={`card summary-stat ${tone(data.incomeToday)}`}>
               <span className="muted">Lãi lỗ ví hôm nay</span>
-              <strong>{data.incomeToday == null ? "—" : money(data.incomeToday)}</strong>
+              <strong>{money(data.incomeToday)}</strong>
+              <small className="muted"><Link to="/ledger">Mở Lãi lỗ</Link></small>
             </article>
+            {openRisk !== undefined && openRisk !== null ? (
+              <article className={`card summary-stat ${tone(openRisk.unrealized)}`}>
+                <span className="muted">Chưa chốt (uPnL)</span>
+                <strong>{openRisk.available ? money(openRisk.unrealized) : "—"}</strong>
+                <small className="muted">
+                  {openRisk.available
+                    ? `${openRisk.positions} vị thế${openRisk.staleBook ? " · sổ cũ" : ""}`
+                    : "Chưa có sổ Redis"}
+                  {" · "}
+                  <Link to="/positions">Position</Link>
+                </small>
+              </article>
+            ) : null}
+            {openRisk !== undefined && openRisk !== null ? (
+              <article className="card">
+                <span className="muted">Vị thế mở</span>
+                <strong>{openRisk.available ? openRisk.positions : "—"}</strong>
+                <small className="muted"><Link to="/positions">Xem / đồng bộ sàn</Link></small>
+              </article>
+            ) : null}
           </div>
+
+          {openRisk?.available && openRisk.top?.length ? (
+            <section className="card dash-block">
+              <div className="dash-health-head">
+                <h2>Rủi ro đang mở</h2>
+                <Link className="ghost link-btn" to="/positions">Position</Link>
+              </div>
+              <p className="muted">Top theo |uPnL| từ sổ Redis — không gọi sàn tại đây. Cần sổ mới thì mở Position.</p>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Bot</th>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>uPnL</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openRisk.top.map((row) => (
+                      <tr key={`${row.username}-${row.symbol}-${row.side}`}>
+                        <td>{row.username}</td>
+                        <td>{row.symbol}</td>
+                        <td>{row.side}</td>
+                        <td className={tone(row.unrealized)}>{money(row.unrealized)}</td>
+                        <td><Link className="ghost link-btn" to={row.href || "/positions"}>Mở</Link></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+
           <section className="card dash-block">
             <h2>Việc cần xử lý</h2>
             <p className="muted">{ai?.configured ? `Đang dùng ${ai.provider}${ai.model ? ` / ${ai.model}` : ""}. ` : "Chưa có key Gemini, OpenAI, DeepSeek hoặc Claude. "}Bấm gửi để AI đọc dữ liệu hôm nay và hướng dẫn, rồi viết lại danh sách. Ngày là ngày UTC, cùng sổ /income.</p>
@@ -120,24 +235,32 @@ export default function DashboardPage() {
             ) : data.attention?.length ? (
               <ul className="dash-list">
                 {data.attention.map((item) => (
-                  <li key={`${item.type}-${item.title}`}>
+                  <li key={`${item.type}-${item.title}`} className={`dash-attn dash-attn-${item.severity || "low"}`}>
+                    {item.severity ? <span className="dash-sev">{severityLabel(item.severity)}</span> : null}
                     <Link to={item.href}>{item.title}</Link>
                   </li>
                 ))}
               </ul>
             ) : <p className="muted">Không có việc cần xử lý.</p>}
           </section>
+
           <section className="card dash-block">
-            <h2>Bot của tôi</h2>
+            <div className="dash-health-head">
+              <h2>Bot của tôi</h2>
+              <Link className="ghost link-btn" to="/bots">Danh sách</Link>
+            </div>
             {data.mine?.length ? (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>Bot</th>
-                      <th>Trạng thái</th>
+                      <th>Hiển thị</th>
+                      <th>Process</th>
                       <th>Config bật</th>
-                      <th>Profit hôm nay</th>
+                      <th>Đã chốt</th>
+                      <th>uPnL</th>
+                      <th>Vị thế</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -145,10 +268,19 @@ export default function DashboardPage() {
                     {data.mine.map((row) => (
                       <tr key={row.username}>
                         <td>{row.username}</td>
-                        <td>{row.active ? "Đang chạy" : "Tắt"}</td>
+                        <td>{row.active ? "Bật" : "Tắt"}</td>
+                        <td className={row.process === "stale" || row.process === "degraded" ? "negative" : ""}>
+                          {processLabel(row.process)}
+                        </td>
                         <td>{row.on == null ? "—" : `${row.on}/${row.configs}`}</td>
-                        <td>{row.profitToday == null ? "—" : money(row.profitToday)}</td>
-                        <td><Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(row.username)}`}>Config</Link></td>
+                        <td className={tone(row.profitToday)}>{money(row.profitToday)}</td>
+                        <td className={tone(row.unrealized)}>{money(row.unrealized)}</td>
+                        <td>{row.positions == null ? "—" : row.positions}</td>
+                        <td className="dash-row-actions">
+                          <Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(row.username)}`}>Config</Link>
+                          <Link className="ghost link-btn" to={`/positions?account=${encodeURIComponent(row.username)}`}>Position</Link>
+                          <Link className="ghost link-btn" to={`/ledger?username=${encodeURIComponent(row.username)}`}>Lãi lỗ</Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

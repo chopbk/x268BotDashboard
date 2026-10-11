@@ -197,7 +197,33 @@ a.link-btn:hover { background: var(--surface-2); }
 }
 
 .dash-block { margin-top: 16px; display: grid; gap: 10px; }
+.dash-health-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dash-health-head h2 { margin: 0; }
+.dash-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--bg-elevated, transparent);
+}
+.dash-chip.health-ok { color: var(--ok); }
+.dash-chip.health-warn { color: var(--warn, #e0a106); }
+.dash-chip.health-off { color: var(--muted); }
 .dash-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.dash-attn { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.dash-sev {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.dash-attn-critical .dash-sev { color: var(--danger); }
+.dash-attn-high .dash-sev { color: var(--warn, #e0a106); }
+.dash-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .dash-guide, .dash-data {
   width: 100%;
   box-sizing: border-box;

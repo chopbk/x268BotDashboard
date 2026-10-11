@@ -2,9 +2,10 @@ const { httpError } = require("./http");
 
 const INSTRUCTIONS = [
     "Viết tiếng Việt, tối đa 8 việc, mỗi việc một câu.",
-    "Ưu tiên user nào, config nào, signal nào đang lỗ nhiều hôm nay. Ghi số tiền và số lệnh đúng như dữ liệu.",
+    "Ưu tiên lỗ ví, vị thế chưa chốt lỗ lớn, process heartbeat stale, rồi signal lỗ. Ghi số tiền và số lệnh đúng như dữ liệu.",
     "Nếu ví income của user âm, nhắc tên user, số lỗ, và signal nào đang lỗ. Không có signal live lỗ thì nói cần xem income của tài khoản.",
-    "Config đang bật nhưng chưa có signal chỉ nêu khi không có khoản lỗ lớn hơn.",
+    "Nếu openRisk.top có vị thế lỗ lớn, nhắc xem Position. Nếu health.staleBots có bot, nhắc heartbeat quá hạn.",
+    "Config đang bật nhưng chưa có signal chỉ nêu khi không có khoản lỗ hoặc stale lớn hơn.",
     "Không nhắc lỗi parse.",
     "Không bịa số, user, signal hay link.",
     "Trả về JSON {\"items\":[{\"title\":\"...\",\"href\":\"...\"}]} và không thêm chữ ngoài JSON.",

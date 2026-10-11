@@ -102,7 +102,7 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 [AccountLedgerPage](../client/src/pages/AccountLedgerPage.jsx) → GET `/api/account-ledger` đọc DB. Nút refresh → POST `/:username/refresh` → [refreshLedger](../server/src/lib/account-ledger.js) → kiểm tra scope → lấy credential phía server → Binance balance/income ngày UTC → ghi `futures_profits` → UI đọc kết quả. Không trả API key cho browser.
 
-[DashboardPage](../client/src/pages/DashboardPage.jsx) → POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) gọi `getDashboard(actor)` → đóng gói facts qua [dashboard-brief](../server/src/lib/dashboard-brief.js) → provider AI → parse gợi ý, giới hạn link theo dữ liệu đầu vào. Thử tối đa hai provider đã cấu hình, timeout 12 giây mỗi lần; route giới hạn các lần hỏi gần nhau 15 giây.
+[DashboardPage](../client/src/pages/DashboardPage.jsx) → GET `/api/dashboard` → [dashboard](../server/src/lib/dashboard.js): bot scope + config ON + profit/closed hôm nay (`account_statics`) + income (`futures_profits`) + heartbeat theo `run` + uPnL/top vị thế từ Redis `readExchangeBooks` (không REST). Attention gắn severity. POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) gọi lại `getDashboard` → [dashboard-brief](../server/src/lib/dashboard-brief.js) → provider AI → parse gợi ý, giới hạn link theo facts. Thử tối đa hai provider, timeout 12 giây; route giới hạn 15 giây/user.
 
 ## 7. Deploy
 

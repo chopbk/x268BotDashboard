@@ -9,6 +9,7 @@ const AccountStatic = require("../src/models/account-static");
 const FuturesProfit = require("../src/models/futures-profit");
 const UserApi = require("../src/models/user-api");
 const RuntimeLog = require("../src/models/runtime-log");
+const ProcessHeartbeat = require("../src/models/process-heartbeat");
 const { getDashboard } = require("../src/lib/dashboard");
 const { parseAiItems, aiSettings, chatRequest } = require("../src/lib/dashboard-brief");
 const { askAttention } = require("../src/lib/dashboard-ai");
@@ -37,6 +38,7 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
         apis: UserApi.aggregate,
         logs: RuntimeLog.find,
         aggregate: RuntimeLog.aggregate,
+        beats: ProcessHeartbeat.find,
     };
     UserAccount.find = () => query([
         { username: "V", accounts: ["V1", "V2"], ownerUserId: "other", active: true },
@@ -50,7 +52,7 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
     AccountStatic.aggregate = async (pipeline) => {
         const id = pipeline?.[1]?.$group?._id;
         if (id && id.signal) return [{ _id: { env: "V1", signal: "TITAN" }, count: 2, profit: -18 }];
-        return [{ _id: "V1", profit: 12 }, { _id: "O1", profit: 99 }];
+        return [{ _id: "V1", profit: 12, trades: 4, wins: 3, losses: 1 }, { _id: "O1", profit: 99, trades: 1, wins: 1, losses: 0 }];
     };
     FuturesProfit.aggregate = async () => [{ _id: "V1", profit: -40 }];
     UserApi.aggregate = async () => [{ username: "V", hasApiKey: false, api_key: "secret-key" }];
@@ -64,13 +66,37 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
         const signal = pipeline[0].$match.signal?.$in || [];
         return signal.includes("ROSE") ? [{ _id: "ROSE", count: 2 }] : [{ _id: "BULL", count: 9 }];
     };
+    ProcessHeartbeat.find = () => query([
+        { at: new Date("2026-10-08T11:59:30Z"), run: ["V"], flags: { trader: true, monitor: false }, mqttConnected: true },
+    ]);
     try {
-        const view = await getDashboard(operator, new Date("2026-10-08T12:00:00Z"));
+        const view = await getDashboard(operator, new Date("2026-10-08T12:00:00Z"), {
+            readExchangeBooks: async () => ({
+                V: {
+                    source: "exchange",
+                    positions: [
+                        { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "0.1", markPrice: "50000", unRealizedProfit: "-120" },
+                        { symbol: "ETHUSDT", positionSide: "SHORT", positionAmt: "-1", markPrice: "3000", unRealizedProfit: "5" },
+                    ],
+                },
+            }),
+        });
         assert.equal(view.bots.total, 1);
         assert.equal(view.bots.active, 1);
         assert.equal(view.configs.on, 2);
         assert.equal(view.profitToday, 12);
         assert.equal(view.incomeToday, -40);
+        assert.equal(view.closedToday.trades, 4);
+        assert.equal(view.closedToday.wins, 3);
+        assert.equal(view.closedToday.winRate, 75);
+        assert.equal(view.openRisk.available, true);
+        assert.equal(view.openRisk.positions, 2);
+        assert.equal(view.openRisk.unrealized, -115);
+        assert.equal(view.openRisk.top[0].symbol, "BTCUSDT");
+        assert.equal(view.health.ok, 1);
+        assert.equal(view.mine[0].process, "ok");
+        assert.equal(view.mine[0].positions, 2);
+        assert.equal(view.mine[0].unrealized, -115);
         assert.deepEqual(view.mine.map((row) => row.username), ["V"]);
         assert.equal(view.mine[0].on, 2);
         assert.equal(JSON.stringify(view).includes("secret-key"), false);
@@ -80,14 +106,17 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
         assert.equal(view.attention.some((item) => item.type === "config" && item.title.includes("V2")), true);
         assert.equal(view.attention.some((item) => item.type === "blocked" && item.title.includes("V2")), true);
         assert.equal(view.attention.some((item) => item.type === "parse"), false);
-        assert.equal(view.attention.some((item) => item.type === "account" && item.title.includes("V lỗ") && item.title.includes("TITAN")), true);
-        assert.equal(view.attention[0].type, "account");
+        assert.equal(view.attention.some((item) => item.type === "account" && item.severity === "high" && item.title.includes("V lỗ") && item.title.includes("TITAN")), true);
+        assert.equal(view.attention[0].type, "risk");
+        assert.equal(view.attention[0].severity, "critical");
+        assert.equal(view.attention.some((item) => item.type === "risk" && item.severity === "critical"), true);
         assert.equal(view.attention.some((item) => item.type === "loss" && item.title.includes("V · V1 · TITAN")), true);
         assert.equal(view.attention.some((item) => item.type === "removed"), true);
         assert.equal(view.ai.configured, false);
         assert.equal(view.ai.data.walletLosses[0].username, "V");
         assert.equal(view.ai.data.walletLosses[0].profit, -40);
         assert.equal(view.ai.data.signalLosses[0].signal, "TITAN");
+        assert.equal(view.ai.data.openRisk.positions, 2);
         assert.equal(view.ai.prompt.includes("Không nhắc lỗi parse"), true);
         assert.equal(view.ai.prompt.includes("secret-key"), false);
         const kept = parseAiItems(JSON.stringify({
@@ -154,6 +183,7 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
         UserApi.aggregate = originals.apis;
         RuntimeLog.find = originals.logs;
         RuntimeLog.aggregate = originals.aggregate;
+        ProcessHeartbeat.find = originals.beats;
         for (const [name, value] of savedAi) {
             if (value === undefined) delete process.env[name];
             else process.env[name] = value;

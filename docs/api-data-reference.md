@@ -143,6 +143,7 @@ Không có REST `/api/logs`, `/api/user/stats` hay wildcard `/api/signals/*` ch�
 | Ledger | `username`, `days`, `scope` | Đọc DB; POST refresh mới gọi sàn, rate limit riêng |
 | Summary | `range=today/3d/7d/30d/90d/all`, `audience` | Payload aggregate hoặc snapshot kèm metadata; refresh có giới hạn |
 | Positions | `account`, `audience`, `book` và filter vị thế | Monitor + snapshot sàn đã lọc quyền; detail cần `id` |
+| Dashboard | GET trả bots/configs/profitToday/incomeToday/closedToday/openRisk/health/attention/mine/ai; openRisk chỉ Redis; attention có severity — [overview spec](dashboard-overview-spec.md) |
 | Dashboard attention | `instructions` tùy chọn | Server dựng facts; tối đa 2000 ký tự hướng dẫn, kết quả items/provider |
 
 Danh sách trên là các input để đọc hiểu, không liệt kê mọi giá trị hợp lệ; đọc router/lib khi viết client mới. Không giả định mọi list dùng cùng envelope, page size hay timezone.

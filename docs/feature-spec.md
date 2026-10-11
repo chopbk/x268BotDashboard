@@ -7,7 +7,7 @@
 | Màn hình / URL | Component | Nghiệp vụ và điều kiện |
 |---|---|---|
 | Đăng nhập `/login`, đăng ký `/register` | LoginPage, RegisterPage | Login bằng identifier; đăng ký tạo pending. Pending có session nhưng chưa có quyền bot |
-| Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ |
+| Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ. Tổng quan: health process, KPI đã chốt/ví/uPnL, top rủi ro mở (Redis), attention có severity, bảng bot + deep-link Position/Ledger/Static — [dashboard-overview-spec](dashboard-overview-spec.md) |
 | Danh sách `/bots` | HomePage | Active, phạm vi, chủ sở hữu; peek Static/Config/lãi lỗ; nút Config → `/config-lab?user=` |
 | Config `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage | Tạo/sửa/copy/sync/bulk/xoá config; 6 nhóm form; APPLY_CONFIG |
 | `/bots/:username`, `/bots/.../accounts/:env` | Redirect | Chuyển sang Config Lab (UI cũ không còn dùng) |
@@ -75,7 +75,7 @@ Khi sổ live đổi (đóng, mở, đổi size), trang Position hiện toast tr
 | Tìm Signal | Lệnh thật theo openTime, signal và config; điều kiện win dựa vào profit trong module này |
 | Tổng kết | Lệnh live; lọc closeTime, fallback openTime nếu thiếu closeTime; win/loss dựa trạng thái WIN và LOSS/LOSE |
 | Lãi lỗ ví | `futures_profits`, income và số dư ngày UTC; trading PnL tách dòng tiền |
-| Dashboard | Dữ liệu bot sở hữu/được gán và các phần được cấp quyền; chú ý khoản lỗ hôm nay UTC |
+| Dashboard | Bot sở hữu/được gán; đã chốt / ví / uPnL Redis tách riêng; ngày UTC; chi tiết nặng deep-link Position · Ledger · Static · Hệ thống |
 
 Kiểm tra cùng audience, bot/env, khoảng thời gian, live/paper và định nghĩa thắng trước khi kết luận số sai. Account Static profit không tự bằng income ví vì phí, funding, nạp/rút và thời điểm ghi nhận có thể khác.
 
