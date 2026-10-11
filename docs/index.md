@@ -12,6 +12,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Tra endpoint, model, collection và thuật ngữ | [API và dữ liệu](api-data-reference.md) |
 | Cầu runtime web → binance-bot (MQTT gửi, ACK Mongo outbox, allowlist) | [Command bridge](bot-command-bridge.md) |
 | Roadmap Position/TP-SL/Order gần Binance Web | [Trading Terminal spec](trading-terminal-spec.md) |
+| Menu Terminal mới, giữ nguyên Position: parity, UX và roadmap R1–R3 | [Terminal workspace spec](terminal-workspace-spec.md) |
 | Config Lab (thay UI config cũ) | [Spec Config](config-lab-spec.md) |
 | Xếp hạng channel theo feed + PnL thật | [Provider Scorecard](provider-scorecard-spec.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
