@@ -39,7 +39,7 @@ Bot giao dịch đọc cấu hình ở process riêng. Không nối mũi tên t�
 | Gỡ account | `UNLOAD_ACCOUNT` | unload RAM (không xóa Mongo lần 2) |
 | Đổi tên env | `RENAME_ACCOUNT` | unload cũ + load mới |
 
-Chỉ báo “đã đồng bộ” khi ACK terminal từ TRADER. Offline → chờ đồng bộ + retry.
+Chỉ báo “đã đồng bộ” khi outbox terminal succeeded (TRADER đủ `requiredRoles`). Bot ghi ACK Mongo theo `requestId`; UI poll/wait `GET .../commands/:requestId`. Offline → chờ đồng bộ + retry. MQTT `command_response` chỉ phụ.
 
 Config thử nghiệm: `/config-lab` → GET `/api/bots/assigned-configs` (summary có `paper`)
 → tạo account `POST .../accounts` (+ `copyFrom`) hoặc bulk `POST .../configs/bulk`

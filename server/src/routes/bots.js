@@ -255,7 +255,8 @@ router.get(
     requireAuth,
     async (req, res) => {
         try {
-            const command = await getCommand(req.webUser, req.params.requestId);
+            const waitMs = Number(req.query.waitMs) || 0;
+            const command = await getCommand(req.webUser, req.params.requestId, { waitMs });
             if (
                 command.username &&
                 normalizeName(command.username) !== normalizeName(req.params.username)

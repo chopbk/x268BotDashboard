@@ -1,6 +1,6 @@
 # Contract: web-bot ↔ binance-bot command bridge
 
-Spec cầu runtime giữa dashboard và process trader. Outbox + MQTT `command_response` + `APPLY_CONFIG` + account runtime (load/unload/rename) đã có — đối chiếu 2026-10-11. `LOAD/UNLOAD/RENAME_ACCOUNT` chỉ tạo nội bộ sau mutation account; `POST .../commands` chỉ nhận `APPLY_CONFIG`.
+Spec cầu runtime giữa dashboard và process trader. Outbox + MQTT gửi lệnh + ACK Mongo (source of truth) + MQTT `command_response` phụ + `APPLY_CONFIG` + account runtime (load/unload/rename) — đối chiếu 2026-10-11. `LOAD/UNLOAD/RENAME_ACCOUNT` chỉ tạo nội bộ sau mutation account; `POST .../commands` chỉ nhận `APPLY_CONFIG`.
 
 ## 1. Mục tiêu và ranh giới
 
@@ -9,22 +9,25 @@ Spec cầu runtime giữa dashboard và process trader. Outbox + MQTT `command_r
 - Áp dụng config / signal / account đã ghi Mongo lên RAM bot (hot-reload).
 - Status chỉ đọc: position, balance, monitor, orders, config runtime.
 - UI typed `action` → server map sang lệnh Telegram nội bộ.
+- ACK bền: bot ghi kết quả vào Mongo outbox theo `requestId` (UI không phụ thuộc subscribe MQTT).
 
 **Ngoài scope**
 
 - Mở/đóng lệnh sàn (`OPEN`/`CLOSE`/Market/Limit/Reverse).
 - Start/stop/restart PM2 từ web.
-- Redis request/response.
+- Redis request/response (ACK không dùng Redis RPC).
 
 **Kiến trúc đã chốt**
 
 | Quyết định | Giá trị |
 |---|---|
 | Config path | Mongo-first (REST hiện có) + MQTT `config/sync` reload |
-| Runtime command | MQTT `new_command` → TRADER `command/{ENV}` |
-| Reply | MQTT topic `command_response` (không Redis RPC) |
+| Runtime command | MQTT `new_command` / `config/sync` → đánh thức bot |
+| Reply (source of truth) | Bot ghi Mongo `web_bot_commands` theo `requestId` |
+| Reply (phụ / realtime) | MQTT `command_response` — web vẫn subscribe và apply nếu outbox chưa terminal |
 | Apply config | Tự động sau khi lưu; offline → “Đã lưu DB — chờ áp dụng” + nút thử lại |
-| Thành công | Chỉ khi ACK terminal từ đúng `env` + `requestId` — **không** coi publish MQTT = đã áp dụng |
+| Thành công | Chỉ khi outbox **terminal succeeded** khớp `env` + `requestId` — **không** coi publish MQTT = đã áp dụng |
+| UI chờ ACK | Trả `requestId` ngay; client poll `GET .../commands/:requestId` (hỗ trợ `?waitMs=` chờ ngắn phía server) |
 
 ## 2. Chuỗi tổng thể
 
@@ -32,11 +35,11 @@ Spec cầu runtime giữa dashboard và process trader. Outbox + MQTT `command_r
 UI action
   → web API (auth + permission + scope + allowlist)
   → Mongo outbox (queued)
-  → MQTT publish QoS 1 (published)
-  → binance-bot TRADER
-  → MQTT command_response (received|running|succeeded|failed)
-  → web cập nhật outbox
-  → UI poll/WS theo requestId
+  → MQTT publish QoS 1 (published)          ← chỉ đánh thức bot
+  → binance-bot TRADER/MONITOR xử lý
+  → Bot ghi ACK vào Mongo outbox             ← source of truth
+  → (phụ) MQTT command_response              ← web apply nếu chưa terminal
+  → UI poll/wait GET outbox theo requestId
 ```
 
 Config/signal/account mutation:
@@ -44,22 +47,32 @@ Config/signal/account mutation:
 ```
 PATCH/POST Mongo (như hiện tại)
   → outbox action APPLY_CONFIG (hoặc tương đương)
-  → MQTT config/sync { source, followers: [env vừa sửa, ...follower], ts }
+  → MQTT config/sync { source, followers: [env vừa sửa, ...follower], requestId, ts }
   → TRADER/MONITOR reloadEnvs(followers)
-  → command_response terminal (hoặc ACK riêng cùng schema)
+  → Bot writeOutboxAck (received → running → terminal) trên web_bot_commands
+  → (phụ) MQTT command_response cùng schema
 ```
 
 `reloadEnvs` trong binance-bot reload **mọi** env trong mảng `followers`. Khi sửa config gốc, mảng bắt buộc gồm chính env vừa sửa rồi mới tới các follower `sync_from` bị ảnh hưởng. Chỉ gửi follower → account vừa sửa có thể giữ RAM cũ.
 
-## 3. MQTT topics
+## 3. Kênh liên lạc
 
-| Topic | Hướng | QoS | Ghi chú |
-|---|---|---|---|
-| `new_command` | web → trader | 1 | Payload JSON; trader đã subscribe |
-| `config/sync` | web → trader/monitor | 1 | Payload hiện có `{ source, followers, ts }` |
-| `command_response` | trader → web | 1 | Topic mới; web subscribe |
+| Kênh | Hướng | Vai trò |
+|---|---|---|
+| MQTT `new_command` | web → trader | Gửi lệnh runtime (QoS 1) |
+| MQTT `config/sync` | web → trader/monitor | Hot-reload / account_runtime (QoS 1) |
+| Mongo `web_bot_commands` | bot → (web đọc) | **ACK source of truth** — bot `writeOutboxAck` |
+| MQTT `command_response` | trader → web | ACK phụ; web `applyResponsePayload` nếu outbox chưa terminal |
+| REST `GET .../commands/:id` | UI → web → Mongo | Poll/wait trạng thái (`?waitMs=` tùy chọn, max 30s) |
 
 Broker / credentials: web-bot đọc cùng nguồn `mqtt-config` theo env `MQTT` (hoặc biến cấu hình tương đương trong `.env.example`). Không hard-code host.
+
+**Invariant ACK**
+
+1. Publish MQTT thành công ≠ bot đã áp dụng.
+2. Mất subscribe MQTT / web restart giữa chừng **không** làm mất ACK nếu bot đã ghi Mongo.
+3. Mongo write và MQTT apply cùng monotonic / idempotent theo `requestId` + role — không regress status.
+4. `lastAckChannel`: `mongo_bot` (bot ghi) hoặc `mqtt` (web apply từ broker).
 
 ## 4. Outbox Mongo (`web_bot_commands`)
 
@@ -76,14 +89,14 @@ queued → published → received → running → succeeded
 | State | Ý nghĩa |
 |---|---|
 | `queued` | Đã lưu Mongo, chưa publish hoặc publish lỗi sẽ retry |
-| `published` | Đã MQTT publish; chưa có ACK từ bot |
-| `received` | Bot báo đã nhận (`status: received`) |
+| `published` | Đã MQTT publish; chưa có ACK từ bot (Mongo chưa received+) |
+| `received` | Bot đã ghi ACK nhận (`status: received`) |
 | `running` | Bot đang xử lý (có thể nhiều message) |
 | `succeeded` | Terminal thành công |
 | `failed` | Terminal lỗi |
-| `expired` | Hết deadline mà không có terminal |
+| `expired` | Hết deadline mà không có terminal (job web `markExpired`) |
 
-Publish MQTT thành công **không** chuyển thẳng sang `succeeded`.
+Publish MQTT thành công **không** chuyển thẳng sang `succeeded`. ACK hợp lệ là bản ghi outbox đã được bot (hoặc web qua MQTT phụ) cập nhật monotonic.
 
 ### 4.2 Document (logic)
 
@@ -104,20 +117,31 @@ Publish MQTT thành công **không** chuyển thẳng sang `succeeded`.
   "updatedAt": "...",
   "publishedAt": null,
   "expiresAt": "...",
-  "attempt": 1
+  "attempt": 1,
+  "lastAckChannel": "mongo_bot",
+  "messages": [
+    {
+      "status": "received",
+      "message": "...",
+      "processRole": "TRADER",
+      "ackChannel": "mongo_bot",
+      "timestamp": 1791500000000
+    }
+  ]
 }
 ```
 
 - Unique index trên `requestId`.
 - TTL hoặc job dọn bản ghi cũ (ví dụ 7–30 ngày) — chọn khi implement.
 - Retry publish chỉ khi `queued` hoặc publish lỗi; không re-publish nếu đã `received`/`running` trừ khi có chính sách explicit (mặc định: không).
-- Dedup phía bot: nếu nhận lại cùng `requestId` đã xử lý → chỉ re-ACK, không chạy lại side-effect.
+- Dedup phía bot: nếu nhận lại cùng `requestId` đã xử lý → chỉ re-ACK (ghi Mongo + MQTT phụ), không chạy lại side-effect.
+- Field `lastAckChannel` / `messages[].ackChannel`: `mongo_bot` | `mqtt` — chỉ để quan sát, không dùng làm quyền.
 
 ### 4.3 Deadline
 
 - Status đọc: mặc định 30s → `expired` nếu không terminal.
 - Apply/reload: mặc định 30s.
-- UI: trong lúc chờ hiện trạng thái outbox; hết hạn → “Đã lưu DB — chờ áp dụng” (với mutation) hoặc lỗi timeout (với status).
+- UI: mutation trả `apply.requestId` ngay; client `waitForApply` poll outbox (lần đầu `?waitMs=3000` phía server). Hết hạn → “Đã lưu DB — chờ áp dụng” + retry.
 
 ## 5. Request: web → bot (`new_command`)
 
@@ -161,13 +185,17 @@ if (!cmdInfo?.msgId && !cmdInfo?.requestId) return;
 
 Khi `cmdInfo.source === "web"` (hoặc có `requestId` và không có `chatId` Telegram hợp lệ):
 
-- Publish MQTT `command_response` theo schema mục 6.
+- Gọi `publishCommandResponse` → **ghi Mongo outbox trước**, rồi publish MQTT `command_response` (phụ).
 - **Không** gửi Telegram.
-- Mỗi lần handler gọi `responseCommand` / progress message → một event MQTT; chỉ event cuối có `terminal: true` (hoặc đánh dấu rõ message trung gian `terminal: false`).
+- Mỗi lần progress → một ACK (Mongo + MQTT); chỉ event cuối có `terminal: true`.
 
 Telegram path giữ nguyên: có `msgId` (+ `chatId`) thì reply Telegram như cũ.
 
-## 6. Response: bot → web (`command_response`)
+## 6. Response / ACK (Mongo outbox + MQTT phụ)
+
+### 6.1 Payload chung (schema v1)
+
+Cùng JSON cho Mongo write và MQTT `command_response`:
 
 ```json
 {
@@ -193,17 +221,27 @@ Telegram path giữ nguyên: có `msgId` (+ `chatId`) thì reply Telegram như c
 | `requestId` | Bắt buộc; khớp outbox |
 | `targetEnv` | Account env đã xử lý |
 | `status` | `received` khi bắt đầu; `running` cho progress; `succeeded`/`failed` khi xong |
-| `terminal` | `true` chỉ khi kết thúc; web chỉ lúc đó đóng request |
+| `terminal` | `true` chỉ khi kết thúc; UI chỉ lúc đó đóng request |
 | `message` | Text an toàn hiển thị; không secret |
 | `error` | `null` hoặc `{ "code", "message" }` |
 | `timestamp` | ms epoch |
-| `processRole` | `TRADER` hoặc `MONITOR` — web chỉ chốt `APPLY_CONFIG` khi đủ `requiredRoles` (mặc định `TRADER`) |
+| `processRole` | `TRADER` hoặc `MONITOR` — chỉ chốt `APPLY_CONFIG` khi đủ `requiredRoles` (mặc định `TRADER`) |
 | `instanceId` | Định danh process |
-| `applied` | Env thực sự reload OK; `succeeded` mà thiếu `targetEnv` → web coi failed |
+| `applied` | Env thực sự reload OK; `succeeded` mà thiếu `targetEnv` → coi failed |
 
-Web ignore response nếu `requestId` không có trong outbox, hoặc `targetEnv` không khớp document. Status outbox một chiều: `queued → published → received → running → succeeded|failed|expired`. Đánh `published` trước khi MQTT publish (tránh ACK bị ghi đè).
+### 6.2 Ai ghi gì
 
-Một số lệnh Telegram gửi “đang xử lý…” rồi kết quả: bot phải emit ít nhất một `running`/`received` (`terminal: false`) và một terminal.
+| Bên | Module | Việc |
+|---|---|---|
+| binance-bot | `publishCommandResponse` → `writeOutboxAck` | Update `web_bot_commands` (`lastAckChannel: mongo_bot`) |
+| binance-bot | `publishCommandResponse` → MQTT | Publish topic `command_response` (phụ) |
+| web-bot | `onResponse` → `applyResponsePayload` | Apply MQTT vào outbox nếu chưa terminal (`lastAckChannel: mqtt`) |
+| web-bot | `GET .../commands/:requestId` | Đọc Mongo; `?waitMs=` (0–30000) chờ ngắn đến terminal |
+| client | `waitForApply` | Poll outbox; lần đầu gửi `waitMs=3000` |
+
+Ignore ACK nếu `requestId` không có trong outbox, hoặc `targetEnv` không khớp document. Status một chiều: `queued → published → received → running → succeeded|failed|expired`. Đánh `published` trước khi MQTT publish lệnh (tránh ACK nhanh bị ghi đè về published).
+
+Một số lệnh gửi “đang xử lý…” rồi kết quả: bot phải emit ít nhất một `running`/`received` (`terminal: false`) và một terminal.
 
 ## 7. Action allowlist (Phase status + apply)
 
@@ -249,7 +287,7 @@ Chi tiết path chốt khi code; skeleton:
 |---|---|---|---|
 | (hook) | Sau `PATCH .../configs/:env`, `POST .../signal-config`, copy/bulk/account mutate | quyền ghi tương ứng | Tạo outbox `APPLY_CONFIG`, publish `config/sync` |
 | `POST` | `/api/bots/:username/accounts/:env/commands` | theo action allowlist | Tạo outbox + publish `new_command` |
-| `GET` | `/api/bots/:username/commands/:requestId` | actor của lệnh hoặc admin | Đọc outbox + messages |
+| `GET` | `/api/bots/:username/commands/:requestId` | actor của lệnh hoặc admin | Đọc outbox + messages; query `waitMs` (ms, max 30000) chờ terminal ngắn |
 | `POST` | `/api/bots/:username/accounts/:env/commands/:requestId/retry` | quyền ghi gốc | Chỉ khi mutation đã lưu DB mà apply `failed`/`expired` |
 
 Response lưu config:
@@ -271,32 +309,37 @@ UI:
 - Bot offline / `expired` / `failed` sau khi Mongo đã ghi → “Đã lưu DB — chờ áp dụng” + nút Thử lại.
 - Không báo “đã áp dụng” chỉ vì MQTT publish OK.
 
-## 9. Thay đổi tối thiểu trên binance-bot
+## 9. Thay đổi trên binance-bot
 
-1. `responseCommand`: gate `msgId || requestId`; nhánh web → MQTT `command_response`.
-2. Khi nhận `new_command` có `requestId`: emit sớm `status: received` (optional nhưng nên có); dedupe theo `requestId`.
-3. Progress / success / fail map sang `status` + `terminal`.
-4. `config/sync`: giữ schema; đảm bảo web gửi đúng mảng env cần reload (gồm env vừa sửa).
-5. Không viết lại validator kênh, PAPER/INVERT, sibling monitor, leftover, NOTPSL.
+1. `responseCommand`: gate `msgId || requestId`; nhánh web → `publishCommandResponse`.
+2. `publishCommandResponse`: **ghi Mongo outbox trước** (`command-outbox-ack.js` / `writeOutboxAck`), rồi MQTT `command_response`.
+3. Helpers status monotonic khớp web (`command-outbox-status.js`).
+4. Khi nhận `new_command` / `config/sync` có `requestId`: emit sớm `received`; dedupe theo `requestId` → re-ACK không side-effect.
+5. Progress / success / fail map sang `status` + `terminal` + `applied`.
+6. `config/sync`: giữ schema; web gửi đúng mảng env cần reload (gồm env vừa sửa).
+7. Không viết lại validator kênh, PAPER/INVERT, sibling monitor, leftover, NOTPSL.
+8. Test: `command-outbox-ack.test.js`, `command-response.test.js`.
 
-## 10. Thay tự tối thiểu trên web-bot
+## 10. Thay đổi trên web-bot
 
-1. MQTT client (publish `new_command` / `config/sync`, subscribe `command_response`).
-2. Model + service outbox.
+1. MQTT client (publish lệnh; subscribe `command_response` vẫn giữ làm kênh phụ).
+2. Model + service outbox — **source of truth trạng thái apply**.
 3. Allowlist mapper `action` → command / sync payload.
 4. Hook sau mutation config/signal/account.
-5. UI trạng thái apply + retry.
-6. Test: quyền allow/deny theo action; ignore response sai `requestId`; không mark applied khi chỉ `published`.
+5. UI: trả `requestId` ngay; `waitForApply` poll Mongo (`?waitMs=`); retry khi failed/expired.
+6. `GET .../commands/:requestId?waitMs=` chờ ngắn phía server (max 30s).
+7. Test: quyền allow/deny; ignore response sai `requestId`; không mark applied khi chỉ `published`; status monotonic / role ACK.
 
 ## 11. Thứ tự triển khai
 
-1. Contract này (done khi merge docs).
+1. Contract này (docs).
 2. Mongo command outbox + MQTT client ở web-bot.
 3. MQTT response theo `requestId` ở binance-bot.
 4. Config hot-reload (`APPLY_CONFIG` + UI).
-5. Status chỉ đọc (allowlist Phase 2).
-6. Account/signal runtime edge cases.
-7. Sau cùng mới cân nhắc lệnh giao dịch (allowlist riêng + permission riêng).
+5. **ACK Mongo outbox** (`writeOutboxAck`) + UI poll/`waitMs` — source of truth (done 2026-10-11).
+6. Status chỉ đọc (allowlist Phase 2) — nếu cần.
+7. Account/signal runtime edge cases.
+8. Sau cùng mới cân nhắc lệnh giao dịch (allowlist riêng + permission riêng). Không dùng MQTT ACK làm nguồn chốt.
 
 ## 12. Rủi ro và invariant
 

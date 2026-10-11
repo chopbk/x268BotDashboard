@@ -374,7 +374,7 @@ Các invariant:
 | `POST /api/bots/:username/configs/bulk` | `requireAuth` | `config.edit` + scope; áp cùng một patch lên các env trong `envs` (tối đa 40). Field không gửi giữ nguyên. Mỗi config ghi audit `config.updated` |
 | `PATCH /api/bots/:username/configs/:env` | `requireAuth` | `config.edit` + scope; chỉ `$set` field được sửa, không ghi đè cả `trade_config` |
 | `POST /api/bots/:username/configs/:env/copy` | `requireAuth` | `config.view` trên nguồn, `config.edit` trên đích. `mode=new` tạo `Account_Config` mới. `mode=replace` ghi đè config đích đã có và gỡ sync của đích. `mode=sync` tạo config mới, chép nội dung nguồn và đặt `sync_from` về nguồn |
-| `GET /api/bots/:username/commands/:requestId` | `requireAuth` | Actor của lệnh, hoặc `config.view`/`logs.view` + scope bot. Đọc outbox `web_bot_commands` |
+| `GET /api/bots/:username/commands/:requestId` | `requireAuth` | Actor của lệnh, hoặc `config.view`/`logs.view` + scope bot. Đọc outbox `web_bot_commands`; query `waitMs` (0–30000) chờ terminal ngắn phía server |
 | `POST /api/bots/:username/accounts/:env/commands` | `requireAuth` | Chỉ `APPLY_CONFIG` (`config.edit` + scope). `LOAD/UNLOAD/RENAME_ACCOUNT` không nhận từ client — chỉ hook sau mutation account ([bot-command-bridge](bot-command-bridge.md)) |
 | `POST /api/bots/:username/accounts/:env/commands/:requestId/retry` | `requireAuth` | `config.edit` + scope; chỉ khi outbox `failed`/`expired`; retry đúng `action` + params cũ |
 | `PATCH /api/bots/:username/configs/:env` (apply) | `requireAuth` | Sau khi lưu Mongo, tự enqueue `APPLY_CONFIG`; response thêm `apply` |

@@ -10,7 +10,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Biết màn hình làm gì, dữ liệu từ đâu | [Đặc tả tính năng](feature-spec.md) |
 | Lần theo một thao tác từ UI đến database | [Luồng xử lý](flows.md) |
 | Tra endpoint, model, collection và thuật ngữ | [API và dữ liệu](api-data-reference.md) |
-| Cầu runtime web → binance-bot (MQTT, outbox, allowlist) | [Command bridge](bot-command-bridge.md) |
+| Cầu runtime web → binance-bot (MQTT gửi, ACK Mongo outbox, allowlist) | [Command bridge](bot-command-bridge.md) |
 | Roadmap Position/TP-SL/Order gần Binance Web | [Trading Terminal spec](trading-terminal-spec.md) |
 | Giao diện Config mới dùng song song bản cũ | [Spec Config mới](config-lab-spec.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |

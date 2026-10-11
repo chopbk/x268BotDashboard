@@ -31,15 +31,24 @@ export function summarizeApplies(applies) {
   return parts.join(", ");
 }
 
+/**
+ * Chờ ACK terminal trên Mongo outbox (bot ghi trực tiếp; MQTT chỉ phụ).
+ * Lần đầu dùng waitMs phía server để giảm round-trip khi bot online.
+ */
 export async function waitForApply(username, requestId, { signal, timeoutMs = 35_000 } = {}) {
   if (!requestId) return null;
   const started = Date.now();
   let last = null;
+  let first = true;
   while (Date.now() - started < timeoutMs) {
     if (signal?.aborted) break;
+    const remain = Math.max(0, timeoutMs - (Date.now() - started));
+    const waitMs = first ? Math.min(3_000, remain) : 0;
+    first = false;
+    const qs = waitMs > 0 ? `?waitMs=${waitMs}` : "";
     const data = await api(
-      `/api/bots/${encodeURIComponent(username)}/commands/${encodeURIComponent(requestId)}`,
-      { signal, timeoutMs: 10_000 }
+      `/api/bots/${encodeURIComponent(username)}/commands/${encodeURIComponent(requestId)}${qs}`,
+      { signal, timeoutMs: Math.max(10_000, waitMs + 5_000) }
     );
     last = data.command || null;
     if (last?.terminal) return last;

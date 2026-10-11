@@ -51,6 +51,8 @@ const BotCommandSchema = new mongoose.Schema(
                     instanceId: String,
                     timestamp: Number,
                     at: { type: Date, default: Date.now },
+                    /** mongo_bot | mqtt */
+                    ackChannel: String,
                 },
             ],
             default: [],
@@ -63,6 +65,12 @@ const BotCommandSchema = new mongoose.Schema(
         attempt: { type: Number, default: 1 },
         /** requestId lệnh failed/expired được retry (liên kết audit). */
         retryOfRequestId: { type: String, default: null, index: true },
+        /**
+         * Kênh ACK gần nhất ghi vào outbox:
+         * - mongo_bot: binance-bot ghi trực tiếp (source of truth cho poll/wait)
+         * - mqtt: web apply từ MQTT command_response (phụ)
+         */
+        lastAckChannel: { type: String, default: null },
     },
     {
         versionKey: false,

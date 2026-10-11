@@ -71,9 +71,9 @@ Tên model mặc định trong code là cấu hình implementation, không phả
 
 ## Cầu runtime tới bot giao dịch
 
-Dashboard ghi config/signal/account vào Mongo dùng chung; process trader giữ bản RAM riêng. Cầu MQTT (outbox `web_bot_commands`, `command_response`, allowlist `action`, hot-reload `config/sync`) nằm ở [bot-command-bridge.md](bot-command-bridge.md). Web đọc broker từ `mqtt_configs` theo `MQTT` / `WEB_MQTT_ENV` (hoặc `WEB_MQTT_URL`).
+Dashboard ghi config/signal/account vào Mongo dùng chung; process trader giữ bản RAM riêng. Cầu runtime: MQTT đánh thức bot (`new_command` / `config/sync`); bot ghi ACK vào Mongo outbox `web_bot_commands` (source of truth); MQTT `command_response` là kênh phụ. Chi tiết [bot-command-bridge.md](bot-command-bridge.md). Web đọc broker từ `mqtt_configs` theo `MQTT` / `WEB_MQTT_ENV` (hoặc `WEB_MQTT_URL`).
 
-Invariant: publish MQTT thành công ≠ bot đã áp dụng. Chỉ báo applied khi ACK terminal khớp `requestId` + `targetEnv`.
+Invariant: publish MQTT thành công ≠ bot đã áp dụng. Chỉ báo applied khi outbox **terminal succeeded** khớp `requestId` + `targetEnv` (bot ghi Mongo hoặc web apply MQTT phụ).
 
 ## Giới hạn hiện tại
 

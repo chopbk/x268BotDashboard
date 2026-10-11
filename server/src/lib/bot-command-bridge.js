@@ -87,6 +87,7 @@ function publicCommand(doc) {
             instanceId: m.instanceId || null,
             timestamp: m.timestamp || null,
             at: m.at,
+            ackChannel: m.ackChannel || null,
         })),
         error: doc.error || null,
         publishedAt: doc.publishedAt,
@@ -95,6 +96,7 @@ function publicCommand(doc) {
         updatedAt: doc.updatedAt,
         attempt: doc.attempt,
         retryOfRequestId: doc.retryOfRequestId || null,
+        lastAckChannel: doc.lastAckChannel || null,
     };
 }
 
@@ -192,6 +194,7 @@ async function applyResponsePayload(payload) {
             instanceId: payload.instanceId ? String(payload.instanceId) : "",
             timestamp: payload.timestamp || Date.now(),
             at: new Date(),
+            ackChannel: "mqtt",
         };
 
         const prevAck = doc.roleAcks?.get?.(processRole) || doc.roleAcks?.[processRole];
@@ -260,6 +263,7 @@ async function applyResponsePayload(payload) {
         const setFields = {
             status: nextStatus,
             [`roleAcks.${processRole}`]: roleAck,
+            lastAckChannel: "mqtt",
         };
         if (roleResult.error && roleIsRequired) setFields.error = roleResult.error;
 
@@ -573,9 +577,19 @@ async function enqueueApplyConfigMany(actor, username, envs) {
     return applies;
 }
 
-async function getCommand(actor, requestId) {
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Đọc outbox theo requestId. Source of truth là Mongo (bot ghi ACK trực tiếp).
+ * @param {object} [opts]
+ * @param {number} [opts.waitMs] — chờ ngắn trên server đến khi terminal hoặc hết giờ (max 30s)
+ */
+async function getCommand(actor, requestId, opts = {}) {
+    const waitMs = Math.min(Math.max(Number(opts.waitMs) || 0, 0), 30_000);
     await markExpired();
-    const doc = await BotCommand.findOne({ requestId: String(requestId || "") });
+    let doc = await BotCommand.findOne({ requestId: String(requestId || "") });
     if (!doc) throw httpError(404, "Không tìm thấy lệnh");
     const actorId = actor?.id || (actor?._id ? String(actor._id) : "");
     const isActor = doc.actorUserId && actorId && actorId === doc.actorUserId;
@@ -588,6 +602,16 @@ async function getCommand(actor, requestId) {
         await requireBot(actor, doc.username, PERMISSIONS.CONFIG_VIEW).catch(() => {
             throw httpError(403, "Không có quyền");
         });
+    }
+
+    if (waitMs > 0 && !doc.terminal) {
+        const deadline = Date.now() + waitMs;
+        while (!doc.terminal && Date.now() < deadline) {
+            await sleep(400);
+            await markExpired();
+            doc = await BotCommand.findOne({ requestId: String(requestId || "") });
+            if (!doc) throw httpError(404, "Không tìm thấy lệnh");
+        }
     }
     return publicCommand(doc);
 }

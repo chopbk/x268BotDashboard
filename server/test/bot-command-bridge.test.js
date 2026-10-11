@@ -30,6 +30,31 @@ test("publicCommand null-safe", () => {
     assert.equal(publicCommand(null), null);
 });
 
+test("publicCommand exposes lastAckChannel and message ackChannel", () => {
+    const view = publicCommand({
+        requestId: "r1",
+        username: "bot-demo",
+        targetEnv: "DEMO_1",
+        action: "APPLY_CONFIG",
+        status: "succeeded",
+        terminal: true,
+        requiredRoles: ["TRADER"],
+        roleAcks: {},
+        messages: [
+            {
+                status: "succeeded",
+                message: "ok",
+                ackChannel: "mongo_bot",
+                timestamp: 1,
+            },
+        ],
+        lastAckChannel: "mongo_bot",
+        attempt: 1,
+    });
+    assert.equal(view.lastAckChannel, "mongo_bot");
+    assert.equal(view.messages[0].ackChannel, "mongo_bot");
+});
+
 describe("status monotonic", () => {
     test("không cho running → received", () => {
         const tx = resolveStatusTransition("running", "received");
