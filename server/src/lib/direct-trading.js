@@ -191,8 +191,45 @@ async function openPositionDirect(target, params) {
     return { success: true, orderId: result?.orderId, result };
 }
 
+function resolveWorkingType(value) {
+    const raw = String(value || "CONTRACT_PRICE").toUpperCase();
+    if (raw === "MARK" || raw === "MARK_PRICE") return "MARK_PRICE";
+    return "CONTRACT_PRICE"; // Last price
+}
+
+function tpslTriggerOf(params, kind) {
+    if (kind === "tp") {
+        if (params?.tp != null && params.tp !== "") return params.tp;
+        return params?.takeProfit?.triggerPrice ?? params?.takeProfit?.price ?? null;
+    }
+    if (params?.sl != null && params.sl !== "") return params.sl;
+    return params?.stopLoss?.triggerPrice ?? params?.stopLoss?.price ?? null;
+}
+
+async function cancelProtectiveOrders(client, symbol, positionSide, kinds) {
+    const open = await client.signedGet("/fapi/v1/openOrders", { symbol }).catch((error) => {
+        console.warn("[cancelProtectiveOrders]", error.message);
+        return [];
+    });
+    const cancelled = [];
+    for (const order of Array.isArray(open) ? open : []) {
+        const type = String(order.type || "").toUpperCase();
+        const side = String(order.positionSide || "BOTH").toUpperCase();
+        const sideOk = !positionSide || positionSide === "BOTH" || side === "BOTH" || side === String(positionSide).toUpperCase();
+        if (!sideOk) continue;
+        if (!kinds.some((kind) => type.includes(kind))) continue;
+        try {
+            await client.signed("DELETE", "/fapi/v1/order", { symbol, orderId: order.orderId });
+            cancelled.push({ orderId: order.orderId, type });
+        } catch (error) {
+            console.warn("[cancelProtectiveOrders]", order.orderId, error.message);
+        }
+    }
+    return cancelled;
+}
+
 /**
- * Set TP/SL.
+ * Set TP/SL (Position TP/SL kiểu Binance: TAKE_PROFIT_MARKET / STOP_MARKET + closePosition).
  */
 async function setTpslDirect(target, params) {
     const account = target?.env || target?.username;
@@ -200,9 +237,12 @@ async function setTpslDirect(target, params) {
     const client = await getClient(account);
 
     const { symbol, positionSide } = target;
-    const { tp, sl, tpType, slType } = params;
+    const tpRaw = tpslTriggerOf(params, "tp");
+    const slRaw = tpslTriggerOf(params, "sl");
+    const tpEnabled = params?.takeProfit?.enabled !== false && tpRaw != null && tpRaw !== "";
+    const slEnabled = params?.stopLoss?.enabled !== false && slRaw != null && slRaw !== "";
+    if (!tpEnabled && !slEnabled) throw httpError(400, "Cần ít nhất TP hoặc SL");
 
-    // Lấy position để biết side và qty
     const positions = await client.signedGet("/fapi/v2/positionRisk", { symbol });
     const position = (Array.isArray(positions) ? positions : []).find(
         (p) => p.symbol === symbol && (p.positionSide === positionSide || positionSide === "BOTH")
@@ -212,47 +252,65 @@ async function setTpslDirect(target, params) {
         throw httpError(400, "Position không tồn tại");
     }
 
-    const positionAmt = Math.abs(parseFloat(position.positionAmt));
     const isLong = parseFloat(position.positionAmt) > 0;
     const closeSide = isLong ? "SELL" : "BUY";
-
+    const posSide = position.positionSide || "BOTH";
+    const info = await findSymbolInfo(symbol);
     const results = [];
+    const cancelKinds = [];
+    if (tpEnabled) cancelKinds.push("TAKE_PROFIT");
+    if (slEnabled) cancelKinds.push("STOP");
+    // Binance chỉ cho 1 closePosition cùng loại — hủy cái cũ trước khi đặt mới.
+    const cancelled = await cancelProtectiveOrders(client, symbol, posSide, cancelKinds);
 
-    // Đặt TP
-    if (tp) {
+    if (tpEnabled) {
         try {
+            const stopPrice = roundToTick(tpRaw, info?.tickSize);
+            if (!stopPrice) throw httpError(400, "Giá TP không hợp lệ");
+            const workingType = resolveWorkingType(params?.tpWorkingType || params?.takeProfit?.workingType || params?.workingType);
+            const tpType = String(params?.tpType || params?.takeProfit?.type || "TAKE_PROFIT_MARKET").toUpperCase();
             const tpOrder = await client.signed("POST", "/fapi/v1/order", {
                 symbol,
                 side: closeSide,
-                positionSide: position.positionSide || "BOTH",
-                type: tpType || "TAKE_PROFIT_MARKET",
-                stopPrice: String(tp),
+                positionSide: posSide,
+                type: tpType,
+                stopPrice,
                 closePosition: "true",
+                workingType,
             });
-            results.push({ type: "TP", success: true, orderId: tpOrder?.orderId });
+            results.push({ type: "TP", success: true, orderId: tpOrder?.orderId, stopPrice, workingType });
         } catch (error) {
             results.push({ type: "TP", success: false, error: error.message });
         }
     }
 
-    // Đặt SL
-    if (sl) {
+    if (slEnabled) {
         try {
+            const stopPrice = roundToTick(slRaw, info?.tickSize);
+            if (!stopPrice) throw httpError(400, "Giá SL không hợp lệ");
+            const workingType = resolveWorkingType(params?.slWorkingType || params?.stopLoss?.workingType || params?.workingType);
+            const slType = String(params?.slType || params?.stopLoss?.type || "STOP_MARKET").toUpperCase();
             const slOrder = await client.signed("POST", "/fapi/v1/order", {
                 symbol,
                 side: closeSide,
-                positionSide: position.positionSide || "BOTH",
-                type: slType || "STOP_MARKET",
-                stopPrice: String(sl),
+                positionSide: posSide,
+                type: slType,
+                stopPrice,
                 closePosition: "true",
+                workingType,
             });
-            results.push({ type: "SL", success: true, orderId: slOrder?.orderId });
+            results.push({ type: "SL", success: true, orderId: slOrder?.orderId, stopPrice, workingType });
         } catch (error) {
             results.push({ type: "SL", success: false, error: error.message });
         }
     }
 
-    return { success: true, results };
+    const failed = results.filter((row) => !row.success);
+    if (failed.length && failed.length === results.length) {
+        throw httpError(400, failed.map((row) => `${row.type}: ${row.error}`).join("; "));
+    }
+    console.log("[setTpslDirect]", account, symbol, { cancelled: cancelled.length, results });
+    return { success: failed.length === 0, results, cancelled };
 }
 
 /**

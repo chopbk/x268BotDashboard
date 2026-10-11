@@ -202,6 +202,27 @@ test("exchange pnl is counted once when several monitors share a position", () =
     assert.equal(shared[0].warnings.includes("qty-mismatch"), false);
 });
 
+test("exchange TP/SL from closePosition orders attach to the live position", () => {
+    const rows = buildPositionView({
+        account: "V",
+        now,
+        connection: "live",
+        exchangeLoaded: true,
+        exchangePositions: [
+            { symbol: "BTCUSDT", positionSide: "BOTH", positionAmt: "0.1", entryPrice: "100", markPrice: "110", unRealizedProfit: "1" },
+        ],
+        monitors: [],
+        openOrders: [
+            { orderId: 11, symbol: "BTCUSDT", side: "SELL", positionSide: "BOTH", type: "TAKE_PROFIT_MARKET", stopPrice: "120", closePosition: true, status: "NEW" },
+            { orderId: 12, symbol: "BTCUSDT", side: "SELL", positionSide: "BOTH", type: "STOP_MARKET", stopPrice: "90", closePosition: true, status: "NEW" },
+        ],
+    });
+    const row = rows.find((item) => item.symbol === "BTCUSDT" && item.book === "live");
+    assert.equal(row.exchangeTp, 120);
+    assert.equal(row.exchangeSl, 90);
+    assert.equal(row.exchangeOrders.length, 2);
+});
+
 test("long and short stay apart, paper and notpsl are not merged into exchange pnl", () => {
     const rows = buildPositionView({
         account: "V",

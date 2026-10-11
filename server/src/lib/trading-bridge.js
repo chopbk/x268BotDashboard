@@ -112,8 +112,29 @@ function validateOrderCancelBatch(params) {
 }
 
 function validateSetTpsl(params) {
-    // Phase C implementation
-    return { valid: true, normalized: params };
+    const body = params || {};
+    const tp = body.tp ?? body.takeProfit?.triggerPrice ?? body.takeProfit?.price;
+    const sl = body.sl ?? body.stopLoss?.triggerPrice ?? body.stopLoss?.price;
+    const tpOn = body.takeProfit?.enabled !== false && tp != null && tp !== "";
+    const slOn = body.stopLoss?.enabled !== false && sl != null && sl !== "";
+    if (!tpOn && !slOn) {
+        return { valid: false, error: "Cần ít nhất TP hoặc SL" };
+    }
+    if (tpOn && !(Number(tp) > 0)) return { valid: false, error: "Giá TP phải > 0" };
+    if (slOn && !(Number(sl) > 0)) return { valid: false, error: "Giá SL phải > 0" };
+    const workingType = String(body.workingType || body.tpWorkingType || body.slWorkingType || "CONTRACT_PRICE").toUpperCase();
+    if (!["CONTRACT_PRICE", "MARK_PRICE", "LAST", "MARK"].includes(workingType)) {
+        return { valid: false, error: "workingType phải là CONTRACT_PRICE (Last) hoặc MARK_PRICE" };
+    }
+    return {
+        valid: true,
+        normalized: {
+            ...body,
+            tp: tpOn ? String(tp) : undefined,
+            sl: slOn ? String(sl) : undefined,
+            workingType: workingType === "MARK" || workingType === "MARK_PRICE" ? "MARK_PRICE" : "CONTRACT_PRICE",
+        },
+    };
 }
 
 function validateCancelTpsl(params) {

@@ -257,6 +257,12 @@ function recordedBundle(parts, source) {
     return { ...parts, net, source };
 }
 
+function isProtectiveOrder(order) {
+    if (order?.closePosition === true || order?.reduceOnly === true) return true;
+    const type = String(order?.type || "").toUpperCase();
+    return /^(TAKE_PROFIT|STOP|TRAILING_STOP)/.test(type);
+}
+
 function publicOrder(row, kind) {
     return {
         id: String(row.orderId || row.algoId || ""),
@@ -271,7 +277,9 @@ function publicOrder(row, kind) {
         stopPrice: num(row.stopPrice || row.triggerPrice) || null,
         qty: num(row.origQty || row.quantity) || null,
         status: row.status || row.algoStatus || "",
-        reduceOnly: row.reduceOnly === true,
+        reduceOnly: row.reduceOnly === true || row.reduceOnly === "true",
+        closePosition: row.closePosition === true || row.closePosition === "true",
+        workingType: row.workingType || null,
     };
 }
 
@@ -279,8 +287,31 @@ function orderMatches(order, identity) {
     if (order.symbol !== identity.symbol) return false;
     const mode = order.positionSide === "LONG" || order.positionSide === "SHORT" ? order.positionSide : "BOTH";
     if (mode !== "BOTH") return mode === identity.side;
-    if (order.reduceOnly) return (identity.side === "LONG" && order.side === "SELL") || (identity.side === "SHORT" && order.side === "BUY");
+    // TP/SL / reduceOnly đóng vị thế: LONG↔SELL, SHORT↔BUY
+    if (isProtectiveOrder(order)) {
+        return (identity.side === "LONG" && order.side === "SELL") || (identity.side === "SHORT" && order.side === "BUY");
+    }
     return (identity.side === "LONG" && order.side === "BUY") || (identity.side === "SHORT" && order.side === "SELL") || !order.side;
+}
+
+function pickExchangeTpsl(orders) {
+    let tp = null;
+    let sl = null;
+    let tpOrderId = null;
+    let slOrderId = null;
+    for (const order of orders || []) {
+        const type = String(order.type || "").toUpperCase();
+        const trigger = order.stopPrice != null ? order.stopPrice : order.price;
+        if (!Number.isFinite(Number(trigger))) continue;
+        if (type.includes("TAKE_PROFIT")) {
+            tp = Number(trigger);
+            tpOrderId = order.id || null;
+        } else if (type.startsWith("STOP") && !type.includes("TAKE_PROFIT")) {
+            sl = Number(trigger);
+            slOrderId = order.id || null;
+        }
+    }
+    return { exchangeTp: tp, exchangeSl: sl, exchangeTpOrderId: tpOrderId, exchangeSlOrderId: slOrderId };
 }
 
 function parentFromExchange(account, row, connection) {
@@ -484,6 +515,7 @@ function buildPositionView({
         const matched = orders.filter((order) => orderMatches(order, identity));
         parent.exchangeOrders = matched.filter((order) => order.kind === "order");
         parent.algoOrders = matched.filter((order) => order.kind === "algo");
+        Object.assign(parent, pickExchangeTpsl(matched));
     }
     const placed = new Set(parents.filter((parent) => parent.book === "live" && parent.exchangeQty != null).map((parent) => `${parent.symbol}|${parent.side}`));
     for (const order of orders) {

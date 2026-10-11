@@ -968,6 +968,30 @@ td.negative { color: var(--danger); }
 }
 .pos-close-type:disabled { opacity: 0.5; cursor: not-allowed; }
 .pos-close-type:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 2px; }
+.pos-tpsl-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, #f0b90b 55%, transparent);
+}
+.pos-tpsl-link:hover { color: #f0b90b; }
+.pos-tpsl-modal .pos-tpsl-field { display: grid; gap: 6px; }
+.pos-tpsl-label { font-weight: 600; }
+.pos-tpsl-tp { color: var(--ok); border-left: 3px solid var(--ok); padding-left: 8px; }
+.pos-tpsl-sl { color: var(--danger); border-left: 3px solid var(--danger); padding-left: 8px; }
+.pos-tpsl-inputs { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.pos-tpsl-confirm {
+  background: #f0b90b;
+  border-color: #f0b90b;
+  color: #111;
+  font-weight: 600;
+}
 button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }

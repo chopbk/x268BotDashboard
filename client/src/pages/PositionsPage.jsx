@@ -58,15 +58,32 @@ function matches(row, params) {
   return true;
 }
 
-const ACTION_NOTE = "Reverse và thêm TP/SL chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
+const ACTION_NOTE = "Reverse chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
 const CLOSE_PERCENTS = [10, 25, 50, 75, 100];
 
-function tpslText(row) {
+function exchangeTpsl(row) {
+  return {
+    tp: row.exchangeTp != null ? row.exchangeTp : null,
+    sl: row.exchangeSl != null ? row.exchangeSl : null,
+  };
+}
+
+function monitorTpsl(row) {
   const monitors = row.monitors || [];
-  const sl = monitors.map((monitor) => monitor.sl).find(Boolean);
-  const tp = monitors.map((monitor) => monitor.tp).find(Boolean);
-  if (!sl && !tp) return monitors.length ? "Chưa có TP/SL" : "—";
-  return `TP ${tp || "—"} / SL ${sl || "—"}`;
+  return {
+    tp: monitors.map((monitor) => monitor.tp).find(Boolean) || null,
+    sl: monitors.map((monitor) => monitor.sl).find(Boolean) || null,
+  };
+}
+
+function tpslText(row) {
+  const exchange = exchangeTpsl(row);
+  if (exchange.tp != null || exchange.sl != null) {
+    return `TP ${exchange.tp != null ? fmt(exchange.tp) : "—"} / SL ${exchange.sl != null ? fmt(exchange.sl) : "—"}`;
+  }
+  const monitor = monitorTpsl(row);
+  if (!monitor.sl && !monitor.tp) return (row.monitors || []).length ? "Chưa có TP/SL" : "TP/SL";
+  return `TP ${monitor.tp || "—"} / SL ${monitor.sl || "—"} · monitor`;
 }
 
 function numInput(value) {
@@ -92,6 +109,7 @@ export default function PositionsPage() {
   const { user } = useAuth();
   const canClose = (user?.permissions || []).includes("positions.close");
   const canOpen = (user?.permissions || []).includes("positions.open");
+  const canTpsl = (user?.permissions || []).includes("positions.tpsl");
   const canPositions = (user?.permissions || []).includes("positions.view");
   const canHistory = (user?.permissions || []).includes("statistics.view");
   const canOrders = (user?.permissions || []).includes("orders.view");
@@ -117,6 +135,8 @@ export default function PositionsPage() {
   const [closePercentKey, setClosePercentKey] = useState("");
   const [closeConfirm, setCloseConfirm] = useState(null);
   const [closing, setClosing] = useState(false);
+  const [tpslDraft, setTpslDraft] = useState(null);
+  const [savingTpsl, setSavingTpsl] = useState(false);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [historyAccounts, setHistoryAccounts] = useState([]);
@@ -452,6 +472,76 @@ export default function PositionsPage() {
     }
   }
 
+  function openTpsl(row) {
+    if (!canTpsl) {
+      setError("Thiếu quyền positions.tpsl");
+      return;
+    }
+    if (row.book === "paper" || row.book === "pending") {
+      setError("Paper/lệnh chờ không đặt Position TP/SL trên sàn");
+      return;
+    }
+    const exchange = exchangeTpsl(row);
+    const monitor = monitorTpsl(row);
+    setError("");
+    setTpslDraft({
+      account: row.account,
+      symbol: row.symbol,
+      side: row.side,
+      entry: row.entry,
+      mark: row.mark,
+      tp: numInput(exchange.tp ?? monitor.tp),
+      sl: numInput(exchange.sl ?? monitor.sl),
+      tpEnabled: true,
+      slEnabled: true,
+      tpWorkingType: "CONTRACT_PRICE",
+      slWorkingType: "CONTRACT_PRICE",
+    });
+  }
+
+  async function submitTpsl() {
+    if (!tpslDraft || savingTpsl) return;
+    const tpOn = tpslDraft.tpEnabled !== false && String(tpslDraft.tp || "").trim() !== "";
+    const slOn = tpslDraft.slEnabled !== false && String(tpslDraft.sl || "").trim() !== "";
+    if (!tpOn && !slOn) {
+      setError("Nhập ít nhất giá TP hoặc SL");
+      return;
+    }
+    if (tpOn && !(Number(tpslDraft.tp) > 0)) {
+      setError("Giá TP phải > 0");
+      return;
+    }
+    if (slOn && !(Number(tpslDraft.sl) > 0)) {
+      setError("Giá SL phải > 0");
+      return;
+    }
+    setSavingTpsl(true);
+    try {
+      const key = `${tpslDraft.account}|${tpslDraft.symbol}|${tpslDraft.side}`;
+      const body = {
+        takeProfit: tpOn
+          ? { enabled: true, type: "TAKE_PROFIT_MARKET", triggerPrice: String(tpslDraft.tp), workingType: tpslDraft.tpWorkingType || "CONTRACT_PRICE" }
+          : { enabled: false },
+        stopLoss: slOn
+          ? { enabled: true, type: "STOP_MARKET", triggerPrice: String(tpslDraft.sl), workingType: tpslDraft.slWorkingType || "CONTRACT_PRICE" }
+          : { enabled: false },
+      };
+      const result = await api(`/api/trading/positions/${encodeURIComponent(key)}/tpsl`, { method: "PUT", body });
+      const rows = result?.command?.result?.results || [];
+      const summary = rows.length
+        ? rows.map((row) => (row.success ? `${row.type}@${row.stopPrice || ""}` : `${row.type} lỗi: ${row.error}`)).join(" · ")
+        : "đã gửi";
+      setActionNote(`TP/SL ${tpslDraft.symbol} ${tpslDraft.side}: ${summary}`);
+      setTpslDraft(null);
+      setError("");
+    } catch (err) {
+      console.error("[positions]", err);
+      setError(err.message || "Không đặt được TP/SL");
+    } finally {
+      setSavingTpsl(false);
+    }
+  }
+
   async function removeMonitor(monitor) {
     const label = `${monitor.env || "monitor"} ${monitor.signal || ""}`.trim();
     if (!window.confirm(`Xoá monitor ${label}?\nBản ghi monitor_positions _id ${monitor.id}\nLệnh trên sàn không bị đóng.`)) return;
@@ -703,7 +793,14 @@ export default function PositionsPage() {
                           </>
                         )}
                         <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
-                        <span>{tpslText(row)}</span>
+                        <button
+                          type="button"
+                          className="pos-tpsl-link"
+                          title={canTpsl ? "Chỉnh Position TP/SL trên sàn" : "Thiếu quyền positions.tpsl"}
+                          onClick={() => openTpsl(row)}
+                        >
+                          {tpslText(row)}
+                        </button>
                         <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
                         {canOpen ? <button type="button" className="ghost" onClick={() => setDraft({ account: row.account, env: "", symbol: row.symbol, side: row.side, signal: "NOTPSL", positionAmt: qtyOf(row) ?? "", entry: row.entry ?? "", mark: row.mark ?? "", leverage: row.leverage ?? "", liquidation: row.liquidation ?? "" })}>Thêm monitor</button> : null}
                         {canClose ? row.monitors.map((monitor) => (
@@ -742,6 +839,73 @@ export default function PositionsPage() {
           </table>
         </div>
       ) : null}</> : null}
+      {tpslDraft ? (
+        <div className="modal-backdrop" onClick={() => { if (!savingTpsl) setTpslDraft(null); }}>
+          <form
+            className="modal-card stack pos-tpsl-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tpsl-title"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => { event.preventDefault(); submitTpsl(); }}
+          >
+            <header>
+              <h2 id="tpsl-title">Position TP/SL</h2>
+              <button type="button" disabled={savingTpsl} onClick={() => setTpslDraft(null)}>Đóng</button>
+            </header>
+            <p className="muted">
+              {tpslDraft.account} · {tpslDraft.symbol} · {tpslDraft.side}
+              {" · entry "}{fmt(tpslDraft.entry)}
+              {" · mark "}{fmt(tpslDraft.mark)}
+            </p>
+            <label className="pos-tpsl-field">
+              <span className="pos-tpsl-label pos-tpsl-tp">Take Profit</span>
+              <span className="pos-tpsl-inputs">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Giá trigger"
+                  value={tpslDraft.tp}
+                  onChange={(event) => setTpslDraft({ ...tpslDraft, tp: event.target.value.replace(/,/g, ""), tpEnabled: true })}
+                />
+                <select
+                  value={tpslDraft.tpWorkingType}
+                  onChange={(event) => setTpslDraft({ ...tpslDraft, tpWorkingType: event.target.value })}
+                  aria-label="TP theo giá"
+                >
+                  <option value="CONTRACT_PRICE">Last</option>
+                  <option value="MARK_PRICE">Mark</option>
+                </select>
+              </span>
+            </label>
+            <label className="pos-tpsl-field">
+              <span className="pos-tpsl-label pos-tpsl-sl">Stop Loss</span>
+              <span className="pos-tpsl-inputs">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Giá trigger"
+                  value={tpslDraft.sl}
+                  onChange={(event) => setTpslDraft({ ...tpslDraft, sl: event.target.value.replace(/,/g, ""), slEnabled: true })}
+                />
+                <select
+                  value={tpslDraft.slWorkingType}
+                  onChange={(event) => setTpslDraft({ ...tpslDraft, slWorkingType: event.target.value })}
+                  aria-label="SL theo giá"
+                >
+                  <option value="CONTRACT_PRICE">Last</option>
+                  <option value="MARK_PRICE">Mark</option>
+                </select>
+              </span>
+            </label>
+            <p className="muted">Gửi TAKE_PROFIT_MARKET / STOP_MARKET đóng toàn bộ vị thế (closePosition). Lệnh cũ cùng loại sẽ bị hủy trước.</p>
+            <div className="pos-inline">
+              <button type="button" className="ghost" disabled={savingTpsl} onClick={() => setTpslDraft(null)}>Huỷ</button>
+              <button type="submit" className="pos-tpsl-confirm" disabled={savingTpsl}>{savingTpsl ? "Đang gửi…" : "Confirm"}</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {closeConfirm ? (
         <div className="modal-backdrop" onClick={() => { if (!closing) setCloseConfirm(null); }}>
           <div className="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="close-pos-title" onClick={(event) => event.stopPropagation()}>
