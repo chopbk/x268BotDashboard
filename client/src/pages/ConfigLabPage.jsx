@@ -84,6 +84,10 @@ export default function ConfigLabPage() {
   const rows = filterConfigs(all, filters);
   const page = Math.max(1, Math.min(Number(params.get("page")) || 1, Math.ceil(rows.length / 24) || 1));
   const visible = rows.slice((page - 1) * 24, page * 24);
+  const visibleKeys = visible.map(cardKey);
+  const filterKeys = rows.map(cardKey);
+  const allVisiblePicked = visibleKeys.length > 0 && visibleKeys.every((key) => picked.has(key));
+  const allFilteredPicked = filterKeys.length > 0 && filterKeys.every((key) => picked.has(key));
   const pickedRows = all.filter((row) => picked.has(cardKey(row)));
   const bulkUsers = [...new Set(pickedRows.map((row) => row.username))];
   const bulkReady = canEdit && pickedRows.length > 0 && bulkUsers.length === 1;
@@ -103,6 +107,23 @@ export default function ConfigLabPage() {
       if (checked) next.add(key); else next.delete(key);
       return next;
     });
+  }
+
+  function toggleKeys(keys, select) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (select) keys.forEach((key) => next.add(key));
+      else keys.forEach((key) => next.delete(key));
+      return next;
+    });
+  }
+
+  function toggleVisible() {
+    toggleKeys(visibleKeys, !allVisiblePicked);
+  }
+
+  function toggleFiltered() {
+    toggleKeys(filterKeys, !allFilteredPicked);
   }
 
   async function createAccount(event) {
@@ -287,7 +308,28 @@ export default function ConfigLabPage() {
     </div> : null}
 
     {loading ? <p className="lab-empty" role="status">Đang tải cấu hình…</p> : error && !all.length ? <div className="lab-empty" role="alert"><p>{error}</p><button type="button" className="ghost" onClick={() => setRetry((value) => value + 1)}>Thử lại</button></div> : <>
-      <div className="lab-list-heading"><h2>{rows.length} cấu hình</h2><span className="lab-caption">{canEdit ? "Chọn nhiều card cùng user để Config nhanh / xoá · mở card để sửa đầy đủ" : "Chọn config để xem chi tiết →"}</span></div>
+      <div className="lab-list-heading">
+        <h2>{rows.length} cấu hình</h2>
+        {canEdit && rows.length ? (
+          <div className="lab-select-tools">
+            <label className="lab-pick">
+              <input type="checkbox" checked={allVisiblePicked} onChange={toggleVisible} disabled={busy || !visible.length} aria-label="Chọn tất cả config trên trang này" />
+              Chọn trang này ({visible.length})
+            </label>
+            {rows.length > visible.length ? (
+              <button type="button" className="ghost" disabled={busy} onClick={toggleFiltered}>
+                {allFilteredPicked ? "Bỏ chọn hết lọc" : `Chọn hết lọc (${rows.length})`}
+              </button>
+            ) : null}
+            {picked.size > 0 ? (
+              <button type="button" className="ghost" disabled={busy} onClick={() => { setPicked(new Set()); setQuickOpen(false); }}>Bỏ chọn</button>
+            ) : null}
+            <span className="lab-caption">Cùng một user mới Config nhanh / xoá được</span>
+          </div>
+        ) : (
+          <span className="lab-caption">Chọn config để xem chi tiết →</span>
+        )}
+      </div>
       {!rows.length ? <div className="lab-empty">
         <h2>{all.length ? "Không có config khớp bộ lọc" : "Chưa có config trong phạm vi này"}</h2>
         <p>{all.length ? "Thử đổi tài khoản, trạng thái hoặc từ khóa." : canEdit && bots.length ? "Tạo config ở form phía trên, hoặc kiểm tra user bot được gán và API key ở User API." : "Chọn Tất cả được phép xem hoặc kiểm tra tài khoản được gán."}</p>

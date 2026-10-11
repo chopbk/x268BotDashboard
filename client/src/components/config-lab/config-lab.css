@@ -107,8 +107,11 @@ main:has(.lab-directory) { width: calc(100% - 48px); max-width: 1280px; margin: 
 .lab-filterbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .lab-filterbar label { flex: 1 1 120px; font-size: 14px; color: var(--muted); display: grid; gap: 5px; }
 .lab-filterbar .lab-search { flex: 2 1 220px; }
-.lab-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.lab-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .lab-list-heading h2 { font-size: 17px; }
+.lab-select-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.lab-select-tools .lab-pick { font-size: 14px; color: var(--text); }
+.lab-select-tools .ghost { padding: 6px 10px; font-size: 14px; }
 .lab-config-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
 .lab-config-card { position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; transition: border-color .15s, background .15s; }
 .lab-config-card:hover { border-color: #777984; background: #1c1d23; }
