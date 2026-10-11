@@ -95,3 +95,12 @@ Binance-bot chạy `node --test services/monitors/position/position-snapshot.tes
 Khi triển khai, cập nhật cả hai repo và mọi process ghi `wb:ex`; kiểm tra WebSocket 101
 trên proxy, mở/đóng vị thế thử được phép và kiểm tra sources.checkedAt. Không tự đặt lệnh
 thật để kiểm thử. Xem protocol trong [flows](flows.md#4-position-live).
+
+
+### Regression Config mới
+
+`node --test client/test/config-draft.test.js` kiểm tra serializer/diff, PATCH tối thiểu,
+giữ field theo mode, list rỗng/false, signal và bộ lọc. Build client và server tests như
+quy trình chung. Kiểm tra browser bằng fixture không có kết nối Mongo/sàn: menu mới,
+đổi nhóm, sửa/review/cancel, guard rời trang, save thành công/lỗi, readonly và mobile.
+Không lưu config thật chỉ để test giao diện. Giữ cả route mới và cũ đến khi user duyệt.

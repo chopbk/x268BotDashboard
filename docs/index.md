@@ -12,6 +12,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Tra endpoint, model, collection và thuật ngữ | [API và dữ liệu](api-data-reference.md) |
 | Cầu runtime web → binance-bot (MQTT, outbox, allowlist) | [Command bridge](bot-command-bridge.md) |
 | Roadmap Position/TP-SL/Order gần Binance Web | [Trading Terminal spec](trading-terminal-spec.md) |
+| Giao diện Config mới dùng song song bản cũ | [Spec Config mới](config-lab-spec.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
 | Đăng ký, đăng nhập, quyền và scope | [Spec auth/RBAC](auth-rbac-spec.md) |
 | Cài Debian, Nginx, HTTPS, cập nhật server | [Deploy Debian](deploy-debian.md) |

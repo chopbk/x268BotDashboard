@@ -10,6 +10,7 @@
 | Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ |
 | Danh sách `/bots` | HomePage | Bot đang active, chọn phạm vi của mình/người khác theo quyền; lọc/sắp xếp/phân trang |
 | Bot `/bots/:username` | BotDetailPage | Account/config thuộc bot, thêm/đổi tên/gỡ account theo `config.edit` |
+| Config mới `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage experimental | Giao diện thử nghiệm 6 nhóm; cùng API/quyền và config thật, giữ nguyên giao diện cũ |
 | Config `/bots/:username/accounts/:env` | AccountConfigPage | Sửa các field trade/signal được hỗ trợ; cảnh báo rời form chưa lưu |
 | Signal `/signal-search` | SignalSearchPage và panel | Bốn tab mô tả dưới đây; từng API có quyền riêng |
 | Position `/positions` | PositionsPage | Vị thế sàn và monitor, live/paper, mặc định của mình; `positions.view` |
@@ -33,6 +34,16 @@ Component nằm trong [pages](../client/src/pages). Gate UI chỉ hỗ trợ UX;
 - Copy có `new` (tạo mới), `replace` (ghi đè config đích, gỡ sync), `sync` (tạo config mới và gắn nguồn). Kiểm tra quyền xem nguồn và sửa đích.
 - Thêm account: tên env luôn uppercase; trùng tên không phân biệt hoa/thường bị từ chối. Có thể `copyFrom` (gõ hoặc chọn) từ mọi config actor được `config.view` — giống `/aa?a=NEW&copy=EXIST`.
 - Lưu thành công nghĩa là Mongo đã cập nhật; server tự enqueue `APPLY_CONFIG` qua MQTT. Chỉ báo “đã áp dụng” khi ACK terminal — xem [bot-command-bridge](bot-command-bridge.md). Bot offline/timeout → “Đã lưu DB — chờ áp dụng” + nút thử lại.
+
+### Config mới · Thử nghiệm
+
+Menu riêng yêu cầu `config.view`. Danh sách tìm/lọc theo user, signal, nhận signal và
+Live/Paper; URL giữ bộ lọc và phân trang. Có tạo account (uppercase + `copyFrom`), bulk
+On/Paper cùng user, deep-link Position/Static trên card. Detail chia 6 nhóm, summary draft,
+signal thẻ + gợi ý từ `signal-config`, Sync from chọn từ config được xem, copy mode
+new/replace/sync, đổi tên/xoá account. Thanh lưu đếm diff, APPLY/ACK + thử lại; journey
+sang Position / Static / lịch sử. Chỉ `config.edit` đúng scope mới sửa. Dùng chung API/editor
+cũ; không xoá route cũ. Chi tiết: [spec Config mới](config-lab-spec.md).
 
 ## Bốn tab Signal
 

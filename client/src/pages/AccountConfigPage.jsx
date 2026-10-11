@@ -1,3 +1,6 @@
+import { configPayload, configChanges, changedPatch } from "../configDraft";
+import { LabContext, LabLayout, LabHeader, SignalTags, SyncSourceField, ChangeReview, LAB_GROUPS, LabSaveBar } from "../components/config-lab/ConfigLabEditor";
+import "../components/config-lab/config-lab.css";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -7,8 +10,15 @@ import { Crumbs, useEscape, useLeaveGuard } from "../navigation";
 import { applyStatusLabel, waitForApply } from "../applyStatus";
 
 const CONFIG_EDIT = "config.edit";
+const CONFIG_VIEW = "config.view";
 const SIGNALS_HISTORY = "signals.history";
 const STATISTICS_VIEW = "statistics.view";
+const POSITIONS_VIEW = "positions.view";
+const COPY_MODES = [
+  { id: "new", label: "Tạo mới", note: "Config mới, không gắn sync." },
+  { id: "replace", label: "Ghi đè đích", note: "Ghi đè config đã có, gỡ sync đích." },
+  { id: "sync", label: "Tạo + sync", note: "Config mới gắn sync_from về nguồn này." },
+];
 const MODES = ["FIX", "RATIO", "RISK", "RR", "LOSS"];
 const OPEN_TYPES = ["MARKET", "LIMIT", "STOPMARKET", "STOPLIMIT", "FOLLOWSIGNAL"];
 const SL_TYPES = ["MARKET", "LIMIT", "CANDLE", "EMA", "ATR", "FOLLOWSIGNAL", "HYBRID", "ENTRY_STYLE", "ROSE"];
@@ -179,13 +189,6 @@ function joinList(value) {
   return Array.isArray(value) ? value.join(", ") : "";
 }
 
-function splitList(value) {
-  return String(value || "")
-    .split(/[,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function withCurrent(options, current) {
   if (!current || options.includes(current)) return options;
   return [current, ...options];
@@ -283,6 +286,8 @@ function Text({ label, value, onChange, disabled, placeholder, hint, note, badge
 }
 
 function Section({ title, children, stack = false }) {
+  const group = useContext(LabContext);
+  if (group && !LAB_GROUPS.find((item) => item.id === group)?.sections.includes(title)) return null;
   return (
     <fieldset className="config-section">
       <legend>{title}</legend>
@@ -313,39 +318,44 @@ function VolumeField({ id, form, onChange, disabled, note }) {
   );
 }
 
-function optionalNumber(value) {
-  if (value === "" || value == null) return undefined;
-  return Number(value);
-}
-
-export default function AccountConfigPage() {
+export default function AccountConfigPage({ experimental = false }) {
   const { username = "", env = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [params] = useSearchParams();
   const copyButtonRef = useRef(null);
+  const saveLock = useRef(false);
+  const [group, setGroup] = useState("operation");
+  const [review, setReview] = useState(false);
   const { user } = useAuth();
   const [openedBot, setOpenedBot] = useState(null);
   const canEdit = user?.role === "admin" ? can(user, CONFIG_EDIT) : canEditResource(user, CONFIG_EDIT, openedBot);
   const canViewSignalHistory = can(user, SIGNALS_HISTORY);
   const canViewStatistics = can(user, STATISTICS_VIEW);
+  const canViewPositions = can(user, POSITIONS_VIEW);
   const [form, setForm] = useState(null);
   const [lists, setLists] = useState({});
   const [snapshot, setSnapshot] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [help, setHelp] = useState(false);
+  const [help, setHelp] = useState(!!experimental);
   const [panel, setPanel] = useState("basic");
   const copyOpen = params.get("copy") === "1";
   const [bots, setBots] = useState([]);
   const [copyUser, setCopyUser] = useState(username);
   const [copyName, setCopyName] = useState("");
+  const [copyMode, setCopyMode] = useState("new");
+  const [renameEnv, setRenameEnv] = useState("");
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [signalSuggestions, setSignalSuggestions] = useState([]);
+  const [syncOptions, setSyncOptions] = useState([]);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [applyState, setApplyState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const disabled = !editing || busy;
-  useLeaveGuard(editing, "Form config đang mở Sửa.");
+  const changes = configChanges(snapshot, form, lists);
+  useLeaveGuard(experimental ? editing && changes.length > 0 : editing, "Rời trang sẽ bỏ các thay đổi config chưa lưu.");
   useEscape(copyOpen, closeCopy);
 
   function applyConfig(config) {
@@ -366,6 +376,13 @@ export default function AccountConfigPage() {
     let cancelled = false;
     const controller = new AbortController();
     setLoading(true);
+    setForm(null);
+    setSnapshot(null);
+    setError("");
+    setSaved("");
+    setApplyState(null);
+    setReview(false);
+    setGroup("operation");
     setEditing(false);
     setPanel("basic");
     setBusy(false);
@@ -402,6 +419,47 @@ export default function AccountConfigPage() {
     };
   }, [user?.role, username]);
 
+  useEffect(() => {
+    if (!experimental || !can(user, CONFIG_VIEW)) {
+      setSignalSuggestions([]);
+      setSyncOptions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const scope = user?.scopes?.[CONFIG_VIEW] === "all" || user?.role === "admin" ? "all" : "mine";
+    Promise.all([
+      api("/api/signal-config", { signal: controller.signal }).catch(() => null),
+      api(`/api/bots/assigned-configs?scope=${scope}`, { signal: controller.signal }).catch(() => null),
+    ]).then(([signalData, assigned]) => {
+      if (cancelled) return;
+      const usage = signalData?.usage || [];
+      const channels = (signalData?.channels || []).map((row) => row.name).filter(Boolean);
+      const merged = new Map();
+      for (const row of usage) {
+        if (row?.signal) merged.set(row.signal, row);
+      }
+      for (const name of channels) {
+        if (!merged.has(name)) merged.set(name, { signal: name, configs: 0 });
+      }
+      setSignalSuggestions([...merged.values()].sort((a, b) => String(a.signal).localeCompare(String(b.signal))));
+      const rows = [];
+      for (const row of assigned?.users || []) {
+        for (const cfg of row.configs || []) {
+          const envName = String(cfg?.env || "").trim();
+          if (!envName || (row.username === username && envName === env)) continue;
+          rows.push({ username: row.username, env: envName });
+        }
+      }
+      rows.sort((a, b) => a.env.localeCompare(b.env) || a.username.localeCompare(b.username));
+      setSyncOptions(rows);
+    });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [experimental, user, username, env]);
+
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setSaved("");
@@ -419,86 +477,19 @@ export default function AccountConfigPage() {
 
   async function onSubmit(event) {
     event.preventDefault();
-    if (!canEdit || !editing || !form) return;
+    if (!canEdit || !editing || !form || saveLock.current || (experimental && !changes.length)) return;
+    saveLock.current = true;
     setBusy(true);
     setError("");
     setSaved("");
     try {
       const data = await api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}`, {
         method: "PATCH",
-        body: {
-          on: !!form.on,
-          long: !!form.long,
-          short: !!form.short,
-          invert: !!form.invert,
-          paper: !!form.paper,
-          monitor: !!form.monitor,
-          wl: !!form.wl,
-          autoConfig: !!form.autoConfig,
-          reportProfit: !!form.reportProfit,
-          signals: splitList(lists.signals),
-          blacklist: splitList(lists.blacklist),
-          whitelist: splitList(lists.whitelist),
-          mode: form.mode,
-          cost: Number(form.cost),
-          leverage: Number(form.leverage),
-          shortLeverage: optionalNumber(form.shortLeverage),
-          level: optionalNumber(form.level),
-          ratio: optionalNumber(form.ratio),
-          fixloss: optionalNumber(form.fixloss),
-          marginPeriod: optionalNumber(form.marginPeriod),
-          openType: form.openType,
-          spread: optionalNumber(form.spread),
-          wait: optionalNumber(form.wait),
-          risk: optionalNumber(form.risk),
-          mark: optionalNumber(form.mark),
-          maxPosition: optionalNumber(form.maxPosition),
-          symbolTypes: splitList(lists.symbolTypes),
-          symbolTypesDeny: splitList(lists.symbolTypesDeny),
-          filterOn: !!form.filterOn,
-          filters: splitList(lists.filters),
-          chasePct: optionalNumber(form.chasePct),
-          blowAtr: optionalNumber(form.blowAtr),
-          fomoAtr: optionalNumber(form.fomoAtr),
-          tpType: form.tpType,
-          tpPercent: splitList(lists.tpPercent).map(Number),
-          tpClose: optionalNumber(form.tpClose),
-          tpTime: optionalNumber(form.tpTime),
-          tpHold: !!form.tpHold,
-          slType: form.slType,
-          slCandle: form.slCandle,
-          slPeriod: optionalNumber(form.slPeriod),
-          sl: optionalNumber(form.sl),
-          sli: optionalNumber(form.sli),
-          sl2: optionalNumber(form.sl2),
-          slTime: optionalNumber(form.slTime),
-          maxLoss: optionalNumber(form.maxLoss),
-          slPosition: !!form.slPosition,
-          trailing: !!form.trailing,
-          trailingType: form.trailingType,
-          sp: optionalNumber(form.sp),
-          trigger: optionalNumber(form.trigger),
-          r: optionalNumber(form.r),
-          hp: !!form.hp,
-          hpTrigger: optionalNumber(form.hpTrigger),
-          rhsl: optionalNumber(form.rhsl),
-          rh: optionalNumber(form.rh),
-          copy: !!form.copy,
-          copyFix: !!form.copyFix,
-          copyDca: !!form.copyDca,
-          copyFollow: !!form.copyFollow,
-          maxVolume: optionalNumber(form.maxVolume),
-          copyRate: optionalNumber(form.copyRate),
-          interval: optionalNumber(form.interval),
-          syncFrom: form.syncFrom || "",
-          syncExcept: splitList(lists.syncExcept),
-          syncScale: !!form.syncScale,
-          syncMarginRatio: optionalNumber(form.syncMarginRatio),
-          syncWalletBal: optionalNumber(form.syncWalletBal),
-        },
+        body: experimental ? changedPatch(changes) : configPayload(form, lists),
       });
       applyConfig(data.config);
       setEditing(false);
+      setReview(false);
       setSnapshot(null);
       let apply = data.apply || null;
       setApplyState(apply);
@@ -513,6 +504,7 @@ export default function AccountConfigPage() {
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
     } finally {
+      saveLock.current = false;
       setBusy(false);
     }
   }
@@ -557,6 +549,8 @@ export default function AccountConfigPage() {
   function startEdit() {
     setSnapshot({ form: { ...form }, lists: { ...lists } });
     setEditing(true);
+    setError("");
+    setReview(false);
     setSaved("");
     if (copyOpen) closeCopy();
   }
@@ -571,6 +565,8 @@ export default function AccountConfigPage() {
       setLists(snapshot.lists);
     }
     setEditing(false);
+    setError("");
+    setReview(false);
     setSnapshot(null);
   }
 
@@ -583,7 +579,7 @@ export default function AccountConfigPage() {
     setError("");
     try {
       await api(`/api/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}`, { method: "DELETE" });
-      navigate(`/bots/${encodeURIComponent(username)}`, { replace: true });
+      navigate(experimental ? "/config-lab" : `/bots/${encodeURIComponent(username)}`, { replace: true });
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
       setBusy(false);
@@ -601,6 +597,7 @@ export default function AccountConfigPage() {
     );
     setCopyName("");
     setCopyUser(username);
+    setCopyMode("new");
     setError("");
     try {
       const data = await api("/api/bots");
@@ -618,11 +615,44 @@ export default function AccountConfigPage() {
     try {
       const data = await api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}/copy`, {
         method: "POST",
-        body: { username: copyUser, env: copyName },
+        body: { username: copyUser, env: copyName, mode: experimental ? copyMode : "new" },
       });
-      navigate(`/bots/${encodeURIComponent(data.username)}/accounts/${encodeURIComponent(data.env)}`, { replace: true });
+      let apply = data.apply || null;
+      if (apply?.requestId && !apply.terminal) {
+        apply = await waitForApply(data.username, apply.requestId);
+      }
+      if (apply) setSaved(applyStatusLabel(apply));
+      navigate(experimental ? `/config-lab/${encodeURIComponent(data.username)}/${encodeURIComponent(data.env)}` : `/bots/${encodeURIComponent(data.username)}/accounts/${encodeURIComponent(data.env)}`, { replace: true });
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
+      setBusy(false);
+    }
+  }
+
+  async function onRename(event) {
+    event.preventDefault();
+    if (!canEdit || !experimental) return;
+    const next = String(renameEnv || "").trim().toUpperCase();
+    if (!next || next === env) return;
+    if (!window.confirm(`Đổi tên config ${env} → ${next} trên user ${username}?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api(`/api/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}`, {
+        method: "PATCH",
+        body: { env: next },
+      });
+      let apply = data.apply || null;
+      if (apply?.requestId && !apply.terminal) {
+        apply = await waitForApply(username, apply.requestId);
+      }
+      navigate(`/config-lab/${encodeURIComponent(username)}/${encodeURIComponent(next)}`, {
+        replace: true,
+        state: location.state,
+      });
+      if (apply) setSaved(applyStatusLabel(apply));
+    } catch (err) {
+      setError(err.message || "Đổi tên thất bại");
       setBusy(false);
     }
   }
@@ -633,24 +663,27 @@ export default function AccountConfigPage() {
     (form?.mode === "LOSS" || form?.mode === "RR") && slDynamic && !(Math.abs(Number(form?.fixloss)) > 0);
 
   return (
-    <section className={editing ? "config-screen is-editing" : "config-screen"}>
-      <header className="page-head config-head">
+    <section className={`${editing ? "config-screen is-editing" : "config-screen"}${experimental ? " config-lab" : ""}`}>
+      {experimental ? <LabHeader username={username} env={env} form={form} returnTo={location.state?.labReturnTo} signals={lists.signals || ""} canHistory={canViewSignalHistory} canStatistics={canViewStatistics} canPositions={canViewPositions} /> : null}
+      <header className={`page-head config-head${experimental ? " lab-editor-toolbar" : ""}`}>
         <div>
-          <Crumbs
+          {!experimental ? <Crumbs
             items={[
               { label: "Bot", to: location.state?.returnTo || "/bots" },
               { label: username, to: location.state?.listTo || `/bots/${encodeURIComponent(username)}`, state: { returnTo: location.state?.returnTo || "" } },
               { label: env },
             ]}
             returnTo={location.state?.returnTo || ""}
-          />
-          <h1>{env}</h1>
-          {editing ? <p className="dirty-note muted">Có thay đổi chưa lưu.</p> : null}
+          /> : null}
+          {!experimental ? <h1>{env}</h1> : null}
+          {editing && !experimental ? <p className="dirty-note muted">Có thay đổi chưa lưu.</p> : null}
           {help ? (
-            <p className="muted">Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Tab Cơ bản là cách vào lệnh. Tab Nâng cao là lọc, gồng, copy và sync. Lưu xong hệ thống tự áp dụng lên bot qua MQTT.</p>
+            <p className="muted">{experimental
+              ? "Help bật: gợi ý hiện dưới từng mục theo nhóm. Lưu Mongo xong bot nhận qua MQTT — xem thanh dưới cùng để biết đã đồng bộ chưa."
+              : "Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Tab Cơ bản là cách vào lệnh. Tab Nâng cao là lọc, gồng, copy và sync. Lưu xong hệ thống tự áp dụng lên bot qua MQTT."}</p>
           ) : null}
-          {saved ? <p className="muted">{saved}</p> : null}
-          {applyState && ["failed", "expired"].includes(applyState.status) && applyState.terminal ? (
+          {saved && !experimental ? <p className="muted">{saved}</p> : null}
+          {!experimental && applyState && ["failed", "expired"].includes(applyState.status) && applyState.terminal ? (
             <p>
               <button type="button" className="ghost" onClick={retryApply} disabled={busy}>
                 Thử áp dụng lại
@@ -666,8 +699,8 @@ export default function AccountConfigPage() {
           {canEdit ? (
             <>
             {editing ? (
-              <button type="button" key="save" className="config-save" onClick={onSave} disabled={busy}>
-                Lưu
+              <button type="button" key="save" className="config-save" onClick={onSave} disabled={busy || (experimental && !changes.length)}>
+                {experimental ? "Lưu và áp dụng" : "Lưu"}
               </button>
             ) : (
               <button type="button" key="edit" onClick={startEdit} disabled={busy || !form}>
@@ -679,6 +712,11 @@ export default function AccountConfigPage() {
                 Huỷ
               </button>
             ) : null}
+            {experimental ? (
+              <button type="button" className="ghost" onClick={() => { setRenameOpen((value) => !value); setRenameEnv(env); }} disabled={busy || editing}>
+                Đổi tên
+              </button>
+            ) : null}
             <button type="button" className="ghost" ref={copyButtonRef} onClick={openCopy} disabled={busy || editing}>
               Copy
             </button>
@@ -688,20 +726,30 @@ export default function AccountConfigPage() {
             </>
           ) : null}
         </div>
-        {canViewSignalHistory ? (
+        {!experimental && canViewSignalHistory ? (
           <Link className="ghost link-btn" to={signalContextPath("history", username, env, lists.signals)}>
             Lịch sử signal
           </Link>
         ) : null}
-        <Link className="ghost link-btn" to={signalContextPath("stats", username, env, lists.signals)}>
+        {!experimental ? <Link className="ghost link-btn" to={signalContextPath("stats", username, env, lists.signals)}>
           Lý do bỏ qua
-        </Link>
-        {canViewStatistics ? (
+        </Link> : null}
+        {!experimental && canViewStatistics ? (
           <Link className="ghost link-btn" to={`/signals?view=statics&username=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`}>
             Account Static
           </Link>
         ) : null}
       </header>
+      {experimental && renameOpen && canEdit ? (
+        <form className="card config-copy lab-rename" onSubmit={onRename}>
+          <label>
+            Tên mới
+            <input value={renameEnv} onChange={(event) => setRenameEnv(event.target.value.toUpperCase())} required disabled={busy} />
+          </label>
+          <button type="submit" disabled={busy || !renameEnv || renameEnv === env}>Đổi tên</button>
+          <button type="button" className="ghost" onClick={() => setRenameOpen(false)} disabled={busy}>Đóng</button>
+        </form>
+      ) : null}
       {copyOpen && canEdit ? (
         <form className="card config-copy" onSubmit={onCopy}>
           <label>
@@ -715,11 +763,20 @@ export default function AccountConfigPage() {
             </select>
           </label>
           <label>
-            Tên config mới
-            <input value={copyName} onChange={(event) => setCopyName(event.target.value)} required disabled={busy} />
+            {experimental && copyMode === "replace" ? "Tên config đích" : "Tên config mới"}
+            <input value={copyName} onChange={(event) => setCopyName(event.target.value.toUpperCase())} required disabled={busy} />
           </label>
+          {experimental ? (
+            <label>
+              Mode
+              <select value={copyMode} onChange={(event) => setCopyMode(event.target.value)} disabled={busy}>
+                {COPY_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+              </select>
+              <span className="muted">{COPY_MODES.find((mode) => mode.id === copyMode)?.note}</span>
+            </label>
+          ) : null}
           <button type="submit" disabled={busy}>
-            Tạo bản sao
+            {experimental && copyMode === "replace" ? "Ghi đè" : experimental && copyMode === "sync" ? "Tạo và sync" : "Tạo bản sao"}
           </button>
           <button type="button" className="ghost" onClick={closeCopy} disabled={busy}>
             Đóng
@@ -727,19 +784,21 @@ export default function AccountConfigPage() {
         </form>
       ) : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
       {form ? (
         <HelpUi.Provider value={{ help, editing }}>
-        <div className="config-tabs" role="tablist" aria-label="Nhóm cấu hình">
+        <LabContext.Provider value={experimental ? group : null}>
+        <LabLayout enabled={experimental} group={group} setGroup={setGroup} form={form} lists={lists} changes={changes} volumeLead={volumeView.lead} editing={editing}>
+        {!experimental ? <div className="config-tabs" role="tablist" aria-label="Nhóm cấu hình">
           <button type="button" role="tab" aria-selected={panel === "basic"} onClick={() => setPanel("basic")}>
             Cơ bản
           </button>
           <button type="button" role="tab" aria-selected={panel === "advanced"} onClick={() => setPanel("advanced")}>
             Nâng cao
           </button>
-        </div>
+        </div> : null}
         <form id="config-form" className="card config-form" onSubmit={onSubmit}>
-          {panel === "basic" ? (
+          {experimental || panel === "basic" ? (
             <>
           <Section title="Chạy lệnh">
             <label>
@@ -757,7 +816,9 @@ export default function AccountConfigPage() {
             <Check label="Monitor" checked={form.monitor} onChange={(value) => setField("monitor", value)} disabled={disabled} hint="Theo dõi SL, TP và trailing sau khi mở lệnh." />
           </Section>
           <Section title="Signal">
+            {experimental ? <SignalTags value={lists.signals || ""} onChange={(value) => setList("signals", value)} disabled={disabled} suggestions={signalSuggestions} /> : (
             <Text label="Signal" value={lists.signals || ""} onChange={(value) => setList("signals", value)} disabled={disabled} placeholder="SIGNAL_A, BULL" hint="Kênh signal được nhận, cách nhau bằng dấu phẩy. Rỗng thì không nhận kênh nào." />
+            )}
           </Section>
           <Section title="Cách tính vốn" stack>
             <div className="mode-pick">
@@ -772,14 +833,14 @@ export default function AccountConfigPage() {
                 ))}
               </div>
             </div>
-            <div className="idle-box">
-              <p className="group-label">Không quyết định size ở mode này</p>
+            <details className="idle-box" open={experimental ? undefined : true}>
+              <summary className="group-label">Không quyết định size ở mode này</summary>
               <div className="field-grid">
                 {volumeView.idle.map((id) => (
                   <VolumeField key={id} id={id} form={form} onChange={(value) => setField(id, value)} disabled={disabled} note={volumeView.notes[id]} />
                 ))}
               </div>
-            </div>
+            </details>
             <div>
               <p className="group-label">Đòn bẩy — mọi mode</p>
               <div className="field-grid">
@@ -832,7 +893,8 @@ export default function AccountConfigPage() {
             <Check label="Hold" checked={form.tpHold} onChange={(value) => setField("tpHold", value)} disabled={disabled} hint="Từ 2 TP: TP cuối chỉ chốt Close × phần còn lại, phần dư gồng. Đúng 1 TP thì luôn chốt hết." />
           </Section>
             </>
-          ) : (
+          ) : null}
+          {experimental || panel === "advanced" ? (
             <>
           <Section title="Lọc lệnh">
             <Check label="Whitelist mode" checked={form.wl} onChange={(value) => setField("wl", value)} disabled={disabled} hint="Tắt: symbol trong Blacklist bị chặn. Bật: Blacklist thành danh sách được phép, symbol không có trong đó bị bỏ." note="Tắt: Blacklist là danh sách cấm. Bật: Blacklist là danh sách được vào." />
@@ -869,7 +931,11 @@ export default function AccountConfigPage() {
           </Section>
           <Section title="Sync">
             <Num label="Interval (giây)" value={form.interval} onChange={(value) => setField("interval", value)} disabled={disabled} hint="Chu kỳ monitor, tính bằng giây." />
-            <Text label="Sync from" value={form.syncFrom || ""} onChange={(value) => setField("syncFrom", value)} disabled={disabled} placeholder="Tên config gốc" hint="Config gốc. Gốc sửa bằng /sc thì nhánh bị ghi đè, trừ nhóm nằm trong Sync except." note={form.syncFrom ? undefined : "Để trống thì account này không kéo config từ gốc."} />
+            {experimental ? (
+              <SyncSourceField value={form.syncFrom || ""} onChange={(value) => setField("syncFrom", value || "")} disabled={disabled} options={syncOptions} />
+            ) : (
+              <Text label="Sync from" value={form.syncFrom || ""} onChange={(value) => setField("syncFrom", value)} disabled={disabled} placeholder="Tên config gốc" hint="Config gốc. Gốc sửa bằng /sc thì nhánh bị ghi đè, trừ nhóm nằm trong Sync except." note={form.syncFrom ? undefined : "Để trống thì account này không kéo config từ gốc."} />
+            )}
             <Text label="Sync except" value={lists.syncExcept || ""} onChange={(value) => setList("syncExcept", value)} disabled={disabled} placeholder={SYNC_GROUPS.join(", ")} hint="Nhóm nhánh tự giữ, không lấy từ gốc: cost, level, sl, tp, trailing, hp, open, margin, copy, on, paper, signals, blacklist." note={form.syncFrom ? undefined : "Chỉ có tác dụng khi có Sync from."} />
             <Check label="Sync scale" checked={form.syncScale} onChange={(value) => setField("syncScale", value)} disabled={disabled} hint="Bật thì nhân USD theo tỷ lệ ví nhánh trên ví gốc. Tắt thì copy đúng số USD. Max loss không nhân." note={form.syncFrom ? undefined : "Chỉ có tác dụng khi có Sync from."} />
             <Num label="Sync margin ratio" value={form.syncMarginRatio} onChange={(value) => setField("syncMarginRatio", value)} disabled={disabled} hint="Acc gốc lưu cost chia ví. Nhánh scale cost đọc số này, không gọi API của gốc." note={form.syncFrom ? undefined : "Chỉ có tác dụng khi có Sync from."} />
@@ -882,11 +948,15 @@ export default function AccountConfigPage() {
             <p className="unused-note span-all">Bot không dùng Margin period để tính volume hay vào lệnh. Ô vẫn lưu được.</p>
           </Section>
             </>
-          )}
+          ) : null}
         </form>
+        </LabLayout>
+        </LabContext.Provider>
         </HelpUi.Provider>
       ) : null}
-      {editing && canEdit ? (
+      {experimental && editing ? <ChangeReview open={review} changes={changes} onClose={() => setReview(false)} /> : null}
+      {experimental && canEdit ? <LabSaveBar editing={editing} busy={busy} count={changes.length} onEdit={startEdit} onSave={onSave} onCancel={cancelEdit} onReview={() => setReview((value) => !value)} ready={!!form && !loading} saved={saved} applyState={applyState} onRetry={retryApply} /> : null}
+      {!experimental && editing && canEdit ? (
         <div className="config-savebar">
           <span className="muted">Chưa lưu</span>
           <div>

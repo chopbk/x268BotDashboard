@@ -41,6 +41,15 @@ Bot giao dịch đọc cấu hình ở process riêng. Không nối mũi tên t�
 
 Chỉ báo “đã đồng bộ” khi ACK terminal từ TRADER. Offline → chờ đồng bộ + retry.
 
+Config thử nghiệm: `/config-lab` → GET `/api/bots/assigned-configs` (summary có `paper`)
+→ tạo account `POST .../accounts` (+ `copyFrom`) hoặc bulk `POST .../configs/bulk`
+→ `/config-lab/:username/:env` → AccountConfigPage experimental (signal gợi ý, sync picker,
+copy mode, APPLY trên savebar, journey Position/Static).
+`configDraft.configPayload` giữ normalization cũ; `configChanges` so draft với snapshot lúc
+bấm Sửa; PATCH chỉ gồm field thay đổi. View cũ vẫn gửi payload như trước. Không tạo API,
+collection hay luồng áp dụng bot thứ hai. Bộ lọc list nằm trong URL; link quay lại dùng
+ngữ cảnh từ list, không phụ thuộc nút Back của trình duyệt.
+
 ## 3. Tìm rồi copy/sync config
 
 [SignalSearchPage](../client/src/pages/SignalSearchPage.jsx) → GET `/api/bots/config-search` → [config-search](../server/src/lib/config-search.js) → lọc bot được phép, account_configs + account_statics → bảng hiệu suất → popup GET config/Static → POST `/:username/configs/:env/copy` → [copyAccount](../server/src/lib/bot-directory.js) → ghi config đích và liên kết account → audit `config.copied`.

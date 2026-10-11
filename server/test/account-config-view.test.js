@@ -191,3 +191,9 @@ test("config glance mine is owned plus assigned, all adds viewable bots", async 
         AccountConfig.find = originalConfigs;
     }
 });
+
+test("config summaries expose actual paper mode for the experimental directory", () => {
+    assert.equal(toSummary({ env: "DEMO", trade_config: { PAPER: true } }).paper, true);
+    assert.equal(toSummary({ env: "DEMO", trade_config: { PAPER: false } }).paper, false);
+    assert.equal(toSummary({ env: "DEMO", trade_config: {} }).paper, false);
+});

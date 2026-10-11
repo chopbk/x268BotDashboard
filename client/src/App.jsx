@@ -8,6 +8,7 @@ import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import BotDetailPage from "./pages/BotDetailPage";
 import AccountConfigPage from "./pages/AccountConfigPage";
+import ConfigLabPage from "./pages/ConfigLabPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import UserApisPage from "./pages/UserApisPage";
 import UserApiDetailPage from "./pages/UserApiDetailPage";
@@ -81,6 +82,7 @@ function Shell({ children }) {
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/" end>Tổng quan</NavLink> : null}
           {hasPermission(user, BOTS_VIEW) || hasPermission(user, CREDENTIALS_VIEW) ? <p className="nav-label">Bot</p> : null}
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/bots">Danh sách</NavLink> : null}
+          {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/config-lab">Config mới <small>Thử nghiệm</small></NavLink> : null}
           {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
           {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/positions">Position</NavLink> : null}
@@ -131,6 +133,8 @@ function AppRoutes() {
           </Protected>
         }
       />
+      <Route path="/config-lab" element={<Protected permission={CONFIG_VIEW}><Shell><ConfigLabPage /></Shell></Protected>} />
+      <Route path="/config-lab/:username/:env" element={<Protected permission={CONFIG_VIEW}><Shell><AccountConfigPage experimental /></Shell></Protected>} />
       <Route
         path="/bots/:username/accounts/:env"
         element={

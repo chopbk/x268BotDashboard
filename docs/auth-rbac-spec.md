@@ -601,3 +601,10 @@ Test bắt buộc thêm:
 - phone trong diff bị mask;
 - user thiếu `logs.view` nhận `403` ở audit API;
 - create/update/register tạo đúng action và actor/target.
+
+
+### Giao diện Config mới (thử nghiệm)
+
+Menu/route `/config-lab` và `/config-lab/:username/:env` yêu cầu `config.view`; nút sửa
+vẫn theo `config.edit` và scope tài nguyên hiện có. Dùng GET/PATCH config và CSRF hiện có,
+không cấp quyền mới. Người chỉ xem vẫn có thể dùng các nhóm/summary nhưng không sửa.
