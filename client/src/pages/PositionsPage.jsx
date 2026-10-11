@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { useEscape } from "../navigation";
 import { alertText, positionAlerts } from "../position-alerts";
 import { POSITION_COLUMNS, qtyOf, roiOf, sortedRows, volumeOf } from "../position-sort";
+import { closePreview, openPreview, TAKER_FEE_RATE } from "../trade-preview";
 import PositionHistory from "./PositionHistory";
 import OpenOrdersTab from "../components/OpenOrdersTab";
 import OrderHistoryTab from "../components/OrderHistoryTab";
@@ -58,13 +59,15 @@ function matches(row, params) {
   return true;
 }
 
-const ACTION_NOTE = "Reverse chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
 const CLOSE_PERCENTS = [10, 25, 50, 75, 100];
 
 function exchangeTpsl(row) {
   return {
     tp: row.exchangeTp != null ? row.exchangeTp : null,
     sl: row.exchangeSl != null ? row.exchangeSl : null,
+    trailingCallback: row.exchangeTrailingCallback != null ? row.exchangeTrailingCallback : null,
+    trailingActivation: row.exchangeTrailingActivation != null ? row.exchangeTrailingActivation : null,
+    trailingOrderId: row.exchangeTrailingOrderId || null,
   };
 }
 
@@ -73,17 +76,61 @@ function monitorTpsl(row) {
   return {
     tp: monitors.map((monitor) => monitor.tp).find(Boolean) || null,
     sl: monitors.map((monitor) => monitor.sl).find(Boolean) || null,
+    trailing: monitors.map((monitor) => monitor.trailing).find(Boolean) || null,
   };
 }
 
 function tpslText(row) {
   const exchange = exchangeTpsl(row);
+  const parts = [];
   if (exchange.tp != null || exchange.sl != null) {
-    return `TP ${exchange.tp != null ? fmt(exchange.tp) : "—"} / SL ${exchange.sl != null ? fmt(exchange.sl) : "—"}`;
+    parts.push(`TP ${exchange.tp != null ? fmt(exchange.tp) : "—"} / SL ${exchange.sl != null ? fmt(exchange.sl) : "—"}`);
   }
+  if (exchange.trailingCallback != null) {
+    parts.push(`Trail ${fmt(exchange.trailingCallback, 2)}%`);
+  }
+  if (parts.length) return parts.join(" · ");
   const monitor = monitorTpsl(row);
-  if (!monitor.sl && !monitor.tp) return (row.monitors || []).length ? "Chưa có TP/SL" : "TP/SL";
+  if (!monitor.sl && !monitor.tp && !monitor.trailing) return (row.monitors || []).length ? "Chưa có TP/SL" : "TP/SL";
   return `TP ${monitor.tp || "—"} / SL ${monitor.sl || "—"} · monitor`;
+}
+
+function PreviewBlock({ preview, title }) {
+  if (!preview) return null;
+  return (
+    <div className="pos-preview">
+      {title ? <strong>{title}</strong> : null}
+      <ul>
+        <li>Qty đóng/mở: {fmt(preview.quantity)}</li>
+        {preview.exitPrice != null ? <li>Giá thoát ước tính: {fmt(preview.exitPrice)}</li> : null}
+        {preview.price != null && preview.exitPrice == null ? <li>Giá tham chiếu: {fmt(preview.price)}</li> : null}
+        {preview.notional != null ? <li>Notional ≈ {fmt(preview.notional, 2)} USDT</li> : null}
+        {preview.estimatedPnl != null ? (
+          <li className={pnlClass(preview.estimatedPnl)}>PnL dự kiến ≈ {fmt(preview.estimatedPnl, 2)} USDT</li>
+        ) : null}
+        {preview.estimatedFee != null ? (
+          <li>Phí ước tính (taker {(preview.feeRate || TAKER_FEE_RATE) * 100}%) ≈ {fmt(preview.estimatedFee, 4)} USDT</li>
+        ) : null}
+        {preview.netAfterFee != null ? (
+          <li className={pnlClass(preview.netAfterFee)}>Net sau phí ≈ {fmt(preview.netAfterFee, 2)} USDT</li>
+        ) : null}
+      </ul>
+      {preview.siblings?.length ? (
+        <>
+          <p className="muted">Sibling monitor dùng chung position ({preview.siblings.length}):</p>
+          <ul>
+            {preview.siblings.map((item) => (
+              <li key={item.id || `${item.env}-${item.signal}`}>
+                {item.env || "config"} · {item.signal || "—"} · qty riêng {fmt(item.ownQty)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="muted">Không có sibling monitor.</p>
+      )}
+    </div>
+  );
 }
 
 function numInput(value) {
@@ -137,6 +184,10 @@ export default function PositionsPage() {
   const [closing, setClosing] = useState(false);
   const [tpslDraft, setTpslDraft] = useState(null);
   const [savingTpsl, setSavingTpsl] = useState(false);
+  const [openTrade, setOpenTrade] = useState(null);
+  const [opening, setOpening] = useState(false);
+  const [reverseConfirm, setReverseConfirm] = useState(null);
+  const [reversing, setReversing] = useState(false);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [historyAccounts, setHistoryAccounts] = useState([]);
@@ -420,6 +471,12 @@ export default function PositionsPage() {
     if (usePercent && percent === 100) quantityMode = "ALL";
     else if (usePercent) quantityMode = "PERCENT";
     else if (Number.isFinite(fullQty) && Math.abs(qty - fullQty) < 1e-10) quantityMode = "ALL";
+    const closeQty = usePercent && percent === 100
+      ? fullQty
+      : usePercent
+        ? fullQty * (percent / 100)
+        : qty;
+    const exitPrice = orderType === "LIMIT" ? price : Number(row.mark);
     setClosePercentKey("");
     setError("");
     setCloseConfirm({
@@ -433,6 +490,13 @@ export default function PositionsPage() {
       price: orderType === "LIMIT" ? String(price) : undefined,
       mark: row.mark,
       fullQty,
+      preview: closePreview({
+        side: row.side,
+        entry: row.entry,
+        exitPrice,
+        qty: closeQty,
+        monitors: row.monitors,
+      }),
     });
   }
 
@@ -472,7 +536,7 @@ export default function PositionsPage() {
     }
   }
 
-  function openTpsl(row) {
+  function openTpsl(row, tab = "tpsl") {
     if (!canTpsl) {
       setError("Thiếu quyền positions.tpsl");
       return;
@@ -490,46 +554,77 @@ export default function PositionsPage() {
       side: row.side,
       entry: row.entry,
       mark: row.mark,
+      qty: qtyOf(row),
+      monitors: row.monitors || [],
+      tab: tab === "trailing" ? "trailing" : "tpsl",
       tp: numInput(exchange.tp ?? monitor.tp),
       sl: numInput(exchange.sl ?? monitor.sl),
       tpEnabled: true,
       slEnabled: true,
       tpWorkingType: "CONTRACT_PRICE",
       slWorkingType: "CONTRACT_PRICE",
+      callbackRate: numInput(exchange.trailingCallback) || "1",
+      activationPrice: numInput(exchange.trailingActivation),
+      trailingWorkingType: "CONTRACT_PRICE",
+      hasTrailing: exchange.trailingCallback != null,
+      trailingOrderId: exchange.trailingOrderId,
     });
   }
 
   async function submitTpsl() {
     if (!tpslDraft || savingTpsl) return;
-    const tpOn = tpslDraft.tpEnabled !== false && String(tpslDraft.tp || "").trim() !== "";
-    const slOn = tpslDraft.slEnabled !== false && String(tpslDraft.sl || "").trim() !== "";
-    if (!tpOn && !slOn) {
-      setError("Nhập ít nhất giá TP hoặc SL");
-      return;
-    }
-    if (tpOn && !(Number(tpslDraft.tp) > 0)) {
-      setError("Giá TP phải > 0");
-      return;
-    }
-    if (slOn && !(Number(tpslDraft.sl) > 0)) {
-      setError("Giá SL phải > 0");
-      return;
-    }
+    const key = `${tpslDraft.account}|${tpslDraft.symbol}|${tpslDraft.side}`;
     setSavingTpsl(true);
     try {
-      const key = `${tpslDraft.account}|${tpslDraft.symbol}|${tpslDraft.side}`;
-      const body = {
-        takeProfit: tpOn
-          ? { enabled: true, type: "TAKE_PROFIT_MARKET", triggerPrice: String(tpslDraft.tp), workingType: tpslDraft.tpWorkingType || "CONTRACT_PRICE" }
-          : { enabled: false },
-        stopLoss: slOn
-          ? { enabled: true, type: "STOP_MARKET", triggerPrice: String(tpslDraft.sl), workingType: tpslDraft.slWorkingType || "CONTRACT_PRICE" }
-          : { enabled: false },
-      };
+      let body;
+      if (tpslDraft.tab === "trailing") {
+        const rate = Number(tpslDraft.callbackRate);
+        if (!(rate >= 0.1 && rate <= 10)) {
+          setError("callbackRate trailing phải trong 0.1–10 (%)");
+          setSavingTpsl(false);
+          return;
+        }
+        body = {
+          takeProfit: { enabled: false },
+          stopLoss: { enabled: false },
+          trailing: {
+            enabled: true,
+            callbackRate: String(rate),
+            activationPrice: tpslDraft.activationPrice ? String(tpslDraft.activationPrice) : undefined,
+            workingType: tpslDraft.trailingWorkingType || "CONTRACT_PRICE",
+          },
+        };
+      } else {
+        const tpOn = tpslDraft.tpEnabled !== false && String(tpslDraft.tp || "").trim() !== "";
+        const slOn = tpslDraft.slEnabled !== false && String(tpslDraft.sl || "").trim() !== "";
+        if (!tpOn && !slOn) {
+          setError("Nhập ít nhất giá TP hoặc SL");
+          setSavingTpsl(false);
+          return;
+        }
+        if (tpOn && !(Number(tpslDraft.tp) > 0)) {
+          setError("Giá TP phải > 0");
+          setSavingTpsl(false);
+          return;
+        }
+        if (slOn && !(Number(tpslDraft.sl) > 0)) {
+          setError("Giá SL phải > 0");
+          setSavingTpsl(false);
+          return;
+        }
+        body = {
+          takeProfit: tpOn
+            ? { enabled: true, type: "TAKE_PROFIT_MARKET", triggerPrice: String(tpslDraft.tp), workingType: tpslDraft.tpWorkingType || "CONTRACT_PRICE" }
+            : { enabled: false },
+          stopLoss: slOn
+            ? { enabled: true, type: "STOP_MARKET", triggerPrice: String(tpslDraft.sl), workingType: tpslDraft.slWorkingType || "CONTRACT_PRICE" }
+            : { enabled: false },
+        };
+      }
       const result = await api(`/api/trading/positions/${encodeURIComponent(key)}/tpsl`, { method: "PUT", body });
       const rows = result?.command?.result?.results || [];
       const summary = rows.length
-        ? rows.map((row) => (row.success ? `${row.type}@${row.stopPrice || ""}` : `${row.type} lỗi: ${row.error}`)).join(" · ")
+        ? rows.map((row) => (row.success ? `${row.type}@${row.stopPrice || row.callbackRate || ""}` : `${row.type} lỗi: ${row.error}`)).join(" · ")
         : "đã gửi";
       setActionNote(`TP/SL ${tpslDraft.symbol} ${tpslDraft.side}: ${summary}`);
       setTpslDraft(null);
@@ -539,6 +634,151 @@ export default function PositionsPage() {
       setError(err.message || "Không đặt được TP/SL");
     } finally {
       setSavingTpsl(false);
+    }
+  }
+
+  async function cancelTrailing() {
+    if (!tpslDraft || savingTpsl) return;
+    setSavingTpsl(true);
+    try {
+      const key = `${tpslDraft.account}|${tpslDraft.symbol}|${tpslDraft.side}`;
+      await api(`/api/trading/positions/${encodeURIComponent(key)}/tpsl`, {
+        method: "PUT",
+        body: {
+          takeProfit: { enabled: false },
+          stopLoss: { enabled: false },
+          trailing: { enabled: false, cancel: true },
+        },
+      });
+      setActionNote(`Đã hủy Trailing ${tpslDraft.symbol} ${tpslDraft.side}`);
+      setTpslDraft(null);
+      setError("");
+    } catch (err) {
+      console.error("[positions]", err);
+      setError(err.message || "Không hủy được Trailing");
+    } finally {
+      setSavingTpsl(false);
+    }
+  }
+
+  function askReverse(row) {
+    if (!canClose || !canOpen) {
+      setError("Cần quyền positions.close và positions.open");
+      return;
+    }
+    if (row.book === "paper" || row.book === "pending") {
+      setError("Paper/lệnh chờ không reverse trên sàn");
+      return;
+    }
+    const qty = qtyOf(row);
+    setError("");
+    setReverseConfirm({
+      account: row.account,
+      symbol: row.symbol,
+      positionSide: row.side,
+      newSide: row.side === "LONG" ? "SHORT" : "LONG",
+      quantity: numInput(qty),
+      mark: row.mark,
+      entry: row.entry,
+      preview: closePreview({
+        side: row.side,
+        entry: row.entry,
+        exitPrice: row.mark,
+        qty,
+        monitors: row.monitors,
+      }),
+      openPreview: openPreview({
+        side: row.side === "LONG" ? "SHORT" : "LONG",
+        entryOrMark: row.mark,
+        quantity: qty,
+      }),
+    });
+  }
+
+  async function submitReverse() {
+    if (!reverseConfirm || reversing) return;
+    setReversing(true);
+    try {
+      const body = {
+        username: reverseConfirm.account,
+        symbol: reverseConfirm.symbol,
+        positionSide: reverseConfirm.positionSide,
+        closeOrderType: "MARKET",
+        openOrderType: "MARKET",
+        newQuantity: reverseConfirm.quantity,
+      };
+      const result = await api("/api/trading/positions/reverse", { method: "POST", body });
+      setActionNote(
+        result?.duplicate
+          ? `Reverse ${reverseConfirm.symbol} trùng request trước đó.`
+          : `Đã reverse ${reverseConfirm.symbol} ${reverseConfirm.positionSide} → ${reverseConfirm.newSide}`
+      );
+      setReverseConfirm(null);
+      setError("");
+    } catch (err) {
+      console.error("[positions]", err);
+      setError(err.message || "Không reverse được");
+    } finally {
+      setReversing(false);
+    }
+  }
+
+  function askOpenTrade(seed = {}) {
+    if (!canOpen) {
+      setError("Thiếu quyền positions.open");
+      return;
+    }
+    const accounts = payload?.accounts || [];
+    setError("");
+    setOpenTrade({
+      account: seed.account || account || accounts[0]?.username || "",
+      symbol: seed.symbol || "",
+      side: seed.side || "LONG",
+      orderType: "MARKET",
+      quantity: "",
+      price: numInput(seed.mark) || "",
+      mark: numInput(seed.mark) || "",
+    });
+  }
+
+  async function submitOpenTrade() {
+    if (!openTrade || opening) return;
+    if (!openTrade.account || !openTrade.symbol) {
+      setError("Thiếu account hoặc symbol");
+      return;
+    }
+    if (!(Number(openTrade.quantity) > 0)) {
+      setError("Quantity phải > 0");
+      return;
+    }
+    if (openTrade.orderType === "LIMIT" && !(Number(openTrade.price) > 0)) {
+      setError("LIMIT cần giá > 0");
+      return;
+    }
+    setOpening(true);
+    try {
+      const body = {
+        username: openTrade.account,
+        symbol: String(openTrade.symbol).toUpperCase(),
+        positionSide: openTrade.side,
+        orderType: openTrade.orderType,
+        quantity: String(openTrade.quantity),
+      };
+      if (openTrade.orderType === "LIMIT") body.price = String(openTrade.price);
+      const result = await api("/api/trading/positions/open", { method: "POST", body });
+      const orderId = result?.command?.result?.orderId;
+      setActionNote(
+        result?.duplicate
+          ? `Mở ${body.symbol} trùng request trước đó.`
+          : `Đã gửi mở ${body.orderType} ${body.symbol} ${body.positionSide} qty ${body.quantity}${orderId ? ` · order ${orderId}` : ""}`
+      );
+      setOpenTrade(null);
+      setError("");
+    } catch (err) {
+      console.error("[positions]", err);
+      setError(err.message || "Không mở được position");
+    } finally {
+      setOpening(false);
     }
   }
 
@@ -564,9 +804,14 @@ export default function PositionsPage() {
 
   return (
     <section className="stack pos-screen">
-      <header>
-        <h1>Position</h1>
-        <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận lấy từ income Binance lúc mở trang và lúc bấm Cập nhật sàn. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
+      <header className="pos-header-row">
+        <div>
+          <h1>Position</h1>
+          <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận lấy từ income Binance lúc mở trang và lúc bấm Cập nhật sàn. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
+        </div>
+        {canOpen && tab === "open" ? (
+          <button type="button" className="pos-tpsl-confirm" onClick={() => askOpenTrade()}>Mở position</button>
+        ) : null}
       </header>
       <div className="history-tabs" role="tablist">
         <button type="button" className={tab === "open" ? "active" : ""} onClick={() => go((query) => { query.delete("tab"); query.delete("trade"); })}>Đang mở</button>
@@ -792,12 +1037,12 @@ export default function PositionsPage() {
                             <button type="button" className="ghost" onClick={() => setActionNote(canClose ? "Paper/lệnh chờ không đóng bằng Market/Limit." : "Thiếu quyền positions.close")}>Limit</button>
                           </>
                         )}
-                        <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
+                        <button type="button" className="ghost" disabled={reversing} onClick={() => askReverse(row)}>Reverse</button>
                         <button
                           type="button"
                           className="pos-tpsl-link"
-                          title={canTpsl ? "Chỉnh Position TP/SL trên sàn" : "Thiếu quyền positions.tpsl"}
-                          onClick={() => openTpsl(row)}
+                          title={canTpsl ? "Chỉnh Position TP/SL / Trailing trên sàn" : "Thiếu quyền positions.tpsl"}
+                          onClick={() => openTpsl(row, "tpsl")}
                         >
                           {tpslText(row)}
                         </button>
@@ -858,49 +1103,105 @@ export default function PositionsPage() {
               {" · entry "}{fmt(tpslDraft.entry)}
               {" · mark "}{fmt(tpslDraft.mark)}
             </p>
-            <label className="pos-tpsl-field">
-              <span className="pos-tpsl-label pos-tpsl-tp">Take Profit</span>
-              <span className="pos-tpsl-inputs">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Giá trigger"
-                  value={tpslDraft.tp}
-                  onChange={(event) => setTpslDraft({ ...tpslDraft, tp: event.target.value.replace(/,/g, ""), tpEnabled: true })}
+            <div className="history-tabs" role="tablist">
+              <button type="button" className={tpslDraft.tab === "tpsl" ? "active" : ""} onClick={() => setTpslDraft({ ...tpslDraft, tab: "tpsl" })}>Position TP/SL</button>
+              <button type="button" className={tpslDraft.tab === "trailing" ? "active" : ""} onClick={() => setTpslDraft({ ...tpslDraft, tab: "trailing" })}>Trailing Stop</button>
+            </div>
+            {tpslDraft.tab === "tpsl" ? (
+              <>
+                <label className="pos-tpsl-field">
+                  <span className="pos-tpsl-label pos-tpsl-tp">Take Profit</span>
+                  <span className="pos-tpsl-inputs">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Giá trigger"
+                      value={tpslDraft.tp}
+                      onChange={(event) => setTpslDraft({ ...tpslDraft, tp: event.target.value.replace(/,/g, ""), tpEnabled: true })}
+                    />
+                    <select
+                      value={tpslDraft.tpWorkingType}
+                      onChange={(event) => setTpslDraft({ ...tpslDraft, tpWorkingType: event.target.value })}
+                      aria-label="TP theo giá"
+                    >
+                      <option value="CONTRACT_PRICE">Last</option>
+                      <option value="MARK_PRICE">Mark</option>
+                    </select>
+                  </span>
+                </label>
+                <label className="pos-tpsl-field">
+                  <span className="pos-tpsl-label pos-tpsl-sl">Stop Loss</span>
+                  <span className="pos-tpsl-inputs">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Giá trigger"
+                      value={tpslDraft.sl}
+                      onChange={(event) => setTpslDraft({ ...tpslDraft, sl: event.target.value.replace(/,/g, ""), slEnabled: true })}
+                    />
+                    <select
+                      value={tpslDraft.slWorkingType}
+                      onChange={(event) => setTpslDraft({ ...tpslDraft, slWorkingType: event.target.value })}
+                      aria-label="SL theo giá"
+                    >
+                      <option value="CONTRACT_PRICE">Last</option>
+                      <option value="MARK_PRICE">Mark</option>
+                    </select>
+                  </span>
+                </label>
+                <PreviewBlock
+                  title="Preview nếu chạm TP/SL (ước tính)"
+                  preview={closePreview({
+                    side: tpslDraft.side,
+                    entry: tpslDraft.entry,
+                    exitPrice: Number(tpslDraft.tp) || Number(tpslDraft.sl) || tpslDraft.mark,
+                    qty: tpslDraft.qty,
+                    monitors: tpslDraft.monitors,
+                  })}
                 />
-                <select
-                  value={tpslDraft.tpWorkingType}
-                  onChange={(event) => setTpslDraft({ ...tpslDraft, tpWorkingType: event.target.value })}
-                  aria-label="TP theo giá"
-                >
-                  <option value="CONTRACT_PRICE">Last</option>
-                  <option value="MARK_PRICE">Mark</option>
-                </select>
-              </span>
-            </label>
-            <label className="pos-tpsl-field">
-              <span className="pos-tpsl-label pos-tpsl-sl">Stop Loss</span>
-              <span className="pos-tpsl-inputs">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Giá trigger"
-                  value={tpslDraft.sl}
-                  onChange={(event) => setTpslDraft({ ...tpslDraft, sl: event.target.value.replace(/,/g, ""), slEnabled: true })}
-                />
-                <select
-                  value={tpslDraft.slWorkingType}
-                  onChange={(event) => setTpslDraft({ ...tpslDraft, slWorkingType: event.target.value })}
-                  aria-label="SL theo giá"
-                >
-                  <option value="CONTRACT_PRICE">Last</option>
-                  <option value="MARK_PRICE">Mark</option>
-                </select>
-              </span>
-            </label>
-            <p className="muted">Gửi Algo Order TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại sẽ bị hủy trước.</p>
+                <p className="muted">Algo Order TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại bị hủy trước.</p>
+              </>
+            ) : (
+              <>
+                <label className="pos-tpsl-field">
+                  <span className="pos-tpsl-label">Callback rate (%)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="1.0"
+                    value={tpslDraft.callbackRate}
+                    onChange={(event) => setTpslDraft({ ...tpslDraft, callbackRate: event.target.value.replace(/,/g, "") })}
+                  />
+                </label>
+                <label className="pos-tpsl-field">
+                  <span className="pos-tpsl-label">Activation price (optional)</span>
+                  <span className="pos-tpsl-inputs">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Để trống = kích hoạt ngay"
+                      value={tpslDraft.activationPrice}
+                      onChange={(event) => setTpslDraft({ ...tpslDraft, activationPrice: event.target.value.replace(/,/g, "") })}
+                    />
+                    <select
+                      value={tpslDraft.trailingWorkingType}
+                      onChange={(event) => setTpslDraft({ ...tpslDraft, trailingWorkingType: event.target.value })}
+                      aria-label="Trailing theo giá"
+                    >
+                      <option value="CONTRACT_PRICE">Last</option>
+                      <option value="MARK_PRICE">Mark</option>
+                    </select>
+                  </span>
+                </label>
+                {tpslDraft.hasTrailing ? <p className="muted">Đang có trailing {fmt(tpslDraft.callbackRate, 2)}% trên sàn — Confirm sẽ thay lệnh cũ.</p> : null}
+                <p className="muted">TRAILING_STOP_MARKET + closePosition qua Algo Order API.</p>
+              </>
+            )}
             <div className="pos-inline">
               <button type="button" className="ghost" disabled={savingTpsl} onClick={() => setTpslDraft(null)}>Huỷ</button>
+              {tpslDraft.tab === "trailing" && tpslDraft.hasTrailing ? (
+                <button type="button" className="ghost" disabled={savingTpsl} onClick={cancelTrailing}>Xóa trailing</button>
+              ) : null}
               <button type="submit" className="pos-tpsl-confirm" disabled={savingTpsl}>{savingTpsl ? "Đang gửi…" : "Confirm"}</button>
             </div>
           </form>
@@ -924,12 +1225,93 @@ export default function PositionsPage() {
                   ? " · 100% (toàn bộ)"
                   : ` · qty ${closeConfirm.quantity}`}
             </p>
-            <p className="muted">Lệnh gửi thẳng lên Binance. Limit chưa khớp thì position vẫn còn.</p>
+            <PreviewBlock preview={closeConfirm.preview} title="Preview trước khi gửi" />
+            <p className="muted">Phí là ước tính taker mặc định, không phải phí VIP thật. Limit chưa khớp thì position vẫn còn.</p>
             <div className="pos-inline">
               <button type="button" className="ghost" disabled={closing} onClick={() => setCloseConfirm(null)}>Giữ lệnh</button>
               <button type="button" disabled={closing} onClick={submitClose}>{closing ? "Đang gửi…" : "Xác nhận đóng"}</button>
             </div>
           </div>
+        </div>
+      ) : null}
+      {reverseConfirm ? (
+        <div className="modal-backdrop" onClick={() => { if (!reversing) setReverseConfirm(null); }}>
+          <div className="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="reverse-title" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <h2 id="reverse-title">Xác nhận Reverse</h2>
+              <button type="button" disabled={reversing} onClick={() => setReverseConfirm(null)}>Huỷ</button>
+            </header>
+            <p>
+              {reverseConfirm.account} · {reverseConfirm.symbol}: {reverseConfirm.positionSide} → {reverseConfirm.newSide}
+              <br />
+              Đóng MARKET toàn bộ rồi mở MARKET qty {reverseConfirm.quantity}
+            </p>
+            <PreviewBlock preview={reverseConfirm.preview} title="Bước 1 — đóng vị thế hiện tại" />
+            <PreviewBlock preview={reverseConfirm.openPreview} title="Bước 2 — mở phía đối ứng" />
+            <p className="muted">Hai lệnh liên tiếp; nếu mở thất bại sau khi đóng, vị thế có thể về flat.</p>
+            <div className="pos-inline">
+              <button type="button" className="ghost" disabled={reversing} onClick={() => setReverseConfirm(null)}>Giữ lệnh</button>
+              <button type="button" disabled={reversing} onClick={submitReverse}>{reversing ? "Đang gửi…" : "Xác nhận reverse"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {openTrade ? (
+        <div className="modal-backdrop" onClick={() => { if (!opening) setOpenTrade(null); }}>
+          <form
+            className="modal-card stack"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="open-trade-title"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => { event.preventDefault(); submitOpenTrade(); }}
+          >
+            <header>
+              <h2 id="open-trade-title">Mở position</h2>
+              <button type="button" disabled={opening} onClick={() => setOpenTrade(null)}>Đóng</button>
+            </header>
+            <label>Tài khoản
+              <select value={openTrade.account} onChange={(event) => setOpenTrade({ ...openTrade, account: event.target.value })} required>
+                <option value="">Chọn</option>
+                {(payload?.accounts || []).map((item) => <option key={item.username} value={item.username}>{item.username}</option>)}
+              </select>
+            </label>
+            <label>Symbol
+              <input value={openTrade.symbol} onChange={(event) => setOpenTrade({ ...openTrade, symbol: event.target.value.toUpperCase() })} required />
+            </label>
+            <label>Side
+              <select value={openTrade.side} onChange={(event) => setOpenTrade({ ...openTrade, side: event.target.value })}>
+                <option value="LONG">LONG</option>
+                <option value="SHORT">SHORT</option>
+              </select>
+            </label>
+            <label>Loại lệnh
+              <select value={openTrade.orderType} onChange={(event) => setOpenTrade({ ...openTrade, orderType: event.target.value })}>
+                <option value="MARKET">MARKET</option>
+                <option value="LIMIT">LIMIT</option>
+              </select>
+            </label>
+            <label>Quantity
+              <input type="text" inputMode="decimal" value={openTrade.quantity} onChange={(event) => setOpenTrade({ ...openTrade, quantity: event.target.value.replace(/,/g, "") })} required />
+            </label>
+            {openTrade.orderType === "LIMIT" ? (
+              <label>Giá
+                <input type="text" inputMode="decimal" value={openTrade.price} onChange={(event) => setOpenTrade({ ...openTrade, price: event.target.value.replace(/,/g, "") })} required />
+              </label>
+            ) : null}
+            <PreviewBlock
+              title="Preview"
+              preview={openPreview({
+                side: openTrade.side,
+                entryOrMark: openTrade.orderType === "LIMIT" ? openTrade.price : (openTrade.mark || openTrade.price),
+                quantity: openTrade.quantity,
+              })}
+            />
+            <div className="pos-inline">
+              <button type="button" className="ghost" disabled={opening} onClick={() => setOpenTrade(null)}>Huỷ</button>
+              <button type="submit" className="pos-tpsl-confirm" disabled={opening}>{opening ? "Đang gửi…" : "Confirm mở"}</button>
+            </div>
+          </form>
         </div>
       ) : null}
       {draft ? (

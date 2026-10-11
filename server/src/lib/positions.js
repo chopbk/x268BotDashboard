@@ -275,6 +275,8 @@ function publicOrder(row, kind) {
         type: row.type || row.orderType || "",
         price: num(row.price || row.triggerPrice) || null,
         stopPrice: num(row.stopPrice || row.triggerPrice) || null,
+        callbackRate: num(row.callbackRate) || null,
+        activationPrice: num(row.activationPrice) || null,
         qty: num(row.origQty || row.quantity) || null,
         status: row.status || row.algoStatus || "",
         reduceOnly: row.reduceOnly === true || row.reduceOnly === "true",
@@ -299,19 +301,36 @@ function pickExchangeTpsl(orders) {
     let sl = null;
     let tpOrderId = null;
     let slOrderId = null;
+    let trailingCallback = null;
+    let trailingActivation = null;
+    let trailingOrderId = null;
     for (const order of orders || []) {
         const type = String(order.type || "").toUpperCase();
+        if (type.includes("TRAILING")) {
+            trailingCallback = order.callbackRate != null ? Number(order.callbackRate) : null;
+            trailingActivation = order.activationPrice != null ? Number(order.activationPrice) : null;
+            trailingOrderId = order.id || null;
+            continue;
+        }
         const trigger = order.stopPrice != null ? order.stopPrice : order.price;
         if (!Number.isFinite(Number(trigger))) continue;
         if (type.includes("TAKE_PROFIT")) {
             tp = Number(trigger);
             tpOrderId = order.id || null;
-        } else if (type.startsWith("STOP") && !type.includes("TAKE_PROFIT")) {
+        } else if (type === "STOP" || type === "STOP_MARKET") {
             sl = Number(trigger);
             slOrderId = order.id || null;
         }
     }
-    return { exchangeTp: tp, exchangeSl: sl, exchangeTpOrderId: tpOrderId, exchangeSlOrderId: slOrderId };
+    return {
+        exchangeTp: tp,
+        exchangeSl: sl,
+        exchangeTpOrderId: tpOrderId,
+        exchangeSlOrderId: slOrderId,
+        exchangeTrailingCallback: trailingCallback,
+        exchangeTrailingActivation: trailingActivation,
+        exchangeTrailingOrderId: trailingOrderId,
+    };
 }
 
 function parentFromExchange(account, row, connection) {

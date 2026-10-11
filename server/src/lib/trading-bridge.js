@@ -53,7 +53,7 @@ const TRADING_ACTIONS = Object.freeze({
     },
     POSITION_REVERSE: {
         permissions: ["positions.open", "positions.close"],
-        requiredFields: ["closeOrderType", "openOrderType", "newQuantity"],
+        requiredFields: ["closeOrderType", "openOrderType"],
         validate: validatePositionReverse,
     },
     ORDER_CREATE: {
@@ -115,14 +115,21 @@ function validateSetTpsl(params) {
     const body = params || {};
     const tp = body.tp ?? body.takeProfit?.triggerPrice ?? body.takeProfit?.price;
     const sl = body.sl ?? body.stopLoss?.triggerPrice ?? body.stopLoss?.price;
+    const trail = body.trailing || {};
     const tpOn = body.takeProfit?.enabled !== false && tp != null && tp !== "";
     const slOn = body.stopLoss?.enabled !== false && sl != null && sl !== "";
-    if (!tpOn && !slOn) {
-        return { valid: false, error: "Cần ít nhất TP hoặc SL" };
+    const trailCancelOnly = trail.enabled === false && trail.cancel === true;
+    const trailOn = trail.enabled !== false && trail.callbackRate != null && trail.callbackRate !== "";
+    if (!tpOn && !slOn && !trailOn && !trailCancelOnly) {
+        return { valid: false, error: "Cần ít nhất TP, SL hoặc Trailing" };
     }
     if (tpOn && !(Number(tp) > 0)) return { valid: false, error: "Giá TP phải > 0" };
     if (slOn && !(Number(sl) > 0)) return { valid: false, error: "Giá SL phải > 0" };
-    const workingType = String(body.workingType || body.tpWorkingType || body.slWorkingType || "CONTRACT_PRICE").toUpperCase();
+    if (trailOn) {
+        const rate = Number(trail.callbackRate);
+        if (!(rate >= 0.1 && rate <= 10)) return { valid: false, error: "callbackRate trailing phải trong 0.1–10 (%)" };
+    }
+    const workingType = String(body.workingType || body.tpWorkingType || body.slWorkingType || trail.workingType || "CONTRACT_PRICE").toUpperCase();
     if (!["CONTRACT_PRICE", "MARK_PRICE", "LAST", "MARK"].includes(workingType)) {
         return { valid: false, error: "workingType phải là CONTRACT_PRICE (Last) hoặc MARK_PRICE" };
     }
@@ -198,8 +205,25 @@ function validatePositionOpen(params) {
 }
 
 function validatePositionReverse(params) {
-    // Phase F implementation
-    return { valid: true, normalized: params };
+    const closeOrderType = String(params.closeOrderType || "MARKET").toUpperCase();
+    const openOrderType = String(params.openOrderType || "MARKET").toUpperCase();
+    if (closeOrderType !== "MARKET" && closeOrderType !== "LIMIT") {
+        return { valid: false, error: "closeOrderType phải là MARKET hoặc LIMIT" };
+    }
+    if (openOrderType !== "MARKET" && openOrderType !== "LIMIT") {
+        return { valid: false, error: "openOrderType phải là MARKET hoặc LIMIT" };
+    }
+    if (params.newQuantity != null && params.newQuantity !== "" && !(Number(params.newQuantity) > 0)) {
+        return { valid: false, error: "newQuantity phải > 0" };
+    }
+    return {
+        valid: true,
+        normalized: {
+            ...params,
+            closeOrderType,
+            openOrderType,
+        },
+    };
 }
 
 function validateOrderCreate(params) {

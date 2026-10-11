@@ -216,11 +216,16 @@ test("exchange TP/SL from closePosition orders attach to the live position", () 
             { orderId: 11, symbol: "BTCUSDT", side: "SELL", positionSide: "BOTH", type: "TAKE_PROFIT_MARKET", stopPrice: "120", closePosition: true, status: "NEW" },
             { orderId: 12, symbol: "BTCUSDT", side: "SELL", positionSide: "BOTH", type: "STOP_MARKET", stopPrice: "90", closePosition: true, status: "NEW" },
         ],
+        algoOrders: [
+            { algoId: 13, symbol: "BTCUSDT", side: "SELL", positionSide: "BOTH", type: "TRAILING_STOP_MARKET", callbackRate: "1.5", closePosition: true, status: "NEW" },
+        ],
     });
     const row = rows.find((item) => item.symbol === "BTCUSDT" && item.book === "live");
     assert.equal(row.exchangeTp, 120);
     assert.equal(row.exchangeSl, 90);
+    assert.equal(row.exchangeTrailingCallback, 1.5);
     assert.equal(row.exchangeOrders.length, 2);
+    assert.equal(row.algoOrders.length, 1);
 });
 
 test("long and short stay apart, paper and notpsl are not merged into exchange pnl", () => {

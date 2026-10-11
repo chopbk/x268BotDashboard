@@ -171,6 +171,10 @@ async function openPositionDirect(target, params) {
 
     const { symbol, positionSide } = target;
     const { orderType, quantity, price } = params;
+    const type = String(orderType || "MARKET").toUpperCase();
+    const info = await findSymbolInfo(symbol);
+    const qtyText = floorToStep(quantity, info?.stepSize);
+    if (!qtyText) throw httpError(400, "Quantity sau làm tròn = 0");
 
     const side = positionSide === "SHORT" ? "SELL" : "BUY";
 
@@ -178,15 +182,18 @@ async function openPositionDirect(target, params) {
         symbol,
         side,
         positionSide: positionSide || "BOTH",
-        type: orderType || "MARKET",
-        quantity: String(quantity),
+        type,
+        quantity: qtyText,
     };
 
-    if (orderType === "LIMIT" && price) {
-        orderParams.price = String(price);
+    if (type === "LIMIT") {
+        const priceText = roundToTick(price, info?.tickSize);
+        if (!priceText) throw httpError(400, "LIMIT open cần giá hợp lệ");
+        orderParams.price = priceText;
         orderParams.timeInForce = "GTC";
     }
 
+    console.log("[openPositionDirect]", account, symbol, orderParams);
     const result = await client.signed("POST", "/fapi/v1/order", orderParams);
     return { success: true, orderId: result?.orderId, result };
 }
@@ -223,6 +230,7 @@ function matchesProtectiveKind(type, kinds) {
     return (kinds || []).some((kind) => {
         if (kind === "TAKE_PROFIT") return t.includes("TAKE_PROFIT");
         if (kind === "STOP") return t === "STOP" || t === "STOP_MARKET";
+        if (kind === "TRAILING") return t.includes("TRAILING");
         return t.includes(kind);
     });
 }
@@ -278,7 +286,7 @@ async function cancelProtectiveOrders(client, symbol, positionSide, kinds) {
 }
 
 async function placeAlgoProtective(client, {
-    symbol, side, positionSide, type, triggerPrice, workingType, limitPrice,
+    symbol, side, positionSide, type, triggerPrice, workingType, limitPrice, callbackRate, activationPrice,
 }) {
     const params = {
         algoType: "CONDITIONAL",
@@ -286,13 +294,18 @@ async function placeAlgoProtective(client, {
         side,
         positionSide,
         type,
-        triggerPrice: String(triggerPrice),
         closePosition: "true",
-        workingType,
+        workingType: resolveWorkingType(workingType),
     };
-    if ((type === "STOP" || type === "TAKE_PROFIT") && limitPrice) {
-        params.price = String(limitPrice);
-        params.timeInForce = "GTC";
+    if (type === "TRAILING_STOP_MARKET") {
+        params.callbackRate = String(callbackRate);
+        if (activationPrice) params.activationPrice = String(activationPrice);
+    } else {
+        params.triggerPrice = String(triggerPrice);
+        if ((type === "STOP" || type === "TAKE_PROFIT") && limitPrice) {
+            params.price = String(limitPrice);
+            params.timeInForce = "GTC";
+        }
     }
     console.log("[placeAlgoProtective]", symbol, type, params);
     const result = await client.signed("POST", "/fapi/v1/algoOrder", params);
@@ -304,7 +317,7 @@ async function placeAlgoProtective(client, {
 }
 
 /**
- * Set TP/SL qua Algo Order API (Binance -4120 nếu còn dùng /fapi/v1/order).
+ * Set TP/SL/Trailing qua Algo Order API.
  */
 async function setTpslDirect(target, params) {
     const account = target?.env || target?.username;
@@ -314,9 +327,14 @@ async function setTpslDirect(target, params) {
     const { symbol, positionSide } = target;
     const tpRaw = tpslTriggerOf(params, "tp");
     const slRaw = tpslTriggerOf(params, "sl");
+    const trail = params?.trailing || {};
     const tpEnabled = params?.takeProfit?.enabled !== false && tpRaw != null && tpRaw !== "";
     const slEnabled = params?.stopLoss?.enabled !== false && slRaw != null && slRaw !== "";
-    if (!tpEnabled && !slEnabled) throw httpError(400, "Cần ít nhất TP hoặc SL");
+    const trailCancelOnly = trail.enabled === false && trail.cancel === true;
+    const trailEnabled = trail.enabled !== false && trail.callbackRate != null && trail.callbackRate !== "";
+    if (!tpEnabled && !slEnabled && !trailEnabled && !trailCancelOnly) {
+        throw httpError(400, "Cần ít nhất TP, SL hoặc Trailing");
+    }
 
     const positions = await client.signedGet("/fapi/v2/positionRisk", { symbol });
     const position = (Array.isArray(positions) ? positions : []).find(
@@ -335,7 +353,13 @@ async function setTpslDirect(target, params) {
     const cancelKinds = [];
     if (tpEnabled) cancelKinds.push("TAKE_PROFIT");
     if (slEnabled) cancelKinds.push("STOP");
+    if (trailEnabled || trailCancelOnly) cancelKinds.push("TRAILING");
     const cancelled = await cancelProtectiveOrders(client, symbol, posSide, cancelKinds);
+
+    if (trailCancelOnly && !tpEnabled && !slEnabled && !trailEnabled) {
+        console.log("[setTpslDirect]", account, symbol, "cancel trailing only", cancelled.length);
+        return { success: true, results: [{ type: "TRAILING", success: true, cancelled: true }], cancelled };
+    }
 
     if (tpEnabled) {
         try {
@@ -376,6 +400,39 @@ async function setTpslDirect(target, params) {
             results.push({ type: "SL", success: true, orderId: placed.orderId, algoId: placed.algoId, stopPrice: triggerPrice, workingType });
         } catch (error) {
             results.push({ type: "SL", success: false, error: error.message });
+        }
+    }
+
+    if (trailEnabled) {
+        try {
+            const callbackRate = Number(trail.callbackRate);
+            if (!(callbackRate >= 0.1 && callbackRate <= 10)) {
+                throw httpError(400, "callbackRate trailing phải trong 0.1–10 (%)");
+            }
+            const activation = trail.activationPrice
+                ? roundToTick(trail.activationPrice, info?.tickSize)
+                : null;
+            const workingType = resolveWorkingType(trail.workingType || params?.workingType);
+            const placed = await placeAlgoProtective(client, {
+                symbol,
+                side: closeSide,
+                positionSide: posSide,
+                type: "TRAILING_STOP_MARKET",
+                callbackRate,
+                activationPrice: activation || undefined,
+                workingType,
+            });
+            results.push({
+                type: "TRAILING",
+                success: true,
+                orderId: placed.orderId,
+                algoId: placed.algoId,
+                callbackRate,
+                activationPrice: activation,
+                workingType,
+            });
+        } catch (error) {
+            results.push({ type: "TRAILING", success: false, error: error.message });
         }
     }
 
@@ -491,7 +548,15 @@ async function reversePositionDirect(target, params) {
     const { symbol, positionSide } = target;
     const { closeOrderType, openOrderType, newQuantity } = params;
 
-    // Close current
+    const client = await getClient(account);
+    const positions = await client.signedGet("/fapi/v2/positionRisk", { symbol });
+    const position = (Array.isArray(positions) ? positions : []).find(
+        (p) => p.symbol === symbol && (p.positionSide === positionSide || positionSide === "BOTH")
+    );
+    const currentQty = Math.abs(parseFloat(position?.positionAmt || 0));
+    if (!(currentQty > 0)) throw httpError(400, "Position không tồn tại để reverse");
+    const openQty = newQuantity != null && newQuantity !== "" ? newQuantity : currentQty;
+
     const closeResult = await closePositionDirect(target, {
         orderType: closeOrderType || "MARKET",
         quantityMode: "ALL",
@@ -501,14 +566,13 @@ async function reversePositionDirect(target, params) {
         return { success: false, error: "Close failed", closeResult };
     }
 
-    // Open opposite
     const newSide = positionSide === "LONG" ? "SHORT" : "LONG";
     const openResult = await openPositionDirect(
         { ...target, positionSide: newSide },
-        { orderType: openOrderType || "MARKET", quantity: newQuantity }
+        { orderType: openOrderType || "MARKET", quantity: openQty }
     );
 
-    return { success: true, closeResult, openResult };
+    return { success: true, closeResult, openResult, openQty, newSide };
 }
 
 /**
