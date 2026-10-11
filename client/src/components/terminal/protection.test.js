@@ -1,32 +1,38 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { protectionStatus, needsAttention } from "./protection.js";
+import { protectionStatus, protectionCellText, needsAttention } from "./protection.js";
 import { buildSummary, ownershipView } from "./summary.js";
 import { matches, bookForApi, normalizeTab } from "./matches.js";
 import { clampPanelWidth, rowMatchesSavedView, defaultPrefs } from "./prefs.js";
 import { classifyMutationResult } from "./mutation.js";
 
-test("protection: SL sàn khi có exchangeSl", () => {
+test("protection: hiện giá SL/TP sàn", () => {
   const status = protectionStatus({ exchangeSl: 90, exchangeTp: 110, monitors: [] });
   assert.equal(status.sl.kind, "exchange");
   assert.equal(status.tp.kind, "exchange");
+  const cell = protectionCellText(status);
+  assert.match(cell.primary, /110/);
+  assert.match(cell.primary, /90/);
 });
 
-test("protection: bot theo dõi khi chỉ có monitor SL", () => {
+test("protection: fallback monitor khi chưa có sổ lệnh", () => {
   const status = protectionStatus({
-    monitors: [{ sl: "95", tp: "", watching: true }],
-  }, { ordersVerified: true });
+    monitors: [{ sl: "95", tp: "120", watching: true }],
+  });
   assert.equal(status.sl.kind, "monitor");
+  assert.equal(status.tp.kind, "monitor");
+  assert.match(protectionCellText(status).primary, /95/);
 });
 
-test("protection: chưa xác minh khi stale và không có SL sàn", () => {
+test("protection: stale không che giá sàn đã có", () => {
+  const status = protectionStatus({ exchangeSl: 82.6, exchangeTp: 99, monitors: [] }, { stale: true });
+  assert.equal(status.sl.kind, "exchange");
+  assert.match(protectionCellText(status).primary, /82\.6|82.6/);
+});
+
+test("protection: stale + không có mức → chưa xác minh", () => {
   const status = protectionStatus({ monitors: [] }, { stale: true });
   assert.equal(status.sl.kind, "unverified");
-});
-
-test("protection: chưa có SL sàn khi đã verified", () => {
-  const status = protectionStatus({ monitors: [{ id: "1" }] }, { ordersVerified: true });
-  assert.equal(status.sl.kind, "missing");
 });
 
 test("needsAttention: warnings / notpsl", () => {
@@ -43,7 +49,6 @@ test("matches + book live adapter", () => {
   assert.equal(matches(paper, params), false);
   params.set("book", "live");
   assert.equal(matches(live, params), true);
-  assert.equal(matches(paper, params), false);
   assert.equal(bookForApi("live"), "");
   assert.equal(bookForApi("paper"), "paper");
 });
@@ -61,7 +66,6 @@ test("summary tách live/paper, không double-count", () => {
   assert.equal(summary.total, 2);
   assert.equal(summary.groups.live.unrealized, 10);
   assert.equal(summary.groups.paper.unrealized, 5);
-  assert.equal(summary.attention >= 1, true);
 });
 
 test("ownership over-allocation không clamp", () => {

@@ -507,6 +507,55 @@
   flex-wrap: wrap;
 }
 
+.term-modal {
+  z-index: 80;
+}
+
+.term-dialog label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.term-dialog select,
+.term-dialog input[type="text"] {
+  min-height: 34px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--term-line);
+  background: var(--bg, #111);
+  color: var(--text);
+  font: inherit;
+}
+
+.term-close-qty-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.term-close-qty-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.term-close-pct-badge {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.term-protect-prices {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .term-toast-stack {
   position: sticky;
   top: 8px;

@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { qtyOf, roiOf, volumeOf } from "../../position-sort";
 import { WARN, fmt, when, pnlClass } from "./format.js";
-import { protectionStatus, protectionShortText, needsAttention } from "./protection.js";
+import { protectionStatus, protectionShortText, protectionCellText, needsAttention } from "./protection.js";
 import { ownershipView } from "./summary.js";
 
 const SORTABLE = [
@@ -189,13 +189,15 @@ function PositionRow({
         {columns.recorded ? <td className={`term-num ${pnlClass(row.recorded?.net)}`}>{row.recorded ? fmt(row.recorded.net, 2) : "—"}</td> : null}
         {columns.liquidation ? <td className="term-num">{fmt(row.liquidation)}</td> : null}
         {columns.notional ? <td className="term-num">{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</td> : null}
-        {columns.protection !== false ? (
-          <td className={`term-protect term-protect-${status.sl.kind}`} title={protectionShortText(status)}>
-            <span>{status.sl.label}</span>
-            <span className="muted">{status.tp.label}</span>
-            {status.trailing ? <span className="muted">{status.trailing.label}</span> : null}
-          </td>
-        ) : null}
+        {columns.protection !== false ? (() => {
+          const cell = protectionCellText(status);
+          return (
+            <td className={`term-protect term-protect-${status.sl.kind}`} title={protectionShortText(status)}>
+              <span className="term-protect-prices">{cell.primary}</span>
+              {cell.secondary ? <span className="muted">{cell.secondary}</span> : null}
+            </td>
+          );
+        })() : null}
         {columns.dataAge ? <td className="muted">{when(row.updatedAt || row.checkedAt)}</td> : null}
         {columns.actions !== false ? (
           <td className="term-col-actions" onClick={(e) => e.stopPropagation()}>
@@ -248,7 +250,7 @@ function PositionCard({ row, selected, stale, canClose, canTpsl, onSelect, onClo
         <span>Size <b className="term-num">{fmt(qtyOf(row))}</b></span>
         <span className={pnlClass(row.unrealized)}>PnL <b>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</b>{roi != null ? ` (${fmt(roi, 1)}%)` : ""}</span>
         <span className="muted">{fmt(row.entry)} → {fmt(row.mark)}</span>
-        <span className={`term-protect-${status.sl.kind}`}>{status.sl.label} · {status.tp.label}</span>
+        <span className={`term-protect-${status.sl.kind}`}>{protectionCellText(status).primary}</span>
       </div>
       <div className="term-row-actions" onClick={(e) => e.stopPropagation()}>
         <button type="button" disabled={!canClose || row.book === "paper" || row.book === "pending"} onClick={() => onClose(row)}>Đóng</button>

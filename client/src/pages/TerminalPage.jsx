@@ -28,7 +28,7 @@ import { buildSummary } from "../components/terminal/summary.js";
 import { needsAttention } from "../components/terminal/protection.js";
 import { loadPrefs, savePrefs, DEFAULT_COLUMNS, rowMatchesSavedView } from "../components/terminal/prefs.js";
 import { usePositionsFeed } from "../components/terminal/usePositionsFeed.js";
-import { CLOSE_PERCENTS, newIdempotencyKey, numInput, when } from "../components/terminal/format.js";
+import { CLOSE_PERCENTS, exchangeTpsl, monitorTpsl, newIdempotencyKey, numInput, when } from "../components/terminal/format.js";
 
 export default function TerminalPage() {
   const { user } = useAuth();
@@ -66,12 +66,14 @@ export default function TerminalPage() {
   const [overlay, setOverlay] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
 
   const [closeConfirm, setCloseConfirm] = useState(null);
+  const [closeFormError, setCloseFormError] = useState("");
   const [closing, setClosing] = useState(false);
   const [reverseConfirm, setReverseConfirm] = useState(null);
   const [reversing, setReversing] = useState(false);
   const [openConfirm, setOpenConfirm] = useState(null);
   const [opening, setOpening] = useState(false);
   const [tpslDraft, setTpslDraft] = useState(null);
+  const [tpslFormError, setTpslFormError] = useState("");
   const [savingTpsl, setSavingTpsl] = useState(false);
   const [monitorDraft, setMonitorDraft] = useState(null);
   const [savingMonitor, setSavingMonitor] = useState(false);
@@ -211,7 +213,7 @@ export default function TerminalPage() {
     savePrefs(user?.id || user?.username, next);
   }
 
-  function askClose(row, form) {
+  function askClose(row, form = {}) {
     if (!perms.canClose) {
       setError("Thiếu quyền positions.close");
       return;
@@ -220,54 +222,52 @@ export default function TerminalPage() {
       setError("Paper/lệnh chờ không đóng bằng Market/Limit");
       return;
     }
-    const qty = Number(form.qty);
-    const price = Number(form.price);
-    const fullQty = Number(qtyOf(row));
-    const percent = Number(form.percent);
-    const usePercent = Number.isFinite(percent) && percent > 0 && percent <= 100;
-    if (!usePercent && (!Number.isFinite(qty) || qty <= 0)) {
-      setError("Số lượng đóng phải > 0");
-      return;
-    }
-    if (!usePercent && Number.isFinite(fullQty) && qty > fullQty + 1e-12) {
-      setError(`Số lượng đóng không được vượt position (${numInput(fullQty)})`);
-      return;
-    }
-    if (form.orderType === "LIMIT" && (!Number.isFinite(price) || price <= 0)) {
-      setError("Limit close cần giá > 0");
-      return;
-    }
-    let quantityMode = "QUANTITY";
-    if (usePercent && percent === 100) quantityMode = "ALL";
-    else if (usePercent) quantityMode = "PERCENT";
-    else if (Number.isFinite(fullQty) && Math.abs(qty - fullQty) < 1e-10) quantityMode = "ALL";
-    const closeQty = usePercent && percent === 100 ? fullQty : usePercent ? fullQty * (percent / 100) : qty;
-    const exitPrice = form.orderType === "LIMIT" ? price : Number(row.mark);
+    const fullQty = qtyOf(row);
     setError("");
+    setCloseFormError("");
     setIdempotencyKey(newIdempotencyKey("close"));
     setMutation({ phase: "preview" });
     setCloseConfirm({
       account: row.account,
       symbol: row.symbol,
       positionSide: row.side,
-      orderType: form.orderType,
-      quantityMode,
-      quantity: Number.isFinite(qty) && qty > 0 ? String(qty) : undefined,
-      percent: quantityMode === "PERCENT" ? String(percent) : undefined,
-      price: form.orderType === "LIMIT" ? String(price) : undefined,
-      preview: closePreview({
-        side: row.side,
-        entry: row.entry,
-        exitPrice,
-        qty: closeQty,
-        monitors: row.monitors,
-      }),
+      entry: row.entry,
+      mark: row.mark,
+      fullQty,
+      monitors: row.monitors || [],
+      orderType: form.orderType === "LIMIT" ? "LIMIT" : "MARKET",
+      price: numInput(form.price != null ? form.price : row.mark),
+      qty: numInput(form.qty != null ? form.qty : fullQty),
+      percent: form.percent != null ? form.percent : 100,
     });
   }
 
   async function submitClose() {
     if (!closeConfirm || closing) return;
+    const qty = Number(closeConfirm.qty);
+    const price = Number(closeConfirm.price);
+    const fullQty = Number(closeConfirm.fullQty);
+    const percent = Number(closeConfirm.percent);
+    const usePercent = Number.isFinite(percent) && percent > 0 && percent <= 100;
+    if (!usePercent && (!Number.isFinite(qty) || qty <= 0)) {
+      setCloseFormError("Số lượng đóng phải > 0");
+      return;
+    }
+    if (!usePercent && Number.isFinite(fullQty) && qty > fullQty + 1e-12) {
+      setCloseFormError(`Số lượng đóng không được vượt position (${numInput(fullQty)})`);
+      return;
+    }
+    if (closeConfirm.orderType === "LIMIT" && (!Number.isFinite(price) || price <= 0)) {
+      setCloseFormError("Limit close cần giá > 0");
+      return;
+    }
+    let quantityMode = "QUANTITY";
+    if (usePercent && percent === 100) quantityMode = "ALL";
+    else if (usePercent) quantityMode = "PERCENT";
+    else if (Number.isFinite(fullQty) && Math.abs(qty - fullQty) < 1e-10) quantityMode = "ALL";
+
     setClosing(true);
+    setCloseFormError("");
     setMutation({ phase: "submitting", message: "Đang gửi đóng…" });
     try {
       const body = {
@@ -275,12 +275,12 @@ export default function TerminalPage() {
         symbol: closeConfirm.symbol,
         positionSide: closeConfirm.positionSide,
         orderType: closeConfirm.orderType,
-        quantityMode: closeConfirm.quantityMode,
+        quantityMode,
         idempotencyKey,
       };
-      if (closeConfirm.quantityMode === "PERCENT") body.percent = closeConfirm.percent;
-      else if (closeConfirm.quantity != null) body.quantity = closeConfirm.quantity;
-      if (closeConfirm.orderType === "LIMIT") body.price = closeConfirm.price;
+      if (quantityMode === "PERCENT") body.percent = String(percent);
+      else if (Number.isFinite(qty) && qty > 0) body.quantity = String(qty);
+      if (closeConfirm.orderType === "LIMIT") body.price = String(price);
       const result = await api("/api/trading/positions/close", { method: "POST", body });
       setMutation(classifyMutationResult(result));
       setCloseConfirm(null);
@@ -292,7 +292,7 @@ export default function TerminalPage() {
         setMutation({ phase: "unknown", message: err.message || "Timeout sau khi gửi", requestId: idempotencyKey });
       } else {
         setMutation({ phase: "rejected", message: err.message || "Không đóng được" });
-        setError(err.message || "Không đóng được position");
+        setCloseFormError(err.message || "Không đóng được position");
       }
     } finally {
       setClosing(false);
@@ -428,7 +428,7 @@ export default function TerminalPage() {
     }
   }
 
-  function askTpsl(row, form) {
+  function askTpsl(row, form = {}) {
     if (!perms.canTpsl) {
       setError("Thiếu quyền positions.tpsl");
       return;
@@ -437,11 +437,25 @@ export default function TerminalPage() {
       setError("Paper/lệnh chờ không đặt Position TP/SL trên sàn");
       return;
     }
+    const exchange = exchangeTpsl(row);
+    const monitor = monitorTpsl(row);
     setError("");
+    setTpslFormError("");
     setIdempotencyKey(newIdempotencyKey("tpsl"));
     setMutation({ phase: "preview" });
     setTpslDraft({
-      ...form,
+      tab: form.tab === "trailing" ? "trailing" : "tpsl",
+      tp: numInput(form.tp != null && form.tp !== "" ? form.tp : (exchange.tp ?? monitor.tp)),
+      sl: numInput(form.sl != null && form.sl !== "" ? form.sl : (exchange.sl ?? monitor.sl)),
+      tpEnabled: true,
+      slEnabled: true,
+      tpWorkingType: form.tpWorkingType || "CONTRACT_PRICE",
+      slWorkingType: form.slWorkingType || "CONTRACT_PRICE",
+      callbackRate: numInput(form.callbackRate != null ? form.callbackRate : exchange.trailingCallback) || "1",
+      activationPrice: numInput(form.activationPrice != null ? form.activationPrice : exchange.trailingActivation),
+      trailingWorkingType: form.trailingWorkingType || "CONTRACT_PRICE",
+      hasTrailing: exchange.trailingCallback != null,
+      trailingOrderId: exchange.trailingOrderId,
       account: row.account,
       symbol: row.symbol,
       side: row.side,
@@ -456,13 +470,14 @@ export default function TerminalPage() {
     if (!tpslDraft || savingTpsl) return;
     const key = `${tpslDraft.account}|${tpslDraft.symbol}|${tpslDraft.side}`;
     setSavingTpsl(true);
+    setTpslFormError("");
     setMutation({ phase: "submitting" });
     try {
       let body;
       if (tpslDraft.tab === "trailing") {
         const rate = Number(tpslDraft.callbackRate);
         if (!(rate >= 0.1 && rate <= 10)) {
-          setError("callbackRate trailing phải trong 0.1–10 (%)");
+          setTpslFormError("callbackRate trailing phải trong 0.1–10 (%)");
           setSavingTpsl(false);
           setMutation({ phase: "rejected", message: "callbackRate không hợp lệ" });
           return;
@@ -482,7 +497,17 @@ export default function TerminalPage() {
         const tpOn = tpslDraft.tpEnabled !== false && String(tpslDraft.tp || "").trim() !== "";
         const slOn = tpslDraft.slEnabled !== false && String(tpslDraft.sl || "").trim() !== "";
         if (!tpOn && !slOn) {
-          setError("Nhập ít nhất giá TP hoặc SL");
+          setTpslFormError("Nhập ít nhất giá TP hoặc SL");
+          setSavingTpsl(false);
+          return;
+        }
+        if (tpOn && !(Number(tpslDraft.tp) > 0)) {
+          setTpslFormError("Giá TP phải > 0");
+          setSavingTpsl(false);
+          return;
+        }
+        if (slOn && !(Number(tpslDraft.sl) > 0)) {
+          setTpslFormError("Giá SL phải > 0");
           setSavingTpsl(false);
           return;
         }
@@ -516,7 +541,7 @@ export default function TerminalPage() {
         setMutation({ phase: "unknown", message: err.message });
       } else {
         setMutation({ phase: "rejected", message: err.message || "Không đặt được TP/SL" });
-        setError(err.message || "Không đặt được TP/SL");
+        setTpslFormError(err.message || "Không đặt được TP/SL");
       }
     } finally {
       setSavingTpsl(false);
@@ -526,6 +551,7 @@ export default function TerminalPage() {
   async function cancelTrailing() {
     if (!tpslDraft || savingTpsl) return;
     setSavingTpsl(true);
+    setTpslFormError("");
     try {
       const key = `${tpslDraft.account}|${tpslDraft.symbol}|${tpslDraft.side}`;
       await api(`/api/trading/positions/${encodeURIComponent(key)}/tpsl`, {
@@ -543,7 +569,7 @@ export default function TerminalPage() {
     } catch (err) {
       console.error("[terminal]", err);
       setMutation({ phase: "rejected", message: err.message || "Không hủy được Trailing" });
-      setError(err.message || "Không hủy được Trailing");
+      setTpslFormError(err.message || "Không hủy được Trailing");
     } finally {
       setSavingTpsl(false);
     }
@@ -842,27 +868,8 @@ export default function TerminalPage() {
                       return next;
                     });
                   }}
-                  onClose={(row) => {
-                    selectRow(row.key, { panelTab: "trade" });
-                    askClose(row, { orderType: "MARKET", price: numInput(row.mark), qty: numInput(qtyOf(row)), percent: 100 });
-                  }}
-                  onTpsl={(row) => {
-                    selectRow(row.key, { panelTab: "trade" });
-                    askTpsl(row, {
-                      tab: "tpsl",
-                      tp: numInput(row.exchangeTp),
-                      sl: numInput(row.exchangeSl),
-                      tpEnabled: true,
-                      slEnabled: true,
-                      tpWorkingType: "CONTRACT_PRICE",
-                      slWorkingType: "CONTRACT_PRICE",
-                      callbackRate: numInput(row.exchangeTrailingCallback) || "1",
-                      activationPrice: numInput(row.exchangeTrailingActivation),
-                      trailingWorkingType: "CONTRACT_PRICE",
-                      hasTrailing: row.exchangeTrailingCallback != null,
-                      trailingOrderId: row.exchangeTrailingOrderId,
-                    });
-                  }}
+                  onClose={(row) => askClose(row, { orderType: "MARKET", percent: 100 })}
+                  onTpsl={(row) => askTpsl(row, { tab: "tpsl" })}
                   onMenu={onRowMenu}
                 />
               ) : null}
@@ -920,10 +927,25 @@ export default function TerminalPage() {
       ) : null}
       {tab === "order-history" && !perms.canOrders ? <p className="muted">Cần quyền orders.view.</p> : null}
 
-      <CloseConfirmDialog confirm={closeConfirm} busy={closing} onCancel={() => { setCloseConfirm(null); setMutation({ phase: "draft" }); }} onSubmit={submitClose} />
+      <CloseConfirmDialog
+        confirm={closeConfirm}
+        busy={closing}
+        formError={closeFormError}
+        onChange={setCloseConfirm}
+        onCancel={() => { setCloseConfirm(null); setCloseFormError(""); setMutation({ phase: "draft" }); }}
+        onSubmit={submitClose}
+      />
       <ReverseConfirmDialog confirm={reverseConfirm} busy={reversing} onCancel={() => setReverseConfirm(null)} onSubmit={submitReverse} />
       <OpenConfirmDialog confirm={openConfirm} busy={opening} onCancel={() => setOpenConfirm(null)} onSubmit={submitOpen} />
-      <TpslConfirmDialog draft={tpslDraft} busy={savingTpsl} onCancel={() => setTpslDraft(null)} onSubmit={submitTpsl} onCancelTrailing={cancelTrailing} />
+      <TpslConfirmDialog
+        draft={tpslDraft}
+        busy={savingTpsl}
+        formError={tpslFormError}
+        onChange={setTpslDraft}
+        onCancel={() => { setTpslDraft(null); setTpslFormError(""); }}
+        onSubmit={submitTpsl}
+        onCancelTrailing={cancelTrailing}
+      />
       <MonitorDraftDialog
         draft={monitorDraft}
         accounts={payload?.accounts}
