@@ -10,7 +10,7 @@ const FuturesProfit = require("../src/models/futures-profit");
 const UserApi = require("../src/models/user-api");
 const RuntimeLog = require("../src/models/runtime-log");
 const ProcessHeartbeat = require("../src/models/process-heartbeat");
-const { getDashboard } = require("../src/lib/dashboard");
+const { getDashboard, clearDashboardCache } = require("../src/lib/dashboard");
 const { parseAiItems, aiSettings, chatRequest } = require("../src/lib/dashboard-brief");
 const { askAttention } = require("../src/lib/dashboard-ai");
 
@@ -27,13 +27,12 @@ function query(value) {
     };
 }
 
-test("dashboard stays on owned or assigned bots and hides secrets", async () => {
-    const savedAi = AI_ENV.map((name) => [name, process.env[name]]);
-    for (const name of AI_ENV) delete process.env[name];
+function installMocks() {
     const originals = {
         users: UserAccount.find,
         configs: AccountConfig.find,
         statics: AccountStatic.aggregate,
+        staticFind: AccountStatic.find,
         profits: FuturesProfit.aggregate,
         apis: UserApi.aggregate,
         logs: RuntimeLog.find,
@@ -52,9 +51,35 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
     AccountStatic.aggregate = async (pipeline) => {
         const id = pipeline?.[1]?.$group?._id;
         if (id && id.signal) return [{ _id: { env: "V1", signal: "TITAN" }, count: 2, profit: -18 }];
-        return [{ _id: "V1", profit: 12, trades: 4, wins: 3, losses: 1 }, { _id: "O1", profit: 99, trades: 1, wins: 1, losses: 0 }];
+        if (id && id.day) {
+            return [
+                { _id: { env: "V1", day: "2026-10-08" }, profit: 12, trades: 4, wins: 3, losses: 1 },
+                { _id: { env: "V1", day: "2026-10-07" }, profit: 5, trades: 1, wins: 1, losses: 0 },
+            ];
+        }
+        return [];
     };
-    FuturesProfit.aggregate = async () => [{ _id: "V1", profit: -40 }];
+    AccountStatic.find = () => query([
+        {
+            env: "V1",
+            typeSignal: "TITAN",
+            symbol: "BTCUSDT",
+            side: "LONG",
+            profit: -3,
+            status: "LOSS",
+            closeTime: new Date("2026-10-08T11:00:00Z"),
+        },
+    ]);
+    FuturesProfit.aggregate = async (pipeline) => {
+        const id = pipeline?.[1]?.$group?._id;
+        if (id && id.day) {
+            return [
+                { _id: { env: "V1", day: "2026-10-08" }, profit: -40 },
+                { _id: { env: "V1", day: "2026-10-07" }, profit: -10 },
+            ];
+        }
+        return [{ _id: "V1", profit: -40 }];
+    };
     UserApi.aggregate = async () => [{ username: "V", hasApiKey: false, api_key: "secret-key" }];
     const logs = [
         { at: new Date(), env: "V2", signal: "ROSE", message: "V2 NOT OPEN ROSE LONG BTCUSDT: [V2]Position BTCUSDT is open", source: "callHandleSignalBot", category: "signal" },
@@ -77,23 +102,55 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
     ProcessHeartbeat.find = () => query([
         { at: new Date("2026-10-08T11:59:30Z"), run: ["V"], flags: { trader: true, monitor: false }, mqttConnected: true },
     ]);
+    return originals;
+}
+
+function restoreMocks(originals) {
+    UserAccount.find = originals.users;
+    AccountConfig.find = originals.configs;
+    AccountStatic.aggregate = originals.statics;
+    AccountStatic.find = originals.staticFind;
+    FuturesProfit.aggregate = originals.profits;
+    UserApi.aggregate = originals.apis;
+    RuntimeLog.find = originals.logs;
+    RuntimeLog.aggregate = originals.aggregate;
+    ProcessHeartbeat.find = originals.beats;
+}
+
+const books = {
+    readExchangeBooks: async () => ({
+        V: {
+            source: "exchange",
+            positions: [
+                { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "0.1", markPrice: "50000", unRealizedProfit: "-120" },
+                { symbol: "ETHUSDT", positionSide: "SHORT", positionAmt: "-1", markPrice: "3000", unRealizedProfit: "5" },
+            ],
+        },
+    }),
+    cacheTtlMs: 0,
+};
+
+test("dashboard stays on owned or assigned bots and hides secrets", async () => {
+    const savedAi = AI_ENV.map((name) => [name, process.env[name]]);
+    for (const name of AI_ENV) delete process.env[name];
+    clearDashboardCache();
+    const originals = installMocks();
     try {
-        const view = await getDashboard(operator, new Date("2026-10-08T12:00:00Z"), {
-            readExchangeBooks: async () => ({
-                V: {
-                    source: "exchange",
-                    positions: [
-                        { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "0.1", markPrice: "50000", unRealizedProfit: "-120" },
-                        { symbol: "ETHUSDT", positionSide: "SHORT", positionAmt: "-1", markPrice: "3000", unRealizedProfit: "5" },
-                    ],
-                },
-            }),
-        });
+        const view = await getDashboard(operator, new Date("2026-10-08T12:00:00Z"), books);
         assert.equal(view.bots.total, 1);
         assert.equal(view.bots.active, 1);
         assert.equal(view.configs.on, 2);
         assert.equal(view.profitToday, 12);
         assert.equal(view.incomeToday, -40);
+        assert.equal(view.compare.profitYesterday, 5);
+        assert.equal(view.compare.profitDelta, 7);
+        assert.equal(view.compare.incomeYesterday, -10);
+        assert.equal(view.compare.incomeDelta, -30);
+        assert.equal(view.series.days.length, 7);
+        assert.equal(view.series.days.at(-1), "2026-10-08");
+        assert.equal(view.series.profit.at(-1), 12);
+        assert.equal(view.series.income.at(-1), -40);
+        assert.equal(view.activity.some((item) => item.kind === "close" && item.title.includes("BTCUSDT")), true);
         assert.equal(view.closedToday.trades, 4);
         assert.equal(view.closedToday.wins, 3);
         assert.equal(view.closedToday.winRate, 75);
@@ -187,17 +244,39 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
             global.fetch = originalFetch;
         }
     } finally {
-        UserAccount.find = originals.users;
-        AccountConfig.find = originals.configs;
-        AccountStatic.aggregate = originals.statics;
-        FuturesProfit.aggregate = originals.profits;
-        UserApi.aggregate = originals.apis;
-        RuntimeLog.find = originals.logs;
-        RuntimeLog.aggregate = originals.aggregate;
-        ProcessHeartbeat.find = originals.beats;
+        restoreMocks(originals);
+        clearDashboardCache();
         for (const [name, value] of savedAi) {
             if (value === undefined) delete process.env[name];
             else process.env[name] = value;
         }
+    }
+});
+
+test("dashboard serves in-memory cache until refresh", async () => {
+    clearDashboardCache();
+    const originals = installMocks();
+    let booksCalls = 0;
+    const deps = {
+        cacheTtlMs: 60_000,
+        readExchangeBooks: async () => {
+            booksCalls += 1;
+            return books.readExchangeBooks();
+        },
+    };
+    try {
+        const first = await getDashboard(operator, new Date("2026-10-08T12:00:00Z"), deps);
+        assert.equal(first.cached, false);
+        assert.equal(booksCalls, 1);
+        const second = await getDashboard(operator, new Date("2026-10-08T12:00:10Z"), deps);
+        assert.equal(second.cached, true);
+        assert.equal(second.profitToday, 12);
+        assert.equal(booksCalls, 1);
+        const fresh = await getDashboard(operator, new Date("2026-10-08T12:00:20Z"), { ...deps, refresh: true });
+        assert.equal(fresh.cached, false);
+        assert.equal(booksCalls, 2);
+    } finally {
+        restoreMocks(originals);
+        clearDashboardCache();
     }
 });

@@ -14,14 +14,63 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HEARTBEAT_MS = 90 * 1000;
 const MINE_LIMIT = 10;
 const TOP_RISK = 5;
-/** Lỗ ví nhỏ hơn ngưỡng này không đưa vào attention (tránh nhiễu −1$). */
+const SERIES_DAYS = 7;
+const ACTIVITY_LIMIT = 8;
+/** Mặc định; override bằng DASHBOARD_* trong .env */
 const WALLET_ATTENTION_MIN = -5;
 const WALLET_CRITICAL = -50;
-/** Lỗ signal nhỏ hơn ngưỡng này không liệt kê riêng. */
 const SIGNAL_ATTENTION_MIN = -5;
 const UPNL_CRITICAL = -100;
+const DEFAULT_CACHE_MS = 30 * 1000;
 const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
 const CREDENTIAL_RE = /invalid api|api-key|api key|signature|credential|-2014|-2015|权限|API-key format/i;
+
+const dashboardCache = new Map();
+
+function numEnv(name, fallback) {
+    const n = Number(process.env[name]);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function severityThresholds(deps = {}) {
+    return {
+        walletAttentionMin: deps.walletAttentionMin ?? numEnv("DASHBOARD_WALLET_ATTENTION_MIN", WALLET_ATTENTION_MIN),
+        walletCritical: deps.walletCritical ?? numEnv("DASHBOARD_WALLET_CRITICAL", WALLET_CRITICAL),
+        signalAttentionMin: deps.signalAttentionMin ?? numEnv("DASHBOARD_SIGNAL_ATTENTION_MIN", SIGNAL_ATTENTION_MIN),
+        upnlCritical: deps.upnlCritical ?? numEnv("DASHBOARD_UPNL_CRITICAL", UPNL_CRITICAL),
+    };
+}
+
+function cacheTtlMs(deps = {}) {
+    if (deps.cacheTtlMs != null) return Math.max(0, Number(deps.cacheTtlMs) || 0);
+    return Math.max(0, numEnv("DASHBOARD_CACHE_MS", DEFAULT_CACHE_MS));
+}
+
+function cacheKey(actor) {
+    return [
+        String(actor?.id || ""),
+        [...(actor?.permissions || [])].sort().join(","),
+        [...(actor?.botUsernames || [])].sort().join(","),
+    ].join("|");
+}
+
+function utcDayKey(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toISOString().slice(0, 10);
+}
+
+function dayKeysBack(end, count) {
+    const keys = [];
+    const start = startOfUtcDay(end);
+    for (let i = count - 1; i >= 0; i -= 1) {
+        keys.push(utcDayKey(new Date(start.getTime() - i * DAY_MS)));
+    }
+    return keys;
+}
+
+function clearDashboardCache() {
+    dashboardCache.clear();
+}
 
 function isMine(actor, bot) {
     const username = bot?.username;
@@ -344,8 +393,9 @@ function buildSkipAttention(rows, bots) {
     return { actionable: dedupeAttention(actionable).slice(0, 3), filterItems, noiseCount };
 }
 
-async function getDashboard(actor, now = new Date(), deps = {}) {
+async function computeDashboard(actor, now = new Date(), deps = {}) {
     if (!actor) throw httpError(401, "Chưa đăng nhập");
+    const limits = severityThresholds(deps);
     const canBots = hasPermission(actor, PERMISSIONS.BOTS_VIEW);
     const canConfig = hasPermission(actor, PERMISSIONS.CONFIG_VIEW);
     const canStats = hasPermission(actor, PERMISSIONS.STATISTICS_VIEW);
@@ -363,10 +413,14 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         profitToday: null,
         incomeToday: null,
         closedToday: null,
+        compare: null,
+        series: null,
+        activity: [],
         openRisk: null,
         health: null,
         attention: [],
         mine: [],
+        thresholds: limits,
         ai: attentionPackage({ day: "UTC" }),
     };
     if (!canBots) return empty;
@@ -392,6 +446,10 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
     const envs = [...new Set(bots.flatMap((bot) => bot.accounts || []).filter(Boolean))];
     const envFilter = envs.length ? { env: { $in: envs } } : null;
     const dayStart = startOfUtcDay(now);
+    const weekStart = new Date(dayStart.getTime() - (SERIES_DAYS - 1) * DAY_MS);
+    const todayKey = utcDayKey(dayStart);
+    const yesterdayKey = utcDayKey(new Date(dayStart.getTime() - DAY_MS));
+    const seriesKeys = dayKeysBack(now, SERIES_DAYS);
     const futuresEnvs = [...new Set(envs.flatMap((item) => [item, envKey(item)]).filter(Boolean))];
     const usernames = bots.map((bot) => bot.username);
 
@@ -399,15 +457,24 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         ? await AccountConfigModel.find(envFilter).select("env signals trade_config.ON").lean()
         : [];
 
-    const [profitRows, incomeRows, signalRows, apiRows, blocked, removed, exchangeLogs, beats, books] = await Promise.all([
+    const [weekProfitRows, weekIncomeRows, signalRows, apiRows, blocked, removed, exchangeLogs, recentCloses, beats, books] = await Promise.all([
         canStats && envFilter
             ? AccountStaticModel.aggregate([
                 { $match: { ...envFilter, isPaper: false, $expr: { $and: [
-                    { $gte: [{ $ifNull: ["$closeTime", "$openTime"] }, dayStart] },
+                    { $gte: [{ $ifNull: ["$closeTime", "$openTime"] }, weekStart] },
                     { $lte: [{ $ifNull: ["$closeTime", "$openTime"] }, now] },
                 ] } } },
                 { $group: {
-                    _id: "$env",
+                    _id: {
+                        env: "$env",
+                        day: {
+                            $dateToString: {
+                                format: "%Y-%m-%d",
+                                date: { $ifNull: ["$closeTime", "$openTime"] },
+                                timezone: "UTC",
+                            },
+                        },
+                    },
                     profit: { $sum: { $ifNull: ["$profit", 0] } },
                     trades: { $sum: 1 },
                     wins: {
@@ -433,8 +500,14 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             : [],
         canStats && futuresEnvs.length
             ? FuturesProfitModel.aggregate([
-                { $match: { env: { $in: futuresEnvs }, day: { $gte: dayStart, $lte: now } } },
-                { $group: { _id: "$env", profit: { $sum: { $ifNull: ["$profit", 0] } } } },
+                { $match: { env: { $in: futuresEnvs }, day: { $gte: weekStart, $lte: now } } },
+                { $group: {
+                    _id: {
+                        env: "$env",
+                        day: { $dateToString: { format: "%Y-%m-%d", date: "$day", timezone: "UTC" } },
+                    },
+                    profit: { $sum: { $ifNull: ["$profit", 0] } },
+                } },
             ])
             : [],
         canStats && envFilter
@@ -479,6 +552,13 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
                 at: { $gte: new Date(now.getTime() - DAY_MS) },
                 ...envFilter,
             }).sort({ at: -1 }).limit(12).select("at env message").lean()
+            : [],
+        canStats && envFilter
+            ? AccountStaticModel.find({
+                ...envFilter,
+                isPaper: false,
+                closeTime: { $gte: new Date(now.getTime() - 2 * DAY_MS), $lte: now },
+            }).sort({ closeTime: -1 }).limit(6).select("env typeSignal symbol side profit status closeTime").lean()
             : [],
         usernames.length
             ? HeartbeatModel.find({
@@ -525,16 +605,26 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         .filter(Boolean)
         .sort((a, b) => a.profit - b.profit || b.count - a.count)
         .slice(0, 6);
-    const incomeByEnv = new Map((incomeRows || []).map((row) => [envKey(row._id), Number(row.profit) || 0]));
+    const incomeTodayByEnv = new Map();
+    const incomeByDay = new Map(seriesKeys.map((key) => [key, 0]));
+    for (const row of weekIncomeRows || []) {
+        const day = String(row?._id?.day || "");
+        const env = envKey(row?._id?.env);
+        const profit = Number(row?.profit) || 0;
+        if (day && incomeByDay.has(day)) incomeByDay.set(day, round2((incomeByDay.get(day) || 0) + profit));
+        if (day === todayKey && env) {
+            incomeTodayByEnv.set(env, round2((incomeTodayByEnv.get(env) || 0) + profit));
+        }
+    }
     const accountLosing = bots
         .map((bot) => {
             const key = envKey(ledgerEnv(bot));
             const userKey = envKey(bot.username);
-            if (!incomeByEnv.has(key) && !incomeByEnv.has(userKey)) return null;
-            const profit = round2(incomeByEnv.has(key) ? incomeByEnv.get(key) : incomeByEnv.get(userKey));
-            if (profit > WALLET_ATTENTION_MIN) return null;
+            if (!incomeTodayByEnv.has(key) && !incomeTodayByEnv.has(userKey)) return null;
+            const profit = round2(incomeTodayByEnv.has(key) ? incomeTodayByEnv.get(key) : incomeTodayByEnv.get(userKey));
+            if (profit > limits.walletAttentionMin) return null;
             const why = signalLosing
-                .filter((row) => row.username === bot.username && row.profit <= SIGNAL_ATTENTION_MIN)
+                .filter((row) => row.username === bot.username && row.profit <= limits.signalAttentionMin)
                 .slice(0, 3);
             const whyText = why.length
                 ? ` Liên quan: ${why.map((row) => `${row.signal} ${moneyText(row.profit)}`).join(", ")}.`
@@ -547,11 +637,11 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
                 profit,
                 env: ledgerEnv(bot),
                 signals: why.map((row) => ({ env: row.env, signal: row.signal, count: row.count, profit: row.profit })),
-            }, profit <= WALLET_CRITICAL ? "critical" : "high");
+            }, profit <= limits.walletCritical ? "critical" : "high");
         })
         .filter(Boolean);
     const signalItems = signalLosing
-        .filter((row) => row.profit <= SIGNAL_ATTENTION_MIN)
+        .filter((row) => row.profit <= limits.signalAttentionMin)
         .map((row) => withSeverity({
             type: "loss",
             title: `${row.username}/${row.env} · ${row.signal} lỗ ${moneyText(row.profit)} (${row.count} lệnh) hôm nay`,
@@ -563,7 +653,7 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             profit: row.profit,
         }, "high"));
     const riskItems = (openRisk?.top || [])
-        .filter((row) => row.unrealized != null && row.unrealized <= UPNL_CRITICAL)
+        .filter((row) => row.unrealized != null && row.unrealized <= limits.upnlCritical)
         .slice(0, 3)
         .map((row) => withSeverity({
             type: "risk",
@@ -611,26 +701,23 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         if (exchangeItems.length >= 3) break;
     }
 
-    const profitByEnv = new Map((profitRows || []).map((row) => [envKey(row._id), Number(row.profit) || 0]));
-    const closedByEnv = new Map((profitRows || []).map((row) => [envKey(row._id), {
-        trades: Number(row.trades) || 0,
-        wins: Number(row.wins) || 0,
-        losses: Number(row.losses) || 0,
-    }]));
+    const profitByDay = new Map(seriesKeys.map((key) => [key, 0]));
     const profitByUser = new Map();
     let closedTrades = 0;
     let closedWins = 0;
     let closedLosses = 0;
-    for (const [env, profit] of profitByEnv) {
+    for (const row of weekProfitRows || []) {
+        const day = String(row?._id?.day || "");
+        const env = envKey(row?._id?.env);
+        const profit = Number(row?.profit) || 0;
+        if (day && profitByDay.has(day)) profitByDay.set(day, round2((profitByDay.get(day) || 0) + profit));
+        if (day !== todayKey) continue;
         const bot = ownerOf(bots, env);
         if (!bot) continue;
         profitByUser.set(bot.username, (profitByUser.get(bot.username) || 0) + profit);
-        const closed = closedByEnv.get(env);
-        if (closed) {
-            closedTrades += closed.trades;
-            closedWins += closed.wins;
-            closedLosses += closed.losses;
-        }
+        closedTrades += Number(row.trades) || 0;
+        closedWins += Number(row.wins) || 0;
+        closedLosses += Number(row.losses) || 0;
     }
     const onByUser = new Map();
     const attention = [];
@@ -724,8 +811,10 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             };
         });
 
-    const profitToday = canStats ? [...profitByUser.values()].reduce((sum, value) => sum + value, 0) : null;
-    const incomeToday = canStats ? (incomeRows || []).reduce((sum, row) => sum + (Number(row.profit) || 0), 0) : null;
+    const profitToday = canStats ? round2(profitByDay.get(todayKey) || 0) : null;
+    const incomeToday = canStats ? round2(incomeByDay.get(todayKey) || 0) : null;
+    const profitYesterday = canStats ? round2(profitByDay.get(yesterdayKey) || 0) : null;
+    const incomeYesterday = canStats ? round2(incomeByDay.get(yesterdayKey) || 0) : null;
     const closedToday = canStats
         ? {
             trades: closedTrades,
@@ -734,6 +823,54 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             winRate: closedTrades ? Math.round((closedWins / closedTrades) * 1000) / 10 : null,
         }
         : null;
+    const compare = canStats
+        ? {
+            profitYesterday,
+            incomeYesterday,
+            profitDelta: round2((profitToday || 0) - (profitYesterday || 0)),
+            incomeDelta: round2((incomeToday || 0) - (incomeYesterday || 0)),
+        }
+        : null;
+    const series = canStats
+        ? {
+            days: seriesKeys,
+            profit: seriesKeys.map((key) => profitByDay.get(key) || 0),
+            income: seriesKeys.map((key) => incomeByDay.get(key) || 0),
+        }
+        : null;
+    const activity = [];
+    for (const row of recentCloses || []) {
+        const env = String(row.env || "").trim();
+        const bot = ownerOf(bots, env);
+        if (!bot) continue;
+        const signal = String(row.typeSignal || "").trim().toUpperCase();
+        const symbol = String(row.symbol || "").toUpperCase();
+        const profit = round2(row.profit);
+        activity.push({
+            kind: "close",
+            at: row.closeTime ? new Date(row.closeTime).toISOString() : null,
+            title: `${bot.username}/${env} đóng ${symbol || "?"} ${signal || ""} ${moneyText(profit)}`.replace(/\s+/g, " ").trim(),
+            href: `/signals?user=${encodeURIComponent(bot.username)}`,
+            profit,
+        });
+    }
+    for (const row of exchangeItems) {
+        activity.push({
+            kind: "exchange",
+            at: null,
+            title: row.title,
+            href: row.href,
+        });
+    }
+    for (const row of removedItems.slice(0, 2)) {
+        activity.push({
+            kind: "removed",
+            at: null,
+            title: row.title,
+            href: row.href,
+        });
+    }
+    activity.splice(ACTIVITY_LIMIT);
     const listed = dedupeAttention(sortAttention([
         ...exchangeItems,
         ...accountLosing,
@@ -746,6 +883,7 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         day: "UTC",
         profitToday,
         incomeToday,
+        compare,
         closedToday,
         openRisk: openRisk
             ? {
@@ -819,6 +957,9 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         profitToday,
         incomeToday,
         closedToday,
+        compare,
+        series,
+        activity,
         openRisk: openRisk
             ? {
                 available: openRisk.available,
@@ -832,18 +973,56 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         health,
         attention: listed.map(({ type, severity, title, href }) => ({ type, severity, title, href })),
         mine,
+        thresholds: limits,
         ai: attentionPackage(facts),
     };
 }
 
+async function getDashboard(actor, now = new Date(), deps = {}) {
+    const ttl = cacheTtlMs(deps);
+    const refresh = deps.refresh === true;
+    const key = cacheKey(actor);
+    const at = now instanceof Date ? now.getTime() : Date.now();
+    if (!refresh && ttl > 0 && actor?.id) {
+        const hit = dashboardCache.get(key);
+        if (hit && at - hit.at < ttl) {
+            return {
+                ...hit.payload,
+                cached: true,
+                cacheAgeMs: at - hit.at,
+                staleAt: new Date(hit.at + ttl).toISOString(),
+            };
+        }
+    }
+    const payload = await computeDashboard(actor, now, deps);
+    const out = {
+        ...payload,
+        cached: false,
+        cacheAgeMs: 0,
+        staleAt: new Date(at + ttl).toISOString(),
+    };
+    if (ttl > 0 && actor?.id) {
+        dashboardCache.set(key, { at, payload });
+        if (dashboardCache.size > 200) {
+            const oldest = dashboardCache.keys().next().value;
+            dashboardCache.delete(oldest);
+        }
+    }
+    return out;
+}
+
 module.exports = {
     getDashboard,
+    computeDashboard,
     buildHealth,
     buildOpenRisk,
     classifySkipReason,
     buildSkipAttention,
+    clearDashboardCache,
+    severityThresholds,
     HEARTBEAT_MS,
     WALLET_CRITICAL,
     WALLET_ATTENTION_MIN,
     UPNL_CRITICAL,
+    DEFAULT_CACHE_MS,
 };

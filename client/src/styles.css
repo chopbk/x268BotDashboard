@@ -224,6 +224,30 @@ a.link-btn:hover { background: var(--surface-2); }
 .dash-attn-critical .dash-sev { color: var(--danger); }
 .dash-attn-high .dash-sev { color: var(--warn, #e0a106); }
 .dash-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.dash-cache-meta { margin: 0 0 12px; font-size: 0.85rem; }
+.dash-series {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+.dash-series > div { display: grid; gap: 8px; }
+.dash-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 40px;
+}
+.dash-spark-bar {
+  flex: 1;
+  min-width: 8px;
+  max-width: 18px;
+  border-radius: 3px 3px 0 0;
+  background: var(--muted);
+}
+.dash-spark-bar.up { background: var(--ok); opacity: 0.85; }
+.dash-spark-bar.down { background: var(--danger); opacity: 0.85; }
+.dash-act-at { font-size: 0.85rem; }
 .dash-guide, .dash-data {
   width: 100%;
   box-sizing: border-box;

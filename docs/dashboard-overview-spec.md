@@ -1,7 +1,9 @@
 # Spec: Tổng quan (Dashboard Overview)
 
-Trạng thái: **Phase 1 đã triển khai** — 2026-10-12.  
+Trạng thái: **Phase 1 + Phase 2 đã triển khai** — 2026-10-12.  
 Phạm vi: nâng trang chủ `/` (`DashboardPage`) để operator nắm hiện trạng nhiều bot trong một nhìn; không thay Position / Tổng kết / Hệ thống. Phần nặng (đồng bộ sàn, timeline dài, equity) deep-link sang tab tương ứng.
+
+Cache: server memory theo actor (`DASHBOARD_CACHE_MS`, mặc định 30s); F5/sessionStorage client 60s paint nhanh; `?refresh=1` hoặc nút Làm mới bỏ cache.
 
 ## 1. Bối cảnh và mục tiêu
 
@@ -289,11 +291,11 @@ Không đổi contract ngoài việc facts giàu hơn (`openRisk`, `health`). Ra
 
 **Done khi:** operator mở `/` biết được (a) process có stale không, (b) đang mang bao nhiêu uPnL, (c) đã chốt/ví hôm nay, (d) việc ưu tiên — không cần mở 4 trang khác cho câu hỏi đó.
 
-### Phase 2 — Timeline & so sánh nhẹ
+### Phase 2 — Timeline & so sánh nhẹ ✅
 
-1. Activity feed.
-2. Delta vs hôm qua; sparkline 7 ngày profit/income (reuse ledger/summary data nếu có).
-3. Ngưỡng severity cấu hình được (env hoặc setting admin).
+1. Activity feed (đóng lệnh gần đây + lỗi sàn / signal gỡ).
+2. `compare` vs hôm qua UTC + `series` sparkline 7 ngày (profit/`account_statics` + income/`futures_profits`).
+3. Ngưỡng env: `DASHBOARD_WALLET_ATTENTION_MIN`, `DASHBOARD_WALLET_CRITICAL`, `DASHBOARD_SIGNAL_ATTENTION_MIN`, `DASHBOARD_UPNL_CRITICAL`, `DASHBOARD_CACHE_MS`.
 
 ### Phase 3 — Manager rollup (chỉ khi có nhu cầu thật)
 

@@ -9,7 +9,8 @@ const lastAsk = new Map();
 
 router.get("/", requireAuth, async (req, res) => {
     try {
-        res.json(await getDashboard(req.webUser));
+        const refresh = req.query.refresh === "1" || req.query.refresh === "true";
+        res.json(await getDashboard(req.webUser, new Date(), { refresh }));
     } catch (error) {
         sendError(res, error, "GET /api/dashboard");
     }

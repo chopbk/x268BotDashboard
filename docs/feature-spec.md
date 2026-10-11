@@ -7,7 +7,7 @@
 | Màn hình / URL | Component | Nghiệp vụ và điều kiện |
 |---|---|---|
 | Đăng nhập `/login`, đăng ký `/register` | LoginPage, RegisterPage | Login bằng identifier; đăng ký tạo pending. Pending có session nhưng chưa có quyền bot |
-| Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ. Tổng quan: health process, KPI đã chốt/ví/uPnL, top rủi ro mở (Redis), attention có severity, bảng bot + deep-link Position/Ledger/Static — [dashboard-overview-spec](dashboard-overview-spec.md) |
+| Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ. Tổng quan Phase 2: health, KPI + delta hôm qua, sparkline 7 ngày, activity, attention, cache F5, deep-link — [dashboard-overview-spec](dashboard-overview-spec.md) |
 | Danh sách `/bots` | HomePage | Active, phạm vi, chủ sở hữu; peek Static/Config/lãi lỗ; nút Config → `/config-lab?user=` |
 | Config `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage | Tạo/sửa/copy/sync/bulk/xoá config; 6 nhóm form; APPLY_CONFIG |
 | `/bots/:username`, `/bots/.../accounts/:env` | Redirect | Chuyển sang Config Lab (UI cũ không còn dùng) |
