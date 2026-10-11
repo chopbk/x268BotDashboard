@@ -144,16 +144,8 @@ function openSocket(ws, user, deps = {}) {
             const names = account ? [account] : view.accounts.map((row) => row.username);
             stops = names.map((name) => ({ name, stop: source.watch(name, queue) }));
             queue();
-            // Shared account reconciliation also runs on reconnect/resume. Bound concurrency.
-            let index = 0;
-            await Promise.all(Array.from({ length: Math.min(4, names.length) }, async () => {
-                while (index < names.length && epoch === generation) {
-                    const name = names[index++];
-                    try { await source.reconcile(name, { maxAgeMs: 5_000 }); }
-                    catch (error) { console.error("[positionWs]", error.message); }
-                    queue();
-                }
-            }));
+            // Chỉ đọc Redis khi connect, không gọi Binance API
+            // User bấm nút "Cập nhật" mới gọi API
         } catch (error) {
             if (epoch === generation) {
                 clear();

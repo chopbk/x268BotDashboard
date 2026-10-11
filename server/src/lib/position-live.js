@@ -5,8 +5,9 @@ const ORDER_CHANNEL = "wb:ord:notify:";
 const EXCHANGE_KEY = "wb:ex:";
 const EXCHANGE_CHANNEL = "wb:ex:notify:";
 const EXCHANGE_TTL_SEC = 20 * 60;
-const QUOTE_MS = 15_000;
-const EXCHANGE_REFRESH_MS = 45_000;
+const REDIS_POLL_MS = 30_000;     // 30s đọc Redis (positions, orders)
+const MARK_PRICE_MS = 15_000;     // 15s cập nhật giá/PnL
+const EXCHANGE_REFRESH_MS = 5 * 60 * 1000; // 5 phút refresh từ Binance API (chỉ khi user bấm hoặc background)
 const EXCHANGE_WRITE = require("fs").readFileSync(require("path").join(__dirname, "exchange-book.lua"), "utf8");
 const pendingRefresh = new Map();
 const localBooks = new Map();
@@ -355,16 +356,26 @@ async function unsubscribe(account) {
 
 function startQuote(account, feed) {
     if (feed.quoteTimer) return;
-    const tick = async () => {
+    // 15s cập nhật giá/PnL từ Redis (binance-bot đã sync từ WebSocket)
+    const tickMark = async () => {
         if (!feed.viewers.size) return;
         if (!feed.subscribed) await subscribe(account);
+        // Chỉ publish lại với mark prices mới (feed.last đã có)
+        if (feed.last) publish(feed);
+    };
+    feed.quoteTimer = setInterval(() => tickMark().catch((error) => console.error("[positionLive]", error.message)), MARK_PRICE_MS);
+    feed.quoteTimer.unref?.();
+    
+    // 30s đọc Redis để lấy positions/orders mới
+    if (feed.redisTimer) return;
+    const tickRedis = async () => {
+        if (!feed.viewers.size) return;
         const exchange = await readExchangeBook(account);
         if (exchange) feed.last = await withOrders(account, exchange);
-        else if (feed.last) feed.last = await withOrders(account, feed.last);
         publish(feed);
     };
-    feed.quoteTimer = setInterval(() => tick().catch((error) => console.error("[positionLive]", error.message)), QUOTE_MS);
-    feed.quoteTimer.unref?.();
+    feed.redisTimer = setInterval(() => tickRedis().catch((error) => console.error("[positionLive]", error.message)), REDIS_POLL_MS);
+    feed.redisTimer.unref?.();
 }
 
 function startExchangeRefresh(account, feed) {
@@ -407,6 +418,7 @@ function watch(account, viewer) {
         if (feed.viewers.size > 0) return;
         if (feed.polling) clearInterval(feed.polling);
         if (feed.quoteTimer) clearInterval(feed.quoteTimer);
+        if (feed.redisTimer) clearInterval(feed.redisTimer);
         if (feed.exchangeTimer) clearInterval(feed.exchangeTimer);
         feed.polling = null;
         feed.quoteTimer = null;
@@ -429,6 +441,7 @@ function resetLive() {
     for (const feed of feeds.values()) {
         if (feed.polling) clearInterval(feed.polling);
         if (feed.quoteTimer) clearInterval(feed.quoteTimer);
+        if (feed.redisTimer) clearInterval(feed.redisTimer);
         if (feed.exchangeTimer) clearInterval(feed.exchangeTimer);
     }
     feeds.clear();

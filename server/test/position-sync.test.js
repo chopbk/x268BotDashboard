@@ -104,7 +104,8 @@ test("all accounts use one socket, respect scope, deliver empty books and stop o
     ws.message({ type: "watch", account: "", audience: "all" });
     await pause();
     assert.deepEqual([...watchers.keys()], ["A", "B"]);
-    assert.deepEqual(refreshed, ["A", "B"]);
+    // Không gọi reconcile khi connect nữa - chỉ đọc Redis
+    // assert.deepEqual(refreshed, ["A", "B"]);
     assert.deepEqual(ws.sent.at(-1).sources.map((row) => row.account), ["A", "B"]);
     assert.deepEqual(ws.sent.at(-1).rows, []);
     ws.message({ type: "pause" });
