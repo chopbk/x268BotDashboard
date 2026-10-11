@@ -1053,6 +1053,24 @@ td.negative { color: var(--danger); }
 .pos-case-monitor { display: grid; gap: 12px; }
 .pos-case-orders { display: grid; gap: 8px; }
 .pos-case-orders .orders-table { font-size: 0.86rem; }
+.pos-case-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; white-space: nowrap; }
+.pos-case-inline-inputs { display: inline-flex; gap: 4px; }
+.pos-case-inline-inputs input { width: 88px; }
+.pos-case-quick-row td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+.pos-case-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pos-case-quick input, .pos-case-quick select {
+  min-width: 90px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.pos-case-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
 button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }

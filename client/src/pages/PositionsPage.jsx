@@ -1034,7 +1034,7 @@ export default function PositionsPage() {
                         >
                           {tpslText(row)}
                         </button>
-                        <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
+                        <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Chi tiết</button>
                         {canOpen ? <button type="button" className="ghost" onClick={() => setDraft({ account: row.account, env: "", symbol: row.symbol, side: row.side, signal: "NOTPSL", positionAmt: qtyOf(row) ?? "", entry: row.entry ?? "", mark: row.mark ?? "", leverage: row.leverage ?? "", liquidation: row.liquidation ?? "" })}>Thêm monitor</button> : null}
                         {canClose ? row.monitors.map((monitor) => (
                           <button key={monitor.id} type="button" className="ghost" title={`Xoá monitor_positions _id ${monitor.id}. Không đóng lệnh sàn.`} onClick={() => removeMonitor(monitor)}>Xoá monitor {monitor.env} {monitor.signal || monitor.type || ""}</button>

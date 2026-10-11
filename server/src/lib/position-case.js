@@ -99,23 +99,27 @@ function weightedEntry(parts) {
 
 function buildDrift({ exchange, redis, monitors, heartbeatOk, now }) {
     const warnings = [];
+    const live = monitors.filter((m) => !m.paper && !m.pending && !m.closed && absNum(m.ownQty) > QTY_EPS);
     const exchangeQty = absNum(exchange?.qty);
-    const ownSum = monitors.filter((m) => !m.paper && !m.pending).reduce((sum, m) => sum + absNum(m.ownQty), 0);
+    const ownSum = live.reduce((sum, m) => sum + absNum(m.ownQty), 0);
     const leftover = Math.max(0, exchangeQty - ownSum);
-    if (exchange && exchangeQty <= QTY_EPS && monitors.some((m) => !m.closed && absNum(m.ownQty) > QTY_EPS)) {
+
+    // Lệch thật sự: Mongo mở vs sàn flat / qty config > sàn
+    if (exchange && exchangeQty <= QTY_EPS && live.length) {
         warnings.push({ code: "mongo_open_exchange_flat", level: "error", message: "Mongo còn monitor mở nhưng sàn đã flat" });
-    }
-    if (exchangeQty > QTY_EPS && !monitors.some((m) => !m.closed && !m.paper)) {
-        warnings.push({ code: "exchange_open_no_monitor", level: "warn", message: "Sàn còn vị thế nhưng không có monitor live" });
-    }
-    if (leftover > QTY_EPS && monitors.filter((m) => !m.paper && !m.closed).length > 0) {
-        warnings.push({ code: "leftover_qty", level: "warn", message: `Leftover trên sàn ≈ ${leftover} (sàn − tổng qty config)` });
     }
     if (ownSum > exchangeQty + QTY_EPS && exchangeQty > 0) {
         warnings.push({ code: "own_gt_exchange", level: "error", message: "Tổng qty config lớn hơn qty sàn" });
     }
-    for (const m of monitors) {
-        if (m.paper || m.closed) continue;
+    // Leftover có monitor: volume sàn không thuộc config nào
+    if (leftover > QTY_EPS && live.length > 0) {
+        warnings.push({ code: "leftover_qty", level: "warn", message: `Leftover trên sàn ≈ ${leftover} (sàn − tổng qty config)` });
+    }
+    // Không monitor: chỉ ghi chú, không coi lỗi (vị thế tay / NOTPSL)
+    if (exchangeQty > QTY_EPS && !live.length) {
+        warnings.push({ code: "exchange_open_no_monitor", level: "info", message: "Vị thế sàn không gắn monitor live" });
+    }
+    for (const m of live) {
         const snap = absNum(m.exchangeSnapshotQty);
         if (exchangeQty > QTY_EPS && snap > 0 && Math.abs(snap - exchangeQty) > Math.max(QTY_EPS, exchangeQty * 0.02)) {
             warnings.push({
@@ -136,13 +140,13 @@ function buildDrift({ exchange, redis, monitors, heartbeatOk, now }) {
     }
     const redisAge = ageMs(redis?.reconciledAt || redis?.at, now);
     if (redisAge != null && redisAge > STALE_MS) {
-        warnings.push({ code: "redis_stale", level: "warn", message: `Redis sổ sàn cũ ~${Math.round(redisAge / 1000)}s` });
+        warnings.push({ code: "redis_stale", level: "info", message: `Redis sổ sàn cũ ~${Math.round(redisAge / 1000)}s — bấm Reconcile nếu cần` });
     }
     if (!redis && exchange) {
         warnings.push({ code: "redis_missing", level: "warn", message: "Không đọc được Redis book; đang dựa cache/process" });
     }
     if (redis?.stale === true || redis?.status === "stale") {
-        warnings.push({ code: "book_marked_stale", level: "warn", message: "Sổ đánh dấu stale" });
+        warnings.push({ code: "book_marked_stale", level: "info", message: "Sổ đánh dấu stale" });
     }
     return { warnings, leftover, ownSum, exchangeQty };
 }
@@ -235,7 +239,8 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
         };
     });
 
-    const liveMonitors = monitors.filter((m) => !m.paper && !m.pending && !m.closed);
+    // Chỉ monitor đang mở + còn qty config (đã đóng / qty=0 không hiện)
+    const liveMonitors = monitors.filter((m) => !m.paper && !m.pending && !m.closed && absNum(m.ownQty) > QTY_EPS);
     const exchange = exchangePos
         ? {
             qty: absNum(exchangePos.positionAmt),
@@ -285,8 +290,23 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
         }
         : null;
 
-    const drift = buildDrift({ exchange, redis, monitors, heartbeatOk: hbOk, now });
+    const drift = buildDrift({ exchange, redis, monitors: liveMonitors, heartbeatOk: hbOk, now });
     const avgEntryConfigs = weightedEntry(ownership.map((row) => ({ qty: row.ownQty, entry: row.entry })));
+
+    let orderHistory = [];
+    try {
+        const { loadOrderHistory } = require("./orders");
+        const hist = await (deps.loadOrderHistory || loadOrderHistory)(actor, {
+            account,
+            symbol,
+            positionSide: side,
+            audience,
+            limit: 40,
+        });
+        orderHistory = hist?.orders || [];
+    } catch (error) {
+        console.error("[loadPositionCase] orderHistory", error.message);
+    }
 
     return {
         account,
@@ -314,7 +334,8 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
             exchangeOrders: parent?.exchangeOrders || [],
             algoOrders: parent?.algoOrders || [],
         },
-        monitors,
+        monitors: liveMonitors,
+        orderHistory,
         warnings: drift.warnings,
         recorded: parent?.recorded || null,
         updatedAt: new Date(now).toISOString(),

@@ -294,8 +294,23 @@ function validateOrderCreate(params) {
 }
 
 function validateOrderReplace(params) {
-    // Phase F implementation
-    return { valid: true, normalized: params };
+    const kind = String(params.kind || "regular").toLowerCase();
+    if (kind !== "regular" && kind !== "algo") {
+        return { valid: false, error: "kind phải là regular hoặc algo" };
+    }
+    const orderId = String(params.orderId || "").trim();
+    if (!orderId) return { valid: false, error: "Thiếu orderId" };
+    const created = validateOrderCreate(params);
+    if (!created.valid) return created;
+    return {
+        valid: true,
+        normalized: {
+            ...created.normalized,
+            kind,
+            orderId,
+            symbol: String(params.symbol || "").toUpperCase() || undefined,
+        },
+    };
 }
 
 /**

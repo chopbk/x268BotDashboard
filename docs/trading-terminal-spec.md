@@ -38,7 +38,7 @@ MVP chỉ Binance USD-M Futures. Hỗ trợ cả Hedge (`LONG|SHORT`) và One-wa
 | Qty config vs sàn | Monitor `ownQty` + `exchangeQty`; cảnh báo `qty-mismatch` |
 | Sibling | Liệt kê multi-monitor trên row / preview |
 | Preview Confirm | Qty, PnL ước tính, phí taker ước tính 0.04%, sibling |
-| Chi tiết case | Bấm Symbol → ownership/sibling/leftover/NOTPSL, MAE·MFE, timeline, drift warnings, reconcile an toàn |
+| Chi tiết case | Symbol / Chi tiết → order mở (huỷ/sửa/thêm nhanh), ownership chỉ monitor còn qty, lịch sử order, monitor ENV khi có data, cảnh báo lệch cuối panel |
 | Open / order history | Tab Order đang mở, Lịch sử order |
 | Đặt lệnh (ticket) | Tab Order: khung Buy/Sell Market·Limit·Stop·Stop Limit + reduce-only; `POST /api/trading/orders` |
 | Huỷ order / algo | Nút Huỷ từng dòng + huỷ hàng loạt; `POST .../cancel` và `.../cancel-batch` (Algo API đúng endpoint) |

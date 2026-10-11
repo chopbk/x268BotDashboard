@@ -577,6 +577,36 @@ async function createOrderDirect(target, params) {
 }
 
 /**
+ * Sửa order = huỷ cũ + đặt mới (Binance không amend đầy đủ mọi loại).
+ */
+async function replaceOrderDirect(target, params) {
+    const symbol = String(target?.symbol || params.symbol || "").toUpperCase();
+    if (!symbol) throw httpError(400, "Thiếu symbol");
+    const kind = String(params.kind || "regular").toLowerCase();
+    const orderId = String(params.orderId || "").trim();
+    if (!orderId) throw httpError(400, "Thiếu orderId");
+
+    const cancelled = await cancelOrderDirect(target, { kind, orderId, symbol });
+    const created = await createOrderDirect(
+        { ...target, symbol },
+        {
+            side: params.side,
+            positionSide: params.positionSide,
+            type: params.type,
+            quantity: params.quantity,
+            price: params.price,
+            triggerPrice: params.triggerPrice,
+            callbackRate: params.callbackRate,
+            reduceOnly: params.reduceOnly,
+            closePosition: params.closePosition,
+            workingType: params.workingType,
+            timeInForce: params.timeInForce,
+        }
+    );
+    return { success: true, cancelled, created, orderId: created?.orderId || created?.algoId };
+}
+
+/**
  * Reverse position (close + open opposite).
  */
 async function reversePositionDirect(target, params) {
@@ -624,6 +654,7 @@ const DIRECT_HANDLERS = {
     POSITION_SET_TPSL: setTpslDirect,
     POSITION_CANCEL_TPSL: cancelTpslDirect,
     ORDER_CREATE: createOrderDirect,
+    ORDER_REPLACE: replaceOrderDirect,
     POSITION_REVERSE: reversePositionDirect,
 };
 
@@ -675,5 +706,6 @@ module.exports = {
     setTpslDirect,
     cancelTpslDirect,
     createOrderDirect,
+    replaceOrderDirect,
     reversePositionDirect,
 };

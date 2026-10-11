@@ -52,3 +52,27 @@ test("buildDrift flags leftover and own>exchange", () => {
     });
     assert.ok(over.warnings.some((item) => item.code === "own_gt_exchange"));
 });
+
+test("buildDrift marks no-monitor and redis age as info", () => {
+    const noMon = buildDrift({
+        exchange: { qty: 3 },
+        redis: { at: new Date().toISOString() },
+        monitors: [],
+        heartbeatOk: true,
+        now: Date.now(),
+    });
+    const note = noMon.warnings.find((item) => item.code === "exchange_open_no_monitor");
+    assert.ok(note);
+    assert.equal(note.level, "info");
+
+    const stale = buildDrift({
+        exchange: { qty: 1 },
+        redis: { at: new Date(Date.now() - 120_000).toISOString() },
+        monitors: [{ env: "A", ownQty: 1, paper: false, closed: false, watching: true, exchangeSnapshotQty: 1 }],
+        heartbeatOk: true,
+        now: Date.now(),
+    });
+    const redis = stale.warnings.find((item) => item.code === "redis_stale");
+    assert.ok(redis);
+    assert.equal(redis.level, "info");
+});

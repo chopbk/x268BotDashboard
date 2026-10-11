@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth";
 
 function fmt(value, digits = 4) {
   if (value == null || value === "") return "—";
@@ -31,76 +32,40 @@ function orderRows(protective) {
   return [...(protective?.exchangeOrders || []), ...(protective?.algoOrders || [])];
 }
 
-function OrdersTable({ protective, hint }) {
-  const rows = orderRows(protective);
-  return (
-    <section className="pos-case-orders">
-      <h3>Order sàn đang mở</h3>
-      <p className="muted">
-        {(protective?.exchangeOrders || []).length} thường · {(protective?.algoOrders || []).length} algo
-        {hint ? ` · ${hint}` : ""}
-      </p>
-      <div className="table-wrap">
-        <table className="pos-table orders-table">
-          <thead>
-            <tr>
-              <th>Loại</th>
-              <th>Type</th>
-              <th>Side</th>
-              <th>Giá / Trigger</th>
-              <th>Qty</th>
-              <th>Flags</th>
-              <th>Status</th>
-              <th>Id</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((order) => (
-              <tr key={`${order.kind}-${order.id}`} className={order.positionSide === "SHORT" || order.side === "SELL" ? "order-short" : "order-long"}>
-                <td>
-                  <span className={`order-kind order-kind-${order.kind}`}>
-                    {order.kind === "algo" ? "Algo" : "Regular"}
-                  </span>
-                </td>
-                <td>{order.type || "—"}</td>
-                <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>
-                  {order.side} · {order.positionSide || "BOTH"}
-                </td>
-                <td>
-                  {fmt(order.price)}
-                  {order.stopPrice != null && order.stopPrice !== order.price ? ` / ${fmt(order.stopPrice)}` : ""}
-                  {order.callbackRate != null ? ` · trail ${fmt(order.callbackRate, 2)}%` : ""}
-                </td>
-                <td>{fmt(order.qty)}</td>
-                <td>
-                  {order.closePosition ? "closePos " : ""}
-                  {order.reduceOnly ? "reduce " : ""}
-                  {order.workingType || ""}
-                </td>
-                <td>{order.status || "—"}</td>
-                <td className="muted">{order.id || "—"}</td>
-              </tr>
-            ))}
-            {!rows.length ? (
-              <tr>
-                <td colSpan={8} className="muted">
-                  Không có order trong sổ Redis cho symbol/side này. Bấm Reconcile để lấy openOrders + openAlgoOrders từ Binance.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
+function defaultCloseSide(positionSide) {
+  return positionSide === "SHORT" ? "BUY" : "SELL";
 }
 
-export default function PositionCasePanel({ row, audience, onClose, selectedMonitorId, onSelectMonitor }) {
+function monitorHasContent(monitor) {
+  if (!monitor) return false;
+  if ((monitor.expectedOrders || []).length) return true;
+  if ((monitor.timeline || []).length) return true;
+  if ((monitor.fillsHistory || []).length) return true;
+  const s = monitor.statsView || {};
+  return s.mfe != null || s.mae != null || s.maxProfit != null || (s.slMoves || 0) > 0;
+}
+
+export default function PositionCasePanel({ row, audience, onClose, selectedMonitorId, onSelectMonitor, onChanged }) {
+  const { user } = useAuth();
+  const canCancel = (user?.permissions || []).includes("orders.cancel");
+  const canCreate = (user?.permissions || []).includes("orders.create");
+  const canEdit = (user?.permissions || []).includes("orders.edit");
+
   const [caseBody, setCaseBody] = useState(null);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [reconciling, setReconciling] = useState(false);
-  const [orderHint, setOrderHint] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState({
+    type: "LIMIT",
+    side: defaultCloseSide(row?.side),
+    quantity: "",
+    price: "",
+    triggerPrice: "",
+    reduceOnly: true,
+  });
   const autoReconcileKey = useRef("");
 
   async function fetchCase() {
@@ -121,32 +86,34 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
     });
   }
 
-  async function load() {
+  async function load({ autoOrders = true } = {}) {
     if (!row?.account || !row?.symbol || !row?.side) return;
     setLoading(true);
-    setOrderHint("");
     try {
       let body = await fetchCase();
       const key = `${row.account}|${row.symbol}|${row.side}`;
       const noOrders = !orderRows(body.protective).length;
       const hasExchange = body.exchange?.qty > 0;
-      // Lần đầu mở case: nếu có vị thế mà sổ chưa có order → REST một lần (an toàn)
-      if (noOrders && hasExchange && autoReconcileKey.current !== key) {
+      if (autoOrders && noOrders && hasExchange && autoReconcileKey.current !== key) {
         autoReconcileKey.current = key;
-        setOrderHint("đang lấy order từ sàn…");
         setReconciling(true);
         try {
           body = await fetchReconcile();
-          setOrderHint(orderRows(body.protective).length ? "đã đối chiếu từ Binance" : "sàn cũng không có order mở cho side này");
         } catch (err) {
           console.error("[positionCase]", err);
-          setOrderHint(err.message || "reconcile order thất bại");
+          setNote(err.message || "reconcile order thất bại");
         } finally {
           setReconciling(false);
         }
       }
       setCaseBody(body);
       setError("");
+      setDraft((prev) => ({
+        ...prev,
+        side: defaultCloseSide(row.side),
+        quantity: body.exchange?.qty != null ? String(body.exchange.qty) : prev.quantity,
+        price: body.exchange?.mark != null ? String(body.exchange.mark) : prev.price,
+      }));
       if (!selectedMonitorId && body.monitors?.[0]?.id) onSelectMonitor?.(body.monitors[0].id);
     } catch (err) {
       console.error("[positionCase]", err);
@@ -157,18 +124,19 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
   }
 
   useEffect(() => {
+    autoReconcileKey.current = "";
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row?.account, row?.symbol, row?.side, audience]);
 
   async function reconcile() {
     setReconciling(true);
-    setOrderHint("");
     try {
       const body = await fetchReconcile();
       setCaseBody(body);
       setError("");
-      setOrderHint(orderRows(body.protective).length ? "đã đối chiếu từ Binance" : "không có order mở");
+      setNote(orderRows(body.protective).length ? "Đã đối chiếu sổ + order từ Binance" : "Đã đối chiếu — không có order mở");
+      onChanged?.();
     } catch (err) {
       console.error("[positionCase]", err);
       setError(err.message || "Reconcile thất bại");
@@ -177,10 +145,144 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
     }
   }
 
+  async function cancelOrder(order) {
+    if (!canCancel) {
+      setError("Thiếu quyền orders.cancel");
+      return;
+    }
+    const id = String(order.id);
+    setBusyId(id);
+    try {
+      await api("/api/trading/orders/cancel", {
+        method: "POST",
+        body: {
+          username: row.account,
+          kind: order.kind === "algo" ? "algo" : "regular",
+          symbol: row.symbol,
+          orderId: id,
+        },
+      });
+      setNote(`Đã huỷ ${order.kind} #${id}`);
+      await load({ autoOrders: false });
+      await reconcile();
+      onChanged?.();
+    } catch (err) {
+      console.error("[positionCase]", err);
+      setError(err.message || "Không huỷ được order");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  function startEdit(order) {
+    if (!canEdit && !canCancel) {
+      setError("Thiếu quyền orders.edit / orders.cancel");
+      return;
+    }
+    setEditing({
+      id: String(order.id),
+      kind: order.kind === "algo" ? "algo" : "regular",
+      type: order.type || "LIMIT",
+      side: order.side || defaultCloseSide(row.side),
+      positionSide: order.positionSide || row.side,
+      quantity: order.qty != null ? String(order.qty) : "",
+      price: order.price != null ? String(order.price) : "",
+      triggerPrice: order.stopPrice != null ? String(order.stopPrice) : "",
+      reduceOnly: order.reduceOnly === true,
+      closePosition: order.closePosition === true,
+    });
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+    if (!canEdit) {
+      setError("Thiếu quyền orders.edit");
+      return;
+    }
+    setBusyId(editing.id);
+    try {
+      await api(`/api/trading/orders/${encodeURIComponent(editing.kind)}/${encodeURIComponent(row.symbol)}/${encodeURIComponent(editing.id)}`, {
+        method: "PUT",
+        body: {
+          username: row.account,
+          kind: editing.kind,
+          side: editing.side,
+          positionSide: editing.positionSide,
+          type: editing.type,
+          quantity: editing.closePosition ? undefined : editing.quantity,
+          price: editing.price || undefined,
+          triggerPrice: editing.triggerPrice || editing.price || undefined,
+          reduceOnly: editing.reduceOnly,
+          closePosition: editing.closePosition,
+        },
+      });
+      setNote(`Đã sửa order #${editing.id} (huỷ + đặt lại)`);
+      setEditing(null);
+      await reconcile();
+      onChanged?.();
+    } catch (err) {
+      console.error("[positionCase]", err);
+      setError(err.message || "Không sửa được order");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function placeQuick() {
+    if (!canCreate) {
+      setError("Thiếu quyền orders.create");
+      return;
+    }
+    if (!(Number(draft.quantity) > 0) && draft.type !== "STOP_MARKET") {
+      setError("Quantity phải > 0");
+      return;
+    }
+    if (draft.type === "LIMIT" && !(Number(draft.price) > 0)) {
+      setError("Limit cần giá");
+      return;
+    }
+    if ((draft.type === "STOP_MARKET" || draft.type === "STOP") && !(Number(draft.triggerPrice) > 0)) {
+      setError("Stop cần trigger");
+      return;
+    }
+    setBusyId("new");
+    try {
+      const body = {
+        username: row.account,
+        symbol: row.symbol,
+        side: draft.side,
+        positionSide: row.side,
+        type: draft.type,
+        quantity: draft.quantity,
+        reduceOnly: draft.reduceOnly,
+      };
+      if (draft.type === "LIMIT") body.price = draft.price;
+      if (draft.type === "STOP" || draft.type === "STOP_MARKET") {
+        body.triggerPrice = draft.triggerPrice;
+        if (draft.type === "STOP") body.price = draft.price || draft.triggerPrice;
+        else body.price = draft.triggerPrice;
+      }
+      const result = await api("/api/trading/orders", { method: "POST", body });
+      const orderId = result?.command?.result?.orderId || result?.command?.result?.algoId;
+      setNote(`Đã đặt ${draft.type} ${draft.side}${orderId ? ` · #${orderId}` : ""}`);
+      await reconcile();
+      onChanged?.();
+    } catch (err) {
+      console.error("[positionCase]", err);
+      setError(err.message || "Không đặt được order");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   const summary = caseBody?.ownershipSummary;
   const exchange = caseBody?.exchange;
-  const selected = (caseBody?.monitors || []).find((item) => item.id === selectedMonitorId) || caseBody?.monitors?.[0];
-  const hasMonitors = (caseBody?.monitors || []).length > 0;
+  const ownership = caseBody?.ownership || [];
+  const monitors = caseBody?.monitors || [];
+  const selected = monitors.find((item) => item.id === selectedMonitorId) || monitors[0];
+  const showMonitor = monitorHasContent(selected);
+  const openOrders = useMemo(() => orderRows(caseBody?.protective), [caseBody]);
+  const history = caseBody?.orderHistory || [];
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -188,7 +290,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
         <header>
           <h2 id="pos-case-title">{row.account} · {row.symbol} · {row.side}</h2>
           <div className="pos-inline">
-            <button type="button" className="ghost" disabled={loading || reconciling} onClick={load}>Tải lại</button>
+            <button type="button" className="ghost" disabled={loading || reconciling} onClick={() => load({ autoOrders: false })}>Tải lại</button>
             <button type="button" className="pos-tpsl-confirm" disabled={reconciling || loading} onClick={reconcile}>
               {reconciling ? "Đang reconcile…" : "Reconcile an toàn"}
             </button>
@@ -197,11 +299,12 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
         </header>
 
         <p className="muted">
-          Chi tiết vị thế: sổ sàn, order/TP·SL, ownership monitor, drift Mongo/Redis/runtime.
-          Reconcile chỉ refresh từ Binance REST — không hủy order hay đóng vị thế.
+          Chi tiết vị thế: sổ sàn, order (huỷ/sửa/thêm), ownership monitor đang mở, lịch sử order.
+          Reconcile chỉ refresh Binance REST — không đóng vị thế.
         </p>
 
         {error ? <p className="form-error">{error}</p> : null}
+        {note ? <p className="form-ok">{note}</p> : null}
         {loading && !caseBody ? <p className="muted">Đang tải chi tiết…</p> : null}
 
         {caseBody ? (
@@ -229,7 +332,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
               <article>
                 <h3>Ownership</h3>
                 <ul className="pos-case-list">
-                  <li>Số config: <strong>{summary?.configCount ?? 0}</strong>{summary?.sibling ? " · sibling" : ""}</li>
+                  <li>Monitor mở: <strong>{summary?.configCount ?? 0}</strong>{summary?.sibling ? " · sibling" : ""}</li>
                   <li>Σ qty config: <strong>{fmt(summary?.ownQtySum)}</strong></li>
                   <li>Leftover sàn: <strong className={summary?.leftover > 0 ? "pos-down" : ""}>{fmt(summary?.leftover)}</strong></li>
                   <li>NOTPSL: {summary?.notpslCount ?? 0}</li>
@@ -238,68 +341,165 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
               </article>
             </section>
 
-            <OrdersTable protective={caseBody.protective} hint={orderHint} />
-
-            {(caseBody.warnings || []).length ? (
-              <section>
-                <h3>Cảnh báo lệch</h3>
-                <ul className="pos-case-list">
-                  {caseBody.warnings.map((item) => (
-                    <li key={`${item.code}-${item.env || ""}-${item.message}`} className={warnLevel(item.level)}>
-                      [{item.code}] {item.message}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : (
-              <p className="muted">Không có cảnh báo lệch Mongo/Redis/runtime/sàn.</p>
-            )}
-
-            <section>
-              <h3>Config sở hữu quantity</h3>
-              {!hasMonitors ? (
-                <p className="muted">Không có monitor — vị thế thuần sàn (leftover / chưa gắn config).</p>
-              ) : (
-                <>
-                  <div className="table-wrap">
-                    <table className="pos-table">
-                      <thead>
-                        <tr>
-                          <th>Config</th>
-                          <th>Signal</th>
-                          <th>Qty riêng</th>
-                          <th>Share</th>
-                          <th>Entry riêng</th>
-                          <th>TP/SL monitor</th>
-                          <th>Flags</th>
+            <section className="pos-case-orders">
+              <h3>Order sàn đang mở</h3>
+              <p className="muted">{openOrders.filter((o) => o.kind !== "algo").length} thường · {openOrders.filter((o) => o.kind === "algo").length} algo</p>
+              <div className="table-wrap">
+                <table className="pos-table orders-table">
+                  <thead>
+                    <tr>
+                      <th>Loại</th>
+                      <th>Type</th>
+                      <th>Side</th>
+                      <th>Giá / Trigger</th>
+                      <th>Qty</th>
+                      <th>Status</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openOrders.map((order) => {
+                      const id = String(order.id);
+                      const isEdit = editing?.id === id;
+                      return (
+                        <tr key={`${order.kind}-${id}`} className={order.positionSide === "SHORT" || order.side === "SELL" ? "order-short" : "order-long"}>
+                          <td><span className={`order-kind order-kind-${order.kind}`}>{order.kind === "algo" ? "Algo" : "Regular"}</span></td>
+                          <td>{isEdit ? (
+                            <select value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}>
+                              <option value="LIMIT">LIMIT</option>
+                              <option value="STOP_MARKET">STOP_MARKET</option>
+                              <option value="STOP">STOP</option>
+                              <option value="TAKE_PROFIT_MARKET">TAKE_PROFIT_MARKET</option>
+                              <option value="TAKE_PROFIT">TAKE_PROFIT</option>
+                            </select>
+                          ) : (order.type || "—")}</td>
+                          <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>
+                            {order.side} · {order.positionSide || "BOTH"}
+                          </td>
+                          <td>
+                            {isEdit ? (
+                              <span className="pos-case-inline-inputs">
+                                <input inputMode="decimal" placeholder="Giá" value={editing.price} onChange={(e) => setEditing({ ...editing, price: e.target.value })} />
+                                <input inputMode="decimal" placeholder="Trigger" value={editing.triggerPrice} onChange={(e) => setEditing({ ...editing, triggerPrice: e.target.value })} />
+                              </span>
+                            ) : (
+                              <>
+                                {fmt(order.price)}
+                                {order.stopPrice != null && order.stopPrice !== order.price ? ` / ${fmt(order.stopPrice)}` : ""}
+                                {order.callbackRate != null ? ` · trail ${fmt(order.callbackRate, 2)}%` : ""}
+                              </>
+                            )}
+                          </td>
+                          <td>
+                            {isEdit ? (
+                              <input inputMode="decimal" value={editing.quantity} onChange={(e) => setEditing({ ...editing, quantity: e.target.value })} />
+                            ) : fmt(order.qty)}
+                          </td>
+                          <td>{order.status || "—"}</td>
+                          <td className="pos-case-actions">
+                            {isEdit ? (
+                              <>
+                                <button type="button" className="ghost" disabled={busyId === id} onClick={saveEdit}>{busyId === id ? "…" : "Lưu"}</button>
+                                <button type="button" className="ghost" disabled={busyId === id} onClick={() => setEditing(null)}>Huỷ sửa</button>
+                              </>
+                            ) : (
+                              <>
+                                {(canEdit || canCancel) ? (
+                                  <button type="button" className="ghost" disabled={!!busyId} onClick={() => startEdit(order)}>Sửa</button>
+                                ) : null}
+                                {canCancel ? (
+                                  <button type="button" className="ghost order-cancel-btn" disabled={!!busyId} onClick={() => cancelOrder(order)}>
+                                    {busyId === id ? "…" : "Huỷ"}
+                                  </button>
+                                ) : null}
+                              </>
+                            )}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {(caseBody.ownership || []).map((item) => (
-                          <tr key={item.id} className={selectedMonitorId === item.id ? "pos-alert" : ""}>
-                            <td>
-                              <button type="button" className="linkish" onClick={() => onSelectMonitor?.(item.id)}>{item.env || "—"}</button>
-                            </td>
-                            <td>{item.signal || "—"}</td>
-                            <td>{fmt(item.ownQty)}</td>
-                            <td>{item.share == null ? "—" : `${fmt(item.share * 100, 1)}%`}</td>
-                            <td>{fmt(item.entry)}</td>
-                            <td>TP {item.tp || "—"} / SL {item.sl || "—"}{item.trailing ? ` · trail ${item.trailing}` : ""}</td>
-                            <td>
-                              {item.notpsl ? "NOTPSL " : ""}
-                              {item.watching ? "watching" : "no-hb"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className="muted">Entry TB sàn {fmt(summary?.exchangeEntry)} · Entry TB theo qty config {fmt(summary?.avgEntryConfigs)}</p>
-                </>
-              )}
+                      );
+                    })}
+                    {!openOrders.length ? (
+                      <tr><td colSpan={7} className="muted">Không có order mở — dùng hàng thêm nhanh bên dưới hoặc Reconcile.</td></tr>
+                    ) : null}
+                    {canCreate ? (
+                      <tr className="pos-case-quick-row">
+                        <td colSpan={7}>
+                          <div className="pos-case-quick">
+                            <strong>Thêm order</strong>
+                            <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
+                              <option value="LIMIT">Limit</option>
+                              <option value="MARKET">Market</option>
+                              <option value="STOP_MARKET">Stop Market</option>
+                              <option value="STOP">Stop Limit</option>
+                            </select>
+                            <select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value })}>
+                              <option value="BUY">BUY</option>
+                              <option value="SELL">SELL</option>
+                            </select>
+                            {(draft.type === "LIMIT" || draft.type === "STOP") ? (
+                              <input inputMode="decimal" placeholder="Giá" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
+                            ) : null}
+                            {(draft.type === "STOP" || draft.type === "STOP_MARKET") ? (
+                              <input inputMode="decimal" placeholder="Trigger" value={draft.triggerPrice} onChange={(e) => setDraft({ ...draft, triggerPrice: e.target.value })} />
+                            ) : null}
+                            <input inputMode="decimal" placeholder="Qty" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
+                            <label className="pos-case-check">
+                              <input type="checkbox" checked={draft.reduceOnly} onChange={(e) => setDraft({ ...draft, reduceOnly: e.target.checked })} />
+                              Reduce-only
+                            </label>
+                            <button type="button" className="pos-tpsl-confirm" disabled={busyId === "new"} onClick={placeQuick}>
+                              {busyId === "new" ? "Đang đặt…" : "Đặt"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
             </section>
 
-            {selected ? (
+            {ownership.length ? (
+              <section>
+                <h3>Config sở hữu quantity</h3>
+                <div className="table-wrap">
+                  <table className="pos-table">
+                    <thead>
+                      <tr>
+                        <th>Config</th>
+                        <th>Signal</th>
+                        <th>Qty riêng</th>
+                        <th>Share</th>
+                        <th>Entry riêng</th>
+                        <th>TP/SL monitor</th>
+                        <th>Flags</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ownership.map((item) => (
+                        <tr key={item.id} className={selectedMonitorId === item.id ? "pos-alert" : ""}>
+                          <td>
+                            <button type="button" className="linkish" onClick={() => onSelectMonitor?.(item.id)}>{item.env || "—"}</button>
+                          </td>
+                          <td>{item.signal || "—"}</td>
+                          <td>{fmt(item.ownQty)}</td>
+                          <td>{item.share == null ? "—" : `${fmt(item.share * 100, 1)}%`}</td>
+                          <td>{fmt(item.entry)}</td>
+                          <td>TP {item.tp || "—"} / SL {item.sl || "—"}{item.trailing ? ` · trail ${item.trailing}` : ""}</td>
+                          <td>
+                            {item.notpsl ? "NOTPSL " : ""}
+                            {item.watching ? "watching" : "no-hb"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="muted">Entry TB sàn {fmt(summary?.exchangeEntry)} · Entry TB theo qty config {fmt(summary?.avgEntryConfigs)}</p>
+              </section>
+            ) : null}
+
+            {showMonitor ? (
               <section className="pos-case-monitor">
                 <h3>Monitor {selected.env} · {selected.signal || selected.type || "—"}</h3>
                 <div className="pos-case-grid">
@@ -312,61 +512,90 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                       <li>Max drawdown: {fmt(selected.statsView?.maxDrawdown, 2)}</li>
                       <li>Dời SL: {selected.events?.slMove ?? selected.statsView?.slMoves ?? 0}</li>
                       <li>HP moves: {selected.statsView?.hpMoves ?? 0}</li>
-                      <li>DCA events: {selected.events?.dca ?? 0}</li>
-                      <li>Partial close events: {selected.events?.partialClose ?? 0}</li>
                     </ul>
                   </article>
-                  <article>
-                    <h4>Order dự kiến monitor</h4>
-                    <ul className="pos-case-list">
-                      {(selected.expectedOrders || []).map((order) => (
-                        <li key={`${order.kind}-${order.id}`}>
-                          {order.kind}: {order.type} @ {fmt(order.price)} · qty {fmt(order.qty)}
+                  {(selected.expectedOrders || []).length ? (
+                    <article>
+                      <h4>Order dự kiến monitor</h4>
+                      <ul className="pos-case-list">
+                        {selected.expectedOrders.map((order) => (
+                          <li key={`${order.kind}-${order.id}`}>
+                            {order.kind}: {order.type} @ {fmt(order.price)} · qty {fmt(order.qty)}
+                          </li>
+                        ))}
+                      </ul>
+                    </article>
+                  ) : null}
+                </div>
+                {(selected.timeline || []).length ? (
+                  <>
+                    <h4>Timeline quyết định monitor</h4>
+                    <ol className="pos-case-timeline">
+                      {selected.timeline.slice().reverse().slice(0, 40).map((item, index) => (
+                        <li key={`${item.at}-${item.event}-${index}`}>
+                          <span className="muted">{when(item.at)}</span>
+                          {" · "}
+                          <strong>{item.kind}</strong>
+                          {item.phase ? ` · ${item.phase}` : ""}
+                          {item.event ? ` · ${item.event}` : ""}
+                          {item.message ? ` — ${item.message}` : ""}
                         </li>
                       ))}
-                      {!(selected.expectedOrders || []).length ? <li className="muted">Chưa có TP/SL dự kiến trên monitor.</li> : null}
-                    </ul>
-                  </article>
-                </div>
-
-                <h4>Fills / DCA / partial</h4>
-                <div className="table-wrap">
-                  <table className="pos-table">
-                    <thead>
-                      <tr><th>Thời điểm</th><th>Kind</th><th>Qty</th><th>Giá</th><th>PnL</th><th>Fee</th></tr>
-                    </thead>
-                    <tbody>
-                      {(selected.fillHistory || []).slice().reverse().map((fill, index) => (
-                        <tr key={`${fill.at}-${index}`}>
-                          <td>{when(fill.at)}</td>
-                          <td>{fill.kind}</td>
-                          <td>{fmt(fill.qty)}</td>
-                          <td>{fmt(fill.price)}</td>
-                          <td className={pnlClass(fill.realizedPnl)}>{fmt(fill.realizedPnl, 2)}</td>
-                          <td>{fmt(fill.commission, 4)}</td>
-                        </tr>
-                      ))}
-                      {!(selected.fillHistory || []).length ? <tr><td colSpan={6}>Chưa có fill ghi trên monitor.</td></tr> : null}
-                    </tbody>
-                  </table>
-                </div>
-
-                <h4>Timeline quyết định monitor</h4>
-                <ol className="pos-case-timeline">
-                  {(selected.timeline || []).slice().reverse().slice(0, 80).map((item, index) => (
-                    <li key={`${item.at}-${item.event}-${index}`}>
-                      <span className="muted">{when(item.at)}</span>
-                      {" · "}
-                      <strong>{item.kind}</strong>
-                      {item.phase ? ` · ${item.phase}` : ""}
-                      {item.event ? ` · ${item.event}` : ""}
-                      {item.message ? ` — ${item.message}` : ""}
-                    </li>
-                  ))}
-                  {!(selected.timeline || []).length ? <li className="muted">Chưa có openLogs/logs.</li> : null}
-                </ol>
+                    </ol>
+                  </>
+                ) : null}
               </section>
             ) : null}
+
+            <section>
+              <h3>Lịch sử order</h3>
+              <div className="table-wrap">
+                <table className="pos-table orders-table">
+                  <thead>
+                    <tr>
+                      <th>Thời điểm</th>
+                      <th>Loại</th>
+                      <th>Type</th>
+                      <th>Side</th>
+                      <th>Giá / Trigger</th>
+                      <th>Qty</th>
+                      <th>Filled</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((order) => (
+                      <tr key={`${order.kind}-${order.orderId}-${order.updateTime || order.time}`}>
+                        <td>{when(order.updateTime || order.time)}</td>
+                        <td><span className={`order-kind order-kind-${order.kind}`}>{order.kind === "algo" ? "Algo" : "Regular"}</span></td>
+                        <td>{order.type || "—"}</td>
+                        <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>{order.side} · {order.positionSide}</td>
+                        <td>{fmt(order.price)}{order.triggerPrice || order.stopPrice ? ` / ${fmt(order.triggerPrice || order.stopPrice)}` : ""}</td>
+                        <td>{fmt(order.origQty)}</td>
+                        <td>{fmt(order.executedQty)}</td>
+                        <td>{order.status || "—"}</td>
+                      </tr>
+                    ))}
+                    {!history.length ? <tr><td colSpan={8} className="muted">Chưa có lịch sử order (3 ngày gần nhất) cho symbol/side này.</td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {(caseBody.warnings || []).length ? (
+              <section>
+                <h3>Cảnh báo lệch</h3>
+                <ul className="pos-case-list">
+                  {caseBody.warnings.map((item) => (
+                    <li key={`${item.code}-${item.env || ""}-${item.message}`} className={warnLevel(item.level)}>
+                      [{item.level || "info"} · {item.code}] {item.message}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : (
+              <p className="muted">Không có cảnh báo lệch Mongo/Redis/runtime/sàn.</p>
+            )}
           </>
         ) : null}
       </div>
