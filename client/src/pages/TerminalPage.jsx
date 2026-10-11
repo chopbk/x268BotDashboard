@@ -97,7 +97,7 @@ export default function TerminalPage() {
   function startPanelResize(event) {
     event.preventDefault();
     const startX = event.clientX;
-    const startW = prefs.panelWidth || 440;
+    const startW = prefs.panelWidth || 360;
     function onMove(ev) {
       const next = clampPanelWidth(startW + (startX - ev.clientX));
       setPrefs((prev) => {
@@ -832,8 +832,8 @@ export default function TerminalPage() {
             <input
               type="range"
               min={360}
-              max={720}
-              value={prefs.panelWidth || 440}
+              max={560}
+              value={prefs.panelWidth || 360}
               onChange={(e) => updatePrefs({ panelWidth: clampPanelWidth(e.target.value) })}
             />
           </label>
@@ -867,7 +867,7 @@ export default function TerminalPage() {
           <TerminalSummary summary={summary} bookLabel={bookLabel} />
           <div
             className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""} ${showPanel && overlay ? "with-overlay" : ""}`}
-            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 440}px` } : undefined}
+            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 360}px` } : undefined}
           >
             <div className="term-main">
               {!payload ? (

@@ -38,7 +38,7 @@ export default function DetailPanel({
   onReverseRequest,
   onDirtyChange,
   onClosePanel,
-  width = 440,
+  width = 360,
   overlay,
 }) {
   const [tradeMode, setTradeMode] = useState("close"); // close | open | protect | advanced

@@ -59,7 +59,7 @@ Scorecard không thay Tìm Signal hay Tổng kết: win = `status` WIN, thời g
 
 ## Terminal
 
-Panel Terminal từ 768px nằm dưới bảng, dùng toàn chiều ngang để không ép hẹp các cột; dưới 768px dùng drawer toàn màn hình. Tab Lệnh/Monitor/Timeline nhúng đúng phần nội dung case ngay trong panel, không tự bật modal Position. Component case mặc định vẫn giữ modal đầy đủ cho `/positions`. Các gap R1 còn lại: [review Terminal](terminal-review.md).
+Panel Terminal desktop (≥1024px) nằm cạnh bảng, mặc định hẹp (~360px) để ưu tiên bảng vị thế; dưới 1024px dùng drawer. Bảng mật độ compact: cột Tài khoản gộp Monitor + config đang chạy, không tách hàng “Chưa có monitor”. Tab Lệnh/Monitor/Timeline nhúng đúng phần nội dung case trong panel, không tự bật modal Position. Component case mặc định vẫn giữ modal đầy đủ cho `/positions`. Các gap R1 còn lại: [review Terminal](terminal-review.md).
 
 Menu `/terminal` (R1) dùng cùng API Position/Orders/Trading. Bố cục: summary + tab Vị thế / Lệnh chờ / Lịch sử vị thế / Lịch sử lệnh + panel chi tiết (Tổng quan / Lệnh / Monitor / Timeline / Giao dịch). CSS namespace `.term-*`, không thay UI `/positions`. Tab Khớp lệnh, risk sizing, chart nến và exit plan thuộc R2/R3 — chưa triển khai. Chi tiết parity P01–P22: [terminal-workspace-spec](terminal-workspace-spec.md).
 

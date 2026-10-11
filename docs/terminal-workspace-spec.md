@@ -60,8 +60,8 @@ PnL đang mở | Giá trị vị thế | Vị thế đang mở | Cần chú ý
 └──────────────────────────────────────────┴─────────────────────────────┘
 ```
 
-- Từ 1440 px: panel mặc định 400 px, kéo được trong khoảng 360–560 px; bảng lấy phần còn lại. Đóng panel để xem full-width.
-- 1024–1439 px: panel dạng drawer overlay rộng tối đa 440 px, không ép bảng quá nhỏ.
+- Từ 1024 px trở lên (desktop): bảng vị thế và panel cạnh nhau; panel mặc định 360 px, kéo được trong khoảng 360–560 px; bảng lấy phần còn lại. Đóng panel để xem full-width.
+- 1024–1439 px hẹp: có thể dùng drawer overlay rộng tối đa ~440 px nếu cần, không ép bảng quá nhỏ.
 - 768–1023 px: drawer tối đa 80% viewport; bộ lọc nâng cao nằm trong popover/drawer.
 - Dưới 768 px: vị thế dùng list card, panel toàn màn hình; tab cuộn ngang. Nút hành động chính cố định phía dưới panel, không che nội dung.
 - Mở panel không mất filter, sort, vị trí scroll. Back đóng panel trước khi rời trang. Có cảnh báo form chưa lưu khi đổi vị thế/account/tab.
@@ -69,9 +69,9 @@ PnL đang mở | Giá trị vị thế | Vị thế đang mở | Cần chú ý
 ### 3.2 Hệ thống hiển thị
 
 - Kế thừa theme của app; CSS của Terminal có namespace riêng, không sửa global table/modal làm ảnh hưởng Position.
-- Cỡ chữ bảng 13–14 px; số canh phải và dùng tabular numerals; header thấp, nền trung tính, border nhẹ. Hàng thường 48–56 px, chế độ gọn 36–40 px.
-- Xanh/đỏ dành cho lời/lỗ và Long/Short; warning dùng amber kèm icon/text. Không tô nền đỏ/xanh toàn bộ hàng giao dịch bình thường.
-- Symbol và PnL là điểm nhấn. Account/config/signal là thông tin phụ. Nhãn Side luôn có chữ, không chỉ dựa màu.
+- Cỡ chữ bảng 12–13 px (gọn mặc định); số canh phải và dùng tabular numerals; header thấp, nền trung tính, border nhẹ. Mật độ mặc định `compact`: hàng thấp, padding nhỏ; không tách hàng riêng cho “Chưa có monitor”.
+- Xanh/đỏ dành cho lời/lỗ và Long/Short; warning dùng amber kèm chữ nhỏ trong cột Tài khoản. Không tô nền đỏ/xanh toàn bộ hàng giao dịch bình thường.
+- Symbol và PnL là điểm nhấn. Cột Tài khoản hiện account + nhãn Monitor + config (env) đang chạy; không có monitor thì dòng chữ nhỏ “Chưa monitor”. Nhãn Side luôn có chữ, không chỉ dựa màu.
 - Thuật ngữ thống nhất: Vị thế, Lệnh chờ, Lịch sử vị thế, Lịch sử lệnh, Khớp lệnh, Tài khoản, Config, Giá vào, Giá mark, Giá thanh lý, Giá trị vị thế, PnL đã ghi nhận.
 - Không đặt công thức, Redis, cache, version hoặc tên collection trong mô tả đầu trang. Thông tin kỹ thuật nằm trong “Chi tiết dữ liệu”.
 - Skeleton khi tải lần đầu; refresh giữ dữ liệu cũ kèm trạng thái. Không thay cả bảng bằng spinner mỗi chu kỳ.

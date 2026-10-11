@@ -34,7 +34,7 @@ export default function PositionTable({
   onMenu,
 }) {
   return (
-    <div className={`term-table-wrap density-${density || "comfortable"}`}>
+    <div className={`term-table-wrap density-${density || "compact"}`}>
       <table className="term-table">
         <thead>
           <tr>
@@ -135,8 +135,11 @@ function PositionRow({
   const status = protectionStatus(row, { stale });
   const own = ownershipView(row);
   const attention = needsAttention(row, { stale });
-  const signals = (row.monitors || []).map((m) => m.signal || m.type).filter(Boolean).join(", ");
-  const configs = [...new Set((row.monitors || []).map((m) => m.env).filter(Boolean))].join(", ");
+  const monitors = row.monitors || [];
+  const signals = monitors.map((m) => m.signal || m.type).filter(Boolean).join(", ");
+  const configs = [...new Set(monitors.map((m) => m.env).filter(Boolean))];
+  const configText = configs.join(", ");
+  const otherWarns = (row.warnings || []).filter((w) => w !== "no-monitor");
 
   return (
     <Fragment>
@@ -166,8 +169,26 @@ function PositionRow({
             </div>
           </td>
         ) : null}
-        {columns.account !== false ? <td className="muted">{row.account}</td> : null}
-        {columns.config ? <td className="muted term-ellip" title={`${configs} / ${signals}`}>{configs || "—"}{signals ? ` · ${signals}` : ""}</td> : null}
+        {columns.account !== false ? (
+          <td className="term-account-cell" title={[row.account, configText, signals].filter(Boolean).join(" · ")}>
+            <span className="term-account-name">{row.account}</span>
+            {monitors.length ? (
+              <>
+                <span className="term-account-meta">
+                  Monitor{monitors.length > 1 ? ` ×${monitors.length}` : ""}
+                  {configText ? ` · ${configText}` : ""}
+                </span>
+                {signals ? <span className="term-account-meta term-ellip">{signals}</span> : null}
+              </>
+            ) : (
+              <span className="term-mini-warn">Chưa monitor</span>
+            )}
+            {otherWarns.length ? (
+              <span className="term-mini-warn">{otherWarns.map((w) => WARN[w] || w).join(" · ")}</span>
+            ) : null}
+          </td>
+        ) : null}
+        {columns.config ? <td className="muted term-ellip" title={`${configText} / ${signals}`}>{configText || "—"}{signals ? ` · ${signals}` : ""}</td> : null}
         {columns.volume !== false ? (
           <td className="term-num" title={`Volume = qty × mark${own.size != null ? ` · qty ${fmt(own.size)}` : ""}`}>
             {volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}
@@ -213,7 +234,7 @@ function PositionRow({
           </td>
         ) : null}
       </tr>
-      {expanded ? (row.monitors || []).map((monitor) => (
+      {expanded ? monitors.map((monitor) => (
         <tr key={monitor.id} className="term-child">
           <td />
           <td colSpan={12}>
@@ -230,12 +251,6 @@ function PositionRow({
           </td>
         </tr>
       )) : null}
-      {expanded && !(row.monitors || []).length ? (
-        <tr className="term-child"><td /><td colSpan={12}>Không có monitor cho vị thế này.</td></tr>
-      ) : null}
-      {(row.warnings || []).length ? (
-        <tr className="term-warn-row"><td /><td colSpan={12} className="muted">{row.warnings.map((w) => WARN[w] || w).join(" · ")}</td></tr>
-      ) : null}
     </Fragment>
   );
 }
@@ -248,7 +263,12 @@ function PositionCard({ row, selected, stale, canClose, canTpsl, onSelect, onClo
       <header>
         <strong>{row.symbol}</strong>
         <span className={`term-side term-side-${String(row.side).toLowerCase()}`}>{row.side}</span>
-        <span className="muted">{row.account}</span>
+        <span className="muted">
+          {row.account}
+          {(row.monitors || []).length
+            ? ` · Monitor · ${[...new Set((row.monitors || []).map((m) => m.env).filter(Boolean))].join(", ") || "—"}`
+            : " · Chưa monitor"}
+        </span>
       </header>
       <div className="term-card-grid">
         <span>Vol <b className="term-num">{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</b></span>

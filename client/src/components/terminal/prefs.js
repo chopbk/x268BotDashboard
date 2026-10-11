@@ -54,7 +54,7 @@ export function loadPrefs(userId) {
       version: VERSION,
       columns,
       customViews: Array.isArray(data.customViews) ? data.customViews : [],
-      panelWidth: clampPanelWidth(data.panelWidth ?? 440),
+      panelWidth: clampPanelWidth(data.panelWidth ?? 360),
     };
   } catch {
     return defaultPrefs();
@@ -107,8 +107,8 @@ export function defaultPrefs() {
   return {
     version: VERSION,
     columns: { ...DEFAULT_COLUMNS },
-    density: "comfortable",
-    panelWidth: 440,
+    density: "compact",
+    panelWidth: 360,
     panelOpen: true,
     notifyOptIn: false,
     customViews: [],
@@ -117,8 +117,8 @@ export function defaultPrefs() {
 
 export function clampPanelWidth(width) {
   const n = Number(width);
-  if (!Number.isFinite(n)) return 440;
-  return Math.min(720, Math.max(360, Math.round(n)));
+  if (!Number.isFinite(n)) return 360;
+  return Math.min(560, Math.max(360, Math.round(n)));
 }
 
 /** Áp view đã lưu lên filter client (pnl up/down) — không đổi quyền. */
