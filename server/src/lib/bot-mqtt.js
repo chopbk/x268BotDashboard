@@ -7,11 +7,14 @@ const NEW_COMMAND_TOPIC = "new_command";
 const COMMAND_RESPONSE_TOPIC = "command_response";
 const TRADING_REQUEST_TOPIC = "trading/request/v1";
 const TRADING_RESPONSE_TOPIC = "trading/response/v1";
+const DATA_REQUEST_TOPIC = "data/request/v1";
+const DATA_RESPONSE_TOPIC = "data/response/v1";
 
 let client = null;
 let starting = null;
 const responseHandlers = new Set();
 const tradingResponseHandlers = new Set();
+const dataResponseHandlers = new Set();
 
 function mqttEnv() {
     return String(config.mqttEnv || process.env.MQTT || "DEFAULT").trim() || "DEFAULT";
@@ -38,6 +41,11 @@ function onResponse(handler) {
 function onTradingResponse(handler) {
     tradingResponseHandlers.add(handler);
     return () => tradingResponseHandlers.delete(handler);
+}
+
+function onDataResponse(handler) {
+    dataResponseHandlers.add(handler);
+    return () => dataResponseHandlers.delete(handler);
 }
 
 async function startBotMqtt() {
@@ -72,6 +80,13 @@ async function startBotMqtt() {
                             console.log("[bot-mqtt] subscribed", TRADING_RESPONSE_TOPIC);
                         }
                     });
+                    next.subscribe(DATA_RESPONSE_TOPIC, { qos: 1 }, (err) => {
+                        if (err) {
+                            console.error("[bot-mqtt] subscribe data_response", err.message);
+                        } else {
+                            console.log("[bot-mqtt] subscribed", DATA_RESPONSE_TOPIC);
+                        }
+                    });
                     resolve();
                 };
                 next.once("error", onError);
@@ -98,6 +113,14 @@ async function startBotMqtt() {
                                 handler(payload);
                             } catch (error) {
                                 console.error("[bot-mqtt] trading response handler", error.message);
+                            }
+                        }
+                    } else if (topic === DATA_RESPONSE_TOPIC) {
+                        for (const handler of dataResponseHandlers) {
+                            try {
+                                handler(payload);
+                            } catch (error) {
+                                console.error("[bot-mqtt] data response handler", error.message);
                             }
                         }
                     }
@@ -155,17 +178,26 @@ async function publishTradingRequest(payload) {
     return publishJson(TRADING_REQUEST_TOPIC, payload, { qos: 1 });
 }
 
+async function publishDataRequest(payload) {
+    await startBotMqtt().catch(() => {});
+    return publishJson(DATA_REQUEST_TOPIC, payload, { qos: 1 });
+}
+
 module.exports = {
     CONFIG_SYNC_TOPIC,
     NEW_COMMAND_TOPIC,
     COMMAND_RESPONSE_TOPIC,
     TRADING_REQUEST_TOPIC,
     TRADING_RESPONSE_TOPIC,
+    DATA_REQUEST_TOPIC,
+    DATA_RESPONSE_TOPIC,
     startBotMqtt,
     isConnected,
     onResponse,
     onTradingResponse,
+    onDataResponse,
     publishConfigSync,
     publishNewCommand,
     publishTradingRequest,
+    publishDataRequest,
 };

@@ -103,7 +103,18 @@ async function saveExchangeBook(account, book, expectedVersion) {
     return raw ? JSON.parse(raw) : null;
 }
 
-async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_MS, details = false } = {}) {
+async function reconcileViaMqtt(account, current) {
+    const { requestPositionRefresh } = require("./data-refresh");
+    const result = await requestPositionRefresh(account);
+    if (result.status !== "succeeded") {
+        throw new Error(result.error || "MQTT refresh failed");
+    }
+    // binance-bot đã ghi vào Redis, đọc lại
+    const refreshed = await readExchangeBook(account);
+    return refreshed || current;
+}
+
+async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_MS, details = false, viaMqtt = true } = {}) {
     if (pendingRefresh.has(account)) return pendingRefresh.get(account);
     const job = (async () => {
         let token = null;
@@ -112,7 +123,18 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
             let current = await readExchangeBook(account);
             const checked = new Date(current?.reconciledAt || current?.at || 0).getTime();
             if (!force && current?.complete !== false && current && Date.now() - checked < maxAgeMs) return current;
-            if (Date.now() < cooldownUntil || (reader?.isReady && await reader.get("wb:ex:cooldown"))) return current;
+            if (Date.now() < cooldownUntil || (reader?.isReady && await reader.get("wb:ex:cooldown"))) {
+                // Đang cooldown, thử MQTT (binance-bot có API key riêng)
+                if (viaMqtt) {
+                    try {
+                        console.log("[positionReconcile]", account, "cooldown active, trying MQTT");
+                        return await reconcileViaMqtt(account, current);
+                    } catch (mqttError) {
+                        console.warn("[positionReconcile]", account, "MQTT fallback failed:", mqttError.message);
+                    }
+                }
+                return current;
+            }
             if (reader?.isReady) {
                 token = require("crypto").randomUUID();
                 if (!await reader.set(lock, token, { NX: true, PX: 120_000 })) return current;
@@ -121,6 +143,21 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
                 const refreshedAt = new Date(current?.reconciledAt || current?.at || 0).getTime();
                 if (!force && current && current.complete !== false && Date.now() - refreshedAt < maxAgeMs) return current;
             }
+
+            // Ưu tiên MQTT nếu có kết nối (binance-bot gọi Binance, tránh rate limit)
+            if (viaMqtt) {
+                const { isConnected } = require("./bot-mqtt");
+                if (isConnected()) {
+                    try {
+                        console.log("[positionReconcile]", account, "using MQTT");
+                        return await reconcileViaMqtt(account, current);
+                    } catch (mqttError) {
+                        console.warn("[positionReconcile]", account, "MQTT failed, trying direct:", mqttError.message);
+                    }
+                }
+            }
+
+            // Fallback: gọi trực tiếp Binance (nếu web-bot có API key)
             const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
             const { loadBinanceSnapshot } = require("./position-feed");
             const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });
