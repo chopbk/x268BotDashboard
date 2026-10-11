@@ -4,7 +4,7 @@
  */
 const { httpError } = require("./http");
 const UserApi = require("../models/user-api");
-const { createBinanceFutures } = require("./binance-rest");
+const { createBinanceFutures } = require("./binance-futures");
 
 function exactName(account) {
     return String(account || "").trim().toUpperCase();
