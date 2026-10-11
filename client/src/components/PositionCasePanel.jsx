@@ -418,39 +418,51 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                         </tr>
                       );
                     })}
-                    {!openOrders.length ? (
-                      <tr><td colSpan={7} className="muted">Không có order mở — dùng hàng thêm nhanh bên dưới hoặc Reconcile.</td></tr>
+                    {!openOrders.length && !canCreate ? (
+                      <tr><td colSpan={7} className="muted">Không có order mở — bấm Reconcile nếu vừa đặt trên sàn.</td></tr>
                     ) : null}
                     {canCreate ? (
                       <tr className="pos-case-quick-row">
-                        <td colSpan={7}>
-                          <div className="pos-case-quick">
-                            <strong>Thêm order</strong>
-                            <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
-                              <option value="LIMIT">Limit</option>
-                              <option value="MARKET">Market</option>
-                              <option value="STOP_MARKET">Stop Market</option>
-                              <option value="STOP">Stop Limit</option>
-                            </select>
-                            <select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value })}>
-                              <option value="BUY">BUY</option>
-                              <option value="SELL">SELL</option>
-                            </select>
+                        <td><span className="order-kind order-kind-order">Mới</span></td>
+                        <td>
+                          <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
+                            <option value="LIMIT">LIMIT</option>
+                            <option value="MARKET">MARKET</option>
+                            <option value="STOP_MARKET">STOP_MARKET</option>
+                            <option value="STOP">STOP</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value })}>
+                            <option value="BUY">BUY</option>
+                            <option value="SELL">SELL</option>
+                          </select>
+                          <span className="muted"> · {row.side}</span>
+                        </td>
+                        <td>
+                          <span className="pos-case-inline-inputs">
                             {(draft.type === "LIMIT" || draft.type === "STOP") ? (
                               <input inputMode="decimal" placeholder="Giá" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
                             ) : null}
                             {(draft.type === "STOP" || draft.type === "STOP_MARKET") ? (
                               <input inputMode="decimal" placeholder="Trigger" value={draft.triggerPrice} onChange={(e) => setDraft({ ...draft, triggerPrice: e.target.value })} />
                             ) : null}
-                            <input inputMode="decimal" placeholder="Qty" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
-                            <label className="pos-case-check">
-                              <input type="checkbox" checked={draft.reduceOnly} onChange={(e) => setDraft({ ...draft, reduceOnly: e.target.checked })} />
-                              Reduce-only
-                            </label>
-                            <button type="button" className="pos-tpsl-confirm" disabled={busyId === "new"} onClick={placeQuick}>
-                              {busyId === "new" ? "Đang đặt…" : "Đặt"}
-                            </button>
-                          </div>
+                            {draft.type === "MARKET" ? <span className="muted">market</span> : null}
+                          </span>
+                        </td>
+                        <td>
+                          <input inputMode="decimal" placeholder="Qty" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
+                        </td>
+                        <td>
+                          <label className="pos-case-check">
+                            <input type="checkbox" checked={draft.reduceOnly} onChange={(e) => setDraft({ ...draft, reduceOnly: e.target.checked })} />
+                            RO
+                          </label>
+                        </td>
+                        <td className="pos-case-actions">
+                          <button type="button" className="pos-tpsl-confirm" disabled={busyId === "new"} onClick={placeQuick}>
+                            {busyId === "new" ? "…" : "Thêm"}
+                          </button>
                         </td>
                       </tr>
                     ) : null}
@@ -527,28 +539,11 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                     </article>
                   ) : null}
                 </div>
-                {(selected.timeline || []).length ? (
-                  <>
-                    <h4>Timeline quyết định monitor</h4>
-                    <ol className="pos-case-timeline">
-                      {selected.timeline.slice().reverse().slice(0, 40).map((item, index) => (
-                        <li key={`${item.at}-${item.event}-${index}`}>
-                          <span className="muted">{when(item.at)}</span>
-                          {" · "}
-                          <strong>{item.kind}</strong>
-                          {item.phase ? ` · ${item.phase}` : ""}
-                          {item.event ? ` · ${item.event}` : ""}
-                          {item.message ? ` — ${item.message}` : ""}
-                        </li>
-                      ))}
-                    </ol>
-                  </>
-                ) : null}
               </section>
             ) : null}
 
             <section>
-              <h3>Lịch sử order</h3>
+              <h3>Lịch sử order (7 ngày)</h3>
               <div className="table-wrap">
                 <table className="pos-table orders-table">
                   <thead>
@@ -576,11 +571,29 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                         <td>{order.status || "—"}</td>
                       </tr>
                     ))}
-                    {!history.length ? <tr><td colSpan={8} className="muted">Chưa có lịch sử order (3 ngày gần nhất) cho symbol/side này.</td></tr> : null}
+                    {!history.length ? <tr><td colSpan={8} className="muted">Chưa có lịch sử order (7 ngày gần nhất) cho symbol/side này.</td></tr> : null}
                   </tbody>
                 </table>
               </div>
             </section>
+
+            {showMonitor && (selected.timeline || []).length ? (
+              <section className="pos-case-monitor">
+                <h3>Timeline quyết định monitor</h3>
+                <ol className="pos-case-timeline">
+                  {selected.timeline.slice().reverse().slice(0, 40).map((item, index) => (
+                    <li key={`${item.at}-${item.event}-${index}`}>
+                      <span className="muted">{when(item.at)}</span>
+                      {" · "}
+                      <strong>{item.kind}</strong>
+                      {item.phase ? ` · ${item.phase}` : ""}
+                      {item.event ? ` · ${item.event}` : ""}
+                      {item.message ? ` — ${item.message}` : ""}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
 
             {(caseBody.warnings || []).length ? (
               <section>

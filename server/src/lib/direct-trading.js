@@ -58,6 +58,7 @@ async function cancelOrderDirect(target, params) {
     if (!id) throw httpError(400, "Thiếu orderId");
     if (!symbol) throw httpError(400, "Thiếu symbol");
 
+    // Algo cancel chỉ nhận algoId; gửi nhầm orderId thường → "Unknown order sent".
     const cancelAlgo = () => client.signed("DELETE", "/fapi/v1/algoOrder", { symbol, algoId: id });
     const cancelRegular = () => client.signed("DELETE", "/fapi/v1/order", { symbol, orderId: id });
 
@@ -67,8 +68,13 @@ async function cancelOrderDirect(target, params) {
             return { success: true, orderId: id, algoId: id, result };
         } catch (error) {
             console.warn("[cancelOrderDirect] algo failed, try regular:", error.message);
-            const result = await cancelRegular();
-            return { success: true, orderId: id, result };
+            try {
+                const result = await cancelRegular();
+                return { success: true, orderId: id, result };
+            } catch (fallbackError) {
+                const msg = error.message || fallbackError.message || "Unknown order sent";
+                throw httpError(400, `Huỷ algo #${id} thất bại: ${msg}`);
+            }
         }
     }
 
@@ -77,8 +83,13 @@ async function cancelOrderDirect(target, params) {
         return { success: true, orderId: id, result };
     } catch (error) {
         console.warn("[cancelOrderDirect] regular failed, try algo:", error.message);
-        const result = await cancelAlgo();
-        return { success: true, orderId: id, algoId: id, result };
+        try {
+            const result = await cancelAlgo();
+            return { success: true, orderId: id, algoId: id, result };
+        } catch (fallbackError) {
+            const msg = error.message || fallbackError.message || "Unknown order sent";
+            throw httpError(400, `Huỷ order #${id} thất bại: ${msg}`);
+        }
     }
 }
 

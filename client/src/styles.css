@@ -1056,15 +1056,12 @@ td.negative { color: var(--danger); }
 .pos-case-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; white-space: nowrap; }
 .pos-case-inline-inputs { display: inline-flex; gap: 4px; }
 .pos-case-inline-inputs input { width: 88px; }
-.pos-case-quick-row td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
-.pos-case-quick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.pos-case-quick input, .pos-case-quick select {
-  min-width: 90px;
+.pos-case-quick-row td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); vertical-align: middle; }
+.pos-case-quick-row input,
+.pos-case-quick-row select {
+  width: 100%;
+  min-width: 72px;
+  max-width: 120px;
   padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid var(--line);

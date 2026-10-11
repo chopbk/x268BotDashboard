@@ -156,7 +156,7 @@ function publicMonitor(doc, heartbeatFresh, now, mark) {
         openedAt: doc.startTime || doc.createdAt || null,
         updatedAt,
         watching,
-        closed: doc.closed === true,
+        closed: isClosedDoc(doc),
         estimatedPnl: estimatedPnl(identity.side, entry, mark, ownQty(doc)),
         estimatedLabel: "ước tính",
         recorded: recordedFromDoc(doc),
@@ -264,21 +264,26 @@ function isProtectiveOrder(order) {
 }
 
 function publicOrder(row, kind) {
+    const isAlgo = kind === "algo";
+    // Algo: luôn dùng algoId (orderId trên snapshot algo thường là 0 / actualOrderId → Unknown order sent).
+    const id = isAlgo
+        ? String(row.algoId || row.strategyId || "")
+        : String(row.orderId || "");
     return {
-        id: String(row.orderId || row.algoId || ""),
+        id: id || String(row.orderId || row.algoId || ""),
         kind,
         source: "exchange",
         confirmed: true,
         symbol: String(row.symbol || "").toUpperCase(),
         side: String(row.side || "").toUpperCase(),
         positionSide: String(row.positionSide || "BOTH").toUpperCase(),
-        type: row.type || row.orderType || "",
+        type: row.type || row.orderType || row.strategyType || "",
         price: num(row.price || row.triggerPrice) || null,
         stopPrice: num(row.stopPrice || row.triggerPrice) || null,
         callbackRate: num(row.callbackRate) || null,
         activationPrice: num(row.activationPrice) || null,
-        qty: num(row.origQty || row.quantity) || null,
-        status: row.status || row.algoStatus || "",
+        qty: num(row.origQty || row.quantity || row.totalQty) || null,
+        status: row.status || row.algoStatus || row.strategyStatus || "",
         reduceOnly: row.reduceOnly === true || row.reduceOnly === "true",
         closePosition: row.closePosition === true || row.closePosition === "true",
         workingType: row.workingType || null,
@@ -977,6 +982,7 @@ module.exports = {
     applyLiveMarks,
     filterRows,
     isMine,
+    isClosedDoc,
     estimatedPnl,
     loadPositions,
     monitorDetail,

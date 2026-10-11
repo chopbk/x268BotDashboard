@@ -10,6 +10,7 @@ const {
     heartbeatFresh,
     monitorDetail,
     buildPositionView,
+    isClosedDoc,
 } = require("./positions");
 const { readExchangeBook, reconcile, cached } = require("./position-live");
 
@@ -185,10 +186,13 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
         symbol,
         side,
         closed: { $ne: true },
+        isClosed: { $ne: true },
         $or: [{ futuresClientName: account }, { env: { $in: bot.accounts || [] } }, { env: account }],
     }).lean();
 
-    const ownedDocs = (docs || []).filter((doc) => monitorOwner(doc, envOwners) === account);
+    const ownedDocs = (docs || []).filter((doc) => (
+        monitorOwner(doc, envOwners) === account && !isClosedDoc(doc)
+    ));
 
     let book = await readBook(account);
     if (!book) book = cachedBook(account);
@@ -296,12 +300,15 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
     let orderHistory = [];
     try {
         const { loadOrderHistory } = require("./orders");
+        const from = new Date(now);
+        from.setDate(from.getDate() - 7);
         const hist = await (deps.loadOrderHistory || loadOrderHistory)(actor, {
             account,
             symbol,
             positionSide: side,
             audience,
-            limit: 40,
+            from: from.toISOString(),
+            limit: 80,
         });
         orderHistory = hist?.orders || [];
     } catch (error) {
