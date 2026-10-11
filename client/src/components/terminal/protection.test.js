@@ -11,8 +11,8 @@ test("protection: hiện giá SL/TP sàn", () => {
   assert.equal(status.sl.kind, "exchange");
   assert.equal(status.tp.kind, "exchange");
   const cell = protectionCellText(status);
-  assert.match(cell.primary, /110/);
-  assert.match(cell.primary, /90/);
+  assert.match(cell.tpLine, /110/);
+  assert.match(cell.slLine, /90/);
 });
 
 test("protection: fallback monitor khi chưa có sổ lệnh", () => {
@@ -21,13 +21,15 @@ test("protection: fallback monitor khi chưa có sổ lệnh", () => {
   });
   assert.equal(status.sl.kind, "monitor");
   assert.equal(status.tp.kind, "monitor");
-  assert.match(protectionCellText(status).primary, /95/);
+  assert.match(protectionCellText(status).slLine, /95/);
+  assert.match(protectionCellText(status).tpLine, /120/);
 });
 
 test("protection: stale không che giá sàn đã có", () => {
   const status = protectionStatus({ exchangeSl: 82.6, exchangeTp: 99, monitors: [] }, { stale: true });
   assert.equal(status.sl.kind, "exchange");
-  assert.match(protectionCellText(status).primary, /82\.6|82.6/);
+  assert.match(protectionCellText(status).slLine, /82/);
+  assert.match(protectionCellText(status).tpLine, /99/);
 });
 
 test("protection: stale + không có mức → chưa xác minh", () => {

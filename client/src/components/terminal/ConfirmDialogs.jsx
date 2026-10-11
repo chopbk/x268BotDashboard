@@ -51,35 +51,39 @@ export function CloseConfirmDialog({ confirm, busy, formError, onChange, onCance
         </label>
 
         {confirm.orderType === "LIMIT" ? (
-          <label>
-            Giá (Price)
+          <div className="term-tpsl-field">
+            <span className="term-tpsl-label">Giá (Price)</span>
             <input
               type="text"
               inputMode="decimal"
+              className="term-tpsl-input"
               disabled={busy}
-              value={confirm.price}
+              value={confirm.price ?? ""}
               placeholder="Giá limit"
+              autoComplete="off"
               onChange={(e) => patch({ price: e.target.value.replace(/,/g, "") })}
             />
-          </label>
+          </div>
         ) : (
           <p className="muted">Market: đóng theo giá thị trường (mark tham chiếu {fmt(confirm.mark)}).</p>
         )}
 
-        <label>
-          Số lượng
-          <span className="term-close-qty-row">
+        <div className="term-tpsl-field">
+          <span className="term-tpsl-label">Số lượng</span>
+          <div className="term-tpsl-inputs">
             <input
               type="text"
               inputMode="decimal"
+              className="term-tpsl-input"
               disabled={busy}
-              value={confirm.qty}
+              value={confirm.qty ?? ""}
               placeholder="Qty"
+              autoComplete="off"
               onChange={(e) => patch({ qty: e.target.value.replace(/,/g, ""), percent: null })}
             />
             <span className="term-close-pct-badge" title="Tỷ lệ so với size vị thế">{percentLabel}</span>
-          </span>
-        </label>
+          </div>
+        </div>
 
         <div className="term-percents" role="group" aria-label="Chọn % đóng">
           {CLOSE_PERCENTS.map((p) => (
@@ -158,29 +162,34 @@ export function TpslConfirmDialog({ draft, busy, formError, onChange, onCancel, 
 
         {draft.tab === "trailing" ? (
           <>
-            <label>
-              Callback rate (%)
+            <div className="term-tpsl-field">
+              <span className="term-tpsl-label">Callback rate (%)</span>
               <input
                 type="text"
                 inputMode="decimal"
+                className="term-tpsl-input"
                 disabled={busy}
-                value={draft.callbackRate}
+                value={draft.callbackRate ?? ""}
                 placeholder="1.0"
+                autoComplete="off"
                 onChange={(e) => patch({ callbackRate: e.target.value.replace(/,/g, "") })}
               />
-            </label>
-            <label>
-              Activation price (optional)
-              <span className="term-close-qty-row">
+            </div>
+            <div className="term-tpsl-field">
+              <span className="term-tpsl-label">Activation price (optional)</span>
+              <div className="term-tpsl-inputs">
                 <input
                   type="text"
                   inputMode="decimal"
+                  className="term-tpsl-input"
                   disabled={busy}
-                  value={draft.activationPrice}
+                  value={draft.activationPrice ?? ""}
                   placeholder="Trống = kích hoạt ngay"
+                  autoComplete="off"
                   onChange={(e) => patch({ activationPrice: e.target.value.replace(/,/g, "") })}
                 />
                 <select
+                  className="term-tpsl-select"
                   value={draft.trailingWorkingType || "CONTRACT_PRICE"}
                   disabled={busy}
                   aria-label="Trailing theo giá"
@@ -189,24 +198,27 @@ export function TpslConfirmDialog({ draft, busy, formError, onChange, onCancel, 
                   <option value="CONTRACT_PRICE">Last</option>
                   <option value="MARK_PRICE">Mark</option>
                 </select>
-              </span>
-            </label>
+              </div>
+            </div>
             {draft.hasTrailing ? <p className="muted">Đang có trailing trên sàn — Confirm sẽ thay lệnh cũ.</p> : null}
           </>
         ) : (
           <>
-            <label>
-              Take Profit
-              <span className="term-close-qty-row">
+            <div className="term-tpsl-field">
+              <span className="term-tpsl-label term-tpsl-tp">Take Profit</span>
+              <div className="term-tpsl-inputs">
                 <input
                   type="text"
                   inputMode="decimal"
+                  className="term-tpsl-input"
                   disabled={busy}
-                  value={draft.tp}
+                  value={draft.tp ?? ""}
                   placeholder="Giá trigger TP"
+                  autoComplete="off"
                   onChange={(e) => patch({ tp: e.target.value.replace(/,/g, ""), tpEnabled: true })}
                 />
                 <select
+                  className="term-tpsl-select"
                   value={draft.tpWorkingType || "CONTRACT_PRICE"}
                   disabled={busy}
                   aria-label="TP theo giá"
@@ -215,20 +227,23 @@ export function TpslConfirmDialog({ draft, busy, formError, onChange, onCancel, 
                   <option value="CONTRACT_PRICE">Last</option>
                   <option value="MARK_PRICE">Mark</option>
                 </select>
-              </span>
-            </label>
-            <label>
-              Stop Loss
-              <span className="term-close-qty-row">
+              </div>
+            </div>
+            <div className="term-tpsl-field">
+              <span className="term-tpsl-label term-tpsl-sl">Stop Loss</span>
+              <div className="term-tpsl-inputs">
                 <input
                   type="text"
                   inputMode="decimal"
+                  className="term-tpsl-input"
                   disabled={busy}
-                  value={draft.sl}
+                  value={draft.sl ?? ""}
                   placeholder="Giá trigger SL"
+                  autoComplete="off"
                   onChange={(e) => patch({ sl: e.target.value.replace(/,/g, ""), slEnabled: true })}
                 />
                 <select
+                  className="term-tpsl-select"
                   value={draft.slWorkingType || "CONTRACT_PRICE"}
                   disabled={busy}
                   aria-label="SL theo giá"
@@ -237,8 +252,8 @@ export function TpslConfirmDialog({ draft, busy, formError, onChange, onCancel, 
                   <option value="CONTRACT_PRICE">Last</option>
                   <option value="MARK_PRICE">Mark</option>
                 </select>
-              </span>
-            </label>
+              </div>
+            </div>
             <PreviewBlock title="Preview nếu chạm TP/SL (ước tính)" preview={preview} />
             <p className="muted">Algo TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại bị hủy trước.</p>
           </>

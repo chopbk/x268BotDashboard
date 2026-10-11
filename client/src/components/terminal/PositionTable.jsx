@@ -192,9 +192,9 @@ function PositionRow({
         {columns.protection !== false ? (() => {
           const cell = protectionCellText(status);
           return (
-            <td className={`term-protect term-protect-${status.sl.kind}`} title={protectionShortText(status)}>
-              <span className="term-protect-prices">{cell.primary}</span>
-              {cell.secondary ? <span className="muted">{cell.secondary}</span> : null}
+            <td className={`term-num term-dual term-protect term-protect-${status.sl.kind}`} title={protectionShortText(status)}>
+              <span className="term-protect-tp">{cell.tpLine}</span>
+              <span className="term-protect-sl muted">{cell.slLine}</span>
             </td>
           );
         })() : null}
@@ -250,7 +250,10 @@ function PositionCard({ row, selected, stale, canClose, canTpsl, onSelect, onClo
         <span>Size <b className="term-num">{fmt(qtyOf(row))}</b></span>
         <span className={pnlClass(row.unrealized)}>PnL <b>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</b>{roi != null ? ` (${fmt(roi, 1)}%)` : ""}</span>
         <span className="muted">{fmt(row.entry)} → {fmt(row.mark)}</span>
-        <span className={`term-protect-${status.sl.kind}`}>{protectionCellText(status).primary}</span>
+        <span className={`term-dual term-protect-${status.sl.kind}`}>
+          <span>{protectionCellText(status).tpLine}</span>
+          <span className="muted">{protectionCellText(status).slLine}</span>
+        </span>
       </div>
       <div className="term-row-actions" onClick={(e) => e.stopPropagation()}>
         <button type="button" disabled={!canClose || row.book === "paper" || row.book === "pending"} onClick={() => onClose(row)}>Đóng</button>

@@ -49,24 +49,25 @@ export function protectionStatus(row, { ordersVerified = null, stale = false, or
   return { sl, tp, trailing, exchange, monitor };
 }
 
-/** Hiển thị ngắn trên bảng: giá trước, nguồn phụ. */
+/** Hai dòng giống Entry/Mark: TP trên, SL dưới. */
 export function protectionCellText(status) {
-  if (!status) return { primary: "—", secondary: "" };
-  const slPart = status.sl.price != null || (status.sl.detail && status.sl.detail !== "Chưa xác minh" && !status.sl.detail.startsWith("Chưa"))
-    ? `${status.sl.label} ${status.sl.detail}`
-    : status.sl.label;
-  const tpPart = status.tp.detail
+  if (!status) return { tpLine: "—", slLine: "—", note: "" };
+  const tpLine = status.tp.detail
     ? `${status.tp.label} ${status.tp.detail}`
     : status.tp.label;
-  const primary = `${tpPart} / ${slPart}`;
-  const secondary = status.trailing ? status.trailing.label : (status.sl.kind === "monitor" || status.tp.kind === "monitor" ? "monitor" : "");
-  return { primary, secondary };
+  const slLine = status.sl.price != null || (status.sl.detail && status.sl.detail !== "Chưa xác minh" && !String(status.sl.detail).startsWith("Chưa"))
+    ? `${status.sl.label} ${status.sl.detail}`
+    : status.sl.label;
+  const note = status.trailing
+    ? status.trailing.label
+    : (status.sl.kind === "monitor" || status.tp.kind === "monitor" ? "monitor" : "");
+  return { tpLine, slLine, note, primary: `${tpLine} / ${slLine}`, secondary: note };
 }
 
 export function protectionShortText(status) {
   if (!status) return "—";
-  const { primary, secondary } = protectionCellText(status);
-  return secondary ? `${primary} · ${secondary}` : primary;
+  const { tpLine, slLine, note } = protectionCellText(status);
+  return note ? `${tpLine} · ${slLine} · ${note}` : `${tpLine} · ${slLine}`;
 }
 
 export function needsAttention(row, { stale = false } = {}) {

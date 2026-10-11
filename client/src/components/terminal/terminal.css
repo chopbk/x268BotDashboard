@@ -511,49 +511,126 @@
   z-index: 80;
 }
 
+.term-dialog {
+  width: min(480px, 100%);
+  max-height: min(88vh, 720px);
+}
+
 .term-dialog label {
   display: grid;
   gap: 4px;
   font-size: 13px;
 }
 
-.term-dialog select,
-.term-dialog input[type="text"] {
-  min-height: 34px;
-  padding: 6px 8px;
+.term-dialog > label > select,
+.term-dialog > label > input[type="text"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid var(--term-line);
-  background: var(--bg, #111);
-  color: var(--text);
-  font: inherit;
+  border: 1px solid var(--line, #303138);
+  background: var(--surface-2, #1d1e23);
+  color: var(--text, #f0f0f2);
+  caret-color: var(--text, #f0f0f2);
 }
 
-.term-close-qty-row {
-  display: flex;
-  align-items: center;
+.term-tpsl-field {
+  display: grid;
+  gap: 6px;
+}
+
+.term-tpsl-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.term-tpsl-tp {
+  color: var(--ok, #91d6b4);
+  border-left: 3px solid var(--ok, #91d6b4);
+  padding-left: 8px;
+}
+
+.term-tpsl-sl {
+  color: var(--danger, #f3a5ad);
+  border-left: 3px solid var(--danger, #f3a5ad);
+  padding-left: 8px;
+}
+
+/* Grid 1fr + select: tránh input/select width:100% global đè lên nhau */
+.term-tpsl-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: center;
 }
 
-.term-close-qty-row input {
-  flex: 1;
+.term-dialog .term-tpsl-input,
+.term-dialog .term-tpsl-select {
+  width: auto;
   min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #303138);
+  background: var(--surface-2, #1d1e23);
+  color: var(--text, #f0f0f2);
+  caret-color: var(--text, #f0f0f2);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.term-dialog .term-tpsl-input {
+  width: 100%;
+}
+
+.term-dialog .term-tpsl-select {
+  width: auto;
+  min-width: 88px;
+  flex: 0 0 auto;
+}
+
+.term-dialog .term-tpsl-input:focus,
+.term-dialog .term-tpsl-select:focus,
+.term-dialog > label > select:focus,
+.term-dialog > label > input:focus {
+  outline: 2px solid color-mix(in srgb, #f0b90b 55%, transparent);
+  outline-offset: 1px;
+  border-color: #f0b90b;
+}
+
+.term-dialog .term-tpsl-input::placeholder {
+  color: var(--muted, #a8a8b4);
+  opacity: 0.85;
 }
 
 .term-close-pct-badge {
-  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 52px;
+  min-height: 38px;
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--muted);
-  border: 1px solid var(--term-line);
-  border-radius: 6px;
-  padding: 6px 8px;
+  border: 1px solid var(--line, #303138);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface, #151619);
 }
 
-.term-protect-prices {
+.term-protect.term-dual {
+  text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.term-protect-tp {
   font-weight: 600;
+  color: var(--ok, #91d6b4);
+}
+
+.term-protect-sl {
+  font-weight: 500;
 }
 
 .term-toast-stack {
