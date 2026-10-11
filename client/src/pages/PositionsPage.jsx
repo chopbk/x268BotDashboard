@@ -898,7 +898,7 @@ export default function PositionsPage() {
                 </select>
               </span>
             </label>
-            <p className="muted">Gửi TAKE_PROFIT_MARKET / STOP_MARKET đóng toàn bộ vị thế (closePosition). Lệnh cũ cùng loại sẽ bị hủy trước.</p>
+            <p className="muted">Gửi Algo Order TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại sẽ bị hủy trước.</p>
             <div className="pos-inline">
               <button type="button" className="ghost" disabled={savingTpsl} onClick={() => setTpslDraft(null)}>Huỷ</button>
               <button type="submit" className="pos-tpsl-confirm" disabled={savingTpsl}>{savingTpsl ? "Đang gửi…" : "Confirm"}</button>

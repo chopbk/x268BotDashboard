@@ -206,30 +206,105 @@ function tpslTriggerOf(params, kind) {
     return params?.stopLoss?.triggerPrice ?? params?.stopLoss?.price ?? null;
 }
 
-async function cancelProtectiveOrders(client, symbol, positionSide, kinds) {
-    const open = await client.signedGet("/fapi/v1/openOrders", { symbol }).catch((error) => {
-        console.warn("[cancelProtectiveOrders]", error.message);
-        return [];
+const ALGO_ORDER_TYPES = new Set([
+    "STOP",
+    "STOP_MARKET",
+    "TAKE_PROFIT",
+    "TAKE_PROFIT_MARKET",
+    "TRAILING_STOP_MARKET",
+]);
+
+function orderTypeOf(order) {
+    return String(order?.type || order?.orderType || "").toUpperCase();
+}
+
+function matchesProtectiveKind(type, kinds) {
+    const t = String(type || "").toUpperCase();
+    return (kinds || []).some((kind) => {
+        if (kind === "TAKE_PROFIT") return t.includes("TAKE_PROFIT");
+        if (kind === "STOP") return t === "STOP" || t === "STOP_MARKET";
+        return t.includes(kind);
     });
+}
+
+function positionSideOk(orderSide, positionSide) {
+    const side = String(orderSide || "BOTH").toUpperCase();
+    const want = String(positionSide || "BOTH").toUpperCase();
+    return !want || want === "BOTH" || side === "BOTH" || side === want;
+}
+
+/**
+ * Hủy TP/SL cũ: ưu tiên Algo Order API, vẫn thử openOrders legacy.
+ */
+async function cancelProtectiveOrders(client, symbol, positionSide, kinds) {
     const cancelled = [];
-    for (const order of Array.isArray(open) ? open : []) {
-        const type = String(order.type || "").toUpperCase();
-        const side = String(order.positionSide || "BOTH").toUpperCase();
-        const sideOk = !positionSide || positionSide === "BOTH" || side === "BOTH" || side === String(positionSide).toUpperCase();
-        if (!sideOk) continue;
-        if (!kinds.some((kind) => type.includes(kind))) continue;
+    const [algoRaw, openRaw] = await Promise.all([
+        client.signedGet("/fapi/v1/openAlgoOrders", { symbol }).catch((error) => {
+            console.warn("[cancelProtectiveOrders] openAlgoOrders", error.message);
+            return [];
+        }),
+        client.signedGet("/fapi/v1/openOrders", { symbol }).catch((error) => {
+            console.warn("[cancelProtectiveOrders] openOrders", error.message);
+            return [];
+        }),
+    ]);
+    const algoList = Array.isArray(algoRaw) ? algoRaw : (algoRaw?.orders || []);
+    for (const order of algoList) {
+        const type = orderTypeOf(order);
+        if (!positionSideOk(order.positionSide, positionSide)) continue;
+        if (!matchesProtectiveKind(type, kinds)) continue;
+        const algoId = order.algoId || order.orderId;
+        if (!algoId) continue;
+        try {
+            await client.signed("DELETE", "/fapi/v1/algoOrder", { symbol, algoId: String(algoId) });
+            cancelled.push({ algoId, type, via: "algo" });
+        } catch (error) {
+            console.warn("[cancelProtectiveOrders] algo", algoId, error.message);
+        }
+    }
+    for (const order of Array.isArray(openRaw) ? openRaw : []) {
+        const type = orderTypeOf(order);
+        if (!ALGO_ORDER_TYPES.has(type) && !order.closePosition) continue;
+        if (!positionSideOk(order.positionSide, positionSide)) continue;
+        if (!matchesProtectiveKind(type, kinds)) continue;
         try {
             await client.signed("DELETE", "/fapi/v1/order", { symbol, orderId: order.orderId });
-            cancelled.push({ orderId: order.orderId, type });
+            cancelled.push({ orderId: order.orderId, type, via: "order" });
         } catch (error) {
-            console.warn("[cancelProtectiveOrders]", order.orderId, error.message);
+            console.warn("[cancelProtectiveOrders] order", order.orderId, error.message);
         }
     }
     return cancelled;
 }
 
+async function placeAlgoProtective(client, {
+    symbol, side, positionSide, type, triggerPrice, workingType, limitPrice,
+}) {
+    const params = {
+        algoType: "CONDITIONAL",
+        symbol,
+        side,
+        positionSide,
+        type,
+        triggerPrice: String(triggerPrice),
+        closePosition: "true",
+        workingType,
+    };
+    if ((type === "STOP" || type === "TAKE_PROFIT") && limitPrice) {
+        params.price = String(limitPrice);
+        params.timeInForce = "GTC";
+    }
+    console.log("[placeAlgoProtective]", symbol, type, params);
+    const result = await client.signed("POST", "/fapi/v1/algoOrder", params);
+    return {
+        algoId: result?.algoId || result?.orderId,
+        orderId: result?.algoId || result?.orderId,
+        result,
+    };
+}
+
 /**
- * Set TP/SL (Position TP/SL kiểu Binance: TAKE_PROFIT_MARKET / STOP_MARKET + closePosition).
+ * Set TP/SL qua Algo Order API (Binance -4120 nếu còn dùng /fapi/v1/order).
  */
 async function setTpslDirect(target, params) {
     const account = target?.env || target?.username;
@@ -260,25 +335,24 @@ async function setTpslDirect(target, params) {
     const cancelKinds = [];
     if (tpEnabled) cancelKinds.push("TAKE_PROFIT");
     if (slEnabled) cancelKinds.push("STOP");
-    // Binance chỉ cho 1 closePosition cùng loại — hủy cái cũ trước khi đặt mới.
     const cancelled = await cancelProtectiveOrders(client, symbol, posSide, cancelKinds);
 
     if (tpEnabled) {
         try {
-            const stopPrice = roundToTick(tpRaw, info?.tickSize);
-            if (!stopPrice) throw httpError(400, "Giá TP không hợp lệ");
+            const triggerPrice = roundToTick(tpRaw, info?.tickSize);
+            if (!triggerPrice) throw httpError(400, "Giá TP không hợp lệ");
             const workingType = resolveWorkingType(params?.tpWorkingType || params?.takeProfit?.workingType || params?.workingType);
             const tpType = String(params?.tpType || params?.takeProfit?.type || "TAKE_PROFIT_MARKET").toUpperCase();
-            const tpOrder = await client.signed("POST", "/fapi/v1/order", {
+            const placed = await placeAlgoProtective(client, {
                 symbol,
                 side: closeSide,
                 positionSide: posSide,
                 type: tpType,
-                stopPrice,
-                closePosition: "true",
+                triggerPrice,
                 workingType,
+                limitPrice: params?.takeProfit?.limitPrice,
             });
-            results.push({ type: "TP", success: true, orderId: tpOrder?.orderId, stopPrice, workingType });
+            results.push({ type: "TP", success: true, orderId: placed.orderId, algoId: placed.algoId, stopPrice: triggerPrice, workingType });
         } catch (error) {
             results.push({ type: "TP", success: false, error: error.message });
         }
@@ -286,20 +360,20 @@ async function setTpslDirect(target, params) {
 
     if (slEnabled) {
         try {
-            const stopPrice = roundToTick(slRaw, info?.tickSize);
-            if (!stopPrice) throw httpError(400, "Giá SL không hợp lệ");
+            const triggerPrice = roundToTick(slRaw, info?.tickSize);
+            if (!triggerPrice) throw httpError(400, "Giá SL không hợp lệ");
             const workingType = resolveWorkingType(params?.slWorkingType || params?.stopLoss?.workingType || params?.workingType);
             const slType = String(params?.slType || params?.stopLoss?.type || "STOP_MARKET").toUpperCase();
-            const slOrder = await client.signed("POST", "/fapi/v1/order", {
+            const placed = await placeAlgoProtective(client, {
                 symbol,
                 side: closeSide,
                 positionSide: posSide,
                 type: slType,
-                stopPrice,
-                closePosition: "true",
+                triggerPrice,
                 workingType,
+                limitPrice: params?.stopLoss?.limitPrice,
             });
-            results.push({ type: "SL", success: true, orderId: slOrder?.orderId, stopPrice, workingType });
+            results.push({ type: "SL", success: true, orderId: placed.orderId, algoId: placed.algoId, stopPrice: triggerPrice, workingType });
         } catch (error) {
             results.push({ type: "SL", success: false, error: error.message });
         }
@@ -314,7 +388,7 @@ async function setTpslDirect(target, params) {
 }
 
 /**
- * Cancel TP/SL.
+ * Cancel TP/SL (algoId ưu tiên; fallback orderId thường).
  */
 async function cancelTpslDirect(target, params) {
     const account = target?.env || target?.username;
@@ -322,17 +396,34 @@ async function cancelTpslDirect(target, params) {
     const client = await getClient(account);
 
     const { symbol } = target;
-    const { orderId } = params;
+    const { orderId, kind } = params;
+    const id = String(orderId || "").trim();
+    if (!id) throw httpError(400, "Thiếu orderId/algoId");
 
-    const result = await client.signed("DELETE", "/fapi/v1/order", {
-        symbol,
-        orderId,
-    });
-    return { success: true, orderId, result };
+    const preferAlgo = String(kind || "").toLowerCase() === "algo"
+        || String(kind || "").toLowerCase() === "tp"
+        || String(kind || "").toLowerCase() === "sl";
+
+    if (preferAlgo) {
+        try {
+            const result = await client.signed("DELETE", "/fapi/v1/algoOrder", { symbol, algoId: id });
+            return { success: true, orderId: id, algoId: id, result };
+        } catch (error) {
+            console.warn("[cancelTpslDirect] algo failed, try regular:", error.message);
+        }
+    }
+
+    try {
+        const result = await client.signed("DELETE", "/fapi/v1/order", { symbol, orderId: id });
+        return { success: true, orderId: id, result };
+    } catch (error) {
+        const result = await client.signed("DELETE", "/fapi/v1/algoOrder", { symbol, algoId: id });
+        return { success: true, orderId: id, algoId: id, result };
+    }
 }
 
 /**
- * Create order.
+ * Create order — conditional types đi Algo Order API.
  */
 async function createOrderDirect(target, params) {
     const account = target?.env || target?.username;
@@ -340,24 +431,50 @@ async function createOrderDirect(target, params) {
     const client = await getClient(account);
 
     const { symbol } = target;
-    const { side, positionSide, type, quantity, price, triggerPrice } = params;
+    const { side, positionSide, type, quantity, price, triggerPrice, closePosition, workingType } = params;
+    const orderType = String(type || "LIMIT").toUpperCase();
+
+    if (ALGO_ORDER_TYPES.has(orderType)) {
+        const trigger = triggerPrice || price;
+        const info = await findSymbolInfo(symbol);
+        const triggerText = roundToTick(trigger, info?.tickSize);
+        if (!triggerText && orderType !== "TRAILING_STOP_MARKET") {
+            throw httpError(400, "Thiếu triggerPrice cho algo order");
+        }
+        const orderParams = {
+            algoType: "CONDITIONAL",
+            symbol,
+            side,
+            positionSide: positionSide || "BOTH",
+            type: orderType,
+            workingType: resolveWorkingType(workingType),
+        };
+        if (closePosition === true || closePosition === "true") {
+            orderParams.closePosition = "true";
+            if (triggerText) orderParams.triggerPrice = triggerText;
+        } else {
+            orderParams.quantity = String(quantity);
+            if (triggerText) orderParams.triggerPrice = triggerText;
+        }
+        if (orderType === "STOP" || orderType === "TAKE_PROFIT") {
+            orderParams.price = String(price);
+            orderParams.timeInForce = "GTC";
+        }
+        const result = await client.signed("POST", "/fapi/v1/algoOrder", orderParams);
+        return { success: true, orderId: result?.algoId || result?.orderId, algoId: result?.algoId, result };
+    }
 
     const orderParams = {
         symbol,
         side,
         positionSide: positionSide || "BOTH",
-        type,
+        type: orderType,
         quantity: String(quantity),
     };
 
-    if (type === "LIMIT") {
+    if (orderType === "LIMIT") {
         orderParams.price = String(price);
         orderParams.timeInForce = "GTC";
-    } else if (type === "STOP_MARKET" || type === "TAKE_PROFIT_MARKET") {
-        orderParams.stopPrice = String(triggerPrice || price);
-    } else if (type === "STOP" || type === "TAKE_PROFIT") {
-        orderParams.price = String(price);
-        orderParams.stopPrice = String(triggerPrice);
     }
 
     const result = await client.signed("POST", "/fapi/v1/order", orderParams);
