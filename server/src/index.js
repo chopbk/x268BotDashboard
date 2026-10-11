@@ -84,6 +84,7 @@ async function main() {
         app.use("/api/summary", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/summary"));
         app.use("/api/signal-history", require("./routes/signal-history"));
         app.use("/api/signal-config", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/signal-setup"));
+        app.use("/api/provider-scorecard", require("./routes/provider-scorecard"));
         app.use("/api/account-statics", require("./routes/account-statics"));
         app.use("/api/account-ledger", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/account-ledger"));
 

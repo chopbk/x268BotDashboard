@@ -56,6 +56,8 @@ ngữ cảnh từ list, không phụ thuộc nút Back của trình duyệt.
 
 Phân biệt mode new/replace/sync. User xem được nguồn chưa chắc sửa được đích. Tab Thống kê/Cấu hình Signal gọi [signal-setup](../server/src/lib/signal-setup.js), không đi qua config-search.
 
+**Provider Scorecard** (`tab=scorecard`): [SignalScorecardPanel](../client/src/pages/SignalScorecardPanel.jsx) → GET `/api/provider-scorecard` → [provider-scorecard](../server/src/lib/provider-scorecard.js) → đếm feed `signal_infos` (nếu `signals.history`) + group trades `account_statics` theo `typeSignal` trong scope bot (nếu `statistics.view`) → gắn cờ channel từ `telegram_clients` → bảng xếp hạng. Không ghi Mongo. Chi tiết [spec](provider-scorecard-spec.md).
+
 ## 4. Position live
 
 ```mermaid

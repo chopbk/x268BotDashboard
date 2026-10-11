@@ -12,7 +12,7 @@
 | Bot `/bots/:username` | BotDetailPage | Account/config thuộc bot, thêm/đổi tên/gỡ account theo `config.edit` |
 | Config mới `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage experimental | Giao diện thử nghiệm 6 nhóm; cùng API/quyền và config thật, giữ nguyên giao diện cũ |
 | Config `/bots/:username/accounts/:env` | AccountConfigPage | Sửa các field trade/signal được hỗ trợ; cảnh báo rời form chưa lưu |
-| Signal `/signal-search` | SignalSearchPage và panel | Bốn tab mô tả dưới đây; từng API có quyền riêng |
+| Signal `/signal-search` | SignalSearchPage và panel | Tab lịch sử / tìm / scorecard / thống kê / cấu hình; từng API có quyền riêng |
 | Position `/positions` | PositionsPage | Vị thế sàn và monitor, live/paper, mặc định của mình; `positions.view` |
 | Account Static `/signals` | SignalHistoryPage | Kết quả lệnh thực tế và chi tiết; `statistics.view` cho API account-statics |
 | Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; `statistics.view` |
@@ -45,16 +45,19 @@ new/replace/sync, đổi tên/xoá account. Thanh lưu đếm diff, APPLY/ACK + 
 sang Position / Static / lịch sử. Chỉ `config.edit` đúng scope mới sửa. Dùng chung API/editor
 cũ; không xoá route cũ. Chi tiết: [spec Config mới](config-lab-spec.md).
 
-## Bốn tab Signal
+## Tab Signal
 
 | Tab | Dữ liệu/API | Điều cần hiểu |
 |---|---|---|
 | Lịch sử signal | `/api/signal-history`, `signal_infos` | Nhật ký signal nhận được; không phải profit của account |
 | Tìm Signal | `/api/bots/config-search`, `account_statics` | Tìm config có lệnh thật với signal được chọn; bỏ config không có lệnh, lọc theo openTime |
+| Scorecard | `/api/provider-scorecard` | Xếp hạng channel: feed từ `signal_infos` + lệnh/PnL từ `account_statics`; xem [spec](provider-scorecard-spec.md) |
 | Thống kê Signal | GET `/api/signal-config` | Usage, channel, parse error, signal bị gỡ, user/config/signal lỗ theo dữ liệu được phép |
 | Cấu hình Signal | GET/POST `/api/signal-config` | Thêm/gỡ danh sách signal trên config thuộc bot sở hữu/được gán, không chỉnh session Telegram |
 
 Thêm/gỡ signal giữ nguyên các tên không được yêu cầu xóa, tối đa 40 config và 20 signal; mỗi config đổi thật ghi audit. Query/list và thao tác ghi không được dùng cùng một giả định scope rộng.
+
+Scorecard không thay Tìm Signal hay Tổng kết: win = `status` WIN, thời gian = openTime, sổ live mặc định; Tổng kết vẫn dùng closeTime lệnh đóng.
 
 ## Position
 
@@ -71,6 +74,7 @@ Khi sổ live đổi (đóng, mở, đổi size), trang Position hiện toast tr
 | Mục | Nguồn / thời gian |
 |---|---|
 | Account Static | `account_statics`, lọc openTime; mặc định ba ngày nếu không truyền from/to; sổ live/paper theo lựa chọn |
+| Provider Scorecard | Feed `signal_infos` (hệ thống) + trades `account_statics` (scope bot); cùng openTime; win = status WIN |
 | Tìm Signal | Lệnh thật theo openTime, signal và config; điều kiện win dựa vào profit trong module này |
 | Tổng kết | Lệnh live; lọc closeTime, fallback openTime nếu thiếu closeTime; win/loss dựa trạng thái WIN và LOSS/LOSE |
 | Lãi lỗ ví | `futures_profits`, income và số dư ngày UTC; trading PnL tách dòng tiền |

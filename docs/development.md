@@ -9,6 +9,7 @@
 | Bot/config/copy/bulk | routes/bots → bot-directory → account-config-view → models | bot-directory, account-config-view |
 | Command bridge MQTT/outbox | [bot-command-bridge](bot-command-bridge.md) → mqtt gửi lệnh, bot `writeOutboxAck` Mongo, web poll outbox (+ MQTT phụ) → binance-bot `publishCommandResponse` / `config/sync` | bot-command-bridge + binance-bot `command-outbox-ack.test.js` |
 | Tìm signal | SignalSearchPage → config-search → account_statics | config-search |
+| Provider Scorecard | SignalScorecardPanel → provider-scorecard → signal_infos + account_statics | provider-scorecard |
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
 | Số liệu lệnh/ví | account-statics / account-ledger / system-summary | account-statics, account-ledger, system-summary |
 | Position | PositionsPage → routes/positions → position-ws/live/cache → positions | positions |

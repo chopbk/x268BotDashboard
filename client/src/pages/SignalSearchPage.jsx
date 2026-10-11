@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import SignalSetupPanel from "./SignalSetupPanel";
 import SignalStatsPanel from "./SignalStatsPanel";
+import SignalScorecardPanel from "./SignalScorecardPanel";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useEscape } from "../navigation";
 import { api } from "../api";
@@ -11,6 +12,7 @@ import { canEditResource } from "../access";
 const CONFIG_EDIT = "config.edit";
 const SIGNALS_HISTORY = "signals.history";
 const CONFIG_VIEW = "config.view";
+const STATISTICS_VIEW = "statistics.view";
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const fmtTime = (value) => value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value)) : "—";
@@ -491,17 +493,20 @@ export default function SignalSearchPage() {
   const layerOpenerRef = useRef(null);
   const historyAllowed = can(user, SIGNALS_HISTORY);
   const searchAllowed = can(user, CONFIG_VIEW);
+  const scorecardAllowed = can(user, STATISTICS_VIEW) || can(user, SIGNALS_HISTORY);
   const requestedTab = params.get("tab");
   const tab = requestedTab === "setup"
     ? "setup"
     : requestedTab === "stats"
       ? "stats"
-      : requestedTab === "history" && historyAllowed
-        ? "history"
-        : searchAllowed
-          ? "search"
-          : "history";
-  const staticAllowed = can(user, "statistics.view");
+      : requestedTab === "scorecard" && scorecardAllowed
+        ? "scorecard"
+        : requestedTab === "history" && historyAllowed
+          ? "history"
+          : searchAllowed
+            ? "search"
+            : "history";
+  const staticAllowed = can(user, STATISTICS_VIEW);
   const editAllowed = can(user, CONFIG_EDIT);
   const [signal, setSignal] = useState("");
   const [days, setDays] = useState("30");
@@ -969,20 +974,24 @@ export default function SignalSearchPage() {
               ? "Thêm hoặc xoá signal trên config của user đang sở hữu hoặc được gán. Signal đang dùng cũng chỉ đếm các account đó."
               : tab === "stats"
                 ? "Channel, lỗi parse, signal bị gỡ vì chuỗi thua, và signal đang chạy trên config của bạn."
-                : tab === "history"
-                  ? "Bấm một signal để xem lịch sử và số lượng. Tìm config đưa sang bộ lọc config với đúng signal đó."
-                  : "Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây."}
+                : tab === "scorecard"
+                  ? "Xếp hạng channel bằng số tin signal_infos và lệnh/PnL account_statics trong cùng khoảng openTime."
+                  : tab === "history"
+                    ? "Bấm một signal để xem lịch sử và số lượng. Tìm config đưa sang bộ lọc config với đúng signal đó."
+                    : "Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây."}
           </p>
         </div>
       </header>
       <div className="history-tabs">
         {historyAllowed ? <button type="button" className={tab === "history" ? "active" : "ghost"} onClick={() => openTab("history")}>Lịch sử signal</button> : null}
         {searchAllowed ? <button type="button" className={tab === "search" ? "active" : "ghost"} onClick={() => openTab("search")}>Tìm Signal</button> : null}
+        {scorecardAllowed ? <button type="button" className={tab === "scorecard" ? "active" : "ghost"} onClick={() => openTab("scorecard")}>Scorecard</button> : null}
         <button type="button" className={tab === "stats" ? "active" : "ghost"} onClick={() => openTab("stats")}>Thống kê Signal</button>
         <button type="button" className={tab === "setup" ? "active" : "ghost"} onClick={() => openTab("setup")}>Cấu hình Signal</button>
       </div>
       {tab === "setup" ? <SignalSetupPanel onFindConfig={searchAllowed ? findConfig : null} /> : null}
       {tab === "stats" ? <SignalStatsPanel onFindConfig={searchAllowed ? findConfig : null} /> : null}
+      {tab === "scorecard" ? <SignalScorecardPanel onFindConfig={searchAllowed ? findConfig : null} /> : null}
       {tab === "history" ? <SignalLog canSearch={searchAllowed} onFindConfig={findConfig} /> : null}
       {tab === "search" ? <form className="card signal-filters" onSubmit={onSearch}>
         <label>
