@@ -1117,7 +1117,7 @@ td.negative { color: var(--danger); }
 .pos-case-inline-inputs { display: inline-flex; gap: 4px; }
 .pos-case-inline-inputs input { width: 88px; }
 .pos-case-quick-row td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); vertical-align: middle; }
-.pos-case-quick-row input,
+.pos-case-quick-row input:not([type="checkbox"]),
 .pos-case-quick-row select {
   width: 100%;
   min-width: 72px;
@@ -1127,7 +1127,27 @@ td.negative { color: var(--danger); }
   border: 1px solid var(--line);
   background: var(--bg);
 }
-.pos-case-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+.pos-case-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pos-case-check input[type="checkbox"],
+.pos-case-quick-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  accent-color: var(--accent, #7a9e7e);
+  flex: 0 0 14px;
+}
 button.linkish { background: none; border: 0; padding: 0; color: var(--text); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }
