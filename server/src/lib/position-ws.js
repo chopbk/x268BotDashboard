@@ -94,6 +94,7 @@ function openSocket(ws, user, deps = {}) {
             account,
             audience: message.audience === "all" ? "all" : "mine",
             book: message.book || "",
+            mode: "fast",
         };
         let running = false;
         let dirty = false;
@@ -101,6 +102,12 @@ function openSocket(ws, user, deps = {}) {
             const current = deps.authenticate ? await deps.authenticate() : user;
             if (!current) throw Object.assign(new Error("Phiên đã hết hạn"), { status: 403 });
             return current;
+        };
+        const redisDeps = {
+            snapshot: source.readExchangeBook,
+            snapshots: source.readExchangeBooks,
+            // Không exchange ở đây — reconcileLive chạy nền trong watch(), rồi notify → patch.
+            priceOf: markOf,
         };
         const emit = async () => {
             if (epoch !== generation) return;
@@ -111,13 +118,7 @@ function openSocket(ws, user, deps = {}) {
                 while (dirty && epoch === generation) {
                     dirty = false;
                     // Serialize reads; a slow previous build must never overwrite a newer view.
-                    const view = await load(await actor(), viewQuery, {
-                        snapshot: source.readExchangeBook,
-                        snapshots: source.readExchangeBooks,
-                        // Thiếu sổ Redis → lấy positionRisk (gồm cả vị thế không có monitor)
-                        exchange: (name) => source.reconcile(name, { force: false }),
-                        priceOf: markOf,
-                    });
+                    const view = await load(await actor(), viewQuery, redisDeps);
                     if (epoch === generation) {
                         const allowed = new Set(view.accounts.map((row) => row.username));
                         stops = stops.filter((entry) => {
@@ -141,13 +142,12 @@ function openSocket(ws, user, deps = {}) {
             timer = setTimeout(emit, 50);
         };
         try {
-            const view = await load(await actor(), viewQuery, { snapshot: async () => null });
+            // Lấy danh sách account + snapshot Redis (mode=fast). watch() chạy reconcileLive nền → notify → patch.
+            const view = await load(await actor(), viewQuery, redisDeps);
             if (epoch !== generation) return;
             const names = account ? [account] : view.accounts.map((row) => row.username);
             stops = names.map((name) => ({ name, stop: source.watch(name, queue) }));
             queue();
-            // Chỉ đọc Redis khi connect, không gọi Binance API
-            // User bấm nút "Cập nhật" mới gọi API
         } catch (error) {
             if (epoch === generation) {
                 clear();

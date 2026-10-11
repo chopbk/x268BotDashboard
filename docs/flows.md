@@ -58,29 +58,29 @@ Phân biệt mode new/replace/sync. User xem được nguồn chưa chắc sửa
 
 ```mermaid
 flowchart TD
-    Page[PositionsPage] --> Rest[GET /api/positions]
+    Page[PositionsPage] --> Fast[GET /api/positions?mode=fast]
+    Fast --> Paint[Mongo + Redis paint]
     Page --> WS[/api/positions/ws]
-    WS --> Auth[Cookie JWT + user từ Mongo khi upgrade]
-    Auth --> Watch[watch / resume: kiểm tra account qua loadPositions]
-    Watch --> Live[position-live]
-    Redis[(Redis snapshot + notify)] --> Live
-    Live --> View[positions: ghép position sàn với monitor]
-    Mongo[(monitor_positions + user_accounts + heartbeat)] --> View
-    Page --> Button[POST /api/positions/refresh]
-    Button --> Book[positionRisk + openOrders + openAlgoOrders + income]
-    Live --> Book
-    View --> Page
+    WS --> FastView[snapshot mode=fast]
+    WS --> Watch[watch → reconcileLive nền]
+    Watch --> LiveAPI[positionRisk + openOrders + algoOrders]
+    LiveAPI --> Redis[(wb:ex Redis)]
+    Redis --> Patch[WS snapshot patch]
+    Page --> Case[Mở Chi tiết / Cập nhật 1 account]
+    Case --> Details[income + history + trades]
 ```
 
 Source: [position-ws](../server/src/lib/position-ws.js), [position-live](../server/src/lib/position-live.js), [position-cache](../server/src/lib/position-cache.js), [positions](../server/src/lib/positions.js).
+
+**Paint trước, sync sau:** `mode=fast` (mặc định GET) chỉ đọc Mongo monitor + Redis `wb:ex` — không gọi Binance. WS gửi snapshot fast ngay; `reconcileLive` chạy nền (MQTT ưu tiên, fallback REST liveOnly), ghi Redis, publish notify → client patch theo account. Income / positionHistory / userTrades chỉ khi mở case reconcile (`details:true`) hoặc `POST /refresh` với một account.
 
 Redis `wb:ex:<account>` là sổ vị thế sàn; `wb:pos` chỉ bổ sung monitor, không thay danh sách sàn. Binance-bot áp dụng ACCOUNT_UPDATE vào đúng symbol + positionSide: qty=0 xóa dòng, không ảnh hưởng vị thế khác. Delta chưa có baseline mang `complete:false`; REST bổ sung baseline. Snapshot sàn `positions:[]` là kết quả hợp lệ, không phục hồi monitor đã đóng từ dữ liệu cũ.
 
 Bot và web dùng cùng Lua protocol `exchange-book.lua`: đọc `wb:ex:<account>:ver` **trước** REST, chỉ ghi khi version còn khớp; cập nhật sổ, tăng version và publish `wb:ex:notify:<account>` trong một thao tác nguyên tử. Delta có timestamp theo từng vị thế để bỏ sự kiện trùng/cũ. REST đầy đủ (kể cả `positions:[]`) đánh tombstone các symbol không còn trong sổ để delta trễ không làm sống lại vị thế đã đóng. ACCOUNT_UPDATE của bot chỉ gọi REST bổ sung khi sổ còn `complete:false`; sổ đã đủ thì chỉ vá Redis từ sự kiện. Các bản Lua ở hai repo phải giống nhau. Cần cập nhật cả bot lẫn web khi triển khai; process phiên bản cũ còn ghi Redis sẽ không tuân theo fence này.
 
-Đọc `wb:ex` gia hạn TTL 20 phút để trang đang xem không để sổ hết hạn. Khi có watcher, đối chiếu REST mỗi 45 giây theo account, dùng promise chung trong process và lease Redis 120 giây giữa các instance. Lỗi API thường thì nhả lease ngay; chỉ 429 giữ lease/cooldown. Watch/reconnect/resume đối chiếu ngay nếu lần gần nhất quá 5 giây. Redis subscriber reconnect cũng đối chiếu lại. Các lần làm mới thường chỉ lấy positions/orders; income/history/trades lấy khi chưa có dữ liệu bổ sung hoặc bấm Cập nhật sàn. API lỗi giữ lease đến hết hạn; 429 dùng cooldown chung tối thiểu 120 giây và tôn trọng Retry-After. Không có Redis chỉ deduplicate trong một process.
+Đọc `wb:ex` gia hạn TTL 20 phút để trang đang xem không để sổ hết hạn. Khi có watcher, `reconcileLive` nếu sổ >30s; timer nền theo `EXCHANGE_REFRESH_MS`. Lỗi API thường thì nhả lease ngay; chỉ 429 giữ lease/cooldown. API lỗi giữ lease đến hết hạn; 429 dùng cooldown chung tối thiểu 120 giây và tôn trọng Retry-After. Không có Redis chỉ deduplicate trong một process.
 
-WebSocket hỗ trợ account cụ thể và account rỗng (Tất cả) trong phạm vi quyền. Server đọc lại session/user trước mỗi snapshot, serialize việc dựng view và bỏ kết quả của subscription cũ. `pause`/đóng socket bỏ watchers, watcher cuối dừng timer REST. Trình duyệt ẩn tab sẽ pause; socket không có snapshot trong 30 giây thì HTTP fallback. REST đến muộn không ghi đè push mới.
+WebSocket hỗ trợ account cụ thể và account rỗng (Tất cả) trong phạm vi quyền. Server đọc lại session/user trước mỗi snapshot, serialize việc dựng view và bỏ kết quả của subscription cũ. `pause`/đóng socket bỏ watchers, watcher cuối dừng timer REST. Trình duyệt ẩn tab sẽ pause; socket không có snapshot trong 30 giây thì HTTP fallback `mode=fast`. REST/WS đến muộn không ghi đè push version mới hơn.
 
 `sources[]` trả account/version/checkedAt/stale; `checkedAt` lấy từ `reconciledAt`, độc lập thời điểm delta (`positionsAt`) và giá mark. Không có baseline hoặc quá 90 giây chưa đối chiếu thì báo cũ, kể cả socket/giá còn chạy. Snapshot cũ vẫn hiện kèm cảnh báo. Giá public chỉ phủ mark/PnL, không cập nhật freshness vị thế. `wb:ord` giữ luồng order hiện có.
 

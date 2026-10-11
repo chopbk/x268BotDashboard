@@ -741,6 +741,9 @@ async function loadPositions(actor, query = {}, deps = {}) {
         grouped.get(owner).push(doc);
     }
     const force = query.refresh === "1" || query.refresh === "true";
+    const modeRaw = String(query.mode || "").toLowerCase();
+    // fast/lite: chỉ Mongo + Redis — không gọi Binance (paint nhanh khi mở trang).
+    const fast = !force && (modeRaw === "fast" || modeRaw === "lite");
     const maxAge = deps.exchangeMaxAgeMs || EXCHANGE_MAX_AGE_MS;
     const books = new Map();
     const remembered = new Map();
@@ -748,7 +751,8 @@ async function loadPositions(actor, query = {}, deps = {}) {
         const book = asExchangeBook(raw);
         if (!book) return;
         remembered.set(name, book);
-        if (!force && (!deps.exchange || freshExchangeBook(book, now, maxAge))) books.set(name, book);
+        // fast: dùng mọi sổ Redis (kể cả cũ); full: chỉ giữ nếu còn mới hoặc không có exchange dep.
+        if (fast || (!force && (!deps.exchange || freshExchangeBook(book, now, maxAge)))) books.set(name, book);
     };
     if (account) keepBook(account, snap);
     if (!account && deps.snapshots) {
@@ -761,7 +765,9 @@ async function loadPositions(actor, query = {}, deps = {}) {
     }
     const exchangeErrors = [];
     const freshAccounts = new Set();
-    const needExchange = deps.exchange ? (force ? selected : selected.filter((name) => !books.has(name))) : [];
+    const needExchange = (!fast && deps.exchange)
+        ? (force ? selected : selected.filter((name) => !books.has(name)))
+        : [];
     if (needExchange.length) {
         const fetched = await eachLimit(needExchange, 4, async (name) => {
             try {
@@ -834,6 +840,7 @@ async function loadPositions(actor, query = {}, deps = {}) {
         updatedAt,
         stale,
         audience,
+        mode: fast ? "fast" : "full",
         exchangeErrors,
         priceFeed: priced.priced ? "live" : "idle",
         version: snap?.version == null ? null : Number(snap.version),

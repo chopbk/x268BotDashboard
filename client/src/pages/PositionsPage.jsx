@@ -275,9 +275,11 @@ export default function PositionsPage() {
       try {
         const query = new URLSearchParams();
         query.set("audience", audience);
+        query.set("mode", "fast");
         if (book) query.set("book", book);
         if (account) query.set("account", account);
         const before = pushRevision;
+        // Paint nhanh Mongo+Redis; WS + reconcileLive nền sẽ patch sổ sàn.
         const view = await api(`/api/positions?${query}`);
         if (before === pushRevision) apply(view);
         setError("");
@@ -899,10 +901,11 @@ export default function PositionsPage() {
         {account
           ? (connection === "live" ? "Kết nối live" : connection === "polling" ? "Đang polling" : connection === "monitor" ? "Đang hiện monitor, chưa có snapshot live" : stale ? "Dữ liệu vị thế chưa được xác minh gần đây" : "Snapshot")
           : (stale ? "Dữ liệu vị thế chưa được xác minh gần đây" : "Live · các tài khoản được phép xem")}
+        {payload?.mode === "fast" ? " · hiển thị nhanh (Redis)" : ""}
         {payload?.priceFeed === "live" ? " · giá mark" : ""}
         {payload?.version != null ? ` · v${payload.version}` : ""}
         {payload?.updatedAt ? ` · đối chiếu sàn ${when(payload.updatedAt)}` : ""}
-        {payload?.sources?.some((source) => source.stale) ? ` · cần đối chiếu: ${payload.sources.filter((source) => source.stale).map((source) => source.account).join(", ")}` : ""}
+        {payload?.sources?.some((source) => source.stale) ? ` · đang đối chiếu nền: ${payload.sources.filter((source) => source.stale).map((source) => source.account).join(", ")}` : ""}
       </p>
       {actionNote ? <p className="muted">{actionNote}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}

@@ -623,6 +623,38 @@ test("delete removes a monitor in scope and refuses a viewer", async () => {
     }
 });
 
+test("mode=fast paints Redis/Mongo without calling exchange even when book is old", async () => {
+    const originals = { users: UserAccount.find, monitors: MonitorPosition.find, beats: ProcessHeartbeat.find };
+    UserAccount.find = () => query([{ username: "V", accounts: ["V1"], ownerUserId: "u1", active: true }]);
+    MonitorPosition.find = () => query([]);
+    ProcessHeartbeat.find = () => query([]);
+    const actorV = { id: "u1", role: "admin", username: "me", email: "me@x.com", botUsernames: ["V"] };
+    const deps = { UserAccount, Monitor: MonitorPosition, Heartbeat: ProcessHeartbeat, now };
+    const stored = {
+        source: "exchange",
+        at: new Date(now - 120_000).toISOString(),
+        reconciledAt: new Date(now - 120_000).toISOString(),
+        positions: [{ symbol: "SOLUSDT", positionSide: "SHORT", positionAmt: "1", entryPrice: "20", markPrice: "18", unRealizedProfit: "2" }],
+        openOrders: [],
+        algoOrders: [],
+    };
+    let calls = 0;
+    try {
+        const view = await loadPositions(actorV, { mode: "fast" }, {
+            ...deps,
+            snapshots: async () => ({ V: stored }),
+            exchange: async () => { calls += 1; throw new Error("không được gọi ở mode=fast"); },
+        });
+        assert.equal(calls, 0);
+        assert.equal(view.mode, "fast");
+        assert.equal(view.rows.some((row) => row.symbol === "SOLUSDT"), true);
+    } finally {
+        UserAccount.find = originals.users;
+        MonitorPosition.find = originals.monitors;
+        ProcessHeartbeat.find = originals.beats;
+    }
+});
+
 test("a fresh exchange book skips the Binance call until it is old or refreshed", async () => {
     const originals = { users: UserAccount.find, monitors: MonitorPosition.find, beats: ProcessHeartbeat.find };
     UserAccount.find = () => query([{ username: "V", accounts: ["V1"], ownerUserId: "u1", active: true }]);

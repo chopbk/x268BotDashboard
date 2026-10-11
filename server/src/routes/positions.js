@@ -20,10 +20,16 @@ const router = express.Router();
 
 router.get("/", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
     try {
-        res.json(await loadPositions(req.webUser, req.query, {
+        // Mặc định mode=fast: Mongo + Redis, không gọi Binance. WS/reconcileLive bổ sung nền.
+        const query = { ...req.query, mode: req.query.mode || "fast" };
+        res.json(await loadPositions(req.webUser, query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            exchange: (name) => reconcile(name, { force: req.query.refresh === "1", viaMqtt: false }),
+            exchange: (name) => reconcile(name, {
+                force: req.query.refresh === "1",
+                details: false,
+                viaMqtt: true,
+            }),
             priceOf: markOf,
         }));
     } catch (error) {
@@ -39,8 +45,9 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
             audience: req.body?.audience,
             book: req.body?.book || "",
             refresh: "1",
+            mode: "full",
         };
-        // Nhiều account: chỉ lấy sổ live (positions/orders/algo). Income/fills chỉ khi chọn 1 account.
+        // Nhiều account: chỉ live. 1 account: kèm income/fills (details).
         const details = Boolean(account);
         res.json(await loadPositions(req.webUser, query, {
             snapshot: readExchangeBook,

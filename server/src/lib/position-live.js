@@ -125,10 +125,24 @@ async function loadFromBinance(account, current, { details = false } = {}) {
     }
     const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
     const { loadBinanceSnapshot } = require("./position-feed");
-    const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });
+    // Live = positionRisk + openOrders + algoOrders. Income/fills chỉ khi details=true (mở case / Cập nhật 1 account).
+    const loaded = await loadBinanceSnapshot(account, { liveOnly: !details });
     accountErrors.delete(account);
     const at = new Date().toISOString();
-    const book = { ...current, ...loaded, source: "exchange", status: "live", complete: true, stale: false, at, reconciledAt: at };
+    const book = {
+        ...(current || {}),
+        ...loaded,
+        // liveOnly không trả income — giữ cache cũ nếu có
+        income: details ? (loaded.income || []) : (current?.income || []),
+        positionHistory: details ? (loaded.positionHistory || []) : (current?.positionHistory || []),
+        trades: details ? (loaded.trades || []) : (current?.trades || []),
+        source: "exchange",
+        status: "live",
+        complete: true,
+        stale: false,
+        at,
+        reconciledAt: at,
+    };
     if (reader?.isReady) return await saveExchangeBook(account, book, expected) || current;
     const stored = { ...book, version: null };
     localBooks.set(account, stored);
@@ -402,6 +416,20 @@ async function refresh(account) {
     return feed.last;
 }
 
+/**
+ * Đối chiếu live (positions/orders/algo) — không kéo income/fills.
+ * Dùng nền khi mở trang / WS watch.
+ */
+function reconcileLive(account, opts = {}) {
+    return reconcile(account, {
+        force: false,
+        details: false,
+        maxAgeMs: 30_000,
+        viaMqtt: true,
+        ...opts,
+    });
+}
+
 function watch(account, viewer) {
     const feed = feedFor(account);
     feed.viewers.add(viewer);
@@ -411,6 +439,13 @@ function watch(account, viewer) {
         if (!feed.viewers.size) return;
         startQuote(account, feed);
         startExchangeRefresh(account, feed);
+        // Nền: live reconcile → ghi Redis → notify → WS patch (không block paint đầu).
+        reconcileLive(account)
+            .then(() => refresh(account))
+            .then(() => {
+                if (feed.viewers.size) publish(feed);
+            })
+            .catch((error) => console.error("[positionLive] reconcileLive", account, error.message));
     }).catch((error) => console.error("[positionLive]", error.message));
     return function unwatch() {
         feed.viewers.delete(viewer);
@@ -421,6 +456,7 @@ function watch(account, viewer) {
         if (feed.exchangeTimer) clearInterval(feed.exchangeTimer);
         feed.polling = null;
         feed.quoteTimer = null;
+        feed.redisTimer = null;
         feed.exchangeTimer = null;
         unsubscribe(account).catch((error) => console.error("[positionLive]", error.message));
     };
@@ -451,4 +487,21 @@ function resetLive() {
     subscriberReady = null;
 }
 
-module.exports = { reconcile, watch, refresh, cached, readBooks, readExchangeBook, readExchangeBooks, saveExchangeBook, bindRedis, applyStored, resetLive, ORDER_KEY, ORDER_CHANNEL, EXCHANGE_KEY, EXCHANGE_CHANNEL };
+module.exports = {
+    reconcile,
+    reconcileLive,
+    watch,
+    refresh,
+    cached,
+    readBooks,
+    readExchangeBook,
+    readExchangeBooks,
+    saveExchangeBook,
+    bindRedis,
+    applyStored,
+    resetLive,
+    ORDER_KEY,
+    ORDER_CHANNEL,
+    EXCHANGE_KEY,
+    EXCHANGE_CHANNEL,
+};
