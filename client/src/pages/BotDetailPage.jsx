@@ -135,6 +135,8 @@ export default function BotDetailPage() {
   const [ownerUserId, setOwnerUserId] = useState("");
   const [webUsers, setWebUsers] = useState([]);
   const [draft, setDraft] = useState("");
+  const [copyFrom, setCopyFrom] = useState("");
+  const [copyOptions, setCopyOptions] = useState([]);
   const [editEnv, setEditEnv] = useState(null);
   const [envDraft, setEnvDraft] = useState("");
   const [picked, setPicked] = useState(() => new Set());
@@ -196,6 +198,38 @@ export default function BotDetailPage() {
     api("/api/admin/users", { signal: controller.signal }).then((data) => setWebUsers(data.users || [])).catch(() => {});
     return () => controller.abort();
   }, [user?.role]);
+
+  useEffect(() => {
+    if (!canViewConfig || !canEditConfig) {
+      setCopyOptions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const scope = user?.scopes?.[CONFIG_VIEW] === "all" || user?.role === "admin" ? "all" : "mine";
+    api(`/api/bots/assigned-configs?scope=${scope}`, { signal: controller.signal })
+      .then((data) => {
+        if (cancelled) return;
+        const rows = [];
+        for (const row of data.users || []) {
+          const uname = row.username || "";
+          for (const cfg of row.configs || []) {
+            const env = String(cfg?.env || "").trim();
+            if (!env) continue;
+            rows.push({ username: uname, env });
+          }
+        }
+        rows.sort((a, b) => a.env.localeCompare(b.env) || a.username.localeCompare(b.username));
+        setCopyOptions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setCopyOptions([]);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [canViewConfig, canEditConfig, user?.role, user?.scopes]);
 
   const accountKey = accounts.join("|");
   useEffect(() => {
@@ -626,7 +660,12 @@ export default function BotDetailPage() {
                   });
                 }}
               >
-                <input value={envDraft} onChange={(event) => setEnvDraft(event.target.value)} required />
+                <input
+                  value={envDraft}
+                  onChange={(event) => setEnvDraft(event.target.value.toUpperCase())}
+                  required
+                  title="Tên lưu dạng chữ hoa"
+                />
                 <button type="submit" disabled={busy}>
                   Lưu
                 </button>
@@ -720,31 +759,72 @@ export default function BotDetailPage() {
           )}
           {canEditConfig ? (
             <form
-              className="inline-edit"
+              className="inline-edit add-account-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 run(async () => {
                   setNotice("");
+                  const env = String(draft || "").trim().toUpperCase();
+                  if (!env) throw new Error("Nhập tên config");
+                  const body = { env };
+                  if (copyFrom) body.copyFrom = copyFrom;
                   const data = await api(`/api/bots/${encodeURIComponent(bot.username)}/accounts`, {
                     method: "POST",
-                    body: { env: draft },
+                    body,
                   });
                   setBot(data.bot);
                   setDraft("");
+                  setCopyFrom("");
                   let apply = data.apply || null;
                   if (apply?.requestId && !apply.terminal) {
                     apply = await waitForApply(bot.username, apply.requestId);
                   }
-                  setNotice(apply ? applyStatusLabel(apply) : "Đã thêm config");
+                  setNotice(
+                    apply
+                      ? `${applyStatusLabel(apply)}${copyFrom ? ` · copy từ ${copyFrom}` : ""}`
+                      : "Đã thêm config"
+                  );
                 });
               }}
             >
               <input
                 value={draft}
-                placeholder="Tên config"
-                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Tên config (viết hoa)"
+                onChange={(event) => setDraft(event.target.value.toUpperCase())}
                 required
+                title="Tên lưu dạng chữ hoa, khớp binance-bot"
               />
+              <label className="copy-from-field">
+                <span className="muted">Copy từ</span>
+                <input
+                  list="copy-from-envs"
+                  value={copyFrom}
+                  placeholder="Gõ hoặc chọn env"
+                  onChange={(event) => setCopyFrom(event.target.value.toUpperCase())}
+                  title="Giống /aa?a=NEW&copy=EXIST — mọi config bạn được xem"
+                  autoComplete="off"
+                />
+                <datalist id="copy-from-envs">
+                  {copyOptions.map((row) => (
+                    <option key={`${row.username}/${row.env}`} value={row.env}>
+                      {row.username}/{row.env}
+                    </option>
+                  ))}
+                </datalist>
+              </label>
+              <select
+                value={copyOptions.some((row) => row.env === copyFrom) ? copyFrom : ""}
+                onChange={(event) => setCopyFrom(event.target.value)}
+                aria-label="Chọn config để copy"
+                title="Chọn nhanh từ danh sách được xem"
+              >
+                <option value="">Không copy</option>
+                {copyOptions.map((row) => (
+                  <option key={`pick-${row.username}/${row.env}`} value={row.env}>
+                    {row.username}/{row.env}
+                  </option>
+                ))}
+              </select>
               <button type="submit" disabled={busy}>
                 Thêm
               </button>

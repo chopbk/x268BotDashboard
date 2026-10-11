@@ -6,6 +6,7 @@ const { sendError } = require("../lib/http");
 const { buildChanges, safeRecordAudit } = require("../lib/audit");
 const {
     normalizeName,
+    normalizeEnvName,
     getBot,
     createBot,
     renameBot,
@@ -157,9 +158,9 @@ router.post(
     async (req, res) => {
         try {
             const username = normalizeName(req.params.username);
-            const env = normalizeName(req.params.env);
+            const env = normalizeEnvName(req.params.env);
             const targetUsername = normalizeName(req.body?.username);
-            const nextEnv = normalizeName(req.body?.env);
+            const nextEnv = normalizeEnvName(req.body?.env);
             const mode = req.body?.mode === "replace" ? "replace" : req.body?.mode === "sync" ? "sync" : "new";
             const copied = await copyAccount(req.webUser, username, env, targetUsername, nextEnv, { replace: mode === "replace", sync: mode === "sync" });
             await safeRecordAudit({
@@ -359,15 +360,23 @@ router.post(
     async (req, res) => {
         try {
             const username = normalizeName(req.params.username);
-            const env = normalizeName(req.body?.env);
+            const env = normalizeEnvName(req.body?.env);
+            const copyFrom = normalizeEnvName(req.body?.copyFrom || req.body?.copy || "");
             const before = await getBot(req.webUser, username, PERMISSIONS.CONFIG_EDIT);
             const previousAccounts = before.accounts || [];
-            const bot = await addAccount(
-                req.webUser,
-                username,
-                env, PERMISSIONS.CONFIG_EDIT
-            );
-            await safeRecordAudit({ action: "bot.account_added", actor: req.webUser, targetType: "bot", target: bot, changes: { account: { from: null, to: env } } });
+            const bot = await addAccount(req.webUser, username, env, PERMISSIONS.CONFIG_EDIT, {
+                copyFrom: copyFrom || undefined,
+            });
+            await safeRecordAudit({
+                action: "bot.account_added",
+                actor: req.webUser,
+                targetType: "bot",
+                target: bot,
+                changes: {
+                    account: { from: null, to: env },
+                    ...(copyFrom ? { copyFrom: { from: null, to: copyFrom } } : {}),
+                },
+            });
             const apply = await enqueueAccountRuntime(req.webUser, username, "LOAD_ACCOUNT", env, "", {
                 previousAccounts: [...previousAccounts, env],
             });
@@ -385,8 +394,8 @@ router.patch(
     async (req, res) => {
         try {
             const username = normalizeName(req.params.username);
-            const env = normalizeName(req.params.env);
-            const nextEnv = normalizeName(req.body?.env);
+            const env = normalizeEnvName(req.params.env);
+            const nextEnv = normalizeEnvName(req.body?.env);
             const before = await getBot(req.webUser, username, PERMISSIONS.CONFIG_EDIT);
             const previousAccounts = before.accounts || [];
             const bot = await renameAccount(
@@ -416,7 +425,7 @@ router.delete(
     async (req, res) => {
         try {
             const username = normalizeName(req.params.username);
-            const env = normalizeName(req.params.env);
+            const env = normalizeEnvName(req.params.env);
             const before = await getBot(req.webUser, username, PERMISSIONS.CONFIG_EDIT);
             const previousAccounts = before.accounts || [];
             const bot = await deleteAccount(

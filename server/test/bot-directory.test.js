@@ -7,7 +7,23 @@ const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
 const { requirePermission } = require("../src/middleware/auth");
 const { PERMISSIONS } = require("../src/auth/access-control");
-const { addAccount, copyAccount, createBot, deleteAccount, getBot, updateBotAccess } = require("../src/lib/bot-directory");
+const {
+    addAccount,
+    copyAccount,
+    createBot,
+    deleteAccount,
+    getBot,
+    normalizeEnvName,
+    updateBotAccess,
+} = require("../src/lib/bot-directory");
+
+function matchEnvFilter(filter, env) {
+    const key = filter?.env;
+    if (key == null) return false;
+    if (typeof key === "string") return key.toUpperCase() === String(env).toUpperCase();
+    if (key instanceof RegExp) return key.test(env);
+    return false;
+}
 
 function response() {
     return {
@@ -89,6 +105,10 @@ test("getBot loads one user by exact name even when the list is paged", async ()
     }
 });
 
+test("normalizeEnvName luôn uppercase", () => {
+    assert.equal(normalizeEnvName("  b4r  "), "B4R");
+});
+
 test("operator cannot add a config on a bot outside scope", async () => {
     await assert.rejects(() => addAccount(operator, "beta", "beta2"), (error) => {
         assert.equal(error.status, 403);
@@ -96,13 +116,13 @@ test("operator cannot add a config on a bot outside scope", async () => {
     });
 });
 
-test("addAccount links an existing config without creating another", async () => {
+test("addAccount lưu tên uppercase và gắn config đã có", async () => {
     const originalFind = UserAccount.findOne;
     const originalConfigFind = AccountConfig.findOne;
     const originalCreate = AccountConfig.create;
     const bot = {
         username: "alpha",
-        accounts: ["alpha"],
+        accounts: ["ALPHA"],
         async save() {
             this.saved = true;
         },
@@ -111,14 +131,127 @@ test("addAccount links an existing config without creating another", async () =>
         if (filter.username === "alpha") return query(bot);
         return query(null);
     };
-    AccountConfig.findOne = () => query({ env: "alpha2" });
+    AccountConfig.findOne = (filter) => (matchEnvFilter(filter, "ALPHA2") ? query({ env: "ALPHA2" }) : query(null));
     AccountConfig.create = async () => {
         throw new Error("should not create");
     };
     try {
         const result = await addAccount(operator, "alpha", "alpha2");
-        assert.deepEqual(result.accounts, ["alpha", "alpha2"]);
+        assert.deepEqual(result.accounts, ["ALPHA", "ALPHA2"]);
         assert.equal(bot.saved, true);
+    } finally {
+        UserAccount.findOne = originalFind;
+        AccountConfig.findOne = originalConfigFind;
+        AccountConfig.create = originalCreate;
+    }
+});
+
+test("addAccount từ chối trùng tên không phân biệt hoa thường", async () => {
+    const originalFind = UserAccount.findOne;
+    const bot = {
+        username: "alpha",
+        accounts: ["MYENV"],
+        async save() {
+            throw new Error("should not save");
+        },
+    };
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query(bot);
+        return query(null);
+    };
+    try {
+        await assert.rejects(() => addAccount(operator, "alpha", "myenv"), (error) => {
+            assert.equal(error.status, 409);
+            return true;
+        });
+    } finally {
+        UserAccount.findOne = originalFind;
+    }
+});
+
+test("addAccount copyFrom chép trade+signal như /aa?copy=", async () => {
+    const originalFind = UserAccount.findOne;
+    const originalConfigFind = AccountConfig.findOne;
+    const originalCreate = AccountConfig.create;
+    const bot = {
+        username: "alpha",
+        accounts: ["SRC"],
+        async save() {
+            this.saved = true;
+        },
+    };
+    let created = null;
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query(bot);
+        if (filter.accounts instanceof RegExp && filter.accounts.test("SRC")) {
+            return query({ username: "alpha", accounts: ["SRC"] });
+        }
+        return query(null);
+    };
+    AccountConfig.findOne = (filter) => {
+        if (matchEnvFilter(filter, "SRC")) {
+            return query({
+                env: "SRC",
+                signals: ["ROSE"],
+                blacklist: ["BTCUSDT"],
+                trade_config: { ON: true, FIX_COST_AMOUNT: 50 },
+            });
+        }
+        return query(null);
+    };
+    AccountConfig.create = async (doc) => {
+        created = doc;
+    };
+    try {
+        const result = await addAccount(operator, "alpha", "new1", undefined, { copyFrom: "src" });
+        assert.deepEqual(result.accounts, ["SRC", "NEW1"]);
+        assert.equal(created.env, "NEW1");
+        assert.deepEqual(created.signals, ["ROSE"]);
+        assert.equal(created.trade_config.FIX_COST_AMOUNT, 50);
+        assert.equal(created.sync_from, null);
+    } finally {
+        UserAccount.findOne = originalFind;
+        AccountConfig.findOne = originalConfigFind;
+        AccountConfig.create = originalCreate;
+    }
+});
+
+test("addAccount copyFrom lấy config bot khác nếu được xem", async () => {
+    const originalFind = UserAccount.findOne;
+    const originalConfigFind = AccountConfig.findOne;
+    const originalCreate = AccountConfig.create;
+    const admin = { role: "admin", id: "admin" };
+    const target = {
+        username: "alpha",
+        accounts: ["ALPHA"],
+        async save() {
+            this.saved = true;
+        },
+    };
+    let created = null;
+    UserAccount.findOne = (filter) => {
+        if (filter.username === "alpha") return query(target);
+        if (filter.username === "beta") return query({ username: "beta", accounts: ["OTHER"] });
+        if (filter.accounts instanceof RegExp && filter.accounts.test("OTHER")) {
+            return query({ username: "beta", accounts: ["OTHER"] });
+        }
+        return query(null);
+    };
+    AccountConfig.findOne = (filter) => {
+        if (matchEnvFilter(filter, "OTHER")) {
+            return query({ env: "OTHER", signals: ["BULL"], trade_config: { ON: false } });
+        }
+        return query(null);
+    };
+    AccountConfig.create = async (doc) => {
+        created = doc;
+    };
+    try {
+        const result = await addAccount(admin, "alpha", "copied", undefined, { copyFrom: "other" });
+        assert.deepEqual(result.accounts, ["ALPHA", "COPIED"]);
+        assert.equal(created.env, "COPIED");
+        assert.deepEqual(created.signals, ["BULL"]);
+        assert.equal(created.trade_config.ON, false);
     } finally {
         UserAccount.findOne = originalFind;
         AccountConfig.findOne = originalConfigFind;
@@ -128,10 +261,11 @@ test("addAccount links an existing config without creating another", async () =>
 
 test("deleteAccount removes the env and deletes an unowned config", async () => {
     const originalFind = UserAccount.findOne;
+    const originalConfigFind = AccountConfig.findOne;
     const originalDelete = AccountConfig.deleteOne;
     const bot = {
         username: "alpha",
-        accounts: ["alpha", "alpha2"],
+        accounts: ["ALPHA", "ALPHA2"],
         async save() {
             this.saved = true;
         },
@@ -141,15 +275,17 @@ test("deleteAccount removes the env and deletes an unowned config", async () => 
         if (filter.username === "alpha") return query(bot);
         return query(null);
     };
+    AccountConfig.findOne = (filter) => (matchEnvFilter(filter, "ALPHA2") ? query({ env: "ALPHA2" }) : query(null));
     AccountConfig.deleteOne = async (filter) => {
         deleted = filter;
     };
     try {
         const result = await deleteAccount(operator, "alpha", "alpha2");
-        assert.deepEqual(result.accounts, ["alpha"]);
-        assert.deepEqual(deleted, { env: "alpha2" });
+        assert.deepEqual(result.accounts, ["ALPHA"]);
+        assert.deepEqual(deleted, { env: "ALPHA2" });
     } finally {
         UserAccount.findOne = originalFind;
+        AccountConfig.findOne = originalConfigFind;
         AccountConfig.deleteOne = originalDelete;
     }
 });
@@ -159,7 +295,7 @@ test("copyAccount clones the config onto the chosen user", async () => {
     const originalConfigFind = AccountConfig.findOne;
     const originalCreate = AccountConfig.create;
     const admin = { role: "admin", id: "admin" };
-    const source = { username: "alpha", accounts: ["a1"] };
+    const source = { username: "alpha", accounts: ["A1"] };
     const target = {
         username: "beta",
         accounts: [],
@@ -174,10 +310,10 @@ test("copyAccount clones the config onto the chosen user", async () => {
         return query(null);
     };
     AccountConfig.findOne = (filter) => {
-        if (filter.env === "a1") {
+        if (matchEnvFilter(filter, "A1")) {
             return query({
                 _id: "src",
-                env: "a1",
+                env: "A1",
                 signals: ["SIGNAL_A"],
                 blacklist: ["BTC"],
                 trade_config: { ON: true, FIX_COST_AMOUNT: 100 },
@@ -192,16 +328,16 @@ test("copyAccount clones the config onto the chosen user", async () => {
     };
     try {
         const result = await copyAccount(admin, "alpha", "a1", "beta", "a1copy");
-        assert.deepEqual(result, { username: "beta", env: "a1copy" });
-        assert.equal(created.env, "a1copy");
+        assert.deepEqual(result, { username: "beta", env: "A1COPY" });
+        assert.equal(created.env, "A1COPY");
         assert.equal(created._id, undefined);
         assert.deepEqual(created.signals, ["SIGNAL_A"]);
         assert.deepEqual(created.blacklist, ["BTC"]);
         assert.equal(created.trade_config.ON, true);
         assert.equal(created.sync_from, null);
-        assert.deepEqual(target.accounts, ["a1copy"]);
+        assert.deepEqual(target.accounts, ["A1COPY"]);
         assert.equal(target.saved, true);
-        assert.deepEqual(source.accounts, ["a1"]);
+        assert.deepEqual(source.accounts, ["A1"]);
     } finally {
         UserAccount.findOne = originalFind;
         AccountConfig.findOne = originalConfigFind;
@@ -214,15 +350,15 @@ test("copyAccount overwrites an existing config and clears its sync", async () =
     const originalConfigFind = AccountConfig.findOne;
     const originalUpdate = AccountConfig.updateOne;
     const admin = { role: "admin", id: "admin" };
-    const target = { username: "beta", accounts: ["keep"] };
+    const target = { username: "beta", accounts: ["KEEP"] };
     let updated = null;
     UserAccount.findOne = (filter) => {
-        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["a1"] });
+        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["A1"] });
         if (filter.username === "beta") return query(target);
         return query(null);
     };
-    AccountConfig.findOne = (filter) => query(filter.env === "a1" ? {
-        env: "a1",
+    AccountConfig.findOne = (filter) => query(matchEnvFilter(filter, "A1") ? {
+        env: "A1",
         signals: ["SIGNAL_A"],
         blacklist: ["BTC"],
         whitelist: ["ETH"],
@@ -235,14 +371,17 @@ test("copyAccount overwrites an existing config and clears its sync", async () =
     };
     try {
         const result = await copyAccount(admin, "alpha", "a1", "beta", "keep", { replace: true });
-        assert.deepEqual(result, { username: "beta", env: "keep", replaced: true });
-        assert.equal(updated.filter.env, "keep");
+        assert.deepEqual(result, { username: "beta", env: "KEEP", replaced: true });
+        assert.equal(updated.filter.env, "KEEP");
         assert.deepEqual(updated.doc.$set.signals, ["SIGNAL_A"]);
         assert.deepEqual(updated.doc.$set.whitelist, ["ETH"]);
         assert.equal(updated.doc.$set.trade_config.ON, true);
         assert.equal(updated.doc.$set.sync_from, null);
-        assert.deepEqual(target.accounts, ["keep"]);
-        await assert.rejects(() => copyAccount(admin, "alpha", "a1", "beta", "a1", { replace: true }), (error) => error.status === 400);
+        assert.deepEqual(target.accounts, ["KEEP"]);
+        await assert.rejects(
+            () => copyAccount(admin, "alpha", "a1", "alpha", "a1", { replace: true }),
+            (error) => error.status === 400
+        );
     } finally {
         UserAccount.findOne = originalFind;
         AccountConfig.findOne = originalConfigFind;
@@ -264,12 +403,12 @@ test("copyAccount can create a new config that stays synced to the source", asyn
     };
     let created = null;
     UserAccount.findOne = (filter) => {
-        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["a1"] });
+        if (filter.username === "alpha") return query({ username: "alpha", accounts: ["A1"] });
         if (filter.username === "beta") return query(target);
         return query(null);
     };
-    AccountConfig.findOne = (filter) => query(filter.env === "a1" ? {
-        env: "a1",
+    AccountConfig.findOne = (filter) => query(matchEnvFilter(filter, "A1") ? {
+        env: "A1",
         signals: ["SIGNAL_A"],
         trade_config: { ON: true },
         sync_from: "other",
@@ -279,11 +418,11 @@ test("copyAccount can create a new config that stays synced to the source", asyn
     };
     try {
         const result = await copyAccount(admin, "alpha", "a1", "beta", "branch", { sync: true });
-        assert.deepEqual(result, { username: "beta", env: "branch" });
-        assert.equal(created.env, "branch");
-        assert.equal(created.sync_from, "a1");
+        assert.deepEqual(result, { username: "beta", env: "BRANCH" });
+        assert.equal(created.env, "BRANCH");
+        assert.equal(created.sync_from, "A1");
         assert.deepEqual(created.signals, ["SIGNAL_A"]);
-        assert.deepEqual(target.accounts, ["branch"]);
+        assert.deepEqual(target.accounts, ["BRANCH"]);
     } finally {
         UserAccount.findOne = originalFind;
         AccountConfig.findOne = originalConfigFind;

@@ -364,7 +364,7 @@ Các invariant:
 | `POST /api/bots` | `requireAuth` | `bots.create=all`; creator là owner, chọn public/private |
 | `PATCH /api/bots/:username` | `requireAuth` | `bots.edit` + scope; sửa tên/visibility/active, chỉ admin đổi owner |
 | `DELETE /api/bots/:username` | `requireAuth` | `bots.delete` + scope riêng |
-| `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; thêm env, tạo `Account_Config` nếu chưa có |
+| `POST /api/bots/:username/accounts` | `requireAuth` | `config.edit` + scope; tên env uppercase; body tùy chọn `copyFrom` — nguồn phải thuộc bot actor có `config.view` |
 | `PATCH /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; đổi tên env |
 | `DELETE /api/bots/:username/accounts/:env` | `requireAuth` | `config.edit` + scope; gỡ env, xoá `Account_Config` nếu không user bot nào còn giữ |
 | `GET /api/bots/assigned-configs` | `requireAuth` | `config.view`. `scope=mine` (mặc định) là bot sở hữu hoặc được gán. `scope=all` thêm bot mà `config.view` cho phép. Chỉ user đang active |

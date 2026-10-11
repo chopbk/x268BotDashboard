@@ -31,6 +31,7 @@ Component nằm trong [pages](../client/src/pages). Gate UI chỉ hỗ trợ UX;
 - Form config quản lý volume/leverage, mode, mở lệnh, TP/SL, trailing, copy, paper/monitor, signal, blacklist/whitelist và sync. Backend chỉ cập nhật field được gửi, không ghi đè toàn document.
 - Bulk config tối đa 40 env, trả `updated` và `failed`; có thể thành công một phần, không được thông báo toàn bộ thành công khi `failed` khác rỗng.
 - Copy có `new` (tạo mới), `replace` (ghi đè config đích, gỡ sync), `sync` (tạo config mới và gắn nguồn). Kiểm tra quyền xem nguồn và sửa đích.
+- Thêm account: tên env luôn uppercase; trùng tên không phân biệt hoa/thường bị từ chối. Có thể `copyFrom` (gõ hoặc chọn) từ mọi config actor được `config.view` — giống `/aa?a=NEW&copy=EXIST`.
 - Lưu thành công nghĩa là Mongo đã cập nhật; server tự enqueue `APPLY_CONFIG` qua MQTT. Chỉ báo “đã áp dụng” khi ACK terminal — xem [bot-command-bridge](bot-command-bridge.md). Bot offline/timeout → “Đã lưu DB — chờ áp dụng” + nút thử lại.
 
 ## Bốn tab Signal

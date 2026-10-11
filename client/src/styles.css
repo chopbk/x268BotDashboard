@@ -399,6 +399,24 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
 
 .inline-edit { margin: 8px 0; }
 .inline-create label, .inline-edit input { flex: 1; }
+.add-account-form {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.add-account-form select {
+  min-width: 11rem;
+  max-width: 18rem;
+}
+.copy-from-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 10rem;
+  flex: 1;
+}
+.copy-from-field input {
+  width: 100%;
+}
 
 .account-row {
   display: flex;
