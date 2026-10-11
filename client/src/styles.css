@@ -1007,6 +1007,32 @@ td.negative { color: var(--danger); }
 }
 .pos-preview ul { margin: 6px 0 0; padding-left: 18px; }
 .pos-preview strong { display: block; margin-bottom: 4px; }
+.pos-case-panel {
+  width: min(1100px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+.pos-case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.pos-case-grid article {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.pos-case-list { margin: 0; padding-left: 18px; }
+.pos-case-warn { color: #d4a017; }
+.pos-case-warn-error { color: var(--danger); }
+.pos-case-timeline {
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.82rem;
+}
+.pos-case-monitor { display: grid; gap: 12px; }
 button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }

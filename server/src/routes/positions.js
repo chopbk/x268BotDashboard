@@ -5,10 +5,12 @@ const { createRateLimit } = require("../middleware/rate-limit");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
 const { loadPositions, monitorDetail, monitorOwner, heartbeatFresh, visibleBots, deleteMonitorRecord, createMonitorRecord } = require("../lib/positions");
+const { loadPositionCase, reconcilePositionCase } = require("../lib/position-case");
 const { listPositionHistory, getPositionHistory } = require("../lib/position-history");
 const { safeRecordAudit } = require("../lib/audit");
 const { readExchangeBook, readExchangeBooks, reconcile, cached } = require("../lib/position-live");
 const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "positions" });
+const caseReconcileLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 20, prefix: "positions-case" });
 const { markOf } = require("../lib/mark-prices");
 const UserAccount = require("../models/user-account");
 const MonitorPosition = require("../models/monitor-position");
@@ -136,6 +138,42 @@ router.get("/detail", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW)
         });
     } catch (error) {
         sendError(res, error, "GET /api/positions/detail");
+    }
+});
+
+/**
+ * Chi tiết case position (account + symbol + side): ownership, sibling, drift, timeline.
+ */
+router.get("/case", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json(await loadPositionCase(req.webUser, req.query));
+    } catch (error) {
+        sendError(res, error, "GET /api/positions/case");
+    }
+});
+
+/**
+ * Reconcile an toàn: chỉ refresh sổ Redis/REST cho account, không hủy order / đóng vị thế.
+ */
+router.post("/case/reconcile", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), caseReconcileLimit, async (req, res) => {
+    try {
+        const body = await reconcilePositionCase(req.webUser, req.body || {});
+        await safeRecordAudit({
+            action: "position.case_reconcile",
+            actor: req.webUser,
+            targetType: "position_case",
+            target: {
+                username: req.body?.account,
+                symbol: req.body?.symbol,
+                side: req.body?.side,
+            },
+            changes: {
+                warnings: { from: null, to: (body.warnings || []).length },
+            },
+        });
+        res.json(body);
+    } catch (error) {
+        sendError(res, error, "POST /api/positions/case/reconcile");
     }
 });
 

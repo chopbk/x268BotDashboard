@@ -9,6 +9,7 @@ import { closePreview, openPreview, TAKER_FEE_RATE } from "../trade-preview";
 import PositionHistory from "./PositionHistory";
 import OpenOrdersTab from "../components/OpenOrdersTab";
 import OrderHistoryTab from "../components/OrderHistoryTab";
+import PositionCasePanel from "../components/PositionCasePanel";
 
 const WARN = {
   "no-monitor": "Chưa có monitor",
@@ -172,8 +173,6 @@ export default function PositionsPage() {
   const [payload, setPayload] = useState(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(() => new Set());
-  const [detail, setDetail] = useState(null);
-  const [detailError, setDetailError] = useState("");
   const [monitorId, setMonitorId] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [sort, setSort] = useState({ key: "", dir: "desc" });
@@ -366,21 +365,6 @@ export default function PositionsPage() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [account, audience, book, canPositions, tab]);
-
-  useEffect(() => {
-    if (!panel || !monitorId) {
-      setDetail(null);
-      return undefined;
-    }
-    let gone = false;
-    api(`/api/positions/detail?id=${encodeURIComponent(monitorId)}&audience=${encodeURIComponent(audience)}`)
-      .then((body) => { if (!gone) { setDetail(body); setDetailError(""); } })
-      .catch((err) => {
-        console.error("[positions]", err);
-        if (!gone) setDetailError(err.message || "Không tải được chi tiết");
-      });
-    return () => { gone = true; };
-  }, [panel, monitorId]);
 
   const rows = useMemo(
     () => sortedRows((payload?.rows || []).filter((row) => matches(row, params)), sort.key, sort.dir),
@@ -1380,56 +1364,14 @@ export default function PositionsPage() {
         </div>
       ) : null}
       {tab === "open" && panel && selected ? (
-        <div className="modal-backdrop" onClick={closePanel}>
-          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="pos-title" onClick={(event) => event.stopPropagation()}>
-            <header>
-              <h2 id="pos-title">{selected.account} · {selected.symbol} · {selected.side}</h2>
-              <button type="button" onClick={closePanel}>Đóng</button>
-            </header>
-            <p className="muted">PnL sàn {selected.unrealized == null ? "—" : fmt(selected.unrealized)}. Order dưới đây tách phần dự kiến của monitor và phần sàn đã xác nhận.</p>
-            <h3>Order sàn đã xác nhận</h3>
-            <OrderList rows={[...(selected.exchangeOrders || []), ...(selected.algoOrders || [])]} empty="Không có order thường hay algo đang mở." />
-            <h3>Monitor</h3>
-            {selected.monitors.map((monitor) => (
-              <button key={monitor.id} type="button" className={monitorId === monitor.id ? "" : "ghost"} onClick={() => setMonitorId(monitor.id)}>
-                {monitor.env} · {monitor.signal || monitor.type || "monitor"} · qty {fmt(monitor.ownQty)}
-              </button>
-            ))}
-            {!selected.monitors.length ? <p className="muted">Vị thế chưa có monitor.</p> : null}
-            {detailError ? <p className="form-error">{detailError}</p> : null}
-            {detail?.monitor ? <MonitorDetail body={detail} /> : null}
-          </div>
-        </div>
+        <PositionCasePanel
+          row={selected}
+          audience={audience}
+          selectedMonitorId={monitorId}
+          onSelectMonitor={setMonitorId}
+          onClose={closePanel}
+        />
       ) : null}
     </section>
-  );
-}
-
-function OrderList({ rows, empty }) {
-  if (!rows.length) return <p className="muted">{empty}</p>;
-  return (
-    <ul className="pos-list">
-      {rows.map((order) => (
-        <li key={`${order.kind}-${order.id}`}>{order.kind} #{order.id} · {order.type} · {order.side} {order.positionSide} · qty {fmt(order.qty)} · giá {fmt(order.price)} · {order.status} · {order.confirmed ? "đã xác nhận" : "dự kiến"}</li>
-      ))}
-    </ul>
-  );
-}
-
-function MonitorDetail({ body }) {
-  const monitor = body.monitor;
-  return (
-    <div className="pos-detail">
-      <h3>Order dự kiến của monitor</h3>
-      <OrderList rows={monitor.expectedOrders || []} empty="Monitor chưa ghi SL/TP dự kiến." />
-      <h3>Fills</h3>
-      <pre>{JSON.stringify(monitor.fills || [], null, 2)}</pre>
-      <h3>Logs</h3>
-      <pre>{JSON.stringify([...(monitor.openLogs || []), ...(monitor.logs || [])], null, 2)}</pre>
-      <h3>Stats</h3>
-      <pre>{JSON.stringify(monitor.stats || {}, null, 2)}</pre>
-      <h3>Snapshot config</h3>
-      <pre>{JSON.stringify(monitor.config || {}, null, 2)}</pre>
-    </div>
   );
 }

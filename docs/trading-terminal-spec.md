@@ -38,6 +38,7 @@ MVP chỉ Binance USD-M Futures. Hỗ trợ cả Hedge (`LONG|SHORT`) và One-wa
 | Qty config vs sàn | Monitor `ownQty` + `exchangeQty`; cảnh báo `qty-mismatch` |
 | Sibling | Liệt kê multi-monitor trên row / preview |
 | Preview Confirm | Qty, PnL ước tính, phí taker ước tính 0.04%, sibling |
+| Chi tiết case | Bấm Symbol → ownership/sibling/leftover/NOTPSL, MAE·MFE, timeline, drift warnings, reconcile an toàn |
 | Open / order history | Tab Order đang mở, Lịch sử order |
 | Idempotency | `TradingReceipt` theo actor + idempotencyKey |
 | Audit | `position.close_requested`, `open_requested`, `reverse_requested`, `tpsl_requested`, … |
