@@ -38,6 +38,7 @@ export default function DetailPanel({
   onReverseRequest,
   onDirtyChange,
   onClosePanel,
+  width = 440,
   overlay,
 }) {
   const [tradeMode, setTradeMode] = useState("close"); // close | open | protect | advanced
@@ -51,10 +52,11 @@ export default function DetailPanel({
     onDirtyChange?.(false);
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const panelStyle = overlay ? undefined : { width, maxWidth: "100%" };
 
   if (!row) {
     return (
-      <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`} >
+      <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`} style={panelStyle}>
         <div className="term-panel-empty muted">Chọn một vị thế để xem chi tiết và đặt lệnh.</div>
       </aside>
     );
@@ -69,7 +71,7 @@ export default function DetailPanel({
   }
 
   return (
-    <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`}  aria-label="Panel chi tiết">
+    <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`} style={panelStyle} aria-label="Panel chi tiết">
       <header className="term-panel-head">
         <div>
           <h2>{row.symbol} <span className={`term-side term-side-${String(row.side).toLowerCase()}`}>{row.side}</span></h2>

@@ -1,10 +1,11 @@
-const VERSION = 1;
+const VERSION = 2;
 const PREFIX = "web-bot.terminal.v1";
 
 export const DEFAULT_COLUMNS = {
   symbol: true,
   account: true,
-  size: true,
+  volume: true,
+  size: false,
   entryMark: true,
   pnl: true,
   protection: true,
@@ -12,8 +13,22 @@ export const DEFAULT_COLUMNS = {
   config: false,
   recorded: false,
   liquidation: false,
-  notional: false,
   dataAge: false,
+};
+
+export const COLUMN_LABELS = {
+  symbol: "Symbol",
+  account: "Tài khoản",
+  volume: "Volume",
+  size: "Size (qty)",
+  entryMark: "Entry/Mark",
+  pnl: "PnL/ROI",
+  protection: "Bảo vệ",
+  actions: "Thao tác",
+  config: "Config/Signal",
+  recorded: "PnL ghi nhận",
+  liquidation: "Thanh lý",
+  dataAge: "Tuổi DL",
 };
 
 export const SAVED_VIEWS = [
@@ -32,22 +47,44 @@ export function loadPrefs(userId) {
     const raw = localStorage.getItem(storageKey(userId));
     if (!raw) return defaultPrefs();
     const data = JSON.parse(raw);
-    if (data?.version !== VERSION) return defaultPrefs();
+    const columns = migrateColumns(data);
     return {
       ...defaultPrefs(),
       ...data,
-      columns: { ...DEFAULT_COLUMNS, ...(data.columns || {}) },
+      version: VERSION,
+      columns,
       customViews: Array.isArray(data.customViews) ? data.customViews : [],
+      panelWidth: clampPanelWidth(data.panelWidth ?? 440),
     };
   } catch {
     return defaultPrefs();
   }
 }
 
+function migrateColumns(data) {
+  const prev = data?.columns || {};
+  // v1: size mặc định bật, notional tắt → v2: volume mặc định
+  if (data?.version !== VERSION) {
+    const next = { ...DEFAULT_COLUMNS, ...prev };
+    if (prev.notional === true && prev.volume == null) next.volume = true;
+    if (prev.size === true && prev.volume == null && data?.version === 1) {
+      next.volume = true;
+      next.size = false;
+    }
+    delete next.notional;
+    return next;
+  }
+  const merged = { ...DEFAULT_COLUMNS, ...prev };
+  delete merged.notional;
+  return merged;
+}
+
 export function savePrefs(userId, prefs) {
+  const columns = { ...DEFAULT_COLUMNS, ...(prefs.columns || {}) };
+  delete columns.notional;
   const payload = {
     version: VERSION,
-    columns: prefs.columns || DEFAULT_COLUMNS,
+    columns,
     density: prefs.density === "compact" ? "compact" : "comfortable",
     panelWidth: clampPanelWidth(prefs.panelWidth),
     panelOpen: prefs.panelOpen !== false,
@@ -71,7 +108,7 @@ export function defaultPrefs() {
     version: VERSION,
     columns: { ...DEFAULT_COLUMNS },
     density: "comfortable",
-    panelWidth: 400,
+    panelWidth: 440,
     panelOpen: true,
     notifyOptIn: false,
     customViews: [],
@@ -80,8 +117,8 @@ export function defaultPrefs() {
 
 export function clampPanelWidth(width) {
   const n = Number(width);
-  if (!Number.isFinite(n)) return 400;
-  return Math.min(560, Math.max(360, Math.round(n)));
+  if (!Number.isFinite(n)) return 440;
+  return Math.min(720, Math.max(360, Math.round(n)));
 }
 
 /** Áp view đã lưu lên filter client (pnl up/down) — không đổi quyền. */
@@ -90,9 +127,6 @@ export function rowMatchesSavedView(row, viewId, customViews = []) {
   const view = builtin || customViews.find((v) => v.id === viewId);
   if (!view) return true;
   const filters = view.filters || {};
-  if (filters.warn === "1" && !(row.warnings || []).length) {
-    // "Cần chú ý" builtin dùng needsAttention qua caller; warn URL đã filter
-  }
   if (filters.pnl === "up") {
     const n = Number(row.unrealized);
     if (!(Number.isFinite(n) && n > 0)) return false;

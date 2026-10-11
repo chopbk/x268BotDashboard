@@ -7,12 +7,12 @@ import { ownershipView } from "./summary.js";
 const SORTABLE = [
   { id: "symbol", label: "Symbol", text: true },
   { id: "account", label: "Tài khoản", text: true },
+  { id: "volume", label: "Volume" },
   { id: "size", label: "Size" },
   { id: "entry", label: "Entry" },
   { id: "unrealized", label: "PnL" },
   { id: "recorded", label: "PnL ghi nhận" },
   { id: "liquidation", label: "Liq" },
-  { id: "volume", label: "Giá trị" },
 ];
 
 export default function PositionTable({
@@ -50,7 +50,12 @@ export default function PositionTable({
               </th>
             ) : null}
             {columns.config ? <th>Config/Signal</th> : null}
-            {columns.size !== false ? (
+            {columns.volume !== false ? (
+              <th aria-sort={ariaSort(sort, "volume")}>
+                <button type="button" className="term-sort" title="qty × mark (USDT)" onClick={() => onSort("volume")}>Volume{sortMark(sort, "volume")}</button>
+              </th>
+            ) : null}
+            {columns.size ? (
               <th aria-sort={ariaSort(sort, "size")}>
                 <button type="button" className="term-sort" onClick={() => onSort("size")}>Size{sortMark(sort, "size")}</button>
               </th>
@@ -73,11 +78,6 @@ export default function PositionTable({
             {columns.liquidation ? (
               <th aria-sort={ariaSort(sort, "liquidation")}>
                 <button type="button" className="term-sort" onClick={() => onSort("liquidation")}>Thanh lý{sortMark(sort, "liquidation")}</button>
-              </th>
-            ) : null}
-            {columns.notional ? (
-              <th aria-sort={ariaSort(sort, "volume")}>
-                <button type="button" className="term-sort" onClick={() => onSort("volume")}>Giá trị{sortMark(sort, "volume")}</button>
               </th>
             ) : null}
             {columns.protection !== false ? <th>Bảo vệ</th> : null}
@@ -168,10 +168,15 @@ function PositionRow({
         ) : null}
         {columns.account !== false ? <td className="muted">{row.account}</td> : null}
         {columns.config ? <td className="muted term-ellip" title={`${configs} / ${signals}`}>{configs || "—"}{signals ? ` · ${signals}` : ""}</td> : null}
-        {columns.size !== false ? (
+        {columns.volume !== false ? (
+          <td className="term-num" title={`Volume = qty × mark${own.size != null ? ` · qty ${fmt(own.size)}` : ""}`}>
+            {volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}
+            {own.allocation === "over" ? <span className="term-warn-text"> !</span> : null}
+          </td>
+        ) : null}
+        {columns.size ? (
           <td className="term-num" title={own.allocation === "over" ? "Lệch phân bổ: ownQty > sàn" : own.allocation === "under" ? "Còn qty chưa gán monitor" : ""}>
             {own.size == null ? "—" : fmt(own.size)}
-            {own.allocation === "over" ? <span className="term-warn-text"> !</span> : null}
           </td>
         ) : null}
         {columns.entryMark !== false ? (
@@ -188,7 +193,6 @@ function PositionRow({
         ) : null}
         {columns.recorded ? <td className={`term-num ${pnlClass(row.recorded?.net)}`}>{row.recorded ? fmt(row.recorded.net, 2) : "—"}</td> : null}
         {columns.liquidation ? <td className="term-num">{fmt(row.liquidation)}</td> : null}
-        {columns.notional ? <td className="term-num">{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</td> : null}
         {columns.protection !== false ? (() => {
           const cell = protectionCellText(status);
           return (
@@ -247,7 +251,7 @@ function PositionCard({ row, selected, stale, canClose, canTpsl, onSelect, onClo
         <span className="muted">{row.account}</span>
       </header>
       <div className="term-card-grid">
-        <span>Size <b className="term-num">{fmt(qtyOf(row))}</b></span>
+        <span>Vol <b className="term-num">{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</b></span>
         <span className={pnlClass(row.unrealized)}>PnL <b>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</b>{roi != null ? ` (${fmt(roi, 1)}%)` : ""}</span>
         <span className="muted">{fmt(row.entry)} → {fmt(row.mark)}</span>
         <span className={`term-dual term-protect-${status.sl.kind}`}>

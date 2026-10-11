@@ -81,8 +81,10 @@ test("ownership over-allocation không clamp", () => {
 
 test("prefs clamp + saved view pnl", () => {
   assert.equal(clampPanelWidth(100), 360);
-  assert.equal(clampPanelWidth(999), 560);
-  assert.equal(defaultPrefs().version, 1);
+  assert.equal(clampPanelWidth(999), 720);
+  assert.equal(defaultPrefs().version, 2);
+  assert.equal(defaultPrefs().columns.volume, true);
+  assert.equal(defaultPrefs().columns.size, false);
   assert.equal(rowMatchesSavedView({ unrealized: 3 }, "profit"), true);
   assert.equal(rowMatchesSavedView({ unrealized: -1 }, "profit"), false);
 });

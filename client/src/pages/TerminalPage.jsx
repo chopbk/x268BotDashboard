@@ -26,7 +26,7 @@ import {
 import { matches, normalizeTab, bookForApi } from "../components/terminal/matches.js";
 import { buildSummary } from "../components/terminal/summary.js";
 import { needsAttention } from "../components/terminal/protection.js";
-import { loadPrefs, savePrefs, DEFAULT_COLUMNS, rowMatchesSavedView } from "../components/terminal/prefs.js";
+import { loadPrefs, savePrefs, clampPanelWidth, DEFAULT_COLUMNS, COLUMN_LABELS, rowMatchesSavedView } from "../components/terminal/prefs.js";
 import { usePositionsFeed } from "../components/terminal/usePositionsFeed.js";
 import { CLOSE_PERCENTS, exchangeTpsl, monitorTpsl, newIdempotencyKey, numInput, when } from "../components/terminal/format.js";
 
@@ -57,13 +57,13 @@ export default function TerminalPage() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
-  const [sort, setSort] = useState({ key: "", dir: "desc" });
+  const [sort, setSort] = useState({ key: "volume", dir: "desc" });
   const [monitorId, setMonitorId] = useState("");
   const [notices, setNotices] = useState([]);
   const [notifyReady, setNotifyReady] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted");
   const [historyAccounts, setHistoryAccounts] = useState([]);
   const [dirty, setDirty] = useState(false);
-  const [overlay, setOverlay] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [overlay, setOverlay] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);
 
   const [closeConfirm, setCloseConfirm] = useState(null);
   const [closeFormError, setCloseFormError] = useState("");
@@ -87,12 +87,32 @@ export default function TerminalPage() {
 
   useEffect(() => {
     function onResize() {
-      setOverlay(window.innerWidth < 768);
+      setOverlay(window.innerWidth < 1024);
     }
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  function startPanelResize(event) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startW = prefs.panelWidth || 440;
+    function onMove(ev) {
+      const next = clampPanelWidth(startW + (startX - ev.clientX));
+      setPrefs((prev) => {
+        const merged = { ...prev, panelWidth: next };
+        savePrefs(user?.id || user?.username, merged);
+        return merged;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 
   function pushNotices(alerts) {
     if (!alerts.length) return;
@@ -800,16 +820,26 @@ export default function TerminalPage() {
             <label key={key}>
               <input
                 type="checkbox"
-                checked={prefs.columns?.[key] !== false}
+                checked={Boolean(prefs.columns?.[key])}
                 disabled={key === "symbol" || key === "actions"}
                 onChange={(e) => updatePrefs({ columns: { ...prefs.columns, [key]: e.target.checked } })}
               />
-              {key}
+              {COLUMN_LABELS[key] || key}
             </label>
           ))}
           <label>
+            Rộng panel
+            <input
+              type="range"
+              min={360}
+              max={720}
+              value={prefs.panelWidth || 440}
+              onChange={(e) => updatePrefs({ panelWidth: clampPanelWidth(e.target.value) })}
+            />
+          </label>
+          <label>
             <input type="checkbox" checked={prefs.panelOpen !== false} onChange={(e) => updatePrefs({ panelOpen: e.target.checked })} />
-            Hiện panel
+            Hiện panel cạnh bảng
           </label>
         </div>
       ) : null}
@@ -836,7 +866,8 @@ export default function TerminalPage() {
         <>
           <TerminalSummary summary={summary} bookLabel={bookLabel} />
           <div
-            className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""}`}
+            className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""} ${showPanel && overlay ? "with-overlay" : ""}`}
+            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 440}px` } : undefined}
           >
             <div className="term-main">
               {!payload ? (
@@ -874,6 +905,15 @@ export default function TerminalPage() {
                 />
               ) : null}
             </div>
+            {showPanel && !overlay ? (
+              <div
+                className="term-resize"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Kéo để đổi độ rộng panel"
+                onPointerDown={startPanelResize}
+              />
+            ) : null}
             {showPanel ? (
               <DetailPanel
                 key={`${selectedRow.key}|${audience}`}
@@ -896,6 +936,7 @@ export default function TerminalPage() {
                 onReverseRequest={askReverse}
                 onDirtyChange={setDirty}
                 onClosePanel={closePanel}
+                width={prefs.panelWidth}
                 overlay={overlay}
               />
             ) : null}

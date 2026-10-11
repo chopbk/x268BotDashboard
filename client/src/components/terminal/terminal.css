@@ -154,29 +154,56 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  min-height: 420px;
+  min-height: min(70vh, 640px);
+  height: calc(100vh - 220px);
+  max-height: calc(100vh - 180px);
   flex: 1;
+  min-width: 0;
 }
 
 .term-workspace.with-panel {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(280px, 1fr) 8px var(--term-panel-w, 440px);
+  gap: 0;
+  align-items: stretch;
 }
 
-.term-workspace.with-panel .term-table-wrap { max-height: 38vh; }
+.term-workspace.with-panel .term-table-wrap {
+  max-height: none;
+  height: 100%;
+}
+
+.term-resize {
+  cursor: col-resize;
+  touch-action: none;
+  background: color-mix(in srgb, var(--term-line) 50%, transparent);
+  border-radius: 4px;
+  margin: 0 2px;
+  position: relative;
+  z-index: 2;
+}
+
+.term-resize:hover,
+.term-resize:active {
+  background: color-mix(in srgb, #f0b90b 55%, var(--term-line));
+}
 
 .term-main {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: hidden;
 }
 
 .term-table-wrap {
   border: 1px solid var(--term-line);
   border-radius: 10px;
   overflow: auto;
-  max-height: calc(100vh - 280px);
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  height: 100%;
   background: color-mix(in srgb, var(--surface, #141414) 90%, transparent);
 }
 
@@ -360,8 +387,11 @@
   background: color-mix(in srgb, var(--surface, #161616) 92%, transparent);
   display: flex;
   flex-direction: column;
-  max-height: 60vh;
+  height: 100%;
+  max-height: none;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .term-panel-overlay {
@@ -369,10 +399,11 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(440px, 80vw);
+  width: min(520px, 92vw);
   z-index: 40;
   border-radius: 0;
   max-height: none;
+  height: 100vh;
   background: var(--surface, #161616);
   box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
 }
@@ -691,6 +722,15 @@
 }
 
 .term-case-inline, .term-case-content { min-width: 0; }
+.term-panel-body .term-case-inline {
+  overflow: auto;
+  max-height: none;
+}
+.term-panel-body .term-case-content .table-wrap,
+.term-panel-body .term-case-content .pos-case-orders {
+  overflow: auto;
+  max-width: 100%;
+}
 .term-case-content > header {
   display: flex;
   flex-wrap: wrap;
@@ -708,8 +748,8 @@
 
 @media (max-width: 1023px) {
   .term-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .term-workspace.with-panel { grid-template-columns: 1fr; }
-  .term-panel-overlay { width: min(440px, 80vw); }
+  .term-workspace { height: calc(100vh - 260px); }
+  .term-panel-overlay { width: min(520px, 92vw); }
 }
 
 @media (max-width: 767px) {
