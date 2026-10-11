@@ -579,7 +579,7 @@ export default function AccountConfigPage({ experimental = false }) {
     setError("");
     try {
       await api(`/api/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}`, { method: "DELETE" });
-      navigate(experimental ? "/config-lab" : `/bots/${encodeURIComponent(username)}`, { replace: true });
+      navigate("/config-lab", { replace: true });
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
       setBusy(false);
@@ -622,7 +622,7 @@ export default function AccountConfigPage({ experimental = false }) {
         apply = await waitForApply(data.username, apply.requestId);
       }
       if (apply) setSaved(applyStatusLabel(apply));
-      navigate(experimental ? `/config-lab/${encodeURIComponent(data.username)}/${encodeURIComponent(data.env)}` : `/bots/${encodeURIComponent(data.username)}/accounts/${encodeURIComponent(data.env)}`, { replace: true });
+      navigate(`/config-lab/${encodeURIComponent(data.username)}/${encodeURIComponent(data.env)}`, { replace: true });
     } catch (err) {
       setError(err.message || "Thao tác thất bại");
       setBusy(false);

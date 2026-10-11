@@ -8,10 +8,9 @@
 |---|---|---|
 | Đăng nhập `/login`, đăng ký `/register` | LoginPage, RegisterPage | Login bằng identifier; đăng ký tạo pending. Pending có session nhưng chưa có quyền bot |
 | Trang chủ `/` | DashboardPage / PendingPage | Có `bots.view` thì dashboard; chỉ có `summary.view` chuyển Tổng kết; còn lại trang chờ |
-| Danh sách `/bots` | HomePage | Bot đang active, chọn phạm vi của mình/người khác theo quyền; lọc/sắp xếp/phân trang; giao diện cùng skin Config Lab |
-| Bot `/bots/:username` | BotDetailPage | Account/config thuộc bot, thêm/đổi tên/gỡ account theo `config.edit` |
-| Config mới `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage experimental | Giao diện thử nghiệm 6 nhóm; cùng API/quyền và config thật, giữ nguyên giao diện cũ |
-| Config `/bots/:username/accounts/:env` | AccountConfigPage | Sửa các field trade/signal được hỗ trợ; cảnh báo rời form chưa lưu |
+| Danh sách `/bots` | HomePage | Active, phạm vi, chủ sở hữu; peek Static/Config/lãi lỗ; nút Config → `/config-lab?user=` |
+| Config `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage | Tạo/sửa/copy/sync/bulk/xoá config; 6 nhóm form; APPLY_CONFIG |
+| `/bots/:username`, `/bots/.../accounts/:env` | Redirect | Chuyển sang Config Lab (UI cũ không còn dùng) |
 | Signal `/signal-search` | SignalSearchPage và panel | Tab lịch sử / tìm / scorecard / thống kê / cấu hình; từng API có quyền riêng |
 | Position `/positions` | PositionsPage | Vị thế sàn và monitor, live/paper, mặc định của mình; `positions.view` |
 | Account Static `/signals` | SignalHistoryPage | Kết quả lệnh thực tế và chi tiết; `statistics.view` cho API account-statics |
@@ -35,15 +34,13 @@ Component nằm trong [pages](../client/src/pages). Gate UI chỉ hỗ trợ UX;
 - Thêm account: tên env luôn uppercase; trùng tên không phân biệt hoa/thường bị từ chối. Có thể `copyFrom` (gõ hoặc chọn) từ mọi config actor được `config.view` — giống `/aa?a=NEW&copy=EXIST`.
 - Lưu thành công nghĩa là Mongo config đã cập nhật; server enqueue `APPLY_CONFIG` (MQTT đánh thức bot). Bot ghi ACK vào outbox Mongo; UI chỉ báo “đã áp dụng” khi outbox terminal succeeded — xem [bot-command-bridge](bot-command-bridge.md). Bot offline/timeout → “Đã lưu DB — chờ áp dụng” + nút thử lại.
 
-### Config mới · Thử nghiệm
+### Config
 
-Menu riêng yêu cầu `config.view`. Danh sách tìm/lọc theo user, signal, nhận signal và
-Live/Paper; URL giữ bộ lọc và phân trang. Có tạo account (uppercase + `copyFrom`), bulk
-On/Paper cùng user, deep-link Position/Static trên card. Detail chia 6 nhóm, summary draft,
-signal thẻ + gợi ý từ `signal-config`, Sync from chọn từ config được xem, copy mode
-new/replace/sync, đổi tên/xoá account. Thanh lưu đếm diff, APPLY/ACK + thử lại; journey
-sang Position / Static / lịch sử. Chỉ `config.edit` đúng scope mới sửa. Dùng chung API/editor
-cũ; không xoá route cũ. Chi tiết: [spec Config mới](config-lab-spec.md).
+Menu `/config-lab` yêu cầu `config.view`. Tạo account (uppercase + `copyFrom`), bulk Config
+nhanh (On/Long/Short/Paper/Monitor/mode/cost/leverage/signals) và xoá hàng loạt cùng user,
+deep-link Position/Static. Chi tiết 6 nhóm, signal thẻ + gợi ý, Sync from picker, copy
+new/replace/sync, đổi tên/xoá, APPLY/ACK trên savebar. Danh sách `/bots` chỉ quản trị bot
+(Active/phạm vi/chủ). Route UI config cũ redirect sang đây. Chi tiết: [spec Config](config-lab-spec.md).
 
 ## Tab Signal
 

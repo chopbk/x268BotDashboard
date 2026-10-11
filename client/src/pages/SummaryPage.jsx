@@ -118,7 +118,7 @@ export default function SummaryPage() {
       query.set("src", "summary");
       return `/signals?${query}`;
     }
-    if (botAllowed) return `/bots/${encodeURIComponent(name)}`;
+    if (botAllowed) return `/config-lab?user=${encodeURIComponent(name)}`;
     return "";
   }
 

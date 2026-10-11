@@ -607,8 +607,8 @@ Test bắt buộc thêm:
 - create/update/register tạo đúng action và actor/target.
 
 
-### Giao diện Config mới (thử nghiệm)
+### Giao diện Config
 
 Menu/route `/config-lab` và `/config-lab/:username/:env` yêu cầu `config.view`; nút sửa
-vẫn theo `config.edit` và scope tài nguyên hiện có. Dùng GET/PATCH config và CSRF hiện có,
-không cấp quyền mới. Người chỉ xem vẫn có thể dùng các nhóm/summary nhưng không sửa.
+theo `config.edit` + scope. Route UI cũ `/bots/:username` và `.../accounts/:env` redirect
+sang Config. Không cấp quyền mới.

@@ -366,11 +366,11 @@ export default function HomePage() {
           <p className="lab-kicker">DANH SÁCH BOT</p>
           <span className="lab-badge">{audience === "all" ? "Tất cả được phép xem" : "Của tôi / được gán"}</span>
         </div>
-        <h1>Bot được phép xem</h1>
+        <h1>Danh sách bot</h1>
         <p className="lab-intro">
-          {isAdmin ? "Đổi phạm vi, chủ sở hữu và cờ Active ngay trên bảng, rồi bấm Lưu. " : ""}
-          Chỉ hiện user đang active. User của tôi gồm bot sở hữu và được gán. Bấm tiêu đề cột để sắp xếp.
-          {canViewStatistics ? " Static / lãi lỗ theo ngày UTC (GMT+0)." : " Config tất cả theo phạm vi đang chọn."}
+          Quản lý Active, phạm vi và chủ sở hữu. Xem nhanh Static / Config / lãi lỗ.
+          Sửa config giao dịch ở menu Config. Chỉ hiện user đang active.
+          {canViewStatistics ? " Số liệu ngày theo UTC (GMT+0)." : ""}
         </p>
         {canViewStatistics || canViewConfig ? (
           <div className="lab-quick-actions">
@@ -618,7 +618,7 @@ export default function HomePage() {
         <>
         <div className="lab-list-heading">
           <h2>{visibleBots.length} user trên trang</h2>
-          <span className="lab-caption">Bấm Static / Account / Lãi lỗ để xem nhanh · Sửa để mở chi tiết</span>
+          <span className="lab-caption">Static / Account / Lãi lỗ xem nhanh · Config mở giao diện cấu hình</span>
         </div>
         <div className="lab-table-wrap">
           <table>
@@ -733,8 +733,8 @@ export default function HomePage() {
                     <td className="muted">{matchedAccounts.join(", ")}</td>
                     <td>
                       <div className="row-actions">
-                        <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(bot.username)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
-                          {canEditResource(user, "config.edit", bot) ? "Sửa" : "Xem"}
+                        <Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(bot.username)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
+                          {canEditResource(user, "config.edit", bot) ? "Config" : "Xem config"}
                         </Link>
                         {canDeleteBot ? (
                           <button
@@ -837,7 +837,7 @@ export default function HomePage() {
                             <td>{row.missing ? "—" : row.mode || "—"}</td>
                             <td>
                               {canViewConfig ? (
-                                <Link className="ghost link-btn" to={`/bots/${encodeURIComponent(peek.username)}/accounts/${encodeURIComponent(row.env)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
+                                <Link className="ghost link-btn" to={`/config-lab/${encodeURIComponent(peek.username)}/${encodeURIComponent(row.env)}`} state={{ labReturnTo: `${location.pathname}${location.search}` }}>
                                   {canEditResource(user, "config.edit", bots.find((item) => item.username === peek.username)) ? "Sửa" : "Xem"}
                                 </Link>
                               ) : null}
@@ -857,8 +857,8 @@ export default function HomePage() {
                 ) : null}
                 {canViewConfig && peekData && !peekData.configs?.length ? <p className="muted">User này chưa có config.</p> : null}
                 <p>
-                  <Link className="link-btn" to={`/bots/${encodeURIComponent(peek.username)}`} state={{ returnTo: `${location.pathname}${location.search}` }}>
-                    Mở user
+                  <Link className="link-btn" to={`/config-lab?user=${encodeURIComponent(peek.username)}`} state={{ labReturnTo: `${location.pathname}${location.search}` }}>
+                    Mở Config
                   </Link>
                 </p>
               </>

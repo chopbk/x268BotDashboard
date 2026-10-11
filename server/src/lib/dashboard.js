@@ -168,7 +168,7 @@ async function getDashboard(actor, now = new Date()) {
     const signalItems = signalLosing.map((row) => ({
         type: "loss",
         title: `${row.username} · ${row.env} · ${row.signal} lỗ ${moneyText(row.profit)} hôm nay, ${row.count} lệnh`,
-        href: `/bots/${encodeURIComponent(row.username)}/accounts/${encodeURIComponent(row.env)}`,
+        href: `/config-lab/${encodeURIComponent(row.username)}/${encodeURIComponent(row.env)}`,
         username: row.username,
         env: row.env,
         signal: row.signal,
@@ -200,7 +200,7 @@ async function getDashboard(actor, now = new Date()) {
             const item = {
                 type: "config",
                 title: `${bot.username}/${doc.env} đang bật nhưng chưa có signal`,
-                href: `/bots/${encodeURIComponent(bot.username)}/accounts/${encodeURIComponent(doc.env)}`,
+                href: `/config-lab/${encodeURIComponent(bot.username)}/${encodeURIComponent(doc.env)}`,
                 username: bot.username,
                 env: doc.env,
             };

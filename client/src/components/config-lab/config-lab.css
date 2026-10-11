@@ -183,7 +183,11 @@ main:has(.lab-directory) { width: calc(100% - 48px); max-width: 1280px; margin: 
 .lab-bot-list .lab-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .lab-bot-list .dirty-note { margin-top: 10px; font-size: 13px; }
 .lab-bot-list .lab-empty { margin-top: 8px; }
-.sidenav a[href="/config-lab"] small { display: inline-block; font-size: 10px; opacity: .65; margin-left: 3px; }
+.lab-bulk-stack { flex-direction: column; align-items: stretch; }
+.lab-quick-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; width: 100%; padding-top: 8px; border-top: 1px solid var(--line); }
+.lab-quick-form label { flex: 1 1 110px; font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+.lab-quick-form .lab-quick-signals { flex: 2 1 200px; }
+.lab-quick-form .span-all { flex: 1 1 100%; margin: 0; }
 
 @media (max-width: 1200px) {
   .lab-workspace { grid-template-columns: 168px minmax(0,1fr); }

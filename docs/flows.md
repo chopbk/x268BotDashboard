@@ -41,14 +41,10 @@ Bot giao dịch đọc cấu hình ở process riêng. Không nối mũi tên t�
 
 Chỉ báo “đã đồng bộ” khi outbox terminal succeeded (TRADER đủ `requiredRoles`). Bot ghi ACK Mongo theo `requestId`; UI poll/wait `GET .../commands/:requestId`. Offline → chờ đồng bộ + retry. MQTT `command_response` chỉ phụ.
 
-Config thử nghiệm: `/config-lab` → GET `/api/bots/assigned-configs` (summary có `paper`)
-→ tạo account `POST .../accounts` (+ `copyFrom`) hoặc bulk `POST .../configs/bulk`
-→ `/config-lab/:username/:env` → AccountConfigPage experimental (signal gợi ý, sync picker,
-copy mode, APPLY trên savebar, journey Position/Static).
-`configDraft.configPayload` giữ normalization cũ; `configChanges` so draft với snapshot lúc
-bấm Sửa; PATCH chỉ gồm field thay đổi. View cũ vẫn gửi payload như trước. Không tạo API,
-collection hay luồng áp dụng bot thứ hai. Bộ lọc list nằm trong URL; link quay lại dùng
-ngữ cảnh từ list, không phụ thuộc nút Back của trình duyệt.
+Config: `/config-lab` → GET `/api/bots/assigned-configs` → tạo/bulk/xoá account hoặc mở
+`/config-lab/:username/:env` (AccountConfigPage). Route cũ `/bots/:user` và
+`/bots/:user/accounts/:env` redirect sang đây. Danh sách `/bots` chỉ Active/phạm vi/chủ + peek.
+`configDraft` chuẩn hóa/diff; PATCH chỉ field đổi. Bộ lọc list nằm trong URL.
 
 ## 3. Tìm rồi copy/sync config
 

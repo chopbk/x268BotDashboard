@@ -407,7 +407,7 @@ function SignalLog({ canSearch, onFindConfig }) {
       {fromUser && fromEnv ? (
         <p className="trail-note muted">
           <span>Từ config {fromUser}/{fromEnv}. {contextSignals.length ? "Nhật ký vẫn là signal_infos của cả hệ thống, danh sách signal được thu vào config này." : "Config chưa khai báo signal. Nhật ký bên dưới là signal_infos của cả hệ thống."}</span>
-          {canSearch ? <Link className="trail-link" to={`/bots/${encodeURIComponent(fromUser)}/accounts/${encodeURIComponent(fromEnv)}`}>Mở config</Link> : null}
+          {canSearch ? <Link className="trail-link" to={`/config-lab/${encodeURIComponent(fromUser)}/${encodeURIComponent(fromEnv)}`}>Mở config</Link> : null}
           {staticAllowed ? <Link className="trail-link" to={`/signals?view=statics&username=${encodeURIComponent(fromUser)}&env=${encodeURIComponent(fromEnv)}${from ? `&from=${encodeURIComponent(from)}` : ""}${to ? `&to=${encodeURIComponent(to)}` : ""}`}>Giao dịch của config</Link> : null}
           <Link className="trail-link" to={statsHref}>Lý do bỏ qua</Link>
           {contextSignals.length ? <button type="button" className="ghost" onClick={() => update({ signals: "", signal: "" })}>Mọi signal trong kỳ</button> : null}
@@ -1106,7 +1106,7 @@ export default function SignalSearchPage() {
             {notice ? <p className="muted">{notice}</p> : null}
             {resultTarget ? (
               <p className="row-actions">
-                <Link className="link-btn" to={`/bots/${encodeURIComponent(resultTarget.username)}/accounts/${encodeURIComponent(resultTarget.env)}`}>
+                <Link className="link-btn" to={`/config-lab/${encodeURIComponent(resultTarget.username)}/${encodeURIComponent(resultTarget.env)}`}>
                   Mở config đích
                 </Link>
               </p>

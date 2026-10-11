@@ -29,8 +29,8 @@ export function journeyPaths(username, env, signalText = "") {
     skip: `/signal-search?${skip}`,
     statics: `/signals?view=statics&username=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`,
     positions: `/positions?account=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`,
-    bot: `/bots/${encodeURIComponent(username)}`,
-    legacy: `/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}`,
+    bot: `/config-lab?user=${encodeURIComponent(username)}`,
+    list: "/bots",
   };
 }
 
@@ -42,26 +42,24 @@ export function LabJourneyLinks({ username, env, signals = "", canHistory, canSt
     {canStatistics ? <Link className="ghost link-btn" to={paths.statics}>Account Static</Link> : null}
     {canHistory ? <Link className="ghost link-btn" to={paths.history}>Lịch sử signal</Link> : null}
     <Link className="ghost link-btn" to={paths.skip}>Lý do bỏ qua</Link>
-    <Link className="ghost link-btn" to={paths.bot}>User bot</Link>
+    <Link className="ghost link-btn" to={paths.bot}>Config cùng user</Link>
+    <Link className="ghost link-btn" to={paths.list}>Danh sách bot</Link>
   </nav>;
 }
 
 export function LabHeader({ username, env, form, returnTo, signals = "", canHistory, canStatistics, canPositions }) {
   const back = typeof returnTo === "string" && /^\/config-lab(?:\?|$)/.test(returnTo) ? returnTo : "/config-lab";
-  const paths = journeyPaths(username, env, signals);
   return <header className="lab-heading">
     <div className="lab-heading-top">
       <Link to={back} className="lab-back">← Danh sách config</Link>
-      <span className="lab-badge">Thử nghiệm</span>
+      <Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(username)}`}>Config · {username}</Link>
     </div>
-    <div className="lab-title-row"><div><p className="lab-kicker">CẤU HÌNH GIAO DỊCH · {username}</p><h1>{env}</h1></div>
-      <Link className="ghost link-btn" to={paths.legacy}>Mở giao diện cũ ↗</Link>
-    </div>
+    <div className="lab-title-row"><div><p className="lab-kicker">CẤU HÌNH GIAO DỊCH · {username}</p><h1>{env}</h1></div></div>
     <div className="lab-badges">
       {form ? <><span className={`lab-badge ${form.paper ? "paper" : "live"}`}>{form.paper ? "Paper" : "Live"}</span>
         <span className={`lab-badge ${form.on ? "positive" : ""}`}>{form.on ? "Nhận signal: bật" : "Nhận signal: tắt"}</span>
         <span className="lab-badge">{form.mode || "—"}</span></> : null}
-      <span className="lab-caption">Giao diện thử nghiệm · lưu thay đổi vào config thật</span>
+      <span className="lab-caption">Lưu ghi Mongo và đồng bộ bot qua MQTT</span>
     </div>
     <LabJourneyLinks username={username} env={env} signals={signals} canHistory={canHistory} canStatistics={canStatistics} canPositions={canPositions} />
   </header>;

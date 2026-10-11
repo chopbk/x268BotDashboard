@@ -73,7 +73,7 @@ export default function SignalStatsPanel({ onFindConfig }) {
       {fromUser && fromEnv ? (
         <p className="trail-note muted">
           <span>Lý do của config {fromUser}/{fromEnv}. Lỗi parse là 7 ngày, signal bị gỡ là 14 ngày{loadedAt ? `, tải lúc ${fmtTime(loadedAt)}` : ""}.</span>
-          <Link className="trail-link" to={`/bots/${encodeURIComponent(fromUser)}/accounts/${encodeURIComponent(fromEnv)}`}>Mở config</Link>
+          <Link className="trail-link" to={`/config-lab/${encodeURIComponent(fromUser)}/${encodeURIComponent(fromEnv)}`}>Mở config</Link>
           <Link className="trail-link" to={historyHref}>Lịch sử signal</Link>
         </p>
       ) : <p className="muted">Nguồn: log parse 7 ngày và log tự gỡ 14 ngày{loadedAt ? `. Tải lúc ${fmtTime(loadedAt)}` : ""}.</p>}

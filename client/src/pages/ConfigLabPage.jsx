@@ -11,6 +11,7 @@ import "../components/config-lab/config-lab.css";
 const CONFIG_EDIT = "config.edit";
 const STATISTICS_VIEW = "statistics.view";
 const POSITIONS_VIEW = "positions.view";
+const EMPTY_QUICK = { on: "", long: "", short: "", paper: "", monitor: "", mode: "", cost: "", leverage: "", signals: "" };
 
 function can(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -36,6 +37,8 @@ export default function ConfigLabPage() {
   const [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState(() => new Set());
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quick, setQuick] = useState(EMPTY_QUICK);
   const [newUser, setNewUser] = useState("");
   const [newEnv, setNewEnv] = useState("");
   const [copyFrom, setCopyFrom] = useState("");
@@ -62,11 +65,15 @@ export default function ConfigLabPage() {
         if (gone) return;
         const editable = (data.bots || []).filter((bot) => canEditResource(user, CONFIG_EDIT, bot));
         setBots(editable);
-        setNewUser((prev) => prev || editable[0]?.username || "");
+        setNewUser((prev) => {
+          if (filters.username && editable.some((bot) => bot.username === filters.username)) return filters.username;
+          if (prev && editable.some((bot) => bot.username === prev)) return prev;
+          return editable[0]?.username || "";
+        });
       })
       .catch(() => { if (!gone) setBots([]); });
     return () => { gone = true; controller.abort(); };
-  }, [canEdit, user]);
+  }, [canEdit, user, filters.username]);
 
   const all = useMemo(() => users.flatMap((row) => (row.configs || []).map((cfg) => ({ ...cfg, username: row.username }))), [users]);
   const copyOptions = useMemo(() => {
@@ -140,6 +147,8 @@ export default function ConfigLabPage() {
         summarizeApplies(applies),
       ].filter(Boolean).join(". "));
       setPicked(new Set());
+      setQuickOpen(false);
+      setQuick(EMPTY_QUICK);
       setRetry((value) => value + 1);
     } catch (err) {
       setError(err.message || "Bulk thất bại");
@@ -148,12 +157,65 @@ export default function ConfigLabPage() {
     }
   }
 
+  async function applyQuick(event) {
+    event.preventDefault();
+    if (!bulkReady) return;
+    const body = {};
+    for (const key of ["on", "long", "short", "paper", "monitor"]) {
+      if (quick[key] === "on") body[key] = true;
+      if (quick[key] === "off") body[key] = false;
+    }
+    if (quick.mode) body.mode = quick.mode;
+    if (quick.cost !== "") body.cost = Number(quick.cost);
+    if (quick.leverage !== "") {
+      body.leverage = Number(quick.leverage);
+      body.shortLeverage = Number(quick.leverage);
+    }
+    if (quick.signals.trim()) {
+      body.signals = quick.signals.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+    }
+    if (!Object.keys(body).length) {
+      setError("Chọn ít nhất một mục để sửa. Ô để trống sẽ giữ nguyên.");
+      return;
+    }
+    await runBulk(body, "Áp config nhanh");
+  }
+
+  async function deletePicked() {
+    if (!bulkReady) return;
+    const username = bulkUsers[0];
+    const envs = pickedRows.map((row) => row.env);
+    if (!window.confirm(`Xoá ${envs.length} config khỏi ${username}?`)) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const applies = [];
+      for (const env of envs) {
+        const data = await api(`/api/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(env)}`, { method: "DELETE" });
+        if (data.apply) applies.push(data.apply);
+      }
+      let done = applies;
+      if (done.some((a) => a?.requestId && !a.terminal)) {
+        done = await waitForApplies(username, done);
+      }
+      setNotice(summarizeApplies(done) || "Đã gỡ config");
+      setPicked(new Set());
+      setQuickOpen(false);
+      setRetry((value) => value + 1);
+    } catch (err) {
+      setError(err.message || "Không xoá được config");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <section className="config-lab lab-directory">
     <header className="lab-heading">
-      <div className="lab-heading-top"><p className="lab-kicker">KHÔNG GIAN CẤU HÌNH</p><span className="lab-badge">Thử nghiệm</span></div>
-      <h1>Config mới</h1>
-      <p className="lab-intro">Chọn một config để xem cách bot nhận tín hiệu, vào lệnh và quản lý vị thế. Tạo config mới tại đây rồi theo dõi Position / Static sau khi lưu.</p>
-      <p className="lab-caption">Dùng chung dữ liệu với giao diện cũ. Lưu ở đây sẽ cập nhật config thật.</p>
+      <div className="lab-heading-top">
+        <p className="lab-kicker">CẤU HÌNH GIAO DỊCH</p>
+        <Link className="ghost link-btn" to="/bots">← Danh sách bot</Link>
+      </div>
+      <h1>Config</h1>
+      <p className="lab-intro">Tạo, sửa, copy/sync và bulk config. Active / phạm vi / chủ sở hữu bot nằm ở Danh sách. Lưu ở đây ghi Mongo và đồng bộ bot qua MQTT.</p>
     </header>
 
     {canEdit && bots.length ? <form className="lab-create" onSubmit={createAccount}>
@@ -193,19 +255,39 @@ export default function ConfigLabPage() {
     {notice ? <p className="lab-notice-banner" role="status">{notice}</p> : null}
     {error && !loading ? <p className="form-error" role="alert">{error}</p> : null}
 
-    {canEdit && picked.size > 0 ? <div className="lab-bulk-bar">
-      <span>Đã chọn {picked.size}{bulkUsers.length > 1 ? " · chọn cùng một user để bulk" : ` · ${bulkUsers[0] || ""}`}</span>
-      <div className="lab-save-actions">
-        <button type="button" className="ghost" disabled={!bulkReady || busy} onClick={() => runBulk({ on: true }, "Bật nhận signal")}>Bật On</button>
-        <button type="button" className="ghost" disabled={!bulkReady || busy} onClick={() => runBulk({ on: false }, "Tắt nhận signal")}>Tắt On</button>
-        <button type="button" className="ghost" disabled={!bulkReady || busy} onClick={() => runBulk({ paper: true }, "Chuyển Paper")}>Paper</button>
-        <button type="button" className="ghost" disabled={!bulkReady || busy} onClick={() => runBulk({ paper: false }, "Chuyển Live")}>Live</button>
-        <button type="button" className="ghost" disabled={busy} onClick={() => setPicked(new Set())}>Bỏ chọn</button>
+    {canEdit && picked.size > 0 ? <div className="lab-bulk-bar lab-bulk-stack">
+      <div className="lab-bulk-tools">
+        <span>Đã chọn {picked.size}{bulkUsers.length > 1 ? " · chọn cùng một user để bulk" : ` · ${bulkUsers[0] || ""}`}</span>
+        <button type="button" className="ghost" disabled={!bulkReady || busy} onClick={() => setQuickOpen((open) => !open)}>{quickOpen ? "Ẩn config nhanh" : "Config nhanh"}</button>
+        <button type="button" className="danger" disabled={!bulkReady || busy} onClick={deletePicked}>Xoá đã chọn</button>
+        <button type="button" className="ghost" disabled={busy} onClick={() => { setPicked(new Set()); setQuickOpen(false); }}>Bỏ chọn</button>
       </div>
+      {quickOpen && bulkReady ? <form className="lab-quick-form" onSubmit={applyQuick}>
+        {[["on", "On"], ["long", "Long"], ["short", "Short"], ["paper", "Paper"], ["monitor", "Monitor"]].map(([key, label]) => (
+          <label key={key}>{label}
+            <select value={quick[key]} onChange={(event) => setQuick((prev) => ({ ...prev, [key]: event.target.value }))} disabled={busy}>
+              <option value="">Giữ nguyên</option>
+              <option value="on">Bật</option>
+              <option value="off">Tắt</option>
+            </select>
+          </label>
+        ))}
+        <label>Mode
+          <select value={quick.mode} onChange={(event) => setQuick((prev) => ({ ...prev, mode: event.target.value }))} disabled={busy}>
+            <option value="">Giữ nguyên</option>
+            {["FIX", "RATIO", "RISK", "RR", "LOSS"].map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+          </select>
+        </label>
+        <label>Cost<input value={quick.cost} inputMode="decimal" placeholder="Giữ nguyên" disabled={busy} onChange={(event) => setQuick((prev) => ({ ...prev, cost: event.target.value }))} /></label>
+        <label>Đòn bẩy<input value={quick.leverage} inputMode="decimal" placeholder="Giữ nguyên" disabled={busy} onChange={(event) => setQuick((prev) => ({ ...prev, leverage: event.target.value }))} /></label>
+        <label className="lab-quick-signals">Signal<input value={quick.signals} placeholder="Giữ nguyên · điền sẽ thay cả list" disabled={busy} onChange={(event) => setQuick((prev) => ({ ...prev, signals: event.target.value }))} /></label>
+        <button type="submit" disabled={busy}>Áp dụng {picked.size} config</button>
+        <p className="lab-caption span-all">Ô trống giữ nguyên. Signal điền vào thay cả danh sách. Lưu xong đồng bộ MQTT.</p>
+      </form> : null}
     </div> : null}
 
     {loading ? <p className="lab-empty" role="status">Đang tải cấu hình…</p> : error && !all.length ? <div className="lab-empty" role="alert"><p>{error}</p><button type="button" className="ghost" onClick={() => setRetry((value) => value + 1)}>Thử lại</button></div> : <>
-      <div className="lab-list-heading"><h2>{rows.length} cấu hình</h2><span className="lab-caption">{canEdit ? "Chọn nhiều card cùng user để bulk · mở card để sửa" : "Chọn config để xem chi tiết →"}</span></div>
+      <div className="lab-list-heading"><h2>{rows.length} cấu hình</h2><span className="lab-caption">{canEdit ? "Chọn nhiều card cùng user để Config nhanh / xoá · mở card để sửa đầy đủ" : "Chọn config để xem chi tiết →"}</span></div>
       {!rows.length ? <div className="lab-empty">
         <h2>{all.length ? "Không có config khớp bộ lọc" : "Chưa có config trong phạm vi này"}</h2>
         <p>{all.length ? "Thử đổi tài khoản, trạng thái hoặc từ khóa." : canEdit && bots.length ? "Tạo config ở form phía trên, hoặc kiểm tra user bot được gán và API key ở User API." : "Chọn Tất cả được phép xem hoặc kiểm tra tài khoản được gán."}</p>
@@ -233,7 +315,7 @@ export default function ConfigLabPage() {
             <span className="lab-card-links">
               {canPositions ? <Link to={paths.positions}>Position</Link> : null}
               {canStatistics ? <Link to={paths.statics}>Static</Link> : null}
-              <Link to={`/config-lab/${encodeURIComponent(row.username)}/${encodeURIComponent(row.env)}`} state={{ labReturnTo: location.pathname + location.search }}>Mở ↗</Link>
+              <Link to={`/config-lab/${encodeURIComponent(row.username)}/${encodeURIComponent(row.env)}`} state={{ labReturnTo: location.pathname + location.search }}>Sửa ↗</Link>
             </span>
           </div>
         </article>;

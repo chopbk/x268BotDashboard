@@ -323,7 +323,7 @@ export default function SignalHistoryPage() {
     return `/signal-search?${query}`;
   }
   function configTo(rowEnv) {
-    return `/bots/${encodeURIComponent(username)}/accounts/${encodeURIComponent(rowEnv)}`;
+    return `/config-lab/${encodeURIComponent(username)}/${encodeURIComponent(rowEnv)}`;
   }
   const ruleNote = [
     groupRules.minWin != null ? `win rate ≥ ${groupRules.minWin}%` : "",
@@ -386,7 +386,7 @@ export default function SignalHistoryPage() {
       {!loading && data?.rows?.length === 0 ? <div className="card empty">Không có dữ liệu trong khoảng thời gian này.</div> : null}
       {data?.rows?.length ? <div className="table-wrap signal-table"><table><thead><tr><th>Thời gian</th><th>Config</th><th>Signal</th><th>Symbol</th><th>Side</th><th>Status</th><th>Profit</th><th>ROE</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id} className={trade === row.id ? "trade-row active" : "trade-row"} tabIndex={0} onClick={() => update({ trade: trade === row.id ? "" : row.id })} onKeyDown={(event) => { if (event.key === "Enter") update({ trade: trade === row.id ? "" : row.id }); }}><td>{fmtTime(row.openTime)}</td><td>{configAllowed && row.env ? <Link className="trail-link" to={configTo(row.env)} onClick={(event) => event.stopPropagation()}>{row.env}</Link> : row.env}</td><td>{signalAllowed && row.signal ? <Link className="trail-link" to={historyTo(row.signal, row.env)} onClick={(event) => event.stopPropagation()}>{row.signal}</Link> : row.signal}</td><td>{row.symbol}</td><td>{row.side}</td><td>{row.status}</td><td>{fmt(row.profit)}$</td><td>{fmt(row.roe)}%</td></tr>)}</tbody></table></div> : null}
       {data?.total > data?.limit ? <div className="audit-pagination"><span className="muted">Trang {data.page} · {data.total} bản ghi</span><div><button type="button" className="ghost" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Trước</button><button type="button" className="ghost" disabled={page * data.limit >= data.total} onClick={() => update({ page: String(page + 1) })}>Sau</button></div></div> : null}
-      {view === "statics" && username ? <p className="muted"><Link to={`/bots/${encodeURIComponent(username)}`}>Mở User bot {username}</Link></p> : null}
+      {view === "statics" && username ? <p className="muted"><Link to={`/config-lab?user=${encodeURIComponent(username)}`}>Mở Config · {username}</Link></p> : null}
     </section>
   );
 }

@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { GuardProvider } from "./navigation";
 import { AuthProvider, useAuth } from "./auth";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
-import BotDetailPage from "./pages/BotDetailPage";
 import AccountConfigPage from "./pages/AccountConfigPage";
 import ConfigLabPage from "./pages/ConfigLabPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
@@ -43,6 +42,16 @@ function Protected({ children, permission }) {
   if (!user) return <Navigate to="/login" replace />;
   if (permission && !hasPermission(user, permission)) return <Navigate to="/" replace />;
   return children;
+}
+
+function RedirectBotToConfig() {
+  const { username = "" } = useParams();
+  return <Navigate to={`/config-lab?user=${encodeURIComponent(username)}`} replace />;
+}
+
+function RedirectLegacyConfig() {
+  const { username = "", env = "" } = useParams();
+  return <Navigate to={`/config-lab/${encodeURIComponent(username)}/${encodeURIComponent(env)}`} replace />;
 }
 
 function ProtectedAny({ children, permissions }) {
@@ -82,7 +91,7 @@ function Shell({ children }) {
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/" end>Tổng quan</NavLink> : null}
           {hasPermission(user, BOTS_VIEW) || hasPermission(user, CREDENTIALS_VIEW) ? <p className="nav-label">Bot</p> : null}
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/bots">Danh sách</NavLink> : null}
-          {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/config-lab">Config mới <small>Thử nghiệm</small></NavLink> : null}
+          {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/config-lab">Config</NavLink> : null}
           {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
           {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/positions">Position</NavLink> : null}
@@ -135,16 +144,7 @@ function AppRoutes() {
       />
       <Route path="/config-lab" element={<Protected permission={CONFIG_VIEW}><Shell><ConfigLabPage /></Shell></Protected>} />
       <Route path="/config-lab/:username/:env" element={<Protected permission={CONFIG_VIEW}><Shell><AccountConfigPage experimental /></Shell></Protected>} />
-      <Route
-        path="/bots/:username/accounts/:env"
-        element={
-          <Protected permission={CONFIG_VIEW}>
-            <Shell>
-              <AccountConfigPage />
-            </Shell>
-          </Protected>
-        }
-      />
+      <Route path="/bots/:username/accounts/:env" element={<Protected permission={CONFIG_VIEW}><RedirectLegacyConfig /></Protected>} />
       <Route
         path="/summary"
         element={
@@ -155,16 +155,7 @@ function AppRoutes() {
           </ProtectedAny>
         }
       />
-      <Route
-        path="/bots/:username"
-        element={
-          <Protected permission={BOTS_VIEW}>
-            <Shell>
-              <BotDetailPage />
-            </Shell>
-          </Protected>
-        }
-      />
+      <Route path="/bots/:username" element={<Protected permission={BOTS_VIEW}><RedirectBotToConfig /></Protected>} />
       <Route
         path="/positions"
         element={

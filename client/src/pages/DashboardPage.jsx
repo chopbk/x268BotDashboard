@@ -148,7 +148,7 @@ export default function DashboardPage() {
                         <td>{row.active ? "Đang chạy" : "Tắt"}</td>
                         <td>{row.on == null ? "—" : `${row.on}/${row.configs}`}</td>
                         <td>{row.profitToday == null ? "—" : money(row.profitToday)}</td>
-                        <td><Link className="ghost link-btn" to={`/bots/${encodeURIComponent(row.username)}`}>Mở</Link></td>
+                        <td><Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(row.username)}`}>Config</Link></td>
                       </tr>
                     ))}
                   </tbody>

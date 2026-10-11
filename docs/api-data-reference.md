@@ -179,10 +179,8 @@ Ví dụ message (dữ liệu giả):
 Không thử bỏ middleware khi gặp 403, không tự retry mutation hàng loạt khi response timeout vì thao tác ghi có thể đã xảy ra.
 
 
-## Config thử nghiệm
+## Config (frontend)
 
-`/config-lab` và `/config-lab/:username/:env` là route frontend dùng API config hiện có.
-GET `/api/bots/assigned-configs?scope=mine|all` trả `users[].configs[]`; summary bổ sung
-`paper` boolean theo `trade_config.PAPER`, bản ghi thiếu trả null để không gắn nhầm Live.
-GET/PATCH `/:username/configs/:env` giữ nguyên contract quyền và field. Không có endpoint
-thử nghiệm bypass auth; draft mới chỉ gửi các field thay đổi. Xem [spec](config-lab-spec.md).
+`/config-lab` và `/config-lab/:username/:env` dùng API config hiện có. GET
+`/api/bots/assigned-configs?scope=mine|all` trả summary (có `paper`). PATCH chỉ gửi field
+đổi. Xem [spec](config-lab-spec.md).
