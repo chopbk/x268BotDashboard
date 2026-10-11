@@ -22,9 +22,9 @@ function fmt(value, digits = 4) {
 /**
  * Khung đặt lệnh kiểu Binance Futures: Buy/Sell, Market/Limit/Stop, hedge side.
  */
-export default function OrderTicket({ accounts = [], defaultAccount = "", onPlaced, canCreate }) {
+export default function OrderTicket({ accounts = [], defaultAccount = "", defaultSymbol = "", onPlaced, canCreate }) {
   const [account, setAccount] = useState(defaultAccount || accounts[0]?.username || "");
-  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [symbol, setSymbol] = useState(defaultSymbol || "BTCUSDT");
   const [side, setSide] = useState("BUY");
   const [positionSide, setPositionSide] = useState("LONG");
   const [type, setType] = useState("LIMIT");
@@ -42,6 +42,11 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", onPlac
     if (!defaultAccount) return;
     setAccount(defaultAccount);
   }, [defaultAccount]);
+
+  useEffect(() => {
+    if (!defaultSymbol) return;
+    setSymbol(String(defaultSymbol).toUpperCase());
+  }, [defaultSymbol]);
 
   useEffect(() => {
     const sym = String(symbol || "").trim().toUpperCase();

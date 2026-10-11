@@ -56,9 +56,11 @@ Phân biệt mode new/replace/sync. User xem được nguồn chưa chắc sửa
 
 ## 4. Position live
 
+`PositionsPage` (`/positions`) và `TerminalPage` (`/terminal`) dùng chung REST/WS/refresh/case/trading. Terminal thêm URL `tab=positions|open-orders|…`, `selected`, `panelTab`, `book=live` (adapter → API không gửi book), preferences localStorage namespace Terminal. Không có pipeline trading thứ hai.
+
 ```mermaid
 flowchart TD
-    Page[PositionsPage] --> Fast[GET /api/positions?mode=fast]
+    Page[PositionsPage / TerminalPage] --> Fast[GET /api/positions?mode=fast]
     Fast --> Paint[Mongo + Redis paint]
     Page --> WS[/api/positions/ws]
     WS --> FastView[snapshot mode=fast]

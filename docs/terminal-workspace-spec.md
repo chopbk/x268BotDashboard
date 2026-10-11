@@ -1,6 +1,6 @@
 # Spec menu Terminal — workspace giao dịch mới
 
-Ngày: 2026-10-12. Trạng thái: **đặc tả để triển khai, chưa phải tính năng đã có**.
+Ngày: 2026-10-12. Trạng thái: **R1 đã triển khai** (`/terminal`, `TerminalPage` + `components/terminal/`). R2/R3 chưa làm. Menu `/positions` giữ nguyên.
 
 ## 1. Mục tiêu và phạm vi
 

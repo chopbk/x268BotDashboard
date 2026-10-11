@@ -13,6 +13,7 @@
 | `/bots/:username`, `/bots/.../accounts/:env` | Redirect | Chuyển sang Config Lab (UI cũ không còn dùng) |
 | Signal `/signal-search` | SignalSearchPage và panel | Tab lịch sử / tìm / scorecard / thống kê / cấu hình; từng API có quyền riêng |
 | Position `/positions` | PositionsPage | Vị thế sàn và monitor, live/paper, mặc định của mình; `positions.view` |
+| Terminal `/terminal` | TerminalPage | Workspace giao dịch mới (R1): bảng gọn, panel, lọc/view, mutations qua API hiện có; giữ nguyên `/positions`. Gate: `positions.view` \| `orders.view` \| `statistics.view`. Spec: [terminal-workspace-spec](terminal-workspace-spec.md) |
 | Account Static `/signals` | SignalHistoryPage | Kết quả lệnh thực tế và chi tiết; `statistics.view` cho API account-statics |
 | Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
@@ -55,6 +56,10 @@ new/replace/sync, đổi tên/xoá, APPLY/ACK trên savebar. Danh sách `/bots` 
 Thêm/gỡ signal giữ nguyên các tên không được yêu cầu xóa, tối đa 40 config và 20 signal; mỗi config đổi thật ghi audit. Query/list và thao tác ghi không được dùng cùng một giả định scope rộng.
 
 Scorecard không thay Tìm Signal hay Tổng kết: win = `status` WIN, thời gian = openTime, sổ live mặc định; Tổng kết vẫn dùng closeTime lệnh đóng.
+
+## Terminal
+
+Menu `/terminal` (R1) dùng cùng API Position/Orders/Trading. Bố cục: summary + tab Vị thế / Lệnh chờ / Lịch sử vị thế / Lịch sử lệnh + panel chi tiết (Tổng quan / Lệnh / Monitor / Timeline / Giao dịch). CSS namespace `.term-*`, không thay UI `/positions`. Tab Khớp lệnh, risk sizing, chart nến và exit plan thuộc R2/R3 — chưa triển khai. Chi tiết parity P01–P22: [terminal-workspace-spec](terminal-workspace-spec.md).
 
 ## Position
 

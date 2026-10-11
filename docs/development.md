@@ -13,6 +13,7 @@
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
 | Số liệu lệnh/ví | account-statics / account-ledger / system-summary | account-statics, account-ledger, system-summary |
 | Position / REST Binance | PositionsPage → routes/positions → position-live + binance-rest-queue → position-feed | positions, binance-rest-queue, position-sync |
+| Terminal workspace R1 | TerminalPage + components/terminal → cùng API Position/Orders/Trading | `node --test client/src/components/terminal/protection.test.js` (+ trade-preview / position-sort / position-alerts) |
 | AI/dashboard | DashboardPage → routes/dashboard → dashboard-ai/brief/dashboard | dashboard |
 | Lịch sử/Hệ thống | AuditLogsPage/SystemHealthPage → routes → lib → models | audit, runtime-logs, system-health |
 | Deploy | update.sh → deploy.sh → ecosystem.config.cjs → deploy/nginx*.conf | `npm run test:deploy` |
