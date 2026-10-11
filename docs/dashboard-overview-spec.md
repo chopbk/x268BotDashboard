@@ -137,15 +137,20 @@ Khối tóm tắt (không phải full Position):
 
 ### D. Việc cần xử lý
 
-Giữ pipeline hiện tại; nâng cấp:
+Chỉ tóm tắt vấn đề **tài khoản / trading** đáng xem — không dump log thô.
 
-| Thay đổi | Chi tiết |
+| Nguồn | Cách xử lý |
 |---|---|
-| Severity | `critical` (lỗ ví / uPnL lớn vượt ngưỡng), `high` (signal lỗ nhiều), `medium` (blocked/removed), `low` (ON không signal, thiếu key) |
-| Ngưỡng | Server-side cố định phase 1 (vd. lỗ ví ≤ −50$ → critical; cấu hình env sau nếu cần) |
-| Nhóm | Group theo type trong UI; vẫn flat list cho AI |
-| Facts AI | Thêm `openRisk`, `health` vào `attentionPackage` |
-| Giới hạn | Vẫn ≤12 item hiển thị; AI ≤8 |
+| Lỗ ví hôm nay | Chỉ khi ≤ −5$; critical nếu ≤ −50$ |
+| uPnL mở | Critical nếu một vị thế ≤ −100$ |
+| Lỗi sàn / API key runtime | `category=exchange` (credential, margin…) → critical |
+| Heartbeat stale/degraded | medium |
+| Signal lỗ hôm nay | Chỉ khi ≤ −5$ |
+| Signal bị gỡ (autoremove) | medium, dedupe |
+| NOT OPEN “Position is open” / config off / COPY off | **Bỏ** (hành vi bình thường) |
+| NOT OPEN blacklist / max pos / risk… | Gom 1 dòng/filter, severity low |
+| Config ON không signal, thiếu API key | low |
+| AI rewrite | Chỉ viết lại từ facts; bỏ noise; nút “Hiện danh sách gốc” |
 
 Không tự đóng lệnh / sửa config từ attention.
 

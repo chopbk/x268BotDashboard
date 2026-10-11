@@ -209,13 +209,19 @@ export default function DashboardPage() {
 
           <section className="card dash-block">
             <h2>Việc cần xử lý</h2>
-            <p className="muted">{ai?.configured ? `Đang dùng ${ai.provider}${ai.model ? ` / ${ai.model}` : ""}. ` : "Chưa có key Gemini, OpenAI, DeepSeek hoặc Claude. "}Bấm gửi để AI đọc dữ liệu hôm nay và hướng dẫn, rồi viết lại danh sách. Ngày là ngày UTC, cùng sổ /income.</p>
+            <p className="muted">
+              Tóm tắt lỗ ví (≥ 5$), uPnL lớn, lỗi sàn, heartbeat, signal lỗ, config/API — không liệt kê “đã có vị thế”.
+              Ngày UTC. AI chỉ viết lại danh sách từ số liệu server, không thay KPI phía trên.
+            </p>
             <div className="row-actions">
-              <button type="button" onClick={sendToAi} disabled={aiBusy}>{aiBusy ? "Đang gửi…" : ai?.configured ? "Gửi cho AI" : "Sao chép prompt"}</button>
-              <button type="button" className="ghost" onClick={() => setShowGuide((open) => !open)}>{showGuide ? "Ẩn hướng dẫn" : "Hướng dẫn"}</button>
+              <button type="button" onClick={sendToAi} disabled={aiBusy}>{aiBusy ? "Đang gửi…" : ai?.configured ? "Viết lại bằng AI" : "Sao chép prompt"}</button>
+              {aiItems ? (
+                <button type="button" className="ghost" onClick={() => setAiItems(null)}>Hiện danh sách gốc</button>
+              ) : null}
+              <button type="button" className="ghost" onClick={() => setShowGuide((open) => !open)}>{showGuide ? "Ẩn dữ liệu AI" : "Dữ liệu AI"}</button>
             </div>
             {aiError ? <p className="form-error">{aiError}</p> : null}
-            {copied ? <p className="muted">Đã chép dữ liệu, hướng dẫn và prompt. Đặt AI_PROVIDER cùng GEMINI_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY hoặc CLAUDE_API_KEY trong .env rồi khởi động lại server.</p> : null}
+            {copied ? <p className="muted">Đã chép prompt. Cần key AI trong .env rồi khởi động lại server.</p> : null}
             {showGuide ? (
               <>
                 <textarea className="dash-guide" value={guide} onChange={(event) => setGuide(event.target.value)} maxLength={2000} />
@@ -225,8 +231,8 @@ export default function DashboardPage() {
             {aiItems ? (
               aiItems.length ? (
                 <ul className="dash-list">
-                  {aiItems.map((item) => (
-                    <li key={`${item.href}-${item.title}`}>
+                  {aiItems.map((item, index) => (
+                    <li key={`ai-${index}-${item.href}`}>
                       <Link to={item.href}>{item.title}</Link>
                     </li>
                   ))}
@@ -234,14 +240,14 @@ export default function DashboardPage() {
               ) : <p className="muted">AI không chọn việc nào từ dữ liệu này.</p>
             ) : data.attention?.length ? (
               <ul className="dash-list">
-                {data.attention.map((item) => (
-                  <li key={`${item.type}-${item.title}`} className={`dash-attn dash-attn-${item.severity || "low"}`}>
+                {data.attention.map((item, index) => (
+                  <li key={`${item.type}-${item.severity}-${index}-${item.href}`} className={`dash-attn dash-attn-${item.severity || "low"}`}>
                     {item.severity ? <span className="dash-sev">{severityLabel(item.severity)}</span> : null}
                     <Link to={item.href}>{item.title}</Link>
                   </li>
                 ))}
               </ul>
-            ) : <p className="muted">Không có việc cần xử lý.</p>}
+            ) : <p className="muted">Không có việc tài khoản/trading cần xử lý.</p>}
           </section>
 
           <section className="card dash-block">

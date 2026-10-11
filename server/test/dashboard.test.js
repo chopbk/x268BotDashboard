@@ -57,11 +57,19 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
     FuturesProfit.aggregate = async () => [{ _id: "V1", profit: -40 }];
     UserApi.aggregate = async () => [{ username: "V", hasApiKey: false, api_key: "secret-key" }];
     const logs = [
-        { at: new Date(), env: "V2", signal: "ROSE", message: "NOT OPEN ROSE blacklist", source: "callHandleSignalBot" },
-        { at: new Date(), env: "O1", signal: "BULL", message: "NOT OPEN BULL", source: "callHandleSignalBot" },
-        { at: new Date(), env: "V1", signal: "ROSE", message: "gỡ ROSE", source: "autoremove" },
+        { at: new Date(), env: "V2", signal: "ROSE", message: "V2 NOT OPEN ROSE LONG BTCUSDT: [V2]Position BTCUSDT is open", source: "callHandleSignalBot", category: "signal" },
+        { at: new Date(), env: "V2", signal: "ROSE", message: "V2 NOT OPEN ROSE LONG BTCUSDT: [V2]Position BTCUSDT is open", source: "callHandleSignalBot", category: "signal" },
+        { at: new Date(), env: "V2", signal: "ROSE", message: "V2 NOT OPEN ROSE LONG ETHUSDT: symbol exist in blacklist", source: "callHandleSignalBot", category: "signal" },
+        { at: new Date(), env: "O1", signal: "BULL", message: "O1 NOT OPEN BULL", source: "callHandleSignalBot", category: "signal" },
+        { at: new Date(), env: "V1", signal: "ROSE", message: "gỡ ROSE", source: "autoremove", category: "signal" },
+        { at: new Date(), env: "V1", message: "Invalid API-key, IP, or permissions for action", source: "trader", category: "exchange" },
     ];
-    RuntimeLog.find = (match) => query(logs.filter((row) => row.source === match.source && (!match.env?.$in || match.env.$in.includes(row.env))));
+    RuntimeLog.find = (match) => query(logs.filter((row) => {
+        if (match.source && row.source !== match.source) return false;
+        if (match.category && row.category !== match.category) return false;
+        if (match.env?.$in && !match.env.$in.includes(row.env)) return false;
+        return true;
+    }));
     RuntimeLog.aggregate = async (pipeline) => {
         const signal = pipeline[0].$match.signal?.$in || [];
         return signal.includes("ROSE") ? [{ _id: "ROSE", count: 2 }] : [{ _id: "BULL", count: 9 }];
@@ -104,14 +112,17 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
         assert.equal(JSON.stringify(view).includes("OTHER"), false);
         assert.equal(view.attention.some((item) => item.type === "api"), true);
         assert.equal(view.attention.some((item) => item.type === "config" && item.title.includes("V2")), true);
-        assert.equal(view.attention.some((item) => item.type === "blocked" && item.title.includes("V2")), true);
+        assert.equal(view.attention.some((item) => /Position .+ is open/i.test(item.title)), false);
+        assert.equal(view.attention.filter((item) => item.type === "filter" && item.title.includes("blacklist")).length, 1);
+        assert.equal(view.attention.some((item) => item.type === "exchange" && /Invalid API-key/i.test(item.title)), true);
         assert.equal(view.attention.some((item) => item.type === "parse"), false);
-        assert.equal(view.attention.some((item) => item.type === "account" && item.severity === "high" && item.title.includes("V lỗ") && item.title.includes("TITAN")), true);
-        assert.equal(view.attention[0].type, "risk");
+        assert.equal(view.attention.some((item) => item.type === "account" && item.severity === "high" && item.title.includes("V ví") && item.title.includes("TITAN")), true);
         assert.equal(view.attention[0].severity, "critical");
+        assert.equal(["risk", "exchange"].includes(view.attention[0].type), true);
         assert.equal(view.attention.some((item) => item.type === "risk" && item.severity === "critical"), true);
-        assert.equal(view.attention.some((item) => item.type === "loss" && item.title.includes("V · V1 · TITAN")), true);
+        assert.equal(view.attention.some((item) => item.type === "loss" && item.title.includes("TITAN")), true);
         assert.equal(view.attention.some((item) => item.type === "removed"), true);
+        assert.equal(view.ai.data.skippedNoiseCount >= 2, true);
         assert.equal(view.ai.configured, false);
         assert.equal(view.ai.data.walletLosses[0].username, "V");
         assert.equal(view.ai.data.walletLosses[0].profit, -40);

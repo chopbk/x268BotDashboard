@@ -14,9 +14,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HEARTBEAT_MS = 90 * 1000;
 const MINE_LIMIT = 10;
 const TOP_RISK = 5;
+/** Lỗ ví nhỏ hơn ngưỡng này không đưa vào attention (tránh nhiễu −1$). */
+const WALLET_ATTENTION_MIN = -5;
 const WALLET_CRITICAL = -50;
+/** Lỗ signal nhỏ hơn ngưỡng này không liệt kê riêng. */
+const SIGNAL_ATTENTION_MIN = -5;
 const UPNL_CRITICAL = -100;
 const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+const CREDENTIAL_RE = /invalid api|api-key|api key|signature|credential|-2014|-2015|权限|API-key format/i;
 
 function isMine(actor, bot) {
     const username = bot?.username;
@@ -226,6 +231,119 @@ function sortAttention(items) {
     });
 }
 
+/**
+ * Phân loại lý do NOT OPEN từ bot.
+ * noise = hành vi bình thường (đã có vị thế, config tắt…) — không đưa vào việc cần xử lý.
+ * filter = lọc theo config (blacklist, max position…) — gom tóm tắt, không dump log thô.
+ * action = lỗi/bất thường cần xem.
+ */
+function classifySkipReason(message) {
+    const text = String(message || "");
+    if (/Position\s+\S+\s+is open/i.test(text)) {
+        return { kind: "noise", code: "already_open", label: "đã có vị thế" };
+    }
+    if (/config\s+\S+\s+is off|is off\b/i.test(text) && /NOT OPEN|config/i.test(text)) {
+        return { kind: "noise", code: "config_off", label: "config tắt" };
+    }
+    if (/COPY\.ON\s*=\s*false|Not open .+ COPY\.ON/i.test(text)) {
+        return { kind: "noise", code: "copy_off", label: "COPY tắt" };
+    }
+    if (/blacklist/i.test(text)) {
+        return { kind: "filter", code: "blacklist", label: "blacklist" };
+    }
+    if (/whitelist|WL=/i.test(text)) {
+        return { kind: "filter", code: "whitelist", label: "không trong whitelist" };
+    }
+    if (/Max position/i.test(text)) {
+        return { kind: "filter", code: "max_position", label: "đủ max position" };
+    }
+    if (/symbolType|SYMBOL_TYPES/i.test(text)) {
+        return { kind: "filter", code: "symbol_type", label: "lọc symbolType" };
+    }
+    if (/current risk/i.test(text)) {
+        return { kind: "filter", code: "risk", label: "lọc risk" };
+    }
+    if (CREDENTIAL_RE.test(text) || /insufficient|margin|balance|notional|-2019|-4164|-2027/i.test(text)) {
+        return { kind: "action", code: "exchange", label: "lỗi sàn / số dư" };
+    }
+    if (/NOT OPEN/i.test(text) && text.trim()) {
+        return { kind: "action", code: "other", label: "không mở được" };
+    }
+    return { kind: "action", code: "other", label: "cần kiểm tra" };
+}
+
+function attentionKey(item) {
+    return [item.type, item.username || "", item.env || "", item.signal || "", item.code || "", item.href || ""]
+        .join("|")
+        .toLowerCase();
+}
+
+function dedupeAttention(items) {
+    const seen = new Set();
+    const out = [];
+    for (const item of items) {
+        const key = attentionKey(item);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(item);
+    }
+    return out;
+}
+
+function buildSkipAttention(rows, bots) {
+    const actionable = [];
+    const filterBuckets = new Map();
+    let noiseCount = 0;
+    for (const row of rows || []) {
+        const env = String(row.env || "").trim();
+        const signal = String(row.signal || "").trim().toUpperCase();
+        const bot = ownerOf(bots, env);
+        if (!bot || !env) continue;
+        const reason = classifySkipReason(row.message);
+        if (reason.kind === "noise") {
+            noiseCount += 1;
+            continue;
+        }
+        if (reason.kind === "filter") {
+            const key = `${bot.username}|${env}|${reason.code}`;
+            const prev = filterBuckets.get(key) || {
+                username: bot.username,
+                env,
+                code: reason.code,
+                label: reason.label,
+                signal,
+                count: 0,
+            };
+            prev.count += 1;
+            if (signal) prev.signal = signal;
+            filterBuckets.set(key, prev);
+            continue;
+        }
+        actionable.push(withSeverity({
+            type: "blocked",
+            code: reason.code,
+            username: bot.username,
+            env,
+            signal,
+            title: `${bot.username}/${env}${signal ? ` · ${signal}` : ""} ${reason.label}: ${String(row.message || "").replace(/^[^:]+:\s*/, "").slice(0, 100)}`,
+            href: "/logs?kind=runtime&category=signal",
+        }, "medium"));
+    }
+    const filterItems = [...filterBuckets.values()]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+        .map((row) => withSeverity({
+            type: "filter",
+            code: row.code,
+            username: row.username,
+            env: row.env,
+            signal: row.signal,
+            title: `${row.username}/${row.env} bỏ qua signal (${row.label}${row.count > 1 ? `, ${row.count} lần` : ""}) — xem Config hoặc Lịch sử`,
+            href: `/config-lab/${encodeURIComponent(row.username)}/${encodeURIComponent(row.env)}`,
+        }, "low"));
+    return { actionable: dedupeAttention(actionable).slice(0, 3), filterItems, noiseCount };
+}
+
 async function getDashboard(actor, now = new Date(), deps = {}) {
     if (!actor) throw httpError(401, "Chưa đăng nhập");
     const canBots = hasPermission(actor, PERMISSIONS.BOTS_VIEW);
@@ -281,7 +399,7 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
         ? await AccountConfigModel.find(envFilter).select("env signals trade_config.ON").lean()
         : [];
 
-    const [profitRows, incomeRows, signalRows, apiRows, blocked, removed, beats, books] = await Promise.all([
+    const [profitRows, incomeRows, signalRows, apiRows, blocked, removed, exchangeLogs, beats, books] = await Promise.all([
         canStats && envFilter
             ? AccountStaticModel.aggregate([
                 { $match: { ...envFilter, isPaper: false, $expr: { $and: [
@@ -343,9 +461,9 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             ? RuntimeLogModel.find({
                 category: "signal",
                 source: "callHandleSignalBot",
-                at: { $gte: new Date(now.getTime() - 7 * DAY_MS) },
+                at: { $gte: new Date(now.getTime() - 2 * DAY_MS) },
                 ...envFilter,
-            }).sort({ at: -1 }).limit(3).select("at env signal message").lean()
+            }).sort({ at: -1 }).limit(40).select("at env signal message").lean()
             : [],
         canSignals && envFilter
             ? RuntimeLogModel.find({
@@ -353,7 +471,14 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
                 source: "autoremove",
                 at: { $gte: new Date(now.getTime() - 14 * DAY_MS) },
                 ...envFilter,
-            }).sort({ at: -1 }).limit(2).select("at env signal message").lean()
+            }).sort({ at: -1 }).limit(8).select("at env signal message").lean()
+            : [],
+        canLogs && envFilter
+            ? RuntimeLogModel.find({
+                category: "exchange",
+                at: { $gte: new Date(now.getTime() - DAY_MS) },
+                ...envFilter,
+            }).sort({ at: -1 }).limit(12).select("at env message").lean()
             : [],
         usernames.length
             ? HeartbeatModel.find({
@@ -407,15 +532,17 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             const userKey = envKey(bot.username);
             if (!incomeByEnv.has(key) && !incomeByEnv.has(userKey)) return null;
             const profit = round2(incomeByEnv.has(key) ? incomeByEnv.get(key) : incomeByEnv.get(userKey));
-            if (profit >= 0) return null;
-            const why = signalLosing.filter((row) => row.username === bot.username).slice(0, 4);
+            if (profit > WALLET_ATTENTION_MIN) return null;
+            const why = signalLosing
+                .filter((row) => row.username === bot.username && row.profit <= SIGNAL_ATTENTION_MIN)
+                .slice(0, 3);
             const whyText = why.length
-                ? ` Signal lỗ: ${why.map((row) => `${row.env} · ${row.signal} ${moneyText(row.profit)}`).join(", ")}.`
-                : " Chưa thấy signal live lỗ trong ngày, cần xem income.";
+                ? ` Liên quan: ${why.map((row) => `${row.signal} ${moneyText(row.profit)}`).join(", ")}.`
+                : " Xem income (phí/funding có thể khác lệnh đóng).";
             return withSeverity({
                 type: "account",
                 username: bot.username,
-                title: `${bot.username} lỗ ${moneyText(profit)} trên tài khoản hôm nay.${whyText}`,
+                title: `${bot.username} ví hôm nay ${moneyText(profit)}.${whyText}`,
                 href: `/ledger?username=${encodeURIComponent(bot.username)}`,
                 profit,
                 env: ledgerEnv(bot),
@@ -423,22 +550,24 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             }, profit <= WALLET_CRITICAL ? "critical" : "high");
         })
         .filter(Boolean);
-    const signalItems = signalLosing.map((row) => withSeverity({
-        type: "loss",
-        title: `${row.username} · ${row.env} · ${row.signal} lỗ ${moneyText(row.profit)} hôm nay, ${row.count} lệnh`,
-        href: `/config-lab/${encodeURIComponent(row.username)}/${encodeURIComponent(row.env)}`,
-        username: row.username,
-        env: row.env,
-        signal: row.signal,
-        count: row.count,
-        profit: row.profit,
-    }, "high"));
+    const signalItems = signalLosing
+        .filter((row) => row.profit <= SIGNAL_ATTENTION_MIN)
+        .map((row) => withSeverity({
+            type: "loss",
+            title: `${row.username}/${row.env} · ${row.signal} lỗ ${moneyText(row.profit)} (${row.count} lệnh) hôm nay`,
+            href: `/config-lab/${encodeURIComponent(row.username)}/${encodeURIComponent(row.env)}`,
+            username: row.username,
+            env: row.env,
+            signal: row.signal,
+            count: row.count,
+            profit: row.profit,
+        }, "high"));
     const riskItems = (openRisk?.top || [])
         .filter((row) => row.unrealized != null && row.unrealized <= UPNL_CRITICAL)
         .slice(0, 3)
         .map((row) => withSeverity({
             type: "risk",
-            title: `${row.username} · ${row.symbol} ${row.side} chưa chốt ${moneyText(row.unrealized)} — xem Position`,
+            title: `${row.username} · ${row.symbol} ${row.side} chưa chốt ${moneyText(row.unrealized)}`,
             href: row.href,
             username: row.username,
             symbol: row.symbol,
@@ -446,14 +575,41 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             profit: row.unrealized,
         }, "critical"));
     const staleHealthItems = health.bots
-        .filter((row) => row.process === "stale")
+        .filter((row) => row.process === "stale" || row.process === "degraded")
         .slice(0, 3)
         .map((row) => withSeverity({
             type: "health",
-            title: `${row.username} process trader/monitor heartbeat quá hạn`,
+            code: row.process,
+            title: row.process === "degraded"
+                ? `${row.username} trader MQTT đứt hoặc không ổn`
+                : `${row.username} heartbeat trader/monitor quá hạn`,
             href: healthHref,
             username: row.username,
         }, "medium"));
+    const skipAttention = canLogs ? buildSkipAttention(blocked || [], bots) : { actionable: [], filterItems: [], noiseCount: 0 };
+    const exchangeItems = [];
+    const exchangeSeen = new Set();
+    for (const row of exchangeLogs || []) {
+        if (!CREDENTIAL_RE.test(row.message || "") && !/insufficient|margin|balance|notional|-2019|-4164|-2027/i.test(row.message || "")) {
+            continue;
+        }
+        const env = String(row.env || "").trim();
+        const bot = ownerOf(bots, env) || bots.find((item) => envKey(item.username) === envKey(env));
+        if (!bot) continue;
+        const key = `${bot.username}|${envKey(env)}`;
+        if (exchangeSeen.has(key)) continue;
+        exchangeSeen.add(key);
+        const reason = classifySkipReason(row.message);
+        exchangeItems.push(withSeverity({
+            type: "exchange",
+            code: reason.code,
+            username: bot.username,
+            env: env || bot.username,
+            title: `${bot.username}${env ? `/${env}` : ""} lỗi sàn: ${String(row.message || "").slice(0, 120)}`,
+            href: "/logs?kind=runtime&category=exchange",
+        }, "critical"));
+        if (exchangeItems.length >= 3) break;
+    }
 
     const profitByEnv = new Map((profitRows || []).map((row) => [envKey(row._id), Number(row.profit) || 0]));
     const closedByEnv = new Map((profitRows || []).map((row) => [envKey(row._id), {
@@ -517,20 +673,27 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             attention.push(item);
         }
     }
-    for (const row of blocked || []) {
-        attention.push(withSeverity({
-            type: "blocked",
-            title: `${row.env || "Config"} không vào ${row.signal || "signal"}: ${String(row.message || "").slice(0, 140)}`,
-            href: "/logs?kind=runtime&category=signal",
-        }, "medium"));
-    }
+    const removedItems = [];
+    const removedSeen = new Set();
     for (const row of removed || []) {
-        attention.push(withSeverity({
+        const env = String(row.env || "").trim();
+        const signal = String(row.signal || "").trim().toUpperCase();
+        const bot = ownerOf(bots, env);
+        if (!bot || !env) continue;
+        const key = `${bot.username}|${env}|${signal}`;
+        if (removedSeen.has(key)) continue;
+        removedSeen.add(key);
+        removedItems.push(withSeverity({
             type: "removed",
-            title: `${row.env || "Config"} bị gỡ ${row.signal || "signal"}: ${String(row.message || "").slice(0, 140)}`,
+            username: bot.username,
+            env,
+            signal,
+            title: `${bot.username}/${env} bị gỡ signal ${signal || "?"} — xem thống kê Signal`,
             href: "/signal-search?tab=stats",
         }, "medium"));
+        if (removedItems.length >= 3) break;
     }
+    attention.push(...skipAttention.actionable, ...skipAttention.filterItems, ...removedItems);
 
     const processRank = { stale: 0, degraded: 1, unknown: 2, ok: 3, off: 4 };
     const mine = [...bots]
@@ -571,13 +734,14 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             winRate: closedTrades ? Math.round((closedWins / closedTrades) * 1000) / 10 : null,
         }
         : null;
-    const listed = sortAttention([
+    const listed = dedupeAttention(sortAttention([
+        ...exchangeItems,
         ...accountLosing,
         ...riskItems,
         ...signalItems,
         ...staleHealthItems,
         ...attention,
-    ]).slice(0, 12);
+    ])).slice(0, 12);
     const facts = {
         day: "UTC",
         profitToday,
@@ -598,7 +762,7 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             stale: health.stale,
             off: health.off,
             unknown: health.unknown,
-            staleBots: health.bots.filter((row) => row.process === "stale").map((row) => ({
+            staleBots: health.bots.filter((row) => row.process === "stale" || row.process === "degraded").map((row) => ({
                 username: row.username,
                 href: healthHref,
             })),
@@ -618,19 +782,33 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             profit: row.profit,
             href: row.href,
         })),
+        exchangeErrors: exchangeItems.map((row) => ({
+            username: row.username,
+            env: row.env,
+            title: row.title,
+            href: row.href,
+        })),
         configsOnWithoutSignal: configsOnWithoutSignal.map((row) => ({ username: row.username, env: row.env, href: row.href })),
         missingApiKey: missingApiKey.map((row) => ({ username: row.username, href: row.href })),
-        blocked: (blocked || []).map((row) => ({
-            env: row.env || "",
-            signal: row.signal || "",
-            message: String(row.message || "").slice(0, 140),
-            href: "/logs?kind=runtime&category=signal",
+        skippedFilters: skipAttention.filterItems.map((row) => ({
+            username: row.username,
+            env: row.env,
+            code: row.code,
+            title: row.title,
+            href: row.href,
         })),
-        removed: (removed || []).map((row) => ({
+        skippedNoiseCount: skipAttention.noiseCount,
+        blocked: skipAttention.actionable.map((row) => ({
             env: row.env || "",
             signal: row.signal || "",
-            message: String(row.message || "").slice(0, 140),
-            href: "/signal-search?tab=stats",
+            title: row.title,
+            href: row.href,
+        })),
+        removed: removedItems.map((row) => ({
+            env: row.env || "",
+            signal: row.signal || "",
+            title: row.title,
+            href: row.href,
         })),
     };
     return {
@@ -662,7 +840,10 @@ module.exports = {
     getDashboard,
     buildHealth,
     buildOpenRisk,
+    classifySkipReason,
+    buildSkipAttention,
     HEARTBEAT_MS,
     WALLET_CRITICAL,
+    WALLET_ATTENTION_MIN,
     UPNL_CRITICAL,
 };
