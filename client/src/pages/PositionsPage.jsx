@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useEscape } from "../navigation";
+import { nextAlertGate } from "../position-alert-gate";
 import { alertText, positionAlerts } from "../position-alerts";
 import { POSITION_COLUMNS, qtyOf, roiOf, sortedRows, volumeOf } from "../position-sort";
 import { closePreview, openPreview, TAKER_FEE_RATE } from "../trade-preview";
@@ -197,6 +198,7 @@ export default function PositionsPage() {
   const [notices, setNotices] = useState([]);
   const [notifyReady, setNotifyReady] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted");
   const watchKeyRef = useRef("");
+  const alertsArmedRef = useRef(false);
 
   function pushNotices(alerts) {
     if (!alerts.length) return;
@@ -222,11 +224,18 @@ export default function PositionsPage() {
       return prev;
     }
     const key = `${account}|${audience}|${book}`;
-    if (watchKeyRef.current === key && prev) {
+    const gate = nextAlertGate({
+      watchKey: watchKeyRef.current,
+      currentKey: key,
+      prev,
+      view,
+      armed: alertsArmedRef.current,
+    });
+    watchKeyRef.current = gate.watchKey;
+    alertsArmedRef.current = gate.armed;
+    if (gate.emit) {
       const alerts = positionAlerts(prev, view);
       if (alerts.length) queueMicrotask(() => pushNotices(alerts));
-    } else {
-      watchKeyRef.current = key;
     }
     return view;
   }

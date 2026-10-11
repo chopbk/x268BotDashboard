@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
+import { nextAlertGate } from "../../position-alert-gate";
 import { positionAlerts } from "../../position-alerts";
 import { bookForApi } from "./matches.js";
 
@@ -12,6 +13,7 @@ export function usePositionsFeed({ account, audience, book, enabled, onAlerts })
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const watchKeyRef = useRef("");
+  const alertsArmedRef = useRef(false);
   const onAlertsRef = useRef(onAlerts);
   onAlertsRef.current = onAlerts;
 
@@ -23,11 +25,18 @@ export function usePositionsFeed({ account, audience, book, enabled, onAlerts })
     }
     const apiBook = bookForApi(book);
     const key = `${account}|${audience}|${apiBook}`;
-    if (watchKeyRef.current === key && prev) {
+    const gate = nextAlertGate({
+      watchKey: watchKeyRef.current,
+      currentKey: key,
+      prev,
+      view,
+      armed: alertsArmedRef.current,
+    });
+    watchKeyRef.current = gate.watchKey;
+    alertsArmedRef.current = gate.armed;
+    if (gate.emit) {
       const alerts = positionAlerts(prev, view);
       if (alerts.length) queueMicrotask(() => onAlertsRef.current?.(alerts));
-    } else {
-      watchKeyRef.current = key;
     }
     return view;
   }, [account, audience, book]);
