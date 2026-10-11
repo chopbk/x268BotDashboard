@@ -11,13 +11,9 @@
 const crypto = require("crypto");
 const { PERMISSIONS, hasPermission, canAccessResource } = require("../auth/access-control");
 const { httpError } = require("./http");
-const BotCommand = require("../models/bot-command");
 const TradingReceipt = require("../models/trading-receipt");
 const UserAccount = require("../models/user-account");
-const { startBotMqtt, publishTradingRequest, onTradingResponse, isConnected } = require("./bot-mqtt");
-const { tryDirectExecution } = require("./direct-trading");
-
-const DEFAULT_TTL_MS = 30_000;
+const { executeDirectTrading } = require("./direct-trading");
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
@@ -221,7 +217,8 @@ async function checkIdempotency(actorUserId, idempotencyKey) {
 }
 
 /**
- * Tạo trading request và gửi qua MQTT.
+ * Tạo và thực hiện trading request.
+ * Gọi Binance API trực tiếp - không qua MQTT.
  */
 async function createTradingRequest({
     actor,
@@ -230,7 +227,6 @@ async function createTradingRequest({
     params,
     expected,
     idempotencyKey,
-    ttlMs = DEFAULT_TTL_MS,
 }) {
     // Validate action
     const spec = TRADING_ACTIONS[action];
@@ -264,77 +260,19 @@ async function createTradingRequest({
     // Check idempotency
     const idempCheck = await checkIdempotency(actorUserId, finalIdempotencyKey);
     if (idempCheck.duplicate) {
-        // Return existing receipt
         return {
             duplicate: true,
             command: publicTradingCommand(idempCheck.receipt),
         };
     }
 
-    // Thử gọi Binance trực tiếp trước (nếu web-bot có API key)
-    const directResult = await tryDirectExecution(action, target, validation.normalized);
-    if (directResult?.success) {
-        console.log(`[tradingBridge] ${action} direct success for ${target.username}`);
-        // Tạo receipt để track
-        const now = Date.now();
-        await TradingReceipt.create({
-            requestId,
-            idempotencyKey: finalIdempotencyKey,
-            action,
-            target: {
-                username: target.username,
-                env: target.env,
-                symbol: target.symbol,
-                positionSide: target.positionSide,
-            },
-            status: "succeeded",
-            result: directResult,
-            actorUserId,
-            actorUsername: actor?.username || actor?.email || "",
-            expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
-        });
-        return {
-            duplicate: false,
-            command: {
-                requestId,
-                action,
-                status: "succeeded",
-                terminal: true,
-                result: directResult,
-            },
-        };
-    }
-    // Direct không có client hoặc fail → fallback MQTT
-    console.log(`[tradingBridge] ${action} direct unavailable for ${target.username}, using MQTT`);
-
+    // Thực hiện trading qua Binance API trực tiếp
+    console.log(`[tradingBridge] ${action} for ${target.username}`);
     const now = Date.now();
-    const expiresAt = new Date(now + ttlMs);
-
-    // Create outbox entry
-    const command = await BotCommand.create({
-        requestId,
-        username: target.username,
-        targetEnv: target.env || "",
-        action,
-        params: {
-            ...validation.normalized,
-            target,
-            expected,
-        },
-        category: "trading",
-        status: "queued",
-        terminal: false,
-        requiredRoles: ["TRADER"],
-        roleAcks: {},
-        actorUserId,
-        actorUsername: actor?.username || actor?.email || "",
-        expiresAt,
-        attempt: 1,
-        messages: [],
-        idempotencyKey: finalIdempotencyKey,
-    });
-
-    // Create receipt for durable idempotency
+    
+    const result = await executeDirectTrading(action, target, validation.normalized);
+    
+    // Tạo receipt để track
     await TradingReceipt.create({
         requestId,
         idempotencyKey: finalIdempotencyKey,
@@ -345,118 +283,23 @@ async function createTradingRequest({
             symbol: target.symbol,
             positionSide: target.positionSide,
         },
-        status: "claimed",
+        status: result?.success ? "succeeded" : "failed",
+        result,
         actorUserId,
         actorUsername: actor?.username || actor?.email || "",
         expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
     });
 
-    // Publish to MQTT
-    const published = await publishTradingCommand(command, target, validation.normalized, expected, expiresAt);
-
     return {
         duplicate: false,
-        command: publicTradingCommand(published),
-    };
-}
-
-/**
- * Publish trading command to MQTT.
- */
-async function publishTradingCommand(doc, target, params, expected, expiresAt) {
-    const requestId = doc.requestId;
-
-    try {
-        await startBotMqtt();
-    } catch (error) {
-        await BotCommand.updateOne(
-            { requestId, terminal: false },
-            {
-                $set: {
-                    status: "failed",
-                    terminal: true,
-                    error: { code: "MQTT_CONNECT", message: error.message },
-                },
-                $push: {
-                    messages: {
-                        status: "failed",
-                        message: error.message,
-                        error: { code: "MQTT_CONNECT", message: error.message },
-                        timestamp: Date.now(),
-                        at: new Date(),
-                    },
-                },
-            }
-        );
-        await TradingReceipt.updateOne(
-            { requestId },
-            { $set: { status: "failed", error: { code: "MQTT_CONNECT", message: error.message } } }
-        );
-        return BotCommand.findOne({ requestId });
-    }
-
-    const publishedAt = new Date();
-    await BotCommand.updateOne(
-        { requestId, terminal: false, status: "queued" },
-        {
-            $set: { status: "published", publishedAt },
-            $push: {
-                messages: {
-                    status: "published",
-                    message: "Đã gửi MQTT trading request",
-                    error: null,
-                    timestamp: Date.now(),
-                    at: publishedAt,
-                },
-            },
-        }
-    );
-
-    try {
-        const payload = {
-            version: 1,
+        command: {
             requestId,
-            idempotencyKey: doc.idempotencyKey || requestId,
-            action: doc.action,
-            actor: {
-                webUserId: doc.actorUserId,
-                username: doc.actorUsername,
-            },
-            target,
-            params,
-            expected: expected || {},
-            createdAt: Date.now(),
-            expiresAt: expiresAt.getTime(),
-        };
-
-        await publishTradingRequest(payload);
-    } catch (error) {
-        await BotCommand.updateOne(
-            { requestId, terminal: false },
-            {
-                $set: {
-                    status: "failed",
-                    terminal: true,
-                    error: { code: "MQTT_PUBLISH", message: error.message },
-                },
-                $push: {
-                    messages: {
-                        status: "failed",
-                        message: error.message,
-                        error: { code: "MQTT_PUBLISH", message: error.message },
-                        timestamp: Date.now(),
-                        at: new Date(),
-                    },
-                },
-            }
-        );
-        await TradingReceipt.updateOne(
-            { requestId },
-            { $set: { status: "failed", error: { code: "MQTT_PUBLISH", message: error.message } } }
-        );
-    }
-
-    return BotCommand.findOne({ requestId });
+            action,
+            status: result?.success ? "succeeded" : "failed",
+            terminal: true,
+            result,
+        },
+    };
 }
 
 /**
@@ -483,9 +326,8 @@ function publicTradingCommand(doc) {
  * Get trading command status.
  */
 async function getTradingCommand(actor, requestId) {
-    const doc = await BotCommand.findOne({
+    const doc = await TradingReceipt.findOne({
         requestId: String(requestId || ""),
-        category: "trading",
     }).lean();
 
     if (!doc) throw httpError(404, "Không tìm thấy lệnh");
@@ -500,7 +342,7 @@ async function getTradingCommand(actor, requestId) {
         if (!canView) throw httpError(403, "Không có quyền xem lệnh này");
 
         // Check scope
-        await checkTargetAccess(actor, doc.username, doc.action).catch(() => {
+        await checkTargetAccess(actor, doc.target?.username, doc.action).catch(() => {
             throw httpError(403, "Không có quyền với tài khoản này");
         });
     }
