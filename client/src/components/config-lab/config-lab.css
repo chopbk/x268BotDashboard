@@ -153,6 +153,8 @@ main:has(.lab-directory) { width: calc(100% - 48px); max-width: 1280px; margin: 
 .lab-savebar.is-pending { border-color: #3d4a6a; }
 .lab-apply-meta { display: block; margin-top: 3px; color: #9aa0b8; font-size: 14px; }
 .lab-rename { margin-bottom: 12px; }
+.lab-volume-box { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #1a1b20; display: grid; gap: 6px; }
+.lab-volume-value { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.3px; }
 
 /* Danh sách bot — cùng skin lab, bảng gọn */
 .lab-bot-list { padding-bottom: 40px; }

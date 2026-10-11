@@ -8,6 +8,7 @@ import { useAuth } from "../auth";
 import { canEditResource } from "../access";
 import { Crumbs, useEscape, useLeaveGuard } from "../navigation";
 import { applyStatusLabel, waitForApply } from "../applyStatus";
+import { estimateEntrySize } from "../volumeEstimate";
 
 const CONFIG_EDIT = "config.edit";
 const CONFIG_VIEW = "config.view";
@@ -60,14 +61,15 @@ function describeVolume(form) {
   }
   if (mode === "RATIO") {
     return {
-      lead: "RATIO: size ≈ số dư ví × Ratio / đòn bẩy long. Cost chỉ là vốn giả khi chưa có số dư. Fix loss không đọc.",
+      lead: "RATIO: cost ≈ availableBalance × Ratio / đòn bẩy long · volume ≈ available × Ratio. Cost trên form chỉ dự phòng khi chưa có số dư. Fix loss không đọc.",
       drive: ["ratio"],
       idle: ["cost", "fixloss"],
       notes: {
-        ratio: "Quyết định phần ví đưa vào lệnh.",
+        ratio: "Quyết định phần ví đưa vào lệnh (nhân availableBalance).",
         cost: "Không phải size thật. Chỉ dùng khi chưa có số dư ví.",
         fixloss: "Không đọc ở mode RATIO.",
       },
+      showVolume: true,
     };
   }
   if (mode === "RISK") {
@@ -353,6 +355,7 @@ export default function AccountConfigPage({ experimental = false }) {
   const [applyState, setApplyState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [wallet, setWallet] = useState(null);
   const changes = configChanges(snapshot, form, lists);
   const dirty = changes.length > 0;
   const disabled = busy || !canEdit || (!experimental && !editing);
@@ -394,6 +397,7 @@ export default function AccountConfigPage({ experimental = false }) {
     setError("");
     setSaved("");
     setApplyState(null);
+    setWallet(null);
     setReview(false);
     setGroup("operation");
     setEditing(!!experimental);
@@ -401,7 +405,9 @@ export default function AccountConfigPage({ experimental = false }) {
     setBusy(false);
     api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}`, { signal: controller.signal })
       .then((data) => {
-        if (!cancelled) applyConfig(data.config, { baseline: !!experimental });
+        if (cancelled) return;
+        applyConfig(data.config, { baseline: !!experimental });
+        setWallet(data.balance || null);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -483,10 +489,7 @@ export default function AccountConfigPage({ experimental = false }) {
     setSaved("");
   }
 
-  const volume =
-    form && Number.isFinite(Number(form.cost)) && Number.isFinite(Number(form.leverage))
-      ? Number(form.cost) * Number(form.leverage)
-      : null;
+  const sizeEstimate = form ? estimateEntrySize(form, wallet) : null;
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -810,7 +813,7 @@ export default function AccountConfigPage({ experimental = false }) {
       {form ? (
         <HelpUi.Provider value={{ help, editing: experimental ? canEdit : editing }}>
         <LabContext.Provider value={experimental ? group : null}>
-        <LabLayout enabled={experimental} group={group} setGroup={setGroup} form={form} lists={lists} changes={changes} volumeLead={volumeView.lead} dirty={dirty} canEdit={canEdit}>
+        <LabLayout enabled={experimental} group={group} setGroup={setGroup} form={form} lists={lists} changes={changes} volumeLead={volumeView.lead} sizeEstimate={sizeEstimate} wallet={wallet} dirty={dirty} canEdit={canEdit}>
         {!experimental ? <div className="config-tabs" role="tablist" aria-label="Nhóm cấu hình">
           <button type="button" role="tab" aria-selected={panel === "basic"} onClick={() => setPanel("basic")}>
             Cơ bản
@@ -871,7 +874,25 @@ export default function AccountConfigPage({ experimental = false }) {
                 <Num label="Level" value={form.level} onChange={(value) => setField("level", value)} disabled={disabled} hint="FIX_LEVERAGE, đòn bẩy mặc định khi lệnh không chỉ định level." note="Đòn bẩy khi lệnh không ghi level. Không nằm trong công thức volume." />
               </div>
             </div>
-            {volumeView.showVolume ? <p className="muted">Volume vào lệnh: {money(volume)} (Cost × đòn bẩy long).</p> : null}
+            {sizeEstimate ? (
+              <div className="lab-volume-box">
+                <p className="group-label">{sizeEstimate.label}</p>
+                {sizeEstimate.ready && sizeEstimate.volume != null ? (
+                  <p className="lab-volume-value">{money(sizeEstimate.volume)}</p>
+                ) : null}
+                <p className="muted">{sizeEstimate.detail}</p>
+                {wallet?.available != null || wallet?.balance != null ? (
+                  <p className="lab-caption">
+                    Ví Redis · available {wallet.available != null ? money(wallet.available) : "—"}
+                    {wallet.balance != null ? ` · balance ${money(wallet.balance)}` : ""}
+                    {wallet.at ? ` · ${new Date(wallet.at).toLocaleString("vi-VN")}` : ""}
+                    {wallet.stale ? " · stale" : ""}
+                  </p>
+                ) : (
+                  <p className="lab-caption">Chưa đọc được số dư Redis cho env này (bot chưa ghi hoặc REDIS_URL lệch).</p>
+                )}
+              </div>
+            ) : null}
           </Section>
           <Section title="Giới hạn lệnh">
             <Num label="Max position" value={form.maxPosition} onChange={(value) => setField("maxPosition", value)} disabled={disabled} hint="Số lệnh đang mở tối đa. Đủ rồi thì bỏ signal mới." />

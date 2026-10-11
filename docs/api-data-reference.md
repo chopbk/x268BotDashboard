@@ -68,7 +68,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/bots/assigned-configs` | [bots](../server/src/routes/bots.js) |
 | GET | `/api/bots/:username` | [bots](../server/src/routes/bots.js) |
 | GET | `/api/bots/:username/configs` | [bots](../server/src/routes/bots.js) |
-| GET | `/api/bots/:username/configs/:env` | [bots](../server/src/routes/bots.js) |
+| GET | `/api/bots/:username/configs/:env` | [bots](../server/src/routes/bots.js) — kèm `balance` từ Redis `wb:bal:<ENV>` nếu có |
 | POST | `/api/bots/:username/configs/:env/copy` | [bots](../server/src/routes/bots.js) |
 | POST | `/api/bots/:username/configs/bulk` | [bots](../server/src/routes/bots.js) |
 | PATCH | `/api/bots/:username/configs/:env` | [bots](../server/src/routes/bots.js) |

@@ -65,7 +65,7 @@ export function LabHeader({ username, env, form, returnTo, signals = "", canHist
   </header>;
 }
 
-export function LabLayout({ enabled, group, setGroup, form, lists, changes, volumeLead, dirty = false, canEdit = false, children }) {
+export function LabLayout({ enabled, group, setGroup, form, lists, changes, volumeLead, sizeEstimate = null, wallet = null, dirty = false, canEdit = false, children }) {
   const [summaryOpen, setSummaryOpen] = useState(true);
   useEffect(() => {
     if (!enabled) return undefined;
@@ -97,8 +97,13 @@ export function LabLayout({ enabled, group, setGroup, form, lists, changes, volu
             <div><dt>Signal</dt><dd>{signals.length} nguồn{signals.length ? ` · ${signals.slice(0, 3).join(", ")}${signals.length > 3 ? "…" : ""}` : " · chưa chọn nguồn"}</dd></div>
             <div><dt>Size</dt><dd>{form.mode}</dd></div>
             {form.mode === "FIX" ? <div><dt>Cost × leverage</dt><dd>{form.cost ?? "—"} × {form.leverage ?? "—"}</dd></div> : null}
+            {form.mode === "RATIO" ? <div><dt>Ratio</dt><dd>{form.ratio ?? "—"}</dd></div> : null}
+            {sizeEstimate?.ready && sizeEstimate.volume != null ? <div><dt>Volume ước lượng</dt><dd>{Number(sizeEstimate.volume).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} $</dd></div> : null}
+            {wallet?.available != null ? <div><dt>Available</dt><dd>{Number(wallet.available).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} $</dd></div> : null}
+            {wallet?.balance != null ? <div><dt>Balance</dt><dd>{Number(wallet.balance).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} $</dd></div> : null}
           </dl>
           <p className="lab-explanation">{volumeLead}</p>
+          {sizeEstimate && !sizeEstimate.ready ? <p className="lab-notice">{sizeEstimate.detail}</p> : null}
           <dl>
             <div><dt>Vào lệnh</dt><dd>{form.openType || "—"}</dd></div>
             <div><dt>SL / TP</dt><dd>{form.slType || "—"} / {form.tpType || "—"}</dd></div>

@@ -22,6 +22,7 @@ Không còn menu “Config mới · Thử nghiệm”.
 - Config nhanh bulk: On/Long/Short/Paper/Monitor, mode, cost, leverage, signals
 - Sửa đầy đủ 6 nhóm + signal thẻ + sync picker + copy new/replace/sync
 - Live-edit: không cần bấm Sửa; dirty → diff + Lưu / Hoàn tác
+- Vốn & khối lượng: hiện volume ước lượng; RATIO dùng availableBalance Redis `wb:bal:<ENV>`
 - APPLY_CONFIG / ACK / thử lại trên savebar
 - Deep-link Position, Account Static, lịch sử signal, lý do bỏ qua
 - Lọc theo user / signal text / On / Live·Paper; URL giữ ngữ cảnh

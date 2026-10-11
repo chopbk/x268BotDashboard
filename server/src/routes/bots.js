@@ -139,12 +139,15 @@ router.get(
     requirePermission(PERMISSIONS.CONFIG_VIEW),
     async (req, res) => {
         try {
+            const env = normalizeName(req.params.env);
             const config = await getConfigDetail(
                 req.webUser,
                 normalizeName(req.params.username),
-                normalizeName(req.params.env)
+                env
             );
-            res.json({ config });
+            const { readEnvBalance } = require("../lib/balance-cache");
+            const balance = await readEnvBalance(env);
+            res.json({ config, balance });
         } catch (error) {
             sendError(res, error, "GET /api/bots/:username/configs/:env");
         }
