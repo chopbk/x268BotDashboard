@@ -92,8 +92,12 @@ function tpslText(row) {
   }
   if (parts.length) return parts.join(" · ");
   const monitor = monitorTpsl(row);
-  if (!monitor.sl && !monitor.tp && !monitor.trailing) return (row.monitors || []).length ? "Chưa có TP/SL" : "TP/SL";
-  return `TP ${monitor.tp || "—"} / SL ${monitor.sl || "—"} · monitor`;
+  if (monitor.sl || monitor.tp || monitor.trailing) {
+    return `TP ${monitor.tp || "—"} / SL ${monitor.sl || "—"} · monitor`;
+  }
+  // Không có trong sổ Redis (algo chưa sync) ≠ chắc chắn sàn không có lệnh
+  if ((row.monitors || []).length) return "Chưa thấy TP/SL sàn";
+  return "TP/SL · chưa thấy trên sổ";
 }
 
 function PreviewBlock({ preview, title }) {
