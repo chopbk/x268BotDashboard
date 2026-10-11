@@ -101,7 +101,12 @@ function publicCommand(doc) {
 async function listReloadEnvs(targetEnv) {
     const env = String(targetEnv || "").toUpperCase();
     if (!env) return [];
-    const followers = await AccountConfig.find({ sync_from: env }).select("env").lean();
+    // Dùng collection native: tránh strictQuery strip `sync_from` nếu schema lệch.
+    // Case-insensitive vì sync_from/env trên Mongo có thể không đồng nhất chữ hoa.
+    const followers = await AccountConfig.collection
+        .find({ sync_from: { $regex: `^${env.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } })
+        .project({ env: 1 })
+        .toArray();
     const names = [env];
     for (const row of followers) {
         const fol = String(row?.env || "").toUpperCase();

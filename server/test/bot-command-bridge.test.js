@@ -141,3 +141,9 @@ test("normalizeAccountList upper + unique", () => {
     const { normalizeAccountList } = require("../src/lib/bot-command-bridge");
     assert.deepEqual(normalizeAccountList(["a", "A", "b", ""]), ["A", "B"]);
 });
+
+test("AccountConfig schema có sync_from — tránh strictQuery strip thành find({})", () => {
+    const AccountConfig = require("../src/models/account-config");
+    assert.ok(AccountConfig.schema.path("sync_from"), "thiếu sync_from trên schema");
+    assert.ok(AccountConfig.schema.path("sync_except"), "thiếu sync_except trên schema");
+});

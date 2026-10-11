@@ -239,6 +239,8 @@ Ghi chú quyền:
 
 Server tự tính `followers = [targetEnv, ...envs có sync_from === targetEnv]` (và chain nếu cần parity với `fanoutFromSource`). Client không được tự ý thu hẹp bỏ `targetEnv`.
 
+**Invariant:** schema `account_configs` trên web phải khai báo `sync_from` (và field sync liên quan). Với `mongoose.set("strictQuery", true)`, query field ngoài schema bị strip → `find({ sync_from })` thành `find({})` và MQTT gửi cả database.
+
 ## 8. API bề mặt (dự kiến — implement Phase 1+)
 
 Chi tiết path chốt khi code; skeleton:

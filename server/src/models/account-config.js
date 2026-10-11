@@ -9,6 +9,14 @@ const AccountConfigSchema = new mongoose.Schema(
         whitelist: { type: [String], default: undefined },
         signals: { type: [String], default: undefined },
         trade_config: { type: Object, default: undefined },
+        // Phải khai báo: mongoose.set("strictQuery", true) sẽ strip field
+        // ngoài schema → find({ sync_from }) thành find({}) (gửi cả DB qua MQTT).
+        sync_from: { type: String, default: undefined },
+        sync_except: { type: [String], default: undefined },
+        sync_scale: { type: Boolean, default: undefined },
+        sync_margin_ratio: { type: Number, default: undefined },
+        sync_wallet_bal: { type: Number, default: undefined },
+        sync_size: { type: Object, default: undefined },
     },
     {
         versionKey: false,
