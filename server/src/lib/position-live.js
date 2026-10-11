@@ -154,7 +154,9 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
                         console.log("[positionReconcile]", account, "using MQTT");
                         return await reconcileViaMqtt(account, current);
                     } catch (mqttError) {
-                        console.warn("[positionReconcile]", account, "MQTT failed, trying direct:", mqttError.message);
+                        // MQTT fail (timeout hoặc không có binance-bot) → trả về data cũ, không fallback Binance
+                        console.warn("[positionReconcile]", account, "MQTT failed, using cached:", mqttError.message);
+                        return current;
                     }
                 }
             }
@@ -166,7 +168,7 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
                 return current;
             }
 
-            // Fallback: gọi trực tiếp Binance (nếu web-bot có API key)
+            // Fallback: gọi trực tiếp Binance (chỉ khi MQTT không available)
             const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
             const { loadBinanceSnapshot } = require("./position-feed");
             const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });

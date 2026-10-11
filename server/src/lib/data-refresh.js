@@ -5,7 +5,7 @@
 const crypto = require("crypto");
 const { onDataResponse, publishDataRequest, isConnected, startBotMqtt } = require("./bot-mqtt");
 
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 8_000; // 8s đủ cho binance-bot xử lý, không chờ lâu
 
 /**
  * Gửi request refresh positions cho một account.
