@@ -15,6 +15,7 @@ const BotCommand = require("../models/bot-command");
 const TradingReceipt = require("../models/trading-receipt");
 const UserAccount = require("../models/user-account");
 const { startBotMqtt, publishTradingRequest, onTradingResponse, isConnected } = require("./bot-mqtt");
+const { tryDirectExecution } = require("./direct-trading");
 
 const DEFAULT_TTL_MS = 30_000;
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -269,6 +270,42 @@ async function createTradingRequest({
             command: publicTradingCommand(idempCheck.receipt),
         };
     }
+
+    // Thử gọi Binance trực tiếp trước (nếu web-bot có API key)
+    const directResult = await tryDirectExecution(action, target, validation.normalized);
+    if (directResult?.success) {
+        console.log(`[tradingBridge] ${action} direct success for ${target.username}`);
+        // Tạo receipt để track
+        const now = Date.now();
+        await TradingReceipt.create({
+            requestId,
+            idempotencyKey: finalIdempotencyKey,
+            action,
+            target: {
+                username: target.username,
+                env: target.env,
+                symbol: target.symbol,
+                positionSide: target.positionSide,
+            },
+            status: "succeeded",
+            result: directResult,
+            actorUserId,
+            actorUsername: actor?.username || actor?.email || "",
+            expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
+        });
+        return {
+            duplicate: false,
+            command: {
+                requestId,
+                action,
+                status: "succeeded",
+                terminal: true,
+                result: directResult,
+            },
+        };
+    }
+    // Direct không có client hoặc fail → fallback MQTT
+    console.log(`[tradingBridge] ${action} direct unavailable for ${target.username}, using MQTT`);
 
     const now = Date.now();
     const expiresAt = new Date(now + ttlMs);
