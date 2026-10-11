@@ -339,8 +339,9 @@ Các invariant:
 | `GET /api/orders/open` | `requireAuth` | `orders.view` + scope bot. Order đang mở từ Redis snapshot. Query `account`, `audience`, `symbol`, `kind`, `side`, `type`. Không mutation |
 | `GET /api/orders/history` | `requireAuth` | `orders.view` + scope bot. Lịch sử order từ Mongo `web_exchange_order_events`. Query `account`, `audience`, `symbol`, `kind`, `side`, `positionSide`, `type`, `status`, `from`, `to`, `page`, `limit`. Mặc định 7 ngày gần nhất |
 | `GET /api/orders/:kind/:symbol/:orderId` | `requireAuth` | `orders.view` + scope bot. Chi tiết một order và fills liên quan từ `web_exchange_fills`. Query `account` bắt buộc |
-| `POST /api/trading/orders/cancel` | `requireAuth` | `orders.cancel` + scope bot. Cancel một order qua MQTT trading/request/v1. Body: username, kind, symbol, orderId |
+| `POST /api/trading/orders/cancel` | `requireAuth` | `orders.cancel` + scope bot. Cancel một order (regular/algo) qua Binance REST trực tiếp. Body: username, kind, symbol, orderId |
 | `POST /api/trading/orders/cancel-batch` | `requireAuth` | `orders.cancel` + scope bot. Cancel nhiều orders (tối đa 20). Body: username, orders[] |
+| `GET /api/orders/mark` | `requireAuth` | `orders.view`. Mark price từ feed public theo symbol |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
 | `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |

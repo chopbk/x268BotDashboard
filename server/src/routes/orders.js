@@ -7,8 +7,27 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 const { loadOpenOrders, loadOrderHistory, getOrderDetail } = require("../lib/orders");
+const { markOf } = require("../lib/mark-prices");
 
 const router = express.Router();
+
+/**
+ * GET /api/orders/mark?symbol=BTCUSDT
+ * Mark price từ feed public (không secret).
+ */
+router.get("/mark", requireAuth, requirePermission(PERMISSIONS.ORDERS_VIEW), async (req, res) => {
+    try {
+        const symbol = String(req.query.symbol || "").trim().toUpperCase();
+        if (!symbol) {
+            res.status(400).json({ error: "Thiếu symbol" });
+            return;
+        }
+        const mark = markOf(symbol);
+        res.json({ symbol, mark: mark == null ? null : Number(mark) });
+    } catch (error) {
+        sendError(res, error, "GET /api/orders/mark");
+    }
+});
 
 /**
  * GET /api/orders/open

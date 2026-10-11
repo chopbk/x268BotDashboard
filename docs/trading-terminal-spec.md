@@ -40,8 +40,10 @@ MVP chỉ Binance USD-M Futures. Hỗ trợ cả Hedge (`LONG|SHORT`) và One-wa
 | Preview Confirm | Qty, PnL ước tính, phí taker ước tính 0.04%, sibling |
 | Chi tiết case | Bấm Symbol → ownership/sibling/leftover/NOTPSL, MAE·MFE, timeline, drift warnings, reconcile an toàn |
 | Open / order history | Tab Order đang mở, Lịch sử order |
+| Đặt lệnh (ticket) | Tab Order: khung Buy/Sell Market·Limit·Stop·Stop Limit + reduce-only; `POST /api/trading/orders` |
+| Huỷ order / algo | Nút Huỷ từng dòng + huỷ hàng loạt; `POST .../cancel` và `.../cancel-batch` (Algo API đúng endpoint) |
 | Idempotency | `TradingReceipt` theo actor + idempotencyKey |
-| Audit | `position.close_requested`, `open_requested`, `reverse_requested`, `tpsl_requested`, … |
+| Audit | `position.close_requested`, `open_requested`, `reverse_requested`, `tpsl_requested`, `order.cancel_requested`, `order.create_requested`, … |
 | Rate limit trading | 10 req / 10s / account trong `direct-trading.js` |
 
 ### 2.2 Còn hạn chế
@@ -49,6 +51,7 @@ MVP chỉ Binance USD-M Futures. Hỗ trợ cả Hedge (`LONG|SHORT`) và One-wa
 - Phí preview là **ước tính taker mặc định**, không đọc VIP fee tier thật.
 - Reverse là saga hai lệnh; nếu bước mở fail sau đóng → có thể flat (UI cảnh báo).
 - Order replace / amend chi tiết chưa có UI riêng (hủy + tạo mới cho TP/SL/trailing).
+- Ticket chưa có Trailing / TP Market riêng (dùng modal TP/SL trên Positions).
 - Trade history fill chưa có tab độc lập (đã có recorded PnL / order history).
 - Spec MQTT mutation cũ **không còn là đường chính**.
 
@@ -114,6 +117,9 @@ Scope bot theo RBAC hiện có; không tin permission từ client.
 | PUT | `/api/trading/positions/:positionKey/tpsl` | `positions.tpsl` |
 | DELETE | `/api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `positions.tpsl` |
 | POST | `/api/trading/orders/cancel` | `orders.cancel` |
+| POST | `/api/trading/orders/cancel-batch` | `orders.cancel` |
+| POST | `/api/trading/orders` | `orders.create` |
+| GET | `/api/orders/mark` | `orders.view` (mark price public feed) |
 | GET | `/api/trading/commands/:requestId` | theo quyền xem |
 
 `positionKey` = `username|SYMBOL|LONG|SHORT`.

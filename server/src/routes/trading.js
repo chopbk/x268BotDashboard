@@ -379,7 +379,11 @@ router.post("/positions/reverse", requireAuth, requirePermission(PERMISSIONS.POS
  */
 router.post("/orders", requireAuth, requirePermission(PERMISSIONS.ORDERS_CREATE), async (req, res) => {
     try {
-        const { username, env, symbol, kind, side, positionSide, type, quantity, price, triggerPrice, expected, idempotencyKey } = req.body || {};
+        const {
+            username, env, symbol, kind, side, positionSide, type, quantity, price,
+            triggerPrice, callbackRate, reduceOnly, closePosition, workingType, timeInForce,
+            expected, idempotencyKey,
+        } = req.body || {};
 
         if (!username) throw httpError(400, "Thiếu username");
         if (!symbol) throw httpError(400, "Thiếu symbol");
@@ -400,6 +404,11 @@ router.post("/orders", requireAuth, requirePermission(PERMISSIONS.ORDERS_CREATE)
                 quantity,
                 price,
                 triggerPrice,
+                callbackRate,
+                reduceOnly,
+                closePosition,
+                workingType,
+                timeInForce,
             },
             expected,
             idempotencyKey,

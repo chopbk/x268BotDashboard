@@ -46,7 +46,7 @@ async function getClient(account) {
 }
 
 /**
- * Cancel order.
+ * Cancel một order (regular hoặc algo). Sai kind vẫn thử endpoint còn lại.
  */
 async function cancelOrderDirect(target, params) {
     const account = target?.env || target?.username;
@@ -54,20 +54,31 @@ async function cancelOrderDirect(target, params) {
     const client = await getClient(account);
 
     const { kind, orderId, symbol } = params;
+    const id = String(orderId || "").trim();
+    if (!id) throw httpError(400, "Thiếu orderId");
+    if (!symbol) throw httpError(400, "Thiếu symbol");
 
-    if (kind === "algo") {
-        // Cancel algo order
-        const result = await client.signed("DELETE", "/fapi/v1/order", {
-            symbol,
-            orderId,
-        });
-        return { success: true, orderId, result };
-    } else {
-        const result = await client.signed("DELETE", "/fapi/v1/order", {
-            symbol,
-            orderId,
-        });
-        return { success: true, orderId, result };
+    const cancelAlgo = () => client.signed("DELETE", "/fapi/v1/algoOrder", { symbol, algoId: id });
+    const cancelRegular = () => client.signed("DELETE", "/fapi/v1/order", { symbol, orderId: id });
+
+    if (String(kind || "").toLowerCase() === "algo") {
+        try {
+            const result = await cancelAlgo();
+            return { success: true, orderId: id, algoId: id, result };
+        } catch (error) {
+            console.warn("[cancelOrderDirect] algo failed, try regular:", error.message);
+            const result = await cancelRegular();
+            return { success: true, orderId: id, result };
+        }
+    }
+
+    try {
+        const result = await cancelRegular();
+        return { success: true, orderId: id, result };
+    } catch (error) {
+        console.warn("[cancelOrderDirect] regular failed, try algo:", error.message);
+        const result = await cancelAlgo();
+        return { success: true, orderId: id, algoId: id, result };
     }
 }
 
@@ -76,20 +87,18 @@ async function cancelOrderDirect(target, params) {
  */
 async function cancelOrderBatchDirect(target, params) {
     const account = target?.env || target?.username;
-    checkRateLimit(account);
-    const client = await getClient(account);
-
     const { orders } = params;
     const results = [];
 
-    for (const order of orders) {
+    for (const order of orders || []) {
         try {
-            const result = await client.signed("DELETE", "/fapi/v1/order", {
-                symbol: order.symbol,
-                orderId: order.orderId,
-            });
-            results.push({ orderId: order.orderId, success: true, result });
+            const one = await cancelOrderDirect(
+                { username: account, env: account },
+                { kind: order.kind, orderId: order.orderId, symbol: order.symbol }
+            );
+            results.push({ orderId: order.orderId, success: true, result: one.result });
         } catch (error) {
+            console.error("[cancelOrderBatchDirect]", order.orderId, error.message);
             results.push({ orderId: order.orderId, success: false, error: error.message });
         }
     }
@@ -488,52 +497,81 @@ async function createOrderDirect(target, params) {
     const client = await getClient(account);
 
     const { symbol } = target;
-    const { side, positionSide, type, quantity, price, triggerPrice, closePosition, workingType } = params;
+    const {
+        side,
+        positionSide,
+        type,
+        quantity,
+        price,
+        triggerPrice,
+        closePosition,
+        workingType,
+        reduceOnly,
+        callbackRate,
+        timeInForce,
+    } = params;
     const orderType = String(type || "LIMIT").toUpperCase();
+    const info = await findSymbolInfo(symbol);
+    const closeAll = closePosition === true || closePosition === "true";
 
     if (ALGO_ORDER_TYPES.has(orderType)) {
-        const trigger = triggerPrice || price;
-        const info = await findSymbolInfo(symbol);
-        const triggerText = roundToTick(trigger, info?.tickSize);
-        if (!triggerText && orderType !== "TRAILING_STOP_MARKET") {
-            throw httpError(400, "Thiếu triggerPrice cho algo order");
-        }
         const orderParams = {
             algoType: "CONDITIONAL",
             symbol,
-            side,
-            positionSide: positionSide || "BOTH",
+            side: String(side || "").toUpperCase(),
+            positionSide: String(positionSide || "BOTH").toUpperCase(),
             type: orderType,
             workingType: resolveWorkingType(workingType),
         };
-        if (closePosition === true || closePosition === "true") {
-            orderParams.closePosition = "true";
-            if (triggerText) orderParams.triggerPrice = triggerText;
+        if (orderType === "TRAILING_STOP_MARKET") {
+            const rate = Number(callbackRate);
+            if (!(rate >= 0.1 && rate <= 10)) throw httpError(400, "callbackRate trailing phải 0.1–10");
+            orderParams.callbackRate = String(rate);
+            if (triggerPrice != null && triggerPrice !== "") {
+                const act = roundToTick(triggerPrice, info?.tickSize);
+                if (act) orderParams.activatePrice = act;
+            }
         } else {
-            orderParams.quantity = String(quantity);
-            if (triggerText) orderParams.triggerPrice = triggerText;
+            const triggerText = roundToTick(triggerPrice || price, info?.tickSize);
+            if (!triggerText) throw httpError(400, "Thiếu triggerPrice cho algo order");
+            orderParams.triggerPrice = triggerText;
+        }
+        if (closeAll) {
+            orderParams.closePosition = "true";
+        } else {
+            const qtyText = floorToStep(quantity, info?.stepSize);
+            if (!qtyText) throw httpError(400, "Quantity sau làm tròn = 0");
+            orderParams.quantity = qtyText;
         }
         if (orderType === "STOP" || orderType === "TAKE_PROFIT") {
-            orderParams.price = String(price);
-            orderParams.timeInForce = "GTC";
+            const priceText = roundToTick(price, info?.tickSize);
+            if (!priceText) throw httpError(400, "STOP/TAKE_PROFIT cần giá limit");
+            orderParams.price = priceText;
+            orderParams.timeInForce = String(timeInForce || "GTC").toUpperCase();
         }
+        console.log("[createOrderDirect]", account, "algo", orderParams);
         const result = await client.signed("POST", "/fapi/v1/algoOrder", orderParams);
         return { success: true, orderId: result?.algoId || result?.orderId, algoId: result?.algoId, result };
     }
 
+    const qtyText = floorToStep(quantity, info?.stepSize);
+    if (!qtyText) throw httpError(400, "Quantity sau làm tròn = 0");
     const orderParams = {
         symbol,
-        side,
-        positionSide: positionSide || "BOTH",
+        side: String(side || "").toUpperCase(),
+        positionSide: String(positionSide || "BOTH").toUpperCase(),
         type: orderType,
-        quantity: String(quantity),
+        quantity: qtyText,
     };
-
+    if (reduceOnly === true || reduceOnly === "true") orderParams.reduceOnly = "true";
     if (orderType === "LIMIT") {
-        orderParams.price = String(price);
-        orderParams.timeInForce = "GTC";
+        const priceText = roundToTick(price, info?.tickSize);
+        if (!priceText) throw httpError(400, "LIMIT cần giá hợp lệ");
+        orderParams.price = priceText;
+        orderParams.timeInForce = String(timeInForce || "GTC").toUpperCase();
     }
 
+    console.log("[createOrderDirect]", account, orderParams);
     const result = await client.signed("POST", "/fapi/v1/order", orderParams);
     return { success: true, orderId: result?.orderId, result };
 }

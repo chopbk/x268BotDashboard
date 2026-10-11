@@ -58,7 +58,7 @@ const TRADING_ACTIONS = Object.freeze({
     },
     ORDER_CREATE: {
         permission: "orders.create",
-        requiredFields: ["kind", "side", "positionSide", "type", "quantity"],
+        requiredFields: ["side", "positionSide", "type"],
         validate: validateOrderCreate,
     },
     ORDER_REPLACE: {
@@ -226,9 +226,71 @@ function validatePositionReverse(params) {
     };
 }
 
+const ALGO_CREATE_TYPES = new Set([
+    "STOP",
+    "STOP_MARKET",
+    "TAKE_PROFIT",
+    "TAKE_PROFIT_MARKET",
+    "TRAILING_STOP_MARKET",
+]);
+
 function validateOrderCreate(params) {
-    // Phase E+ implementation
-    return { valid: true, normalized: params };
+    const side = String(params.side || "").toUpperCase();
+    if (side !== "BUY" && side !== "SELL") {
+        return { valid: false, error: "side phải là BUY hoặc SELL" };
+    }
+    const positionSide = String(params.positionSide || "BOTH").toUpperCase();
+    if (!["LONG", "SHORT", "BOTH"].includes(positionSide)) {
+        return { valid: false, error: "positionSide phải LONG, SHORT hoặc BOTH" };
+    }
+    const type = String(params.type || "").toUpperCase();
+    const allowed = ["MARKET", "LIMIT", "STOP", "STOP_MARKET", "TAKE_PROFIT", "TAKE_PROFIT_MARKET", "TRAILING_STOP_MARKET"];
+    if (!allowed.includes(type)) {
+        return { valid: false, error: `type không hỗ trợ: ${type || "(trống)"}` };
+    }
+    const closeAll = params.closePosition === true || params.closePosition === "true";
+    const qty = Number(params.quantity);
+    if (!closeAll && !(qty > 0)) {
+        return { valid: false, error: "quantity phải > 0 (hoặc bật closePosition)" };
+    }
+    if (type === "LIMIT" && !(Number(params.price) > 0)) {
+        return { valid: false, error: "LIMIT cần price > 0" };
+    }
+    if ((type === "STOP" || type === "TAKE_PROFIT") && !(Number(params.price) > 0)) {
+        return { valid: false, error: "STOP/TAKE_PROFIT cần price (limit) > 0" };
+    }
+    if (["STOP", "STOP_MARKET", "TAKE_PROFIT", "TAKE_PROFIT_MARKET"].includes(type)) {
+        const trigger = params.triggerPrice ?? (type.endsWith("_MARKET") ? params.price : null);
+        if (!(Number(trigger) > 0) && !(type.endsWith("_MARKET") && Number(params.price) > 0)) {
+            return { valid: false, error: "Cần triggerPrice > 0" };
+        }
+    }
+    if (type === "TRAILING_STOP_MARKET") {
+        const rate = Number(params.callbackRate);
+        if (!(rate >= 0.1 && rate <= 10)) {
+            return { valid: false, error: "callbackRate trailing phải 0.1–10" };
+        }
+    }
+    const kind = ALGO_CREATE_TYPES.has(type) ? "algo" : String(params.kind || "regular").toLowerCase();
+    return {
+        valid: true,
+        normalized: {
+            kind: kind === "algo" ? "algo" : "regular",
+            side,
+            positionSide,
+            type,
+            quantity: closeAll ? undefined : String(params.quantity),
+            price: params.price != null && params.price !== "" ? String(params.price) : undefined,
+            triggerPrice: params.triggerPrice != null && params.triggerPrice !== ""
+                ? String(params.triggerPrice)
+                : (type.endsWith("_MARKET") && params.price != null ? String(params.price) : undefined),
+            callbackRate: params.callbackRate != null && params.callbackRate !== "" ? String(params.callbackRate) : undefined,
+            reduceOnly: params.reduceOnly === true || params.reduceOnly === "true",
+            closePosition: closeAll,
+            workingType: params.workingType,
+            timeInForce: params.timeInForce || "GTC",
+        },
+    };
 }
 
 function validateOrderReplace(params) {
@@ -470,4 +532,5 @@ module.exports = {
     publicTradingCommand,
     hasActionPermission,
     checkTargetAccess,
+    validateOrderCreate,
 };
