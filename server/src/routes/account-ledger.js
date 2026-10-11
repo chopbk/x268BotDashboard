@@ -6,7 +6,12 @@ const { loadLedger, loadAssignedIncome, loadCombinedLedger, refreshLedger } = re
 const { createRateLimit } = require("../middleware/rate-limit");
 
 const router = express.Router();
-const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "ledger" });
+const refreshLimit = createRateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 4,
+    prefix: "ledger-refresh",
+    identify: (req) => String(req.webUser?.id || req.webUser?._id || req.webUser?.username || ""),
+});
 
 router.use(requireAuth, requirePermission(PERMISSIONS.STATISTICS_VIEW));
 

@@ -12,7 +12,7 @@
 | Provider Scorecard | SignalScorecardPanel → provider-scorecard → signal_infos + account_statics | provider-scorecard |
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
 | Số liệu lệnh/ví | account-statics / account-ledger / system-summary | account-statics, account-ledger, system-summary |
-| Position | PositionsPage → routes/positions → position-ws/live/cache → positions | positions |
+| Position / REST Binance | PositionsPage → routes/positions → position-live + binance-rest-queue → position-feed | positions, binance-rest-queue, position-sync |
 | AI/dashboard | DashboardPage → routes/dashboard → dashboard-ai/brief/dashboard | dashboard |
 | Lịch sử/Hệ thống | AuditLogsPage/SystemHealthPage → routes → lib → models | audit, runtime-logs, system-health |
 | Deploy | update.sh → deploy.sh → ecosystem.config.cjs → deploy/nginx*.conf | `npm run test:deploy` |

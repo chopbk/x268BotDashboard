@@ -60,10 +60,18 @@ async function main() {
         }));
         app.use(requireCsrf);
 
+        // Mutation nhạy cảm (config/trading/ledger…): 20 lần / phút / session — chặn spam thao tác.
         const sensitiveMutationLimit = createRateLimit({
             prefix: "sensitive",
             windowMs: 60 * 1000,
-            max: 60,
+            max: 20,
+            identify: (req) => req.cookies?.[config.cookieName],
+        });
+        // Trading đặt/huỷ lệnh: siết hơn — 12 lần / phút / session.
+        const tradingActionLimit = createRateLimit({
+            prefix: "trading-action",
+            windowMs: 60 * 1000,
+            max: 12,
             identify: (req) => req.cookies?.[config.cookieName],
         });
 
@@ -78,9 +86,9 @@ async function main() {
         app.use("/api/runtime-logs", require("./routes/runtime-logs"));
         app.use("/api/system-health", require("./routes/system-health"));
         app.use("/api/dashboard", require("./routes/dashboard"));
-        app.use("/api/positions", require("./routes/positions"));
-        app.use("/api/orders", require("./routes/orders"));
-        app.use("/api/trading", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/trading"));
+        app.use("/api/positions", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/positions"));
+        app.use("/api/orders", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/orders"));
+        app.use("/api/trading", (req, res, next) => req.method === "GET" ? next() : tradingActionLimit(req, res, next), require("./routes/trading"));
         app.use("/api/summary", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/summary"));
         app.use("/api/signal-history", require("./routes/signal-history"));
         app.use("/api/signal-config", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/signal-setup"));

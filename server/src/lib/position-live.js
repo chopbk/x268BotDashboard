@@ -124,18 +124,32 @@ async function loadFromBinance(account, current, { details = false } = {}) {
         return current;
     }
     const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
-    const { loadBinanceSnapshot } = require("./position-feed");
-    // Live = positionRisk + openOrders + algoOrders. Income/fills chỉ khi details=true (mở case / Cập nhật 1 account).
-    const loaded = await loadBinanceSnapshot(account, { liveOnly: !details });
+    const { loadBinanceSnapshot, loadBinanceHistoryDetails } = require("./position-feed");
+    // Live trước (position → orders → algo, hàng đợi chung). History tách + cache 3 phút.
+    const loaded = await loadBinanceSnapshot(account, { liveOnly: true });
     accountErrors.delete(account);
+    let income = current?.income || [];
+    let positionHistory = current?.positionHistory || [];
+    let trades = current?.trades || [];
+    if (details) {
+        try {
+            const hist = await loadBinanceHistoryDetails(account, {
+                positions: loaded.positions || [],
+            });
+            income = hist.income || [];
+            positionHistory = hist.positionHistory || [];
+            trades = hist.trades || [];
+        } catch (error) {
+            console.error("[loadFromBinance] history", account, error.message);
+        }
+    }
     const at = new Date().toISOString();
     const book = {
         ...(current || {}),
         ...loaded,
-        // liveOnly không trả income — giữ cache cũ nếu có
-        income: details ? (loaded.income || []) : (current?.income || []),
-        positionHistory: details ? (loaded.positionHistory || []) : (current?.positionHistory || []),
-        trades: details ? (loaded.trades || []) : (current?.trades || []),
+        income,
+        positionHistory,
+        trades,
         source: "exchange",
         status: "live",
         complete: true,

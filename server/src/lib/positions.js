@@ -434,7 +434,15 @@ function freshExchangeBook(snap, now = Date.now(), maxAge = EXCHANGE_MAX_AGE_MS)
     return book;
 }
 
-async function eachLimit(items, limit, fn) {
+/** Refresh nhiều account: mặc định 1 account/lượt, giãn 400ms giữa các account. */
+const EXCHANGE_ACCOUNT_CONCURRENCY = 1;
+const EXCHANGE_ACCOUNT_GAP_MS = 400;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function eachLimit(items, limit, fn, { gapMs = 0 } = {}) {
     const results = new Array(items.length);
     let next = 0;
     async function worker() {
@@ -442,6 +450,7 @@ async function eachLimit(items, limit, fn) {
             const index = next;
             next += 1;
             results[index] = await fn(items[index]);
+            if (gapMs > 0 && next < items.length) await sleep(gapMs);
         }
     }
     const width = Math.max(1, Math.min(limit, items.length));
@@ -769,14 +778,21 @@ async function loadPositions(actor, query = {}, deps = {}) {
         ? (force ? selected : selected.filter((name) => !books.has(name)))
         : [];
     if (needExchange.length) {
-        const fetched = await eachLimit(needExchange, 4, async (name) => {
-            try {
-                return { name, book: await deps.exchange(name) };
-            } catch (error) {
-                console.error("[loadPositions]", `${name} ${error.message}`);
-                return { name, error: error.message || "Không lấy được sổ sàn" };
-            }
-        });
+        const concurrency = Math.max(1, Number(deps.exchangeConcurrency) || EXCHANGE_ACCOUNT_CONCURRENCY);
+        const gapMs = Number(deps.exchangeGapMs);
+        const fetched = await eachLimit(
+            needExchange,
+            concurrency,
+            async (name) => {
+                try {
+                    return { name, book: await deps.exchange(name) };
+                } catch (error) {
+                    console.error("[loadPositions]", `${name} ${error.message}`);
+                    return { name, error: error.message || "Không lấy được sổ sàn" };
+                }
+            },
+            { gapMs: Number.isFinite(gapMs) ? gapMs : EXCHANGE_ACCOUNT_GAP_MS }
+        );
         for (const item of fetched) {
             const book = asExchangeBook(item.book);
             if (book) {
@@ -985,6 +1001,9 @@ async function deleteMonitorRecord(actor, id, deps = {}) {
 module.exports = {
     HEARTBEAT_MS,
     EXCHANGE_MAX_AGE_MS,
+    EXCHANGE_ACCOUNT_CONCURRENCY,
+    EXCHANGE_ACCOUNT_GAP_MS,
+    eachLimit,
     buildPositionView,
     applyLiveMarks,
     filterRows,

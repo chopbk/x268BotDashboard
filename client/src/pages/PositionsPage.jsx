@@ -797,7 +797,7 @@ export default function PositionsPage() {
       <header className="pos-header-row">
         <div>
           <h1>Position</h1>
-          <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). PnL ghi nhận lấy từ income Binance lúc mở trang và lúc bấm Cập nhật sàn. Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
+          <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). Cập nhật sàn chỉ lấy sổ live (position → orders), lần lượt từng account. PnL ghi nhận / income / trades tải khi mở Chi tiết (cache vài phút). Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
         </div>
         {canOpen && tab === "open" ? (
           <button type="button" className="pos-tpsl-confirm" onClick={() => askOpenTrade()}>Mở position</button>

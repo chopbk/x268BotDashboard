@@ -9,8 +9,24 @@ const { loadPositionCase, reconcilePositionCase } = require("../lib/position-cas
 const { listPositionHistory, getPositionHistory } = require("../lib/position-history");
 const { safeRecordAudit } = require("../lib/audit");
 const { readExchangeBook, readExchangeBooks, reconcile, cached } = require("../lib/position-live");
-const refreshLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 6, prefix: "positions" });
-const caseReconcileLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 20, prefix: "positions-case" });
+function actorKey(req) {
+    return String(req.webUser?.id || req.webUser?._id || req.webUser?.username || "");
+}
+
+/** Cập nhật sàn: 4 lần / 10 phút / user (chặn spam refresh Tất cả). */
+const refreshLimit = createRateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 4,
+    prefix: "positions-refresh",
+    identify: actorKey,
+});
+/** Case reconcile (có thể kéo history): 8 lần / 10 phút / user. */
+const caseReconcileLimit = createRateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 8,
+    prefix: "positions-case",
+    identify: actorKey,
+});
 const { markOf } = require("../lib/mark-prices");
 const UserAccount = require("../models/user-account");
 const MonitorPosition = require("../models/monitor-position");
@@ -47,12 +63,11 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
             refresh: "1",
             mode: "full",
         };
-        // Nhiều account: chỉ live. 1 account: kèm income/fills (details).
-        const details = Boolean(account);
+        // Refresh luôn live-only (position → orders). History/income khi mở Chi tiết / case reconcile.
         res.json(await loadPositions(req.webUser, query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            exchange: (name) => reconcile(name, { force: true, details, viaMqtt: false }),
+            exchange: (name) => reconcile(name, { force: true, details: false, viaMqtt: false }),
             priceOf: markOf,
         }));
     } catch (error) {

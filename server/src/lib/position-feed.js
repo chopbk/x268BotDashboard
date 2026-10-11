@@ -1,5 +1,6 @@
 const { httpError } = require("./http");
 const { createBinanceFutures } = require("./binance-futures");
+const { enqueueBinanceRest, sleep } = require("./binance-rest-queue");
 
 const PRIVATE_EVENTS = "ACCOUNT_UPDATE,ORDER_TRADE_UPDATE,ALGO_UPDATE,listenKeyExpired";
 const POLL_MS = 15 * 1000;
@@ -419,12 +420,69 @@ function resetExchangeCache() {
     exchangeCache.clear();
 }
 
-async function loadFillHistory(client, positions) {
-    const startTime = Date.now() - 3 * 24 * 60 * 60 * 1000;
+const HISTORY_CACHE_MS = 3 * 60 * 1000;
+const HISTORY_SYMBOL_GAP_MS = 350;
+const historyCache = new Map();
+
+function resetHistoryCacheForTests() {
+    historyCache.clear();
+}
+
+async function signedGetQueued(client, path, params = {}, { weight = 1 } = {}) {
+    return enqueueBinanceRest(() => client.signedGet(path, params), { weight });
+}
+
+/**
+ * Lịch sử phân tích (income / positionHistory / userTrades).
+ * Cache 3 phút; giãn từng symbol. Không dùng cho sổ live.
+ */
+async function loadBinanceHistoryDetails(account, { positions = null, force = false } = {}) {
+    const key = String(account || "").trim();
+    if (!key) throw httpError(400, "Thiếu account");
+    const now = Date.now();
+    if (!force) {
+        const hit = historyCache.get(key);
+        if (hit && now - hit.at < HISTORY_CACHE_MS) return hit.data;
+    }
+
+    const client = await binanceClient(key);
+    const startTime = now - 3 * 24 * 60 * 60 * 1000;
+
+    let openPositions = Array.isArray(positions) ? positions : null;
+    if (!openPositions) {
+        const raw = await signedGetQueued(client, "/fapi/v2/positionRisk", {}, { weight: 5 });
+        if (!Array.isArray(raw)) throw new Error("Sổ vị thế sàn không hợp lệ");
+        openPositions = raw.filter((row) => Math.abs(num(row.positionAmt)) > 0);
+    }
+
+    let income = [];
+    try {
+        const incomeRaw = await signedGetQueued(
+            client,
+            "/fapi/v1/income",
+            { startTime, limit: 1000 },
+            { weight: 30 }
+        );
+        income = (Array.isArray(incomeRaw) ? incomeRaw : []).map((row) => ({
+            symbol: row.symbol,
+            incomeType: row.incomeType,
+            income: row.income,
+            time: row.time,
+        }));
+    } catch (error) {
+        if (error.status === 429) throw error;
+        console.error("[loadBinanceHistoryDetails]", key, error.message);
+    }
+
     let history = [];
     try {
-        const raw = await client.signedGet("/fapi/v1/positionHistory", { startTime, limit: 100 });
-        const rows = Array.isArray(raw) ? raw : (raw?.rows || raw?.list || []);
+        const raw = await signedGetQueued(
+            client,
+            "/fapi/v1/positionHistory",
+            { startTime, limit: 100 },
+            { weight: 5 }
+        );
+        const rows = Array.isArray(raw) ? raw : raw?.rows || raw?.list || [];
         history = rows.map((row) => ({
             symbol: row.symbol,
             positionSide: row.positionSide,
@@ -438,13 +496,27 @@ async function loadFillHistory(client, positions) {
         }));
     } catch (error) {
         if (error.status === 429) throw error;
-        console.error("[loadBinanceSnapshot]", error.message);
+        console.error("[loadBinanceHistoryDetails]", key, error.message);
     }
-    const symbols = [...new Set((positions || []).map((row) => String(row.symbol || "").toUpperCase()).filter(Boolean))].slice(0, 15);
+
+    const symbols = [
+        ...new Set(
+            (openPositions || [])
+                .map((row) => String(row.symbol || "").toUpperCase())
+                .filter(Boolean)
+        ),
+    ].slice(0, 15);
     const trades = [];
-    for (const symbol of symbols) {
+    for (let i = 0; i < symbols.length; i += 1) {
+        const symbol = symbols[i];
+        if (i > 0) await sleep(HISTORY_SYMBOL_GAP_MS);
         try {
-            const rows = await client.signedGet("/fapi/v1/userTrades", { symbol, startTime, limit: 1000 });
+            const rows = await signedGetQueued(
+                client,
+                "/fapi/v1/userTrades",
+                { symbol, startTime, limit: 1000 },
+                { weight: 5 }
+            );
             if (!Array.isArray(rows)) continue;
             for (const row of rows) {
                 trades.push({
@@ -460,44 +532,51 @@ async function loadFillHistory(client, positions) {
             }
         } catch (error) {
             if (error.status === 429) throw error;
-            console.error("[loadBinanceSnapshot]", `${symbol} ${error.message}`);
+            console.error("[loadBinanceHistoryDetails]", `${key} ${symbol} ${error.message}`);
         }
     }
-    return { history, trades };
+
+    const data = { income, positionHistory: history, trades, at: new Date(now).toISOString() };
+    historyCache.set(key, { at: now, data });
+    return data;
 }
 
-async function loadBinanceSnapshot(account, { liveOnly = false } = {}) {
+/**
+ * Sổ live: positionRisk trước, rồi openOrders, rồi openAlgoOrders.
+ * Mỗi call đi hàng đợi chung (1 request toàn process). Không kéo income/history.
+ */
+async function loadBinanceSnapshot(account, { liveOnly = true } = {}) {
     const client = await binanceClient(account);
-    const [positions, openOrders, algoRaw, incomeRaw] = await Promise.all([
-        client.signedGet("/fapi/v2/positionRisk"),
-        client.signedGet("/fapi/v1/openOrders"),
-        client.signedGet("/fapi/v1/openAlgoOrders").catch((error) => {
-            if (error.status === 429) throw error;
-            console.error("[loadBinanceSnapshot]", error.message);
-            return [];
-        }),
-        liveOnly ? [] : client.signedGet("/fapi/v1/income", { startTime: Date.now() - 3 * 24 * 60 * 60 * 1000, limit: 1000 }).catch((error) => {
-            if (error.status === 429) throw error;
-            console.error("[loadBinanceSnapshot]", error.message);
-            return [];
-        }),
-    ]);
+
+    const positions = await signedGetQueued(client, "/fapi/v2/positionRisk", {}, { weight: 5 });
     if (!Array.isArray(positions)) throw new Error("Sổ vị thế sàn không hợp lệ");
     const openPositions = positions.filter((row) => Math.abs(num(row.positionAmt)) > 0);
-    const fills = liveOnly ? { history: [], trades: [] } : await loadFillHistory(client, openPositions);
-    if (liveOnly) return { positions: openPositions, openOrders: Array.isArray(openOrders) ? openOrders : [], algoOrders: Array.isArray(algoRaw) ? algoRaw : (algoRaw?.orders || []) };
-    return {
+
+    const openOrders = await signedGetQueued(client, "/fapi/v1/openOrders", {}, { weight: 1 });
+    let algoRaw = [];
+    try {
+        algoRaw = await signedGetQueued(client, "/fapi/v1/openAlgoOrders", {}, { weight: 1 });
+    } catch (error) {
+        if (error.status === 429) throw error;
+        console.error("[loadBinanceSnapshot]", error.message);
+        algoRaw = [];
+    }
+
+    const live = {
         positions: openPositions,
         openOrders: Array.isArray(openOrders) ? openOrders : [],
-        algoOrders: Array.isArray(algoRaw) ? algoRaw : (algoRaw?.orders || []),
-        income: (Array.isArray(incomeRaw) ? incomeRaw : []).map((row) => ({
-            symbol: row.symbol,
-            incomeType: row.incomeType,
-            income: row.income,
-            time: row.time,
-        })),
-        positionHistory: fills.history,
-        trades: fills.trades,
+        algoOrders: Array.isArray(algoRaw) ? algoRaw : algoRaw?.orders || [],
+    };
+
+    // liveOnly mặc định true. details=false path cũ vẫn có thể gọi liveOnly:false → history tách riêng + cache.
+    if (liveOnly) return live;
+
+    const details = await loadBinanceHistoryDetails(account, { positions: openPositions });
+    return {
+        ...live,
+        income: details.income,
+        positionHistory: details.positionHistory,
+        trades: details.trades,
     };
 }
 
@@ -550,8 +629,11 @@ module.exports = {
     createPositionHub,
     getPositionHub,
     loadBinanceSnapshot,
+    loadBinanceHistoryDetails,
     loadExchangeBook,
     resetExchangeCache,
+    resetHistoryCacheForTests,
+    HISTORY_CACHE_MS,
     applyAccountUpdate,
     applyOrderUpdate,
     applyMark,
