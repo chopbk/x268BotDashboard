@@ -114,6 +114,8 @@ function openSocket(ws, user, deps = {}) {
                     const view = await load(await actor(), viewQuery, {
                         snapshot: source.readExchangeBook,
                         snapshots: source.readExchangeBooks,
+                        // Thiếu sổ Redis → lấy positionRisk (gồm cả vị thế không có monitor)
+                        exchange: (name) => source.reconcile(name, { force: false }),
                         priceOf: markOf,
                     });
                     if (epoch === generation) {

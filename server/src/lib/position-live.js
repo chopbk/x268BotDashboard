@@ -117,6 +117,24 @@ async function reconcileViaMqtt(account, current) {
     return refreshed || current;
 }
 
+async function loadFromBinance(account, current, { details = false } = {}) {
+    const cachedError = accountErrors.get(account);
+    if (cachedError && Date.now() < cachedError.until) {
+        console.warn("[positionReconcile]", account, "skipping Binance (cached error):", cachedError.message);
+        return current;
+    }
+    const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
+    const { loadBinanceSnapshot } = require("./position-feed");
+    const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });
+    accountErrors.delete(account);
+    const at = new Date().toISOString();
+    const book = { ...current, ...loaded, source: "exchange", status: "live", complete: true, stale: false, at, reconciledAt: at };
+    if (reader?.isReady) return await saveExchangeBook(account, book, expected) || current;
+    const stored = { ...book, version: null };
+    localBooks.set(account, stored);
+    return stored;
+}
+
 async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_MS, details = false, viaMqtt = true } = {}) {
     if (pendingRefresh.has(account)) return pendingRefresh.get(account);
     const job = (async () => {
@@ -155,32 +173,13 @@ async function reconcile(account, { force = false, maxAgeMs = EXCHANGE_REFRESH_M
                         console.log("[positionReconcile]", account, "using MQTT");
                         return await reconcileViaMqtt(account, current);
                     } catch (mqttError) {
-                        // MQTT fail (timeout hoặc không có binance-bot) → trả về data cũ, không fallback Binance
-                        console.warn("[positionReconcile]", account, "MQTT failed, using cached:", mqttError.message);
-                        return current;
+                        // MQTT fail (timeout / chưa có handler) → fallback Binance để vẫn thấy position no-monitor
+                        console.warn("[positionReconcile]", account, "MQTT failed, falling back to Binance:", mqttError.message);
                     }
                 }
             }
 
-            // Check cached error cho account (tránh spam khi API key lỗi)
-            const cachedError = accountErrors.get(account);
-            if (cachedError && Date.now() < cachedError.until) {
-                console.debug("[positionReconcile]", account, "skipping (cached error)");
-                return current;
-            }
-
-            // Fallback: gọi trực tiếp Binance (chỉ khi MQTT không available)
-            const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
-            const { loadBinanceSnapshot } = require("./position-feed");
-            const loaded = await loadBinanceSnapshot(account, { liveOnly: !(details || !current?.income) });
-            // Thành công: xóa cached error
-            accountErrors.delete(account);
-            const at = new Date().toISOString();
-            const book = { ...current, ...loaded, source: "exchange", status: "live", complete: true, stale: false, at, reconciledAt: at };
-            if (reader?.isReady) return await saveExchangeBook(account, book, expected) || current;
-            const stored = { ...book, version: null };
-            localBooks.set(account, stored);
-            return stored;
+            return await loadFromBinance(account, current, { details });
         } catch (error) {
             console.error("[positionReconcile]", account, error.message);
             // Rate limit 429: global cooldown

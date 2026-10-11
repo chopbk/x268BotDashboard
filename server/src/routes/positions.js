@@ -23,7 +23,7 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), asyn
         res.json(await loadPositions(req.webUser, req.query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            exchange: (name) => reconcile(name, { force: req.query.refresh === "1" }),
+            exchange: (name) => reconcile(name, { force: req.query.refresh === "1", viaMqtt: false }),
             priceOf: markOf,
         }));
     } catch (error) {
@@ -43,7 +43,8 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
         res.json(await loadPositions(req.webUser, query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            exchange: (name) => reconcile(name, { force: true, details: true }),
+            // Nút "Cập nhật sàn": gọi Binance trực tiếp (đủ position no-monitor)
+            exchange: (name) => reconcile(name, { force: true, details: true, viaMqtt: false }),
             priceOf: markOf,
         }));
     } catch (error) {
