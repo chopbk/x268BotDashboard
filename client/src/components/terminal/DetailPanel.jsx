@@ -3,7 +3,7 @@ import OrderTicket from "../OrderTicket";
 import PositionCasePanel from "../PositionCasePanel";
 import { closePreview, openPreview } from "../../trade-preview";
 import { qtyOf } from "../../position-sort";
-import { CLOSE_PERCENTS, fmt, numInput, pnlClass, qtyAtPercent, when, exchangeTpsl, monitorTpsl } from "./format.js";
+import { CLOSE_PERCENTS, fmt, numInput, pnlClass, qtyAtPercent, exchangeTpsl, monitorTpsl } from "./format.js";
 import { protectionStatus } from "./protection.js";
 import { ownershipView } from "./summary.js";
 import PreviewBlock from "./PreviewBlock.jsx";
@@ -38,10 +38,8 @@ export default function DetailPanel({
   onReverseRequest,
   onDirtyChange,
   onClosePanel,
-  width,
   overlay,
 }) {
-  const [caseOpen, setCaseOpen] = useState(false);
   const [tradeMode, setTradeMode] = useState("close"); // close | open | protect | advanced
   const [closeForm, setCloseForm] = useState(() => defaultClose(row));
   const [openForm, setOpenForm] = useState(() => defaultOpen(row, accounts));
@@ -53,15 +51,10 @@ export default function DetailPanel({
     onDirtyChange?.(false);
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (panelTab === "orders" || panelTab === "monitor" || panelTab === "timeline") {
-      setCaseOpen(true);
-    }
-  }, [panelTab]);
 
   if (!row) {
     return (
-      <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`} style={overlay ? undefined : { width }}>
+      <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`} >
         <div className="term-panel-empty muted">Chọn một vị thế để xem chi tiết và đặt lệnh.</div>
       </aside>
     );
@@ -76,7 +69,7 @@ export default function DetailPanel({
   }
 
   return (
-    <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`} style={overlay ? undefined : { width }} aria-label="Panel chi tiết">
+    <aside className={`term-panel ${overlay ? "term-panel-overlay" : ""}`}  aria-label="Panel chi tiết">
       <header className="term-panel-head">
         <div>
           <h2>{row.symbol} <span className={`term-side term-side-${String(row.side).toLowerCase()}`}>{row.side}</span></h2>
@@ -119,7 +112,7 @@ export default function DetailPanel({
             {own.allocation === "under" ? <p className="muted">Leftover ~{fmt(own.leftover)} chưa gán monitor (không tự gán config).</p> : null}
             {own.allocation === "unassigned" ? <p className="muted">Qty sàn chưa có monitor.</p> : null}
             <MutationStatus phase={mutation?.phase} message={mutation?.message} requestId={mutation?.requestId} exchangeStatus={mutation?.exchangeStatus} />
-            <button type="button" onClick={() => setCaseOpen(true)}>Mở case đầy đủ (reconcile / orders)</button>
+            <button type="button" onClick={() => onPanelTab("monitor")}>Xem monitor & phân bổ</button>
           </section>
         ) : null}
 
@@ -293,41 +286,19 @@ export default function DetailPanel({
           <p className="muted">Cần quyền orders.view để xem lệnh liên quan.</p>
         ) : null}
 
-        {(panelTab === "orders" || panelTab === "monitor" || panelTab === "timeline") ? (
-          <section className="term-panel-section stack">
-            <p className="muted">
-              {panelTab === "orders" ? "Lệnh thường/algo — mở case để huỷ/sửa/thêm." : null}
-              {panelTab === "monitor" ? "Monitor: qty riêng, share, TP/SL dự kiến, heartbeat." : null}
-              {panelTab === "timeline" ? "Timeline quyết định monitor (không phải toàn bộ lịch sử đời vị thế)." : null}
-            </p>
-            {(row.monitors || []).length ? (
-              <ul className="term-monitor-list">
-                {(row.monitors || []).map((m) => (
-                  <li key={m.id}>
-                    <button type="button" className={monitorId === m.id ? "active" : "ghost"} onClick={() => onSelectMonitor(m.id)}>
-                      {m.env || "config"} · {m.signal || "—"} · own {fmt(m.ownQty)} · {m.watching ? "HP ok" : "mất HP"}
-                    </button>
-                    <span className="muted">SL {m.sl || "—"} / TP {m.tp || "—"} · mở {when(m.openedAt)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">Không có monitor.</p>
-            )}
-            <button type="button" onClick={() => setCaseOpen(true)}>Mở case đầy đủ</button>
-          </section>
+        {["orders", "monitor", "timeline"].includes(panelTab) && (panelTab !== "orders" || canOrders) ? (
+          <PositionCasePanel
+            key={`${row.key}|${audience}`}
+            embedded
+            section={panelTab}
+            row={row}
+            audience={audience}
+            selectedMonitorId={monitorId}
+            onSelectMonitor={onSelectMonitor}
+          />
         ) : null}
       </div>
 
-      {caseOpen ? (
-        <PositionCasePanel
-          row={row}
-          audience={audience}
-          selectedMonitorId={monitorId}
-          onSelectMonitor={onSelectMonitor}
-          onClose={() => setCaseOpen(false)}
-        />
-      ) : null}
     </aside>
   );
 }

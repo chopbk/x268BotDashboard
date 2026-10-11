@@ -26,7 +26,7 @@ import {
 import { matches, normalizeTab, bookForApi } from "../components/terminal/matches.js";
 import { buildSummary } from "../components/terminal/summary.js";
 import { needsAttention } from "../components/terminal/protection.js";
-import { loadPrefs, savePrefs, clampPanelWidth, DEFAULT_COLUMNS, rowMatchesSavedView } from "../components/terminal/prefs.js";
+import { loadPrefs, savePrefs, DEFAULT_COLUMNS, rowMatchesSavedView } from "../components/terminal/prefs.js";
 import { usePositionsFeed } from "../components/terminal/usePositionsFeed.js";
 import { CLOSE_PERCENTS, newIdempotencyKey, numInput, when } from "../components/terminal/format.js";
 
@@ -63,7 +63,7 @@ export default function TerminalPage() {
   const [notifyReady, setNotifyReady] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted");
   const [historyAccounts, setHistoryAccounts] = useState([]);
   const [dirty, setDirty] = useState(false);
-  const [overlay, setOverlay] = useState(() => typeof window !== "undefined" && window.innerWidth < 1440);
+  const [overlay, setOverlay] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
 
   const [closeConfirm, setCloseConfirm] = useState(null);
   const [closing, setClosing] = useState(false);
@@ -85,7 +85,7 @@ export default function TerminalPage() {
 
   useEffect(() => {
     function onResize() {
-      setOverlay(window.innerWidth < 1440);
+      setOverlay(window.innerWidth < 768);
     }
     onResize();
     window.addEventListener("resize", onResize);
@@ -183,12 +183,12 @@ export default function TerminalPage() {
   function selectRow(key, opts = {}) {
     if (dirty && selected && selected !== key && !window.confirm("Form chưa gửi — đổi vị thế?")) return;
     setDirty(false);
-    if (opts.monitorId) setMonitorId(opts.monitorId);
+    setMonitorId(opts.monitorId || "");
     go((q) => {
       q.set("selected", key);
       q.delete("panel");
       if (opts.panelTab) q.set("panelTab", opts.panelTab);
-      else if (!q.get("panelTab")) q.set("panelTab", "overview");
+      else q.set("panelTab", "overview");
     }, { layer: true });
     if (!prefs.panelOpen) {
       const next = { ...prefs, panelOpen: true };
@@ -782,16 +782,6 @@ export default function TerminalPage() {
             </label>
           ))}
           <label>
-            Rộng panel
-            <input
-              type="range"
-              min={360}
-              max={560}
-              value={prefs.panelWidth}
-              onChange={(e) => updatePrefs({ panelWidth: clampPanelWidth(e.target.value) })}
-            />
-          </label>
-          <label>
             <input type="checkbox" checked={prefs.panelOpen !== false} onChange={(e) => updatePrefs({ panelOpen: e.target.checked })} />
             Hiện panel
           </label>
@@ -821,7 +811,6 @@ export default function TerminalPage() {
           <TerminalSummary summary={summary} bookLabel={bookLabel} />
           <div
             className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""}`}
-            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth}px` } : undefined}
           >
             <div className="term-main">
               {!payload ? (
@@ -880,6 +869,7 @@ export default function TerminalPage() {
             </div>
             {showPanel ? (
               <DetailPanel
+                key={`${selectedRow.key}|${audience}`}
                 row={selectedRow}
                 audience={audience}
                 panelTab={panelTab}
@@ -899,7 +889,6 @@ export default function TerminalPage() {
                 onReverseRequest={askReverse}
                 onDirtyChange={setDirty}
                 onClosePanel={closePanel}
-                width={prefs.panelWidth}
                 overlay={overlay}
               />
             ) : null}

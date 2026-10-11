@@ -45,7 +45,7 @@ function monitorHasContent(monitor) {
   return s.mfe != null || s.mae != null || s.maxProfit != null || (s.slMoves || 0) > 0;
 }
 
-export default function PositionCasePanel({ row, audience, onClose, selectedMonitorId, onSelectMonitor, onChanged }) {
+export default function PositionCasePanel({ row, audience, onClose, selectedMonitorId, onSelectMonitor, onChanged, embedded = false, section = "all" }) {
   const { user } = useAuth();
   const canCancel = (user?.permissions || []).includes("orders.cancel");
   const canCreate = (user?.permissions || []).includes("orders.create");
@@ -284,24 +284,26 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
   const openOrders = useMemo(() => orderRows(caseBody?.protective), [caseBody]);
   const history = caseBody?.orderHistory || [];
 
+  const visible = (name) => !embedded || section === "all" || section === name;
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card stack pos-case-panel" role="dialog" aria-modal="true" aria-labelledby="pos-case-title" onClick={(event) => event.stopPropagation()}>
+    <div className={embedded ? "term-case-inline" : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
+      <div className={embedded ? "stack term-case-content" : "modal-card stack pos-case-panel"} role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : "true"} aria-labelledby="pos-case-title" onClick={(event) => event.stopPropagation()}>
         <header>
-          <h2 id="pos-case-title">{row.account} · {row.symbol} · {row.side}</h2>
+          <h2 id="pos-case-title">{embedded ? ({ orders: "Lệnh liên quan", monitor: "Monitor & phân bổ", timeline: "Timeline quyết định" }[section] || "Chi tiết") : `${row.account} · ${row.symbol} · ${row.side}`}</h2>
           <div className="pos-inline">
             <button type="button" className="ghost" disabled={loading || reconciling} onClick={() => load({ autoOrders: false })}>Tải lại</button>
             <button type="button" className="pos-tpsl-confirm" disabled={reconciling || loading} onClick={reconcile}>
               {reconciling ? "Đang reconcile…" : "Reconcile an toàn"}
             </button>
-            <button type="button" onClick={onClose}>Đóng</button>
+            {!embedded ? <button type="button" onClick={onClose}>Đóng</button> : null}
           </div>
         </header>
 
-        <p className="muted">
+        {!embedded ? <p className="muted">
           Chi tiết vị thế: sổ sàn, order (huỷ/sửa/thêm), ownership monitor đang mở, lịch sử order.
           Reconcile chỉ refresh Binance REST — không đóng vị thế.
-        </p>
+        </p> : null}
 
         {error ? <p className="form-error">{error}</p> : null}
         {note ? <p className="form-ok">{note}</p> : null}
@@ -309,7 +311,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
 
         {caseBody ? (
           <>
-            <section className="pos-case-grid">
+            {visible("overview") ? <section className="pos-case-grid">
               <article>
                 <h3>Sàn</h3>
                 <ul className="pos-case-list">
@@ -339,9 +341,9 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                   <li>Heartbeat: {caseBody.heartbeat?.ok ? "OK" : "yếu/mất"}</li>
                 </ul>
               </article>
-            </section>
+            </section> : null}
 
-            <section className="pos-case-orders">
+            {visible("orders") ? <section className="pos-case-orders">
               <h3>Order sàn đang mở</h3>
               <p className="muted">{openOrders.filter((o) => o.kind !== "algo").length} thường · {openOrders.filter((o) => o.kind === "algo").length} algo</p>
               <div className="table-wrap">
@@ -469,9 +471,18 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                   </tbody>
                 </table>
               </div>
-            </section>
+            </section> : null}
 
-            {ownership.length ? (
+            {embedded && (section === "monitor" || section === "timeline") && monitors.length ? (
+              <label>Monitor
+                <select value={selected?.id || ""} onChange={(event) => onSelectMonitor?.(event.target.value)}>
+                  {monitors.map((item) => <option key={item.id} value={item.id}>{item.env || "Config"} · {item.signal || item.type || "—"}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {embedded && (section === "monitor" || section === "timeline") && !monitors.length ? <p className="muted">Không có monitor cho vị thế này.</p> : null}
+
+            {visible("monitor") && ownership.length ? (
               <section>
                 <h3>Config sở hữu quantity</h3>
                 <div className="table-wrap">
@@ -511,7 +522,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
               </section>
             ) : null}
 
-            {showMonitor ? (
+            {visible("monitor") && showMonitor ? (
               <section className="pos-case-monitor">
                 <h3>Monitor {selected.env} · {selected.signal || selected.type || "—"}</h3>
                 <div className="pos-case-grid">
@@ -542,7 +553,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
               </section>
             ) : null}
 
-            <section>
+            {visible("orders") ? <section>
               <h3>Lịch sử order (7 ngày)</h3>
               <div className="table-wrap">
                 <table className="pos-table orders-table">
@@ -575,9 +586,11 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                   </tbody>
                 </table>
               </div>
-            </section>
+            </section> : null}
 
-            {showMonitor && (selected.timeline || []).length ? (
+            {embedded && section === "timeline" && selected && !(selected.timeline || []).length ? <p className="muted">Monitor này chưa có sự kiện timeline.</p> : null}
+            {embedded && section === "monitor" && selected && !showMonitor ? <p className="muted">Monitor chưa có thống kê hoặc lệnh dự kiến.</p> : null}
+            {visible("timeline") && showMonitor && (selected.timeline || []).length ? (
               <section className="pos-case-monitor">
                 <h3>Timeline quyết định monitor</h3>
                 <ol className="pos-case-timeline">

@@ -1,6 +1,8 @@
 # Spec menu Terminal — workspace giao dịch mới
 
-Ngày: 2026-10-12. Trạng thái: **R1 đã triển khai** (`/terminal`, `TerminalPage` + `components/terminal/`). R2/R3 chưa làm. Menu `/positions` giữ nguyên.
+Ngày: 2026-10-12. Trạng thái: **R1 đã có implementation, còn gap nghiệm thu** (`/terminal`, `TerminalPage` + `components/terminal/`). R2/R3 chưa làm. Menu `/positions` giữ nguyên. Xem [review implementation](terminal-review.md).
+
+Điều chỉnh UX theo phản hồi người dùng: từ 768px, chi tiết nằm dưới bảng và dùng toàn chiều ngang, thay cho panel cạnh phải tại mục 3.1; dưới 768px giữ drawer toàn màn hình. Lệnh/Monitor/Timeline hiển thị inline, không tự mở case modal. Tùy chọn đổi độ rộng panel không còn áp dụng. Những yêu cầu khác vẫn giữ.
 
 ## 1. Mục tiêu và phạm vi
 

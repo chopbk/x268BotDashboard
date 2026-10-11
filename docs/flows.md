@@ -58,6 +58,8 @@ Phân biệt mode new/replace/sync. User xem được nguồn chưa chắc sửa
 
 `PositionsPage` (`/positions`) và `TerminalPage` (`/terminal`) dùng chung REST/WS/refresh/case/trading. Terminal thêm URL `tab=positions|open-orders|…`, `selected`, `panelTab`, `book=live` (adapter → API không gửi book), preferences localStorage namespace Terminal. Không có pipeline trading thứ hai.
 
+Terminal DetailPanel → PositionCasePanel với `embedded` + `section=orders|monitor|timeline` → API case/reconcile hiện hành. Chuyển ba tab giữ case đang tải và chỉ đổi phần render; đổi vị thế/audience remount case để không hiện dữ liệu của context cũ. Position cũ không truyền `embedded`, giữ modal đầy đủ. Desktop/tablet hiển thị chi tiết dưới bảng; mobile dùng drawer.
+
 ```mermaid
 flowchart TD
     Page[PositionsPage / TerminalPage] --> Fast[GET /api/positions?mode=fast]
