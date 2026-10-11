@@ -39,7 +39,7 @@ Mục tiêu không phải sao chép mọi màn hình Binance. Phiên bản đầ
 
 - `POST /api/positions/monitors` chỉ tạo Mongo monitor, không mở lệnh sàn.
 - `DELETE /api/positions/monitors/:id` chỉ xóa bản ghi, không đóng vị thế.
-- UI Market/Limit/Reverse hiện chỉ là draft/thông báo.
+- UI đóng Market/Limit đã có ô giá + volume và gọi API; Reverse vẫn là draft/thông báo.
 - Chưa có typed trading action qua bridge.
 - Chưa có tab Orders độc lập và order history bền vững.
 - Chưa có contract thay thế order an toàn.

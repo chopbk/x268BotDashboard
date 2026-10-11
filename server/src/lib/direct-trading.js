@@ -132,13 +132,16 @@ async function closePositionDirect(target, params) {
     const isLong = parseFloat(position.positionAmt) > 0;
     const closeSide = isLong ? "SELL" : "BUY";
 
+    const posSide = position.positionSide || "BOTH";
     const orderParams = {
         symbol,
         side: closeSide,
-        positionSide: position.positionSide || "BOTH",
+        positionSide: posSide,
         type: orderType || "MARKET",
         quantity: String(closeQty),
     };
+    // One-way cần reduceOnly; hedge mode (LONG/SHORT) không gửi field này.
+    if (posSide === "BOTH") orderParams.reduceOnly = "true";
 
     if (orderType === "LIMIT" && price) {
         orderParams.price = String(price);

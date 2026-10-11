@@ -58,7 +58,7 @@ function matches(row, params) {
   return true;
 }
 
-const ACTION_NOTE = "Market, Limit, Reverse và thêm TP/SL chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
+const ACTION_NOTE = "Reverse và thêm TP/SL chưa gửi lệnh lên sàn. Xoá monitor chỉ xoá bản ghi.";
 
 function tpslText(row) {
   const monitors = row.monitors || [];
@@ -66,6 +66,19 @@ function tpslText(row) {
   const tp = monitors.map((monitor) => monitor.tp).find(Boolean);
   if (!sl && !tp) return monitors.length ? "Chưa có TP/SL" : "—";
   return `TP ${tp || "—"} / SL ${sl || "—"}`;
+}
+
+function numInput(value) {
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return String(n);
+}
+
+function closeFormOf(forms, row) {
+  const current = forms[row.key];
+  if (current) return current;
+  return { price: numInput(row.mark), qty: numInput(qtyOf(row)) };
 }
 
 export default function PositionsPage() {
@@ -93,6 +106,9 @@ export default function PositionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [sort, setSort] = useState({ key: "", dir: "desc" });
   const [actionNote, setActionNote] = useState("");
+  const [closeForms, setCloseForms] = useState({});
+  const [closeConfirm, setCloseConfirm] = useState(null);
+  const [closing, setClosing] = useState(false);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [historyAccounts, setHistoryAccounts] = useState([]);
@@ -332,6 +348,79 @@ export default function PositionsPage() {
     });
   }
 
+  function patchCloseForm(row, patch) {
+    setCloseForms((prev) => ({
+      ...prev,
+      [row.key]: { ...closeFormOf(prev, row), ...patch },
+    }));
+  }
+
+  function askClose(row, orderType) {
+    if (!canClose) {
+      setError("Thiếu quyền positions.close");
+      return;
+    }
+    const form = closeFormOf(closeForms, row);
+    const qty = Number(form.qty);
+    const price = Number(form.price);
+    const fullQty = Number(qtyOf(row));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError("Số lượng đóng phải > 0");
+      return;
+    }
+    if (Number.isFinite(fullQty) && qty > fullQty + 1e-12) {
+      setError(`Số lượng đóng không được vượt position (${numInput(fullQty)})`);
+      return;
+    }
+    if (orderType === "LIMIT" && (!Number.isFinite(price) || price <= 0)) {
+      setError("Limit close cần giá > 0");
+      return;
+    }
+    const quantityMode = Number.isFinite(fullQty) && Math.abs(qty - fullQty) < 1e-10 ? "ALL" : "QUANTITY";
+    setError("");
+    setCloseConfirm({
+      account: row.account,
+      symbol: row.symbol,
+      positionSide: row.side,
+      orderType,
+      quantityMode,
+      quantity: String(qty),
+      price: orderType === "LIMIT" ? String(price) : undefined,
+      mark: row.mark,
+      fullQty,
+    });
+  }
+
+  async function submitClose() {
+    if (!closeConfirm || closing) return;
+    setClosing(true);
+    try {
+      const body = {
+        username: closeConfirm.account,
+        symbol: closeConfirm.symbol,
+        positionSide: closeConfirm.positionSide,
+        orderType: closeConfirm.orderType,
+        quantityMode: closeConfirm.quantityMode,
+        quantity: closeConfirm.quantity,
+      };
+      if (closeConfirm.orderType === "LIMIT") body.price = closeConfirm.price;
+      const result = await api("/api/trading/positions/close", { method: "POST", body });
+      const orderId = result?.command?.result?.orderId || result?.command?.exchangeResult?.orderId;
+      setActionNote(
+        result?.duplicate
+          ? `Đóng ${closeConfirm.symbol} trùng request trước đó.`
+          : `Đã gửi đóng ${closeConfirm.orderType} ${closeConfirm.symbol} ${closeConfirm.positionSide} qty ${closeConfirm.quantity}${orderId ? ` · order ${orderId}` : ""}`
+      );
+      setCloseConfirm(null);
+      setError("");
+    } catch (err) {
+      console.error("[positions]", err);
+      setError(err.message || "Không đóng được position");
+    } finally {
+      setClosing(false);
+    }
+  }
+
   async function removeMonitor(monitor) {
     const label = `${monitor.env || "monitor"} ${monitor.signal || ""}`.trim();
     if (!window.confirm(`Xoá monitor ${label}?\nBản ghi monitor_positions _id ${monitor.id}\nLệnh trên sàn không bị đóng.`)) return;
@@ -517,8 +606,39 @@ export default function PositionsPage() {
                     <td />
                     <td colSpan={9}>
                       <div className="pos-actions">
-                        <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Market</button>
-                        <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Limit</button>
+                        {canClose && row.book !== "paper" && row.book !== "pending" ? (() => {
+                          const form = closeFormOf(closeForms, row);
+                          return (
+                            <span className="pos-close-form">
+                              <button type="button" className="pos-close-type" disabled={closing} onClick={() => askClose(row, "MARKET")}>Market</button>
+                              <span className="muted">|</span>
+                              <button type="button" className="pos-close-type" disabled={closing} onClick={() => askClose(row, "LIMIT")}>Limit</button>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                aria-label={`Giá đóng ${row.symbol}`}
+                                title="Giá limit"
+                                value={form.price}
+                                onChange={(event) => patchCloseForm(row, { price: event.target.value.replace(/,/g, "") })}
+                                placeholder="Giá"
+                              />
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                aria-label={`Số lượng đóng ${row.symbol}`}
+                                title="Volume đóng"
+                                value={form.qty}
+                                onChange={(event) => patchCloseForm(row, { qty: event.target.value.replace(/,/g, "") })}
+                                placeholder="Volume"
+                              />
+                            </span>
+                          );
+                        })() : (
+                          <>
+                            <button type="button" className="ghost" onClick={() => setActionNote(canClose ? "Paper/lệnh chờ không đóng bằng Market/Limit." : "Thiếu quyền positions.close")}>Market</button>
+                            <button type="button" className="ghost" onClick={() => setActionNote(canClose ? "Paper/lệnh chờ không đóng bằng Market/Limit." : "Thiếu quyền positions.close")}>Limit</button>
+                          </>
+                        )}
                         <button type="button" className="ghost" onClick={() => setActionNote(ACTION_NOTE)}>Reverse</button>
                         <span>{tpslText(row)}</span>
                         <button type="button" className="ghost" onClick={() => { setMonitorId(row.monitors[0]?.id || ""); go((query) => query.set("panel", row.key), { layer: true }); }}>Add</button>
@@ -559,6 +679,29 @@ export default function PositionsPage() {
           </table>
         </div>
       ) : null}</> : null}
+      {closeConfirm ? (
+        <div className="modal-backdrop" onClick={() => { if (!closing) setCloseConfirm(null); }}>
+          <div className="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="close-pos-title" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <h2 id="close-pos-title">Xác nhận đóng vị thế</h2>
+              <button type="button" disabled={closing} onClick={() => setCloseConfirm(null)}>Huỷ</button>
+            </header>
+            <p>
+              {closeConfirm.account} · {closeConfirm.symbol} · {closeConfirm.positionSide}
+              <br />
+              {closeConfirm.orderType}
+              {closeConfirm.orderType === "LIMIT" ? ` @ ${closeConfirm.price}` : " (giá thị trường)"}
+              {" · qty "}{closeConfirm.quantity}
+              {closeConfirm.quantityMode === "ALL" ? " (toàn bộ)" : ""}
+            </p>
+            <p className="muted">Lệnh gửi thẳng lên Binance. Limit chưa khớp thì position vẫn còn.</p>
+            <div className="pos-inline">
+              <button type="button" className="ghost" disabled={closing} onClick={() => setCloseConfirm(null)}>Giữ lệnh</button>
+              <button type="button" disabled={closing} onClick={submitClose}>{closing ? "Đang gửi…" : "Xác nhận đóng"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {draft ? (
         <div className="modal-backdrop" onClick={() => { if (!saving) setDraft(null); }}>
           <form className="modal-card stack" onClick={(event) => event.stopPropagation()} onSubmit={async (event) => {

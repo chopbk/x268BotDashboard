@@ -923,6 +923,25 @@ td.negative { color: var(--danger); }
 .pos-sub td { padding-top: 0; border-top: 0; }
 .pos-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
 .pos-actions button.ghost { padding: 4px 8px; white-space: nowrap; }
+.pos-close-form { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pos-close-form input {
+  width: 96px;
+  min-width: 0;
+  padding: 3px 7px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+}
+.pos-close-type {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #f0b90b;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pos-close-type:disabled { opacity: 0.5; cursor: not-allowed; }
+.pos-close-type:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 2px; }
 button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }

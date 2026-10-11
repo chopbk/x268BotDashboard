@@ -135,7 +135,32 @@ function validatePositionClose(params) {
     if (!["ALL", "PERCENT", "QUANTITY"].includes(quantityMode)) {
         return { valid: false, error: "quantityMode phải là ALL, PERCENT hoặc QUANTITY" };
     }
-    return { valid: true, normalized: params };
+    if (quantityMode === "QUANTITY") {
+        const quantity = Number(params.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            return { valid: false, error: "quantity phải > 0" };
+        }
+    }
+    if (quantityMode === "PERCENT") {
+        const percent = Number(params.percent);
+        if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+            return { valid: false, error: "percent phải trong khoảng 1–100" };
+        }
+    }
+    if (orderType === "LIMIT") {
+        const price = Number(params.price);
+        if (!Number.isFinite(price) || price <= 0) {
+            return { valid: false, error: "LIMIT close cần price > 0" };
+        }
+    }
+    return {
+        valid: true,
+        normalized: {
+            ...params,
+            orderType,
+            quantityMode,
+        },
+    };
 }
 
 function validatePositionOpen(params) {
