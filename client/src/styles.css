@@ -1051,6 +1051,8 @@ td.negative { color: var(--danger); }
   font-size: 0.82rem;
 }
 .pos-case-monitor { display: grid; gap: 12px; }
+.pos-case-orders { display: grid; gap: 8px; }
+.pos-case-orders .orders-table { font-size: 0.86rem; }
 button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.linkish:hover { background: none; }
 .pos-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 18px; }

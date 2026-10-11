@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 function fmt(value, digits = 4) {
@@ -27,19 +27,124 @@ function warnLevel(level) {
   return "muted";
 }
 
+function orderRows(protective) {
+  return [...(protective?.exchangeOrders || []), ...(protective?.algoOrders || [])];
+}
+
+function OrdersTable({ protective, hint }) {
+  const rows = orderRows(protective);
+  return (
+    <section className="pos-case-orders">
+      <h3>Order sàn đang mở</h3>
+      <p className="muted">
+        {(protective?.exchangeOrders || []).length} thường · {(protective?.algoOrders || []).length} algo
+        {hint ? ` · ${hint}` : ""}
+      </p>
+      <div className="table-wrap">
+        <table className="pos-table orders-table">
+          <thead>
+            <tr>
+              <th>Loại</th>
+              <th>Type</th>
+              <th>Side</th>
+              <th>Giá / Trigger</th>
+              <th>Qty</th>
+              <th>Flags</th>
+              <th>Status</th>
+              <th>Id</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((order) => (
+              <tr key={`${order.kind}-${order.id}`} className={order.positionSide === "SHORT" || order.side === "SELL" ? "order-short" : "order-long"}>
+                <td>
+                  <span className={`order-kind order-kind-${order.kind}`}>
+                    {order.kind === "algo" ? "Algo" : "Regular"}
+                  </span>
+                </td>
+                <td>{order.type || "—"}</td>
+                <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>
+                  {order.side} · {order.positionSide || "BOTH"}
+                </td>
+                <td>
+                  {fmt(order.price)}
+                  {order.stopPrice != null && order.stopPrice !== order.price ? ` / ${fmt(order.stopPrice)}` : ""}
+                  {order.callbackRate != null ? ` · trail ${fmt(order.callbackRate, 2)}%` : ""}
+                </td>
+                <td>{fmt(order.qty)}</td>
+                <td>
+                  {order.closePosition ? "closePos " : ""}
+                  {order.reduceOnly ? "reduce " : ""}
+                  {order.workingType || ""}
+                </td>
+                <td>{order.status || "—"}</td>
+                <td className="muted">{order.id || "—"}</td>
+              </tr>
+            ))}
+            {!rows.length ? (
+              <tr>
+                <td colSpan={8} className="muted">
+                  Không có order trong sổ Redis cho symbol/side này. Bấm Reconcile để lấy openOrders + openAlgoOrders từ Binance.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export default function PositionCasePanel({ row, audience, onClose, selectedMonitorId, onSelectMonitor }) {
   const [caseBody, setCaseBody] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [reconciling, setReconciling] = useState(false);
+  const [orderHint, setOrderHint] = useState("");
+  const autoReconcileKey = useRef("");
+
+  async function fetchCase() {
+    return api(
+      `/api/positions/case?account=${encodeURIComponent(row.account)}&symbol=${encodeURIComponent(row.symbol)}&side=${encodeURIComponent(row.side)}&audience=${encodeURIComponent(audience || "mine")}`
+    );
+  }
+
+  async function fetchReconcile() {
+    return api("/api/positions/case/reconcile", {
+      method: "POST",
+      body: {
+        account: row.account,
+        symbol: row.symbol,
+        side: row.side,
+        audience: audience || "mine",
+      },
+    });
+  }
 
   async function load() {
     if (!row?.account || !row?.symbol || !row?.side) return;
     setLoading(true);
+    setOrderHint("");
     try {
-      const body = await api(
-        `/api/positions/case?account=${encodeURIComponent(row.account)}&symbol=${encodeURIComponent(row.symbol)}&side=${encodeURIComponent(row.side)}&audience=${encodeURIComponent(audience || "mine")}`
-      );
+      let body = await fetchCase();
+      const key = `${row.account}|${row.symbol}|${row.side}`;
+      const noOrders = !orderRows(body.protective).length;
+      const hasExchange = body.exchange?.qty > 0;
+      // Lần đầu mở case: nếu có vị thế mà sổ chưa có order → REST một lần (an toàn)
+      if (noOrders && hasExchange && autoReconcileKey.current !== key) {
+        autoReconcileKey.current = key;
+        setOrderHint("đang lấy order từ sàn…");
+        setReconciling(true);
+        try {
+          body = await fetchReconcile();
+          setOrderHint(orderRows(body.protective).length ? "đã đối chiếu từ Binance" : "sàn cũng không có order mở cho side này");
+        } catch (err) {
+          console.error("[positionCase]", err);
+          setOrderHint(err.message || "reconcile order thất bại");
+        } finally {
+          setReconciling(false);
+        }
+      }
       setCaseBody(body);
       setError("");
       if (!selectedMonitorId && body.monitors?.[0]?.id) onSelectMonitor?.(body.monitors[0].id);
@@ -58,18 +163,12 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
 
   async function reconcile() {
     setReconciling(true);
+    setOrderHint("");
     try {
-      const body = await api("/api/positions/case/reconcile", {
-        method: "POST",
-        body: {
-          account: row.account,
-          symbol: row.symbol,
-          side: row.side,
-          audience: audience || "mine",
-        },
-      });
+      const body = await fetchReconcile();
       setCaseBody(body);
       setError("");
+      setOrderHint(orderRows(body.protective).length ? "đã đối chiếu từ Binance" : "không có order mở");
     } catch (err) {
       console.error("[positionCase]", err);
       setError(err.message || "Reconcile thất bại");
@@ -81,6 +180,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
   const summary = caseBody?.ownershipSummary;
   const exchange = caseBody?.exchange;
   const selected = (caseBody?.monitors || []).find((item) => item.id === selectedMonitorId) || caseBody?.monitors?.[0];
+  const hasMonitors = (caseBody?.monitors || []).length > 0;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -97,8 +197,8 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
         </header>
 
         <p className="muted">
-          Màn hình đối chiếu Mongo monitor ↔ Redis ↔ runtime heartbeat ↔ sổ sàn.
-          Reconcile chỉ refresh sổ từ Binance REST, không hủy order hay đóng vị thế.
+          Chi tiết vị thế: sổ sàn, order/TP·SL, ownership monitor, drift Mongo/Redis/runtime.
+          Reconcile chỉ refresh từ Binance REST — không hủy order hay đóng vị thế.
         </p>
 
         {error ? <p className="form-error">{error}</p> : null}
@@ -118,27 +218,27 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                 </ul>
               </article>
               <article>
-                <h3>Ownership / sibling</h3>
+                <h3>TP / SL / Trail</h3>
+                <ul className="pos-case-list">
+                  <li>TP: <strong>{fmt(caseBody.protective?.exchangeTp)}</strong></li>
+                  <li>SL: <strong>{fmt(caseBody.protective?.exchangeSl)}</strong></li>
+                  <li>Trailing: {caseBody.protective?.exchangeTrailingCallback != null ? `${fmt(caseBody.protective.exchangeTrailingCallback, 2)}%` : "—"}</li>
+                  <li>Redis age: {caseBody.redis?.ageMs != null ? `${Math.round(caseBody.redis.ageMs / 1000)}s` : "—"}</li>
+                </ul>
+              </article>
+              <article>
+                <h3>Ownership</h3>
                 <ul className="pos-case-list">
                   <li>Số config: <strong>{summary?.configCount ?? 0}</strong>{summary?.sibling ? " · sibling" : ""}</li>
                   <li>Σ qty config: <strong>{fmt(summary?.ownQtySum)}</strong></li>
                   <li>Leftover sàn: <strong className={summary?.leftover > 0 ? "pos-down" : ""}>{fmt(summary?.leftover)}</strong></li>
-                  <li>Entry TB config: {fmt(summary?.avgEntryConfigs)}</li>
                   <li>NOTPSL: {summary?.notpslCount ?? 0}</li>
                   <li>Heartbeat: {caseBody.heartbeat?.ok ? "OK" : "yếu/mất"}</li>
-                  <li>Redis: {caseBody.redis ? `${caseBody.redis.source || "—"} · age ${caseBody.redis.ageMs != null ? `${Math.round(caseBody.redis.ageMs / 1000)}s` : "—"}` : "không có"}</li>
-                </ul>
-              </article>
-              <article>
-                <h3>TP/SL sàn</h3>
-                <ul className="pos-case-list">
-                  <li>TP: {fmt(caseBody.protective?.exchangeTp)}</li>
-                  <li>SL: {fmt(caseBody.protective?.exchangeSl)}</li>
-                  <li>Trailing: {caseBody.protective?.exchangeTrailingCallback != null ? `${fmt(caseBody.protective.exchangeTrailingCallback, 2)}%` : "—"}</li>
-                  <li>Orders: {(caseBody.protective?.exchangeOrders || []).length} thường · {(caseBody.protective?.algoOrders || []).length} algo</li>
                 </ul>
               </article>
             </section>
+
+            <OrdersTable protective={caseBody.protective} hint={orderHint} />
 
             {(caseBody.warnings || []).length ? (
               <section>
@@ -157,43 +257,46 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
 
             <section>
               <h3>Config sở hữu quantity</h3>
-              <div className="table-wrap">
-                <table className="pos-table">
-                  <thead>
-                    <tr>
-                      <th>Config</th>
-                      <th>Signal</th>
-                      <th>Qty riêng</th>
-                      <th>Share</th>
-                      <th>Entry riêng</th>
-                      <th>TP/SL monitor</th>
-                      <th>Flags</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(caseBody.ownership || []).map((item) => (
-                      <tr key={item.id} className={selectedMonitorId === item.id ? "pos-alert" : ""}>
-                        <td>
-                          <button type="button" className="linkish" onClick={() => onSelectMonitor?.(item.id)}>{item.env || "—"}</button>
-                        </td>
-                        <td>{item.signal || "—"}</td>
-                        <td>{fmt(item.ownQty)}</td>
-                        <td>{item.share == null ? "—" : `${fmt(item.share * 100, 1)}%`}</td>
-                        <td>{fmt(item.entry)}</td>
-                        <td>TP {item.tp || "—"} / SL {item.sl || "—"}{item.trailing ? ` · trail ${item.trailing}` : ""}</td>
-                        <td>
-                          {item.notpsl ? "NOTPSL " : ""}
-                          {item.watching ? "watching" : "no-hb"}
-                        </td>
-                      </tr>
-                    ))}
-                    {!(caseBody.ownership || []).length ? (
-                      <tr><td colSpan={7}>Không có monitor — leftover/NOTPSL thuần sàn.</td></tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-              <p className="muted">Entry TB sàn {fmt(summary?.exchangeEntry)} · Entry TB theo qty config {fmt(summary?.avgEntryConfigs)}</p>
+              {!hasMonitors ? (
+                <p className="muted">Không có monitor — vị thế thuần sàn (leftover / chưa gắn config).</p>
+              ) : (
+                <>
+                  <div className="table-wrap">
+                    <table className="pos-table">
+                      <thead>
+                        <tr>
+                          <th>Config</th>
+                          <th>Signal</th>
+                          <th>Qty riêng</th>
+                          <th>Share</th>
+                          <th>Entry riêng</th>
+                          <th>TP/SL monitor</th>
+                          <th>Flags</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(caseBody.ownership || []).map((item) => (
+                          <tr key={item.id} className={selectedMonitorId === item.id ? "pos-alert" : ""}>
+                            <td>
+                              <button type="button" className="linkish" onClick={() => onSelectMonitor?.(item.id)}>{item.env || "—"}</button>
+                            </td>
+                            <td>{item.signal || "—"}</td>
+                            <td>{fmt(item.ownQty)}</td>
+                            <td>{item.share == null ? "—" : `${fmt(item.share * 100, 1)}%`}</td>
+                            <td>{fmt(item.entry)}</td>
+                            <td>TP {item.tp || "—"} / SL {item.sl || "—"}{item.trailing ? ` · trail ${item.trailing}` : ""}</td>
+                            <td>
+                              {item.notpsl ? "NOTPSL " : ""}
+                              {item.watching ? "watching" : "no-hb"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="muted">Entry TB sàn {fmt(summary?.exchangeEntry)} · Entry TB theo qty config {fmt(summary?.avgEntryConfigs)}</p>
+                </>
+              )}
             </section>
 
             {selected ? (
@@ -264,23 +367,6 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                 </ol>
               </section>
             ) : null}
-
-            <section>
-              <h3>Order sàn đang mở (symbol)</h3>
-              <ul className="pos-case-list">
-                {[...(caseBody.protective?.exchangeOrders || []), ...(caseBody.protective?.algoOrders || [])].map((order) => (
-                  <li key={`${order.kind}-${order.id}`}>
-                    {order.kind} #{order.id} · {order.type} · {order.side} {order.positionSide}
-                    {" · trigger "}{fmt(order.stopPrice || order.price)}
-                    {order.callbackRate != null ? ` · cb ${fmt(order.callbackRate, 2)}%` : ""}
-                    {" · "}{order.status}
-                  </li>
-                ))}
-                {!(caseBody.protective?.exchangeOrders || []).length && !(caseBody.protective?.algoOrders || []).length ? (
-                  <li className="muted">Không có order thường/algo cho symbol này trong sổ.</li>
-                ) : null}
-              </ul>
-            </section>
           </>
         ) : null}
       </div>
