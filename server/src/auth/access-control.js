@@ -332,11 +332,13 @@ function plainScopes(value) {
 }
 function defaultScope(user, permission) {
   if (user?.role === "admin") return SCOPES.ALL;
-  if (
-    !Array.isArray(user?.customPermissions) &&
-    ROLE_SCOPES[user?.role]?.[permission]
-  )
+  // Role template scopes apply whenever permissionScopes thiếu key —
+  // kể cả khi customPermissions ghi đè danh sách quyền. Trước đây có
+  // customPermissions thì luôn fallback assigned → owner không gán bot
+  // bị mất quyền dù ROLE_SCOPES là own/all/own_assigned.
+  if (ROLE_SCOPES[user?.role]?.[permission]) {
     return ROLE_SCOPES[user.role][permission];
+  }
   const allowed = PERMISSION_DEFINITIONS[permission]?.allowedScopes || [];
   return allowed.includes(SCOPES.ASSIGNED)
     ? SCOPES.ASSIGNED

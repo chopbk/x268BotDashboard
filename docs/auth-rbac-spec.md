@@ -116,8 +116,10 @@ endpoint, không được hiểu permission xem là quyền trả raw secret m�
   permission key chứa dấu chấm như `config.view` và Map sẽ từ chối khi validate.
 - `assigned` đối chiếu username tài nguyên với `webUser.botUsernames`; `own` đối chiếu
   user id/username/email của chính actor. Admin luôn có scope `all`.
-- Permission có scope tài nguyên nhưng document cũ chưa có `permissionScopes` mặc định
-  về `assigned`; đây là tương thích ngược an toàn, không fail-open.
+- Permission có scope tài nguyên nhưng `permissionScopes` thiếu key: lấy scope từ
+  `ROLE_SCOPES` của role hiện tại (kể cả khi có `customPermissions`). Role không có
+  template cho permission đó mới fallback `assigned` — tránh owner bị mất quyền chỉ vì
+  admin chỉnh custom permission mà chưa ghi scope.
 - Quyền xem không suy ra quyền sửa và scope xem không dùng thay scope sửa. Ví dụ hợp lệ:
   `config.view=all`, `config.edit=assigned`.
 - Với tài nguyên bot, `own` đối chiếu `user_accounts.ownerUserId`; `assigned` đối chiếu

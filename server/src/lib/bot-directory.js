@@ -3,7 +3,7 @@ const AccountConfig = require("../models/account-config");
 const UserApi = require("../models/user-api");
 const WebUser = require("../models/web-user");
 const { canAccessBot } = require("../middleware/auth");
-const { PERMISSIONS, scopeForPermission } = require("../auth/access-control");
+const { PERMISSIONS } = require("../auth/access-control");
 const { httpError } = require("./http");
 const { defaultTradeConfig } = require("./default-trade-config");
 
@@ -66,9 +66,8 @@ async function getBot(actor, username, permission = PERMISSIONS.BOTS_VIEW) {
 }
 
 async function requireBot(user, username, permission) {
-    const scope = scopeForPermission(user, permission);
-    if (scope === "assigned" && !canAccessBot(user, username, permission)) throw httpError(403, "Không có quyền với bot này");
-    if (scope === "own_assigned" && !user?.id && !canAccessBot(user, username, permission)) throw httpError(403, "Không có quyền với bot này");
+    // Luôn load bot trước khi check quyền — string username không có
+    // ownerUserId nên scope own/own_assigned (và private) sẽ fail sai.
     const bot = await findBot(username);
     if (!bot) throw httpError(404, "Không tìm thấy user bot");
     if (!canAccessBot(user, bot, permission)) throw httpError(403, "Không có quyền với bot này");

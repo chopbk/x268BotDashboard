@@ -76,6 +76,37 @@ test("legacy users without stored scopes default bot resources to assigned", () 
     assert.equal(canAccessResource(user, PERMISSIONS.CONFIG_VIEW, "beta"), false);
 });
 
+test("customPermissions without permissionScopes still use role template scopes", () => {
+    const supervisor = {
+        id: "owner-id",
+        role: "supervisor",
+        customPermissions: [
+            PERMISSIONS.BOTS_VIEW,
+            PERMISSIONS.CONFIG_VIEW,
+            PERMISSIONS.CONFIG_EDIT,
+            PERMISSIONS.USERS_EDIT,
+            PERMISSIONS.USERS_RESET_PASSWORD,
+        ],
+        permissionScopes: {},
+        botUsernames: [],
+    };
+    assert.equal(scopeForPermission(supervisor, PERMISSIONS.BOTS_VIEW), "all");
+    assert.equal(scopeForPermission(supervisor, PERMISSIONS.CONFIG_VIEW), "all");
+    assert.equal(scopeForPermission(supervisor, PERMISSIONS.CONFIG_EDIT), "own");
+    const ownedPrivate = { username: "AB", ownerUserId: "owner-id", visibility: "private" };
+    assert.equal(canAccessResource(supervisor, PERMISSIONS.BOTS_VIEW, ownedPrivate), true);
+    assert.equal(canAccessResource(supervisor, PERMISSIONS.CONFIG_VIEW, ownedPrivate), true);
+    assert.equal(canAccessResource(supervisor, PERMISSIONS.CONFIG_EDIT, ownedPrivate), true);
+    assert.equal(
+        canAccessResource(supervisor, PERMISSIONS.CONFIG_EDIT, {
+            username: "OTHER",
+            ownerUserId: "someone-else",
+            visibility: "public",
+        }),
+        false
+    );
+});
+
 test("API view scope can be all without granting API management", () => {
     const user = { role: "viewer", customPermissions: [PERMISSIONS.CREDENTIALS_VIEW], permissionScopes: { [PERMISSIONS.CREDENTIALS_VIEW]: "all" } };
     assert.equal(canAccessResource(user, PERMISSIONS.CREDENTIALS_VIEW, "any-bot"), true);
