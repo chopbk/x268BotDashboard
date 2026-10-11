@@ -42,7 +42,7 @@ async function main() {
         );
         app.use(express.json({ limit: "100kb" }));
         app.use(cookieParser());
-        app.use("/api", requestTimeout(30_000));
+        app.use("/api", requestTimeout(90_000));
         app.use("/api", createConcurrencyLimit({ max: 40 }));
         app.use("/api", createConcurrencyLimit({
             max: 8,
@@ -88,6 +88,10 @@ async function main() {
         app.use("/api/account-ledger", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/account-ledger"));
 
         app.use((err, req, res, next) => {
+            if (res.headersSent || res.writableEnded) {
+                console.error("[errorHandler] already sent", err?.message || err);
+                return next(err);
+            }
             if (err.type === "entity.too.large") {
                 return res.status(413).json({ error: "Request vượt quá kích thước cho phép" });
             }
@@ -102,8 +106,9 @@ async function main() {
             console.log("[main] listen", config.port);
         });
         attachPositionSocket(server);
-        server.requestTimeout = 35_000;
-        server.headersTimeout = 10_000;
+        // Refresh nhiều account / Binance REST có thể >30s — headersTimeout phải > requestTimeout
+        server.requestTimeout = 120_000;
+        server.headersTimeout = 125_000;
         server.keepAliveTimeout = 5_000;
     } catch (error) {
         console.error("[main]", error.message || error);

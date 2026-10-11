@@ -35,7 +35,8 @@ function binanceError(status, body) {
         console.error("[binanceFutures]", status, label);
         return httpError(status >= 400 && status < 500 ? status : 400, label);
     }
-    return httpError(502, "Không lấy được số liệu sàn");
+    console.error("[binanceFutures]", status, "empty body / non-json");
+    return httpError(502, `Không lấy được số liệu sàn (HTTP ${status || "?"})`);
 }
 
 async function requestJson(url, headers, fetchImpl, method = "GET") {

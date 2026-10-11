@@ -40,11 +40,12 @@ router.post("/refresh", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
             book: req.body?.book || "",
             refresh: "1",
         };
+        // Nhiều account: chỉ lấy sổ live (positions/orders/algo). Income/fills chỉ khi chọn 1 account.
+        const details = Boolean(account);
         res.json(await loadPositions(req.webUser, query, {
             snapshot: readExchangeBook,
             snapshots: readExchangeBooks,
-            // Nút "Cập nhật sàn": gọi Binance trực tiếp (đủ position no-monitor)
-            exchange: (name) => reconcile(name, { force: true, details: true, viaMqtt: false }),
+            exchange: (name) => reconcile(name, { force: true, details, viaMqtt: false }),
             priceOf: markOf,
         }));
     } catch (error) {

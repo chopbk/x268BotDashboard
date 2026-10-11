@@ -8,6 +8,10 @@ function httpError(status, message, extra) {
 function sendError(res, error, method) {
     const status = error.status || 500;
     if (status >= 500) console.error(`[${method}]`, error);
+    if (res.headersSent || res.writableEnded) {
+        console.error(`[${method}] response already sent:`, error.message || error);
+        return;
+    }
     const body = { error: status >= 500 ? "Internal error" : error.message };
     if (error.missing) body.missing = error.missing;
     res.status(status).json(body);

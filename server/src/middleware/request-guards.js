@@ -35,7 +35,12 @@ function createConcurrencyLimit({ max, identify = () => "global", retryAfter = 1
 function requestTimeout(ms) {
     return function timeoutMiddleware(req, res, next) {
         res.setTimeout(ms, () => {
-            if (!res.headersSent) res.status(503).json({ error: "Request xử lý quá lâu, vui lòng thử lại" });
+            if (res.headersSent || res.writableEnded) return;
+            try {
+                res.status(503).json({ error: "Request xử lý quá lâu, vui lòng thử lại" });
+            } catch (error) {
+                console.error("[requestTimeout]", error.message);
+            }
         });
         next();
     };
