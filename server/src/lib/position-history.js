@@ -24,7 +24,7 @@ function escapeRegex(value) {
 }
 
 function historyWindow(query = {}, now = new Date()) {
-    const preset = String(query.range || "30").trim().toLowerCase();
+    const preset = String(query.range || "3").trim().toLowerCase();
     if (preset === "custom") {
         const from = utcBound(query.from, false);
         const to = utcBound(query.to, true);
@@ -35,7 +35,8 @@ function historyWindow(query = {}, now = new Date()) {
         const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
         return { preset, from, to: now };
     }
-    const days = preset === "7" || preset === "90" ? Number(preset) : 30;
+    // Mặc định 3 ngày, hỗ trợ 7, 30, 90 ngày
+    const days = ["7", "30", "90"].includes(preset) ? Number(preset) : 3;
     return { preset: String(days), from: new Date(now.getTime() - days * DAY_MS), to: now };
 }
 

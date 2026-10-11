@@ -238,11 +238,11 @@ async function loadOrderHistory(actor, query = {}, deps = {}) {
         filter.exchangeUpdatedAt.$lte = to;
     }
 
-    // Default: last 7 days if no range specified
+    // Default: last 3 days if no range specified
     if (!from && !to) {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        filter.exchangeUpdatedAt = { $gte: sevenDaysAgo };
+        const threeDaysAgo = new Date();
+        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+        filter.exchangeUpdatedAt = { $gte: threeDaysAgo };
     }
 
     // Pagination

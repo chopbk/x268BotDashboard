@@ -420,7 +420,7 @@ function resetExchangeCache() {
 }
 
 async function loadFillHistory(client, positions) {
-    const startTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const startTime = Date.now() - 3 * 24 * 60 * 60 * 1000;
     let history = [];
     try {
         const raw = await client.signedGet("/fapi/v1/positionHistory", { startTime, limit: 100 });
@@ -476,7 +476,7 @@ async function loadBinanceSnapshot(account, { liveOnly = false } = {}) {
             console.error("[loadBinanceSnapshot]", error.message);
             return [];
         }),
-        liveOnly ? [] : client.signedGet("/fapi/v1/income", { startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, limit: 1000 }).catch((error) => {
+        liveOnly ? [] : client.signedGet("/fapi/v1/income", { startTime: Date.now() - 3 * 24 * 60 * 60 * 1000, limit: 1000 }).catch((error) => {
             if (error.status === 429) throw error;
             console.error("[loadBinanceSnapshot]", error.message);
             return [];
