@@ -353,14 +353,20 @@ export default function AccountConfigPage({ experimental = false }) {
   const [applyState, setApplyState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const disabled = !editing || busy;
   const changes = configChanges(snapshot, form, lists);
-  useLeaveGuard(experimental ? editing && changes.length > 0 : editing, "Rời trang sẽ bỏ các thay đổi config chưa lưu.");
+  const dirty = changes.length > 0;
+  const disabled = busy || !canEdit || (!experimental && !editing);
+  useLeaveGuard(experimental ? dirty : editing, "Rời trang sẽ bỏ các thay đổi config chưa lưu.");
   useEscape(copyOpen, closeCopy);
 
-  function applyConfig(config) {
-    setForm(config);
-    setLists({
+  useEffect(() => {
+    if (!experimental) return;
+    if (dirty) setReview(true);
+    else setReview(false);
+  }, [experimental, dirty, changes.length]);
+
+  function listsFromConfig(config) {
+    return {
       signals: joinList(config.signals),
       blacklist: joinList(config.blacklist),
       whitelist: joinList(config.whitelist),
@@ -369,7 +375,14 @@ export default function AccountConfigPage({ experimental = false }) {
       filters: joinList(config.filters),
       tpPercent: joinList(config.tpPercent),
       syncExcept: joinList(config.syncExcept),
-    });
+    };
+  }
+
+  function applyConfig(config, { baseline = false } = {}) {
+    const nextLists = listsFromConfig(config);
+    setForm(config);
+    setLists(nextLists);
+    if (baseline) setSnapshot({ form: { ...config }, lists: { ...nextLists } });
   }
 
   useEffect(() => {
@@ -383,12 +396,12 @@ export default function AccountConfigPage({ experimental = false }) {
     setApplyState(null);
     setReview(false);
     setGroup("operation");
-    setEditing(false);
+    setEditing(!!experimental);
     setPanel("basic");
     setBusy(false);
     api(`/api/bots/${encodeURIComponent(username)}/configs/${encodeURIComponent(env)}`, { signal: controller.signal })
       .then((data) => {
-        if (!cancelled) applyConfig(data.config);
+        if (!cancelled) applyConfig(data.config, { baseline: !!experimental });
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -400,7 +413,7 @@ export default function AccountConfigPage({ experimental = false }) {
       cancelled = true;
       controller.abort();
     };
-  }, [username, env]);
+  }, [username, env, experimental]);
 
   useEffect(() => {
     if (user?.role === "admin") return undefined;
@@ -477,7 +490,7 @@ export default function AccountConfigPage({ experimental = false }) {
 
   async function onSubmit(event) {
     event.preventDefault();
-    if (!canEdit || !editing || !form || saveLock.current || (experimental && !changes.length)) return;
+    if (!canEdit || !form || saveLock.current || (experimental && !dirty) || (!experimental && !editing)) return;
     saveLock.current = true;
     setBusy(true);
     setError("");
@@ -487,10 +500,14 @@ export default function AccountConfigPage({ experimental = false }) {
         method: "PATCH",
         body: experimental ? changedPatch(changes) : configPayload(form, lists),
       });
-      applyConfig(data.config);
-      setEditing(false);
+      applyConfig(data.config, { baseline: !!experimental });
+      if (!experimental) {
+        setEditing(false);
+        setSnapshot(null);
+      } else {
+        setEditing(true);
+      }
       setReview(false);
-      setSnapshot(null);
       let apply = data.apply || null;
       setApplyState(apply);
       setSaved(applyStatusLabel(apply));
@@ -564,10 +581,14 @@ export default function AccountConfigPage({ experimental = false }) {
       setForm(snapshot.form);
       setLists(snapshot.lists);
     }
-    setEditing(false);
     setError("");
     setReview(false);
-    setSnapshot(null);
+    if (experimental) {
+      setEditing(true);
+    } else {
+      setEditing(false);
+      setSnapshot(null);
+    }
   }
 
   async function onDelete() {
@@ -663,7 +684,7 @@ export default function AccountConfigPage({ experimental = false }) {
     (form?.mode === "LOSS" || form?.mode === "RR") && slDynamic && !(Math.abs(Number(form?.fixloss)) > 0);
 
   return (
-    <section className={`${editing ? "config-screen is-editing" : "config-screen"}${experimental ? " config-lab" : ""}`}>
+    <section className={`${experimental || editing ? "config-screen is-editing" : "config-screen"}${experimental ? " config-lab" : ""}`}>
       {experimental ? <LabHeader username={username} env={env} form={form} returnTo={location.state?.labReturnTo} signals={lists.signals || ""} canHistory={canViewSignalHistory} canStatistics={canViewStatistics} canPositions={canViewPositions} /> : null}
       <header className={`page-head config-head${experimental ? " lab-editor-toolbar" : ""}`}>
         <div>
@@ -677,9 +698,9 @@ export default function AccountConfigPage({ experimental = false }) {
           /> : null}
           {!experimental ? <h1>{env}</h1> : null}
           {editing && !experimental ? <p className="dirty-note muted">Có thay đổi chưa lưu.</p> : null}
-          {help ? (
+            {help ? (
             <p className="muted">{experimental
-              ? "Help bật: gợi ý hiện dưới từng mục theo nhóm. Lưu Mongo xong bot nhận qua MQTT — xem thanh dưới cùng để biết đã đồng bộ chưa."
+              ? "Sửa trực tiếp trên form. Có thay đổi thì hiện diff và nút Lưu. Lưu Mongo xong bot nhận qua MQTT — thanh dưới cùng báo đã đồng bộ chưa."
               : "Trỏ dấu ? để xem gợi ý. Bấm Sửa thì gợi ý hiện dưới từng mục. Tab Cơ bản là cách vào lệnh. Tab Nâng cao là lọc, gồng, copy và sync. Lưu xong hệ thống tự áp dụng lên bot qua MQTT."}</p>
           ) : null}
           {saved && !experimental ? <p className="muted">{saved}</p> : null}
@@ -698,29 +719,30 @@ export default function AccountConfigPage({ experimental = false }) {
           </label>
           {canEdit ? (
             <>
-            {editing ? (
-              <button type="button" key="save" className="config-save" onClick={onSave} disabled={busy || (experimental && !changes.length)}>
-                {experimental ? "Lưu và áp dụng" : "Lưu"}
+            {!experimental && editing ? (
+              <button type="button" key="save" className="config-save" onClick={onSave} disabled={busy}>
+                Lưu
               </button>
-            ) : (
+            ) : null}
+            {!experimental && !editing ? (
               <button type="button" key="edit" onClick={startEdit} disabled={busy || !form}>
                 Sửa
               </button>
-            )}
-            {editing ? (
+            ) : null}
+            {!experimental && editing ? (
               <button type="button" className="ghost config-cancel" onClick={cancelEdit} disabled={busy}>
                 Huỷ
               </button>
             ) : null}
             {experimental ? (
-              <button type="button" className="ghost" onClick={() => { setRenameOpen((value) => !value); setRenameEnv(env); }} disabled={busy || editing}>
+              <button type="button" className="ghost" onClick={() => { setRenameOpen((value) => !value); setRenameEnv(env); }} disabled={busy || dirty}>
                 Đổi tên
               </button>
             ) : null}
-            <button type="button" className="ghost" ref={copyButtonRef} onClick={openCopy} disabled={busy || editing}>
+            <button type="button" className="ghost" ref={copyButtonRef} onClick={openCopy} disabled={busy || dirty || (!experimental && editing)}>
               Copy
             </button>
-            <button type="button" className="danger" onClick={onDelete} disabled={busy || editing}>
+            <button type="button" className="danger" onClick={onDelete} disabled={busy || dirty || (!experimental && editing)}>
               Xoá
             </button>
             </>
@@ -786,9 +808,9 @@ export default function AccountConfigPage({ experimental = false }) {
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {form ? (
-        <HelpUi.Provider value={{ help, editing }}>
+        <HelpUi.Provider value={{ help, editing: experimental ? canEdit : editing }}>
         <LabContext.Provider value={experimental ? group : null}>
-        <LabLayout enabled={experimental} group={group} setGroup={setGroup} form={form} lists={lists} changes={changes} volumeLead={volumeView.lead} editing={editing}>
+        <LabLayout enabled={experimental} group={group} setGroup={setGroup} form={form} lists={lists} changes={changes} volumeLead={volumeView.lead} dirty={dirty} canEdit={canEdit}>
         {!experimental ? <div className="config-tabs" role="tablist" aria-label="Nhóm cấu hình">
           <button type="button" role="tab" aria-selected={panel === "basic"} onClick={() => setPanel("basic")}>
             Cơ bản
@@ -954,8 +976,8 @@ export default function AccountConfigPage({ experimental = false }) {
         </LabContext.Provider>
         </HelpUi.Provider>
       ) : null}
-      {experimental && editing ? <ChangeReview open={review} changes={changes} onClose={() => setReview(false)} /> : null}
-      {experimental && canEdit ? <LabSaveBar editing={editing} busy={busy} count={changes.length} onEdit={startEdit} onSave={onSave} onCancel={cancelEdit} onReview={() => setReview((value) => !value)} ready={!!form && !loading} saved={saved} applyState={applyState} onRetry={retryApply} /> : null}
+      {experimental && canEdit ? <ChangeReview open={review && dirty} changes={changes} onClose={() => setReview(false)} /> : null}
+      {experimental && canEdit ? <LabSaveBar dirty={dirty} busy={busy} count={changes.length} onSave={onSave} onCancel={cancelEdit} onReview={() => setReview((value) => !value)} ready={!!form && !loading} saved={saved} applyState={applyState} onRetry={retryApply} /> : null}
       {!experimental && editing && canEdit ? (
         <div className="config-savebar">
           <span className="muted">Chưa lưu</span>

@@ -65,7 +65,7 @@ export function LabHeader({ username, env, form, returnTo, signals = "", canHist
   </header>;
 }
 
-export function LabLayout({ enabled, group, setGroup, form, lists, changes, volumeLead, editing, children }) {
+export function LabLayout({ enabled, group, setGroup, form, lists, changes, volumeLead, dirty = false, canEdit = false, children }) {
   const [summaryOpen, setSummaryOpen] = useState(true);
   useEffect(() => {
     if (!enabled) return undefined;
@@ -84,13 +84,13 @@ export function LabLayout({ enabled, group, setGroup, form, lists, changes, volu
       {LAB_GROUPS.map((item, index) => <button key={item.id} type="button" className={group === item.id ? "selected" : ""} aria-current={group === item.id ? "page" : undefined} onClick={() => setGroup(item.id)}>
         <span className="lab-step">{String(index + 1).padStart(2, "0")}</span><span>{item.name}<small>{item.note}</small></span>
       </button>)}
-      <p className="lab-nav-note">{editing ? `${changes.length} trường thay đổi. Đổi nhóm vẫn giữ nội dung đang sửa.` : "Đang xem cấu hình. Bấm Sửa cấu hình để bắt đầu."}</p>
+      <p className="lab-nav-note">{!canEdit ? "Chỉ xem — không có quyền sửa." : dirty ? `${changes.length} trường thay đổi · chưa lưu.` : "Sửa trực tiếp trên form. Có thay đổi sẽ hiện diff và nút Lưu."}</p>
     </nav>
     <div className="lab-main"><div className="lab-group-heading"><h2>{current.name}</h2><p>{current.note}</p></div>{children}</div>
     <aside className="lab-summary">
-      <details open={summaryOpen} onToggle={(event) => setSummaryOpen(event.currentTarget.open)}><summary>Tóm tắt cấu hình <span className="lab-badge">{editing ? "Bản đang sửa" : "Đã lưu"}</span></summary>
+      <details open={summaryOpen} onToggle={(event) => setSummaryOpen(event.currentTarget.open)}><summary>Tóm tắt cấu hình <span className={`lab-badge ${dirty ? "live" : "positive"}`}>{dirty ? "Chưa lưu" : "Đã lưu"}</span></summary>
         <div className="lab-summary-body">
-          <p className="lab-caption">{editing ? "Phản ánh giá trị trong form, chưa áp dụng lên bot." : "Giá trị đã lưu; không phải trạng thái runtime của bot."}</p>
+          <p className="lab-caption">{dirty ? "Phản ánh giá trị trong form, chưa ghi Mongo / áp dụng bot." : "Giá trị đã lưu; không phải trạng thái runtime của bot."}</p>
           <dl>
             <div><dt>Chế độ</dt><dd>{form.paper ? "Paper · không gửi lệnh" : "Live · lệnh thật"}</dd></div>
             <div><dt>Hướng</dt><dd>{[form.long && "Long", form.short && "Short"].filter(Boolean).join(" + ") || "Không nhận hướng nào"}{form.invert ? " · đảo chiều signal" : ""}</dd></div>
@@ -180,11 +180,11 @@ function displayValue(value) {
 }
 export function ChangeReview({ open, changes, onClose }) {
   const ref = useRef(null);
-  useEffect(() => { if (open) ref.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [open]);
+  useEffect(() => { if (open) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [open]);
   if (!open) return null;
   return <section ref={ref} className="lab-review" aria-label="Xem thay đổi">
-    <div className="lab-title-row"><h2>Xem thay đổi · {changes.length} trường</h2><button className="ghost" type="button" onClick={onClose}>Đóng</button></div>
-    <p className="lab-caption">Đối chiếu với bản trước khi bấm Sửa. Bấm Lưu và áp dụng để ghi các thay đổi này.</p>
+    <div className="lab-title-row"><h2>Thay đổi · {changes.length} trường</h2><button className="ghost" type="button" onClick={onClose}>Ẩn</button></div>
+    <p className="lab-caption">So với bản đã lưu. Bấm Lưu và áp dụng để ghi Mongo và đồng bộ bot.</p>
     <div className="lab-table-scroll"><table><thead><tr><th>Trường</th><th>Trước</th><th>Sau</th></tr></thead><tbody>{changes.map(({ key, before, after }) => <tr key={key}><th>{FIELD_LABELS[key] || key}</th><td>{displayValue(before)}</td><td>{displayValue(after)}</td></tr>)}</tbody></table></div>
   </section>;
 }
@@ -197,18 +197,22 @@ function applyTone(applyState) {
   return "";
 }
 
-export function LabSaveBar({ editing, busy, count, onEdit, onSave, onCancel, onReview, ready, saved, applyState, onRetry }) {
+export function LabSaveBar({ dirty, busy, count, onSave, onCancel, onReview, ready, saved, applyState, onRetry }) {
   const canRetry = applyState && ["failed", "expired"].includes(applyState.status) && applyState.terminal && applyState.requestId;
-  const tone = applyTone(applyState);
+  const tone = dirty ? "pending" : applyTone(applyState);
+  if (!ready) return null;
   return <footer className={`lab-savebar ${tone ? `is-${tone}` : ""}`}><div aria-live="polite">
-    <strong>{busy ? "Đang xử lý…" : editing ? `${count} trường đã thay đổi` : "Cấu hình đã lưu"}</strong>
-    <small>{saved || (editing ? "Chưa áp dụng các chỉnh sửa lên bot" : "Bấm Sửa cấu hình để bắt đầu")}</small>
-    {!editing && applyState?.requestId ? <small className="lab-apply-meta">Đồng bộ bot · {applyState.status}{applyState.terminal ? " · xong" : " · chờ ACK"}</small> : null}
+    <strong>{busy ? "Đang xử lý…" : dirty ? `${count} trường đã thay đổi` : "Cấu hình đã lưu"}</strong>
+    <small>{saved || (dirty ? "Chưa ghi Mongo / áp dụng lên bot" : "Sửa form khi cần — có thay đổi sẽ hiện nút Lưu")}</small>
+    {!dirty && applyState?.requestId ? <small className="lab-apply-meta">Đồng bộ bot · {applyState.status}{applyState.terminal ? " · xong" : " · chờ ACK"}</small> : null}
   </div>
     <div className="lab-save-actions">
       {canRetry ? <button type="button" className="ghost" onClick={onRetry} disabled={busy}>Thử áp dụng lại</button> : null}
-      {editing ? <><button type="button" className="ghost" onClick={onCancel} disabled={busy}>Hủy</button><button type="button" className="ghost" onClick={onReview} disabled={busy || !count}>Xem thay đổi</button><button type="button" onClick={onSave} disabled={busy || !count}>Lưu và áp dụng</button></>
-        : <button type="button" onClick={onEdit} disabled={busy || !ready}>Sửa cấu hình</button>}
+      {dirty ? <>
+        <button type="button" className="ghost" onClick={onCancel} disabled={busy}>Hoàn tác</button>
+        <button type="button" className="ghost" onClick={onReview} disabled={busy}>Diff</button>
+        <button type="button" onClick={onSave} disabled={busy}>Lưu và áp dụng</button>
+      </> : null}
     </div>
   </footer>;
 }
