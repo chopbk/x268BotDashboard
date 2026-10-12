@@ -1,5 +1,13 @@
 /* Terminal workspace — namespace .term-* ; không đụng .pos-* / global table */
 
+main:has(.term-screen) {
+  width: calc(100% - 40px);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 72px);
+}
+
 .term-screen {
   --term-entry: #6b8cae;
   --term-mark: #c4a35a;
@@ -9,7 +17,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: calc(100vh - 48px);
+  flex: 1;
+  min-height: 0;
   font-size: 14px;
 }
 
@@ -154,10 +163,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
+  flex: 1;
   min-height: min(70vh, 640px);
   height: calc(100vh - 220px);
-  max-height: calc(100vh - 180px);
-  flex: 1;
+  max-height: none;
   min-width: 0;
 }
 
@@ -754,6 +763,74 @@
   border: 1px solid var(--term-line);
   border-radius: 10px;
   padding: 12px;
+  flex: 1;
+  min-height: min(70vh, 640px);
+  height: calc(100vh - 220px);
+  max-height: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface, #141414) 90%, transparent);
+}
+
+/* Các tab con (lệnh / lịch sử) lấp đầy vùng như bảng vị thế */
+.term-tab-body > .orders-layout,
+.term-tab-body > .orders-tab,
+.term-tab-body > .stack {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.term-tab-body > .orders-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.term-tab-body .orders-tab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.term-tab-body .order-ticket {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100%;
+  overflow: auto;
+}
+
+.term-tab-body .signal-filters,
+.term-tab-body .stats-grid {
+  flex: 0 0 auto;
+}
+
+.term-tab-body .table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  max-height: none;
+}
+
+@media (max-width: 960px) {
+  .term-tab-body > .orders-layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .term-tab-body .order-ticket {
+    position: static;
+    max-height: none;
+  }
 }
 
 .term-advanced-ticket {
@@ -788,7 +865,8 @@
 
 @media (max-width: 1023px) {
   .term-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .term-workspace { height: calc(100vh - 260px); }
+  .term-workspace,
+  .term-tab-body { height: calc(100vh - 260px); }
   .term-panel-overlay { width: min(520px, 92vw); }
 }
 
