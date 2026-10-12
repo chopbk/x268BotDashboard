@@ -7,8 +7,9 @@ const { FORMULA_VERSION, snapshotKey, ttlFor, acquireLease, getSummarySnapshot }
 function lean(value) { return { lean: async () => value }; }
 
 test("summary source indexes cover requested production filters", () => {
-    assert.deepEqual(INDEXES.slice(0, 4).map(([collection, keys]) => [collection, keys]), [
+    assert.deepEqual(INDEXES.slice(0, 5).map(([collection, keys]) => [collection, keys]), [
         ["account_statics", { env: 1, isPaper: 1, openTime: 1 }],
+        ["account_statics", { env: 1, isPaper: 1, closeTime: 1 }],
         ["futures_profits", { env: 1, day: 1 }],
         ["monitor_positions", { env: 1, closed: 1 }],
         ["signal_infos", { openTime: 1 }],

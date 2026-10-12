@@ -1327,3 +1327,94 @@ button.linkish:hover { background: none; }
 .order-detail dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 12px 0; }
 .order-detail dt { color: var(--muted); }
 .order-detail dd { margin: 0; }
+
+/* Hiệu quả giao dịch (/signals) */
+.perf-page { display: grid; gap: 14px; min-width: 0; }
+.perf-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+.perf-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.perf-filters { display: grid; gap: 12px; }
+.perf-filters-main { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 12px; }
+.perf-filters label { font-size: 0.85rem; color: var(--muted); min-width: 0; }
+.perf-filters input, .perf-filters select { min-height: 38px; }
+.perf-range { border: 0; margin: 0; padding: 0; min-width: 0; }
+.perf-range legend { font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+.perf-filters .history-range button.active { background: var(--accent); color: var(--ink); border-color: transparent; }
+.perf-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.perf-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 0.85rem; background: var(--surface-2); }
+.perf-chip button { background: transparent; border: 0; color: var(--muted); padding: 0 2px; min-height: auto; font-size: 1rem; line-height: 1; }
+.perf-chip button:hover { color: var(--text); background: transparent; }
+.perf-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.perf-kpi { display: grid; gap: 6px; min-width: 0; }
+.perf-kpi-label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.85rem; }
+.perf-kpi.positive strong { color: var(--ok); }
+.perf-kpi.negative strong { color: var(--danger); }
+.perf-num { font-variant-numeric: tabular-nums; font-size: 1.55rem; font-weight: 700; letter-spacing: -0.02em; }
+.perf-tip { position: relative; width: 1.2rem; height: 1.2rem; padding: 0; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.perf-tip:hover, .perf-tip:focus-visible { color: var(--text); background: var(--surface-2); }
+.perf-tip-bubble { display: none; position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: min(260px, 70vw); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 0.78rem; font-weight: 500; text-align: left; box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+.perf-tip:hover .perf-tip-bubble, .perf-tip:focus-visible .perf-tip-bubble { display: block; }
+.perf-extras summary { cursor: pointer; font-weight: 650; }
+.perf-extras-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 12px; }
+.perf-extras-grid .perf-num { font-size: 1.1rem; }
+.perf-analysis { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 12px; min-width: 0; }
+.perf-chart { min-width: 0; }
+.perf-chart-head { margin-bottom: 8px; }
+.perf-chart-svg { width: 100%; height: auto; display: block; }
+.perf-chart-zero { stroke: var(--line); stroke-dasharray: 4 4; }
+.perf-bar { fill: color-mix(in srgb, var(--muted) 35%, transparent); cursor: pointer; outline: none; }
+.perf-bar.up { fill: color-mix(in srgb, var(--ok) 55%, transparent); }
+.perf-bar.down { fill: color-mix(in srgb, var(--danger) 55%, transparent); }
+.perf-bar.active, .perf-bar:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.perf-line { stroke: var(--accent); }
+.perf-chart-label { fill: var(--muted); font-size: 10px; }
+.perf-insights { display: grid; gap: 8px; align-content: start; }
+.perf-insights ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.perf-insights li { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.perf-insights li:first-child { border-top: 0; padding-top: 0; }
+.perf-groups, .perf-trades { display: grid; gap: 12px; min-width: 0; }
+.perf-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.perf-tabs button.active { background: var(--accent); color: var(--ink); }
+.perf-table { max-height: 520px; overflow: auto; min-width: 0; }
+.perf-table th.num, .perf-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.perf-table .positive { color: var(--ok); }
+.perf-table .negative { color: var(--danger); }
+.perf-linkish { background: transparent; border: 0; padding: 0; color: var(--text); text-decoration: underline; text-underline-offset: 2px; font: inherit; font-weight: 600; }
+.perf-linkish:hover { background: transparent; color: var(--accent-2); }
+.perf-badge { display: inline-block; margin-left: 8px; font-size: 0.72rem; font-weight: 650; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; vertical-align: middle; }
+.perf-barcell { display: grid; gap: 4px; justify-items: end; }
+.perf-inlinebar { display: block; height: 4px; border-radius: 999px; background: var(--muted); max-width: 100%; }
+.perf-inlinebar.positive { background: var(--ok); }
+.perf-inlinebar.negative { background: var(--danger); }
+.perf-trades-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.perf-page.has-panel .perf-trades-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.perf-panel { position: sticky; top: 12px; align-self: start; max-height: calc(100vh - 24px); overflow: auto; display: grid; gap: 12px; }
+.perf-panel header { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.perf-back { display: none; margin-bottom: 6px; }
+.perf-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 14px; margin: 0; }
+.perf-detail-grid dt { color: var(--muted); font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px; }
+.perf-detail-grid dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+.perf-note { font-size: 0.85rem; }
+.perf-logs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 240px; overflow: auto; }
+.perf-logs li { display: grid; gap: 2px; font-size: 0.85rem; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.perf-stack { display: grid; gap: 2px; }
+.perf-skeleton { display: grid; gap: 12px; }
+.skeleton-block { min-height: 88px; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: perf-shimmer 1.2s linear infinite; }
+.skeleton-chart { min-height: 220px; }
+.skeleton-table { min-height: 180px; }
+.perf-error { display: grid; gap: 10px; justify-items: start; }
+.perf-ledger-link { margin-top: 4px; }
+@keyframes perf-shimmer { to { background-position: -200% 0; } }
+@media (max-width: 960px) {
+  .perf-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .perf-analysis { grid-template-columns: 1fr; }
+  .perf-page.has-panel .perf-trades-layout { grid-template-columns: 1fr; }
+  .perf-panel { position: fixed; inset: 0; z-index: 40; max-height: none; border-radius: 0; }
+  .perf-back { display: inline-flex; }
+}
+@media (max-width: 640px) {
+  .perf-head { align-items: start; }
+  .perf-num { font-size: 1.25rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block { animation: none; }
+}

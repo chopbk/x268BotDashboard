@@ -13,7 +13,7 @@
 | `/bots/:username`, `/bots/.../accounts/:env` | Redirect | Chuyển sang Config Lab (UI cũ không còn dùng) |
 | Signal `/signal-search` | SignalSearchPage và panel | Tab lịch sử / tìm / scorecard / thống kê / cấu hình; từng API có quyền riêng |
 | Terminal `/terminal` | TerminalPage | Workspace giao dịch (R1): vị thế, lệnh, lịch sử, panel chi tiết. Menu Position đã gỡ; `/positions` redirect sang `/terminal`. Gate: `positions.view` \| `orders.view` \| `statistics.view`. Spec: [terminal-workspace-spec](terminal-workspace-spec.md) |
-| Account Static `/signals` | SignalHistoryPage | Kết quả lệnh thực tế và chi tiết; `statistics.view` cho API account-statics |
+| Hiệu quả giao dịch `/signals` | SignalHistoryPage | Analytics PnL theo signal/config/symbol/side; KPI, biểu đồ, nhận xét quy tắc, danh sách + panel; `statistics.view` cho API account-statics. URL cũ `/signals?view=statics` vẫn dùng được |
 | Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
@@ -76,7 +76,7 @@ Khi sổ live đổi (đóng, mở, đổi size), Terminal hiện toast trong tr
 
 | Mục | Nguồn / thời gian |
 |---|---|
-| Account Static | `account_statics`, lọc openTime; mặc định ba ngày nếu không truyền from/to; sổ live/paper theo lựa chọn |
+| Hiệu quả giao dịch (Account Static) | `account_statics`; UI analytics mặc định 7 ngày, theo closeTime UTC, lệnh đã đóng, sổ Live. Win rate/profit factor theo `profit` hợp lệ (không dùng status làm nguồn duy nhất). `roe` không gọi ROI tài khoản. Deep-link Ledger khi có quyền. API cũ không gửi `analytics`/`range` vẫn lọc openTime mặc định 3 ngày |
 | Provider Scorecard | Feed `signal_infos` (hệ thống) + trades `account_statics` (scope bot); cùng openTime; win = status WIN |
 | Tìm Signal | Lệnh thật theo openTime, signal và config; điều kiện win dựa vào profit trong module này |
 | Tổng kết | Lệnh live; lọc closeTime, fallback openTime nếu thiếu closeTime; win/loss dựa trạng thái WIN và LOSS/LOSE |

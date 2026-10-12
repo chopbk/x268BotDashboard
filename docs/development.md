@@ -11,7 +11,7 @@
 | Tìm signal | SignalSearchPage → config-search → account_statics | config-search |
 | Provider Scorecard | SignalScorecardPanel → provider-scorecard → signal_infos + account_statics | provider-scorecard |
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
-| Số liệu lệnh/ví | account-statics / account-ledger / system-summary | account-statics, account-ledger, system-summary |
+| Hiệu quả giao dịch / ví | SignalHistoryPage → account-statics; AccountLedgerPage → account-ledger; summary | account-statics, account-ledger, system-summary |
 | Position / REST Binance | PositionsPage → routes/positions → position-live + binance-rest-queue → position-feed | positions, binance-rest-queue, position-sync |
 | Terminal workspace R1 | TerminalPage + components/terminal → cùng API Position/Orders/Trading | `node --test client/src/components/terminal/protection.test.js` (+ trade-preview / position-sort / position-alerts) |
 | AI/dashboard | DashboardPage → routes/dashboard → dashboard-ai/brief/dashboard | dashboard |

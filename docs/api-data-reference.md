@@ -141,7 +141,7 @@ Không có REST `/api/logs`, `/api/user/stats` hay wildcard `/api/signals/*` ch�
 | Signal config POST | `username`, `envs`, `signals`, `action=add/remove` | Tối đa 40 config/20 signal; trả changed theo env và failed |
 | Signal history | `signal`, `q`, `side`, `type`, `status`, `from/to`, `page/limit` | Nhật ký signal, không quy đổi thành profit của user |
 | Provider scorecard | `from/to`, `scope`, `book`, `minTrades`, `sort`, `q` | Ghép feed `signal_infos` + trades `account_statics` theo tên channel; xem [spec](provider-scorecard-spec.md) |
-| Account statics | `username`, `env`, `scope`, `signal`, `from/to`, `book`, `copy`, `closed`, `status`, `profit` | Chi tiết `/:id` cần username để authorize env |
+| Account statics | `username`, `env`, `scope`, `signal`, `from/to`, `range`, `time=close\|open`, `analytics`, `book`, `copy`, `closed`, `status`, `profit`, `listDay`, `page` | Aggregate KPI/series/insights/groups; `listDay` chỉ lọc danh sách. Chi tiết `/:id` cần username; kèm closeReason/logs/roeBasis |
 | Ledger | `username`, `days`, `scope` | Đọc DB; POST refresh mới gọi sàn, rate limit riêng |
 | Summary | `range=today/3d/7d/30d/90d/all`, `audience` | Payload aggregate hoặc snapshot kèm metadata; refresh có giới hạn |
 | Positions | `account`, `audience`, `book` và filter vị thế | Monitor + snapshot sàn đã lọc quyền; detail cần `id` |
