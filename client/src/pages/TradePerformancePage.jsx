@@ -361,7 +361,6 @@ export default function TradePerformancePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [extrasOpen, setExtrasOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [signalDraft, setSignalDraft] = useState("");
   const [tick, setTick] = useState(0);
@@ -735,54 +734,58 @@ export default function TradePerformancePage() {
 
       {stats && stats.total > 0 ? (
         <>
-          <div className="perf-kpi-grid">
-            <Kpi
-              label="Lãi/lỗ ghi nhận"
-              value={money(stats.profit)}
-              toneClass={tone(stats.profit)}
-              note={`${stats.valid} lệnh có profit hợp lệ`}
-              tip={formulas.pnl || "Tổng profit sau bộ lọc."}
-            />
-            <Kpi
-              label="Tỷ lệ thắng"
-              value={stats.winRate == null ? "—" : `${fmt(stats.winRate, 1)}%`}
-              note={`${stats.wins} thắng / ${stats.losses} thua / ${stats.flats} hòa · mẫu ${stats.valid}`}
-              tip={formulas.winRate}
-            />
-            <Kpi
-              label="Profit factor"
-              value={stats.profitFactorLabel || (stats.profitFactor == null ? "—" : fmt(stats.profitFactor, 2))}
-              tip={formulas.profitFactor}
-            />
-            <Kpi
-              label="PnL TB/lệnh"
-              value={money(stats.avgProfit)}
-              toneClass={tone(stats.avgProfit)}
-              tip={formulas.avgProfit}
-            />
-          </div>
-
-          <details className="card perf-extras" open={extrasOpen} onToggle={(e) => setExtrasOpen(e.target.open)}>
-            <summary>Xem thêm chỉ số</summary>
-            <div className="perf-extras-grid">
-              <div><span className="muted">Tổng cost</span><strong className="perf-num">{money(stats.cost)}</strong></div>
-              <div><span className="muted">Volume</span><strong className="perf-num">{money(stats.volume)}</strong></div>
-              <div><span className="muted">Lãi lớn nhất</span><strong className={`perf-num ${tone(stats.maxProfit)}`}>{money(stats.maxProfit)}</strong></div>
-              <div><span className="muted">Lỗ lớn nhất</span><strong className={`perf-num ${tone(stats.minProfit)}`}>{money(stats.minProfit)}</strong></div>
-              <div><span className="muted">Lãi trung bình</span><strong className={`perf-num ${tone(stats.avgWin)}`}>{money(stats.avgWin)}</strong></div>
-              <div><span className="muted">Lỗ trung bình</span><strong className={`perf-num ${tone(stats.avgLoss)}`}>{money(stats.avgLoss)}</strong></div>
-              <div><span className="muted">Thời gian giữ TB</span><strong className="perf-num">{holdLabel(stats.avgHoldMs)}</strong></div>
-              <div>
-                <span className="muted">Chuỗi thua dài nhất</span>
-                <strong className="perf-num">{stats.longestLosingStreak ?? "—"}</strong>
-                <small className="muted">{stats.streakTruncated ? " · tính trên tối đa 10.000 lệnh đóng" : ` · ${data?.rangeLabel || ""}`}</small>
-              </div>
-              <div>
-                <span className="muted">PnL / tổng cost lệnh <Tip text={formulas.pnlOverCost} /></span>
-                <strong className="perf-num">{stats.pnlOverCost == null ? "—" : `${fmt(stats.pnlOverCost, 1)}%`}</strong>
-              </div>
+          <div className="perf-kpi-row">
+            <div className="perf-kpi-grid">
+              <Kpi
+                label="Lãi/lỗ ghi nhận"
+                value={money(stats.profit)}
+                toneClass={tone(stats.profit)}
+                note={`${stats.valid} lệnh có profit hợp lệ`}
+                tip={formulas.pnl || "Tổng profit sau bộ lọc."}
+              />
+              <Kpi
+                label="Tỷ lệ thắng"
+                value={stats.winRate == null ? "—" : `${fmt(stats.winRate, 1)}%`}
+                note={`${stats.wins} thắng / ${stats.losses} thua / ${stats.flats} hòa · mẫu ${stats.valid}`}
+                tip={formulas.winRate}
+              />
+              <Kpi
+                label="Profit factor"
+                value={stats.profitFactorLabel || (stats.profitFactor == null ? "—" : fmt(stats.profitFactor, 2))}
+                tip={formulas.profitFactor}
+              />
+              <Kpi
+                label="PnL TB/lệnh"
+                value={money(stats.avgProfit)}
+                toneClass={tone(stats.avgProfit)}
+                tip={formulas.avgProfit}
+              />
             </div>
-          </details>
+
+            <aside className="card perf-extras" aria-label="Chỉ số bổ sung">
+              <h2 className="perf-extras-title">Chỉ số bổ sung</h2>
+              <dl className="perf-extras-list">
+                <div><dt>Tổng cost</dt><dd className="perf-num">{money(stats.cost)}</dd></div>
+                <div><dt>Volume</dt><dd className="perf-num">{money(stats.volume)}</dd></div>
+                <div><dt>Lãi lớn nhất</dt><dd className={`perf-num ${tone(stats.maxProfit)}`}>{money(stats.maxProfit)}</dd></div>
+                <div><dt>Lỗ lớn nhất</dt><dd className={`perf-num ${tone(stats.minProfit)}`}>{money(stats.minProfit)}</dd></div>
+                <div><dt>Lãi trung bình</dt><dd className={`perf-num ${tone(stats.avgWin)}`}>{money(stats.avgWin)}</dd></div>
+                <div><dt>Lỗ trung bình</dt><dd className={`perf-num ${tone(stats.avgLoss)}`}>{money(stats.avgLoss)}</dd></div>
+                <div><dt>Thời gian giữ TB</dt><dd className="perf-num">{holdLabel(stats.avgHoldMs)}</dd></div>
+                <div>
+                  <dt>Chuỗi thua dài nhất</dt>
+                  <dd className="perf-num">
+                    {stats.longestLosingStreak ?? "—"}
+                    <small className="muted">{stats.streakTruncated ? " · ≤10k lệnh" : ""}</small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>PnL / tổng cost lệnh <Tip text={formulas.pnlOverCost} /></dt>
+                  <dd className="perf-num">{stats.pnlOverCost == null ? "—" : `${fmt(stats.pnlOverCost, 1)}%`}</dd>
+                </div>
+              </dl>
+            </aside>
+          </div>
 
           <div className="perf-analysis">
             <div className="perf-analysis-main">
