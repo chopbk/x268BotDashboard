@@ -268,15 +268,13 @@ a.link-btn:hover { background: var(--surface-2); }
   font-size: 0.85rem;
 }
 
+/* Full width như Terminal — form config giữ hẹp hơn qua :has(.config-screen) */
 main {
-  width: min(1280px, calc(100% - 48px));
-  margin: 24px auto 48px;
-  font-size: 1rem;
-}
-
-main:has(.pos-screen) {
   width: calc(100% - 40px);
   max-width: none;
+  margin: 24px auto 48px;
+  font-size: 1rem;
+  box-sizing: border-box;
 }
 
 main:has(.config-screen) {
