@@ -1,4 +1,4 @@
-const VERSION = 2;
+const VERSION = 3;
 const PREFIX = "web-bot.terminal.v1";
 
 export const DEFAULT_COLUMNS = {
@@ -8,10 +8,10 @@ export const DEFAULT_COLUMNS = {
   size: false,
   entryMark: true,
   pnl: true,
+  recorded: true,
   protection: true,
   actions: true,
   config: false,
-  recorded: false,
   liquidation: false,
   dataAge: false,
 };
@@ -23,10 +23,10 @@ export const COLUMN_LABELS = {
   size: "Size (qty)",
   entryMark: "Entry/Mark",
   pnl: "PnL/ROI",
+  recorded: "PnL ghi nhận",
   protection: "Bảo vệ",
   actions: "Thao tác",
   config: "Config/Signal",
-  recorded: "PnL ghi nhận",
   liquidation: "Thanh lý",
   dataAge: "Tuổi DL",
 };
@@ -64,12 +64,16 @@ export function loadPrefs(userId) {
 function migrateColumns(data) {
   const prev = data?.columns || {};
   // v1: size mặc định bật, notional tắt → v2: volume mặc định
+  // v3: bật PnL ghi nhận cạnh PnL/ROI (cùng field `recorded` như /positions)
   if (data?.version !== VERSION) {
     const next = { ...DEFAULT_COLUMNS, ...prev };
     if (prev.notional === true && prev.volume == null) next.volume = true;
     if (prev.size === true && prev.volume == null && data?.version === 1) {
       next.volume = true;
       next.size = false;
+    }
+    if ((data?.version == null || data?.version <= 2) && prev.recorded !== true) {
+      next.recorded = true;
     }
     delete next.notional;
     return next;

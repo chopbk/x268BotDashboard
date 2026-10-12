@@ -70,9 +70,16 @@ export default function PositionTable({
                 <button type="button" className="term-sort" onClick={() => onSort("unrealized")}>PnL/ROI{sortMark(sort, "unrealized")}</button>
               </th>
             ) : null}
-            {columns.recorded ? (
+            {columns.recorded !== false ? (
               <th aria-sort={ariaSort(sort, "recorded")}>
-                <button type="button" className="term-sort" onClick={() => onSort("recorded")}>PnL ghi nhận{sortMark(sort, "recorded")}</button>
+                <button
+                  type="button"
+                  className="term-sort"
+                  title="Lãi đã chốt + fee + funding trên monitor (giống /positions)"
+                  onClick={() => onSort("recorded")}
+                >
+                  PnL ghi nhận{sortMark(sort, "recorded")}
+                </button>
               </th>
             ) : null}
             {columns.liquidation ? (
@@ -212,7 +219,20 @@ function PositionRow({
             {roi == null ? null : <span className="muted">{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</span>}
           </td>
         ) : null}
-        {columns.recorded ? <td className={`term-num ${pnlClass(row.recorded?.net)}`}>{row.recorded ? fmt(row.recorded.net, 2) : "—"}</td> : null}
+        {columns.recorded !== false ? (() => {
+          const recordedFrom = row.recorded?.source === "positionHistory" ? "Position history"
+            : row.recorded?.source === "trades" ? "Lệnh đóng"
+            : row.recorded?.source === "income" ? "Income"
+            : "Monitor";
+          const recordedTitle = row.recorded
+            ? `${recordedFrom} · chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
+            : "Chưa có position history, lệnh đóng hoặc stats";
+          return (
+            <td className={`term-num ${pnlClass(row.recorded?.net)}`} title={recordedTitle}>
+              {row.recorded ? fmt(row.recorded.net, 2) : "—"}
+            </td>
+          );
+        })() : null}
         {columns.liquidation ? <td className="term-num">{fmt(row.liquidation)}</td> : null}
         {columns.protection !== false ? (() => {
           const cell = protectionCellText(status);
