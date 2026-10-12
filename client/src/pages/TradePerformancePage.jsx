@@ -562,373 +562,379 @@ export default function TradePerformancePage() {
   const groupNameKey = groupTab === "config" ? "env" : groupTab === "symbol" ? "symbol" : groupTab === "side" ? "side" : "signal";
   const formulas = data?.formulas || {};
 
+  const extrasCard = stats ? (
+    <aside className="card perf-extras" aria-label="Chỉ số bổ sung">
+      <h2 className="perf-extras-title">Chỉ số bổ sung</h2>
+      <dl className="perf-extras-list">
+        <div><dt>Tổng cost</dt><dd className="perf-num">{money(stats.cost)}</dd></div>
+        <div><dt>Volume</dt><dd className="perf-num">{money(stats.volume)}</dd></div>
+        <div><dt>Lãi lớn nhất</dt><dd className={`perf-num ${tone(stats.maxProfit)}`}>{money(stats.maxProfit)}</dd></div>
+        <div><dt>Lỗ lớn nhất</dt><dd className={`perf-num ${tone(stats.minProfit)}`}>{money(stats.minProfit)}</dd></div>
+        <div><dt>Lãi trung bình</dt><dd className={`perf-num ${tone(stats.avgWin)}`}>{money(stats.avgWin)}</dd></div>
+        <div><dt>Lỗ trung bình</dt><dd className={`perf-num ${tone(stats.avgLoss)}`}>{money(stats.avgLoss)}</dd></div>
+        <div><dt>Thời gian giữ TB</dt><dd className="perf-num">{holdLabel(stats.avgHoldMs)}</dd></div>
+        <div>
+          <dt>Chuỗi thua dài nhất</dt>
+          <dd className="perf-num">
+            {stats.longestLosingStreak ?? "—"}
+            <small className="muted">{stats.streakTruncated ? " · ≤10k lệnh" : ""}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>PnL / tổng cost <Tip text={formulas.pnlOverCost} /></dt>
+          <dd className="perf-num">{stats.pnlOverCost == null ? "—" : `${fmt(stats.pnlOverCost, 1)}%`}</dd>
+        </div>
+      </dl>
+    </aside>
+  ) : null;
+
   return (
     <div className={`perf-page${trade ? " has-panel" : ""}`}>
-      <div className="perf-top">
-        <header className="page-head perf-head">
-          <div>
-            <h1>Hiệu quả giao dịch</h1>
-            <p className="muted">Phân tích kết quả theo signal, cấu hình và từng lệnh.</p>
-          </div>
-          <div className="perf-head-actions">
-            <span className="muted">{data?.generatedAt ? `Cập nhật ${fmtTime(data.generatedAt)}` : "—"}{refreshing ? " · đang cập nhật" : ""}</span>
-            <button
-              type="button"
-              disabled={loading || refreshing || !username}
-              onClick={() => setTick((value) => value + 1)}
-            >
-              Làm mới
-            </button>
-          </div>
-          <div className="perf-chips perf-chips-inline">
-            {chips.map((chip) => (
-              <span key={chip.key} className="perf-chip">
-                {chip.label}
-                {chip.clear ? <button type="button" aria-label={`Xóa ${chip.label}`} onClick={() => update(chip.clear)}>×</button> : null}
-              </span>
-            ))}
-            <button type="button" className="ghost" onClick={clearFilters}>Xóa lọc</button>
-          </div>
-          <p className="muted perf-range-note">
-            {data?.rangeLabel || "Kỳ theo UTC"}. Live và Paper không trộn trong một tổng kết.
-            {stats?.excludedMissingClose ? ` ${stats.excludedMissingClose} bản ghi thiếu closeTime đã bị loại khi lọc ngày đóng.` : ""}
-          </p>
-        </header>
-
-        <aside className="card perf-filters" aria-label="Bộ lọc">
-          <div className="perf-filters-head">
-            <strong>Bộ lọc</strong>
-            <button type="button" className="ghost" onClick={() => setFiltersOpen((value) => !value)}>
-              {filtersOpen ? "Thu gọn" : "Mở rộng"}
-            </button>
-          </div>
-          <div className="perf-filters-main">
-            <label>Phạm vi
-              <select value={audience} onChange={(e) => {
-                const next = e.target.value;
-                const list = next === "others" ? otherBots : mineBots;
-                setAudience(next);
-                update({ username: list[0]?.username || "", env: "" });
-              }}
-              >
-                <option value="mine">Của tôi</option>
-                <option value="others">Người khác</option>
-              </select>
-            </label>
-            <label>User
-              <select value={username} onChange={(e) => update({ username: e.target.value, env: "" })}>
-                {listedBots.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
-                {username && !listedBots.some((bot) => bot.username === username) ? <option value={username}>{username}</option> : null}
-              </select>
-            </label>
-            <label>Config
-              <select value={env} onChange={(e) => update({ env: e.target.value })}>
-                <option value="">Tất cả config</option>
-                {(selectedBot?.accounts || []).map((name) => <option key={name} value={name}>{username ? `${username} / ${name}` : name}</option>)}
-              </select>
-            </label>
-            <label>Sổ
-              <select value={book === "paper" ? "paper" : "live"} onChange={(e) => update({ book: e.target.value })}>
-                <option value="live">Live</option>
-                <option value="paper">Paper</option>
-              </select>
-            </label>
-            <label className="perf-filter-span">Kỳ (UTC)
-              <div className="history-range">
-                {RANGE_PRESETS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={range === item.id ? "active" : "ghost"}
-                    onClick={() => {
-                      if (item.id === "custom") update({ range: "custom", from: from || daysAgoIso(7).slice(0, 10), to: to || new Date().toISOString().slice(0, 10) });
-                      else update({ range: item.id, from: "", to: "" });
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+      <div className="perf-layout">
+        <div className="perf-main">
+          <header className="page-head perf-head">
+            <div className="perf-head-row">
+              <div>
+                <h1>Hiệu quả giao dịch</h1>
+                <p className="muted">Phân tích kết quả theo signal, cấu hình và từng lệnh.</p>
               </div>
-            </label>
-            <label className="perf-filter-span">Signal
-              <input
-                value={signalDraft}
-                onChange={(e) => setSignalDraft(e.target.value)}
-                list="perf-signal-list"
-                placeholder="Tìm signal"
-                autoComplete="off"
-              />
-              <datalist id="perf-signal-list">
-                {(stats?.bySignal || []).map((item) => <option key={item.signal} value={item.signal} />)}
-              </datalist>
-            </label>
-          </div>
-          {range === "custom" ? (
-            <div className="perf-filters-main">
-              <label>Từ ngày UTC<input type="date" value={toDateInput(from)} onChange={(e) => update({ range: "custom", from: e.target.value })} /></label>
-              <label>Đến ngày UTC<input type="date" value={toDateInput(to)} onChange={(e) => update({ range: "custom", to: e.target.value })} /></label>
+              <div className="perf-head-actions">
+                <span className="muted">{data?.generatedAt ? `Cập nhật ${fmtTime(data.generatedAt)}` : "—"}{refreshing ? " · đang cập nhật" : ""}</span>
+                <button
+                  type="button"
+                  disabled={loading || refreshing || !username}
+                  onClick={() => setTick((value) => value + 1)}
+                >
+                  Làm mới
+                </button>
+              </div>
             </div>
-          ) : null}
-          {filtersOpen ? (
-            <div className="perf-filters-main">
-              <label>Symbol<input value={q} onChange={(e) => update({ q: e.target.value })} placeholder="BTCUSDT" /></label>
-              <label>Long/Short
-                <select value={side} onChange={(e) => update({ side: e.target.value })}>
-                  <option value="">Tất cả</option>
-                  <option value="LONG">LONG</option>
-                  <option value="SHORT">SHORT</option>
-                </select>
-              </label>
-              <label>Copy
-                <select value={copy} onChange={(e) => update({ copy: e.target.value })}>
-                  <option value="">Tất cả</option>
-                  <option value="copy">Copy</option>
-                  <option value="manual">Không Copy</option>
-                </select>
-              </label>
-              <label>Kết quả
-                <select value={profit} onChange={(e) => update({ profit: e.target.value })}>
-                  <option value="">Tất cả</option>
-                  <option value="win">Thắng</option>
-                  <option value="loss">Thua</option>
-                  <option value="flat">Hòa vốn</option>
-                </select>
-              </label>
-              <label>Tiêu chí thời gian
-                <select value={timeField} onChange={(e) => update({ time: e.target.value })}>
-                  <option value="close">Theo ngày đóng</option>
-                  <option value="open">Theo ngày mở</option>
-                </select>
-              </label>
-              <label>Trạng thái lệnh
-                <select value={closed} onChange={(e) => update({ closed: e.target.value })}>
-                  <option value="closed">Đã đóng</option>
-                  <option value="">Tất cả</option>
-                  <option value="open">Đang mở</option>
-                </select>
-              </label>
-            </div>
-          ) : null}
-          {!listedBots.length ? <p className="muted">{audience === "mine" ? "Bạn chưa có user bot đang active." : "Không có user active của người khác."}</p> : null}
-        </aside>
-      </div>
-
-      {loading && !data ? (
-        <div className="perf-skeleton" aria-busy="true">
-          <div className="perf-kpi-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="card skeleton-block" />)}</div>
-          <div className="card skeleton-block skeleton-chart" />
-          <div className="card skeleton-block skeleton-table" />
-        </div>
-      ) : null}
-
-      {error ? (
-        <div className="card form-error perf-error" role="alert">
-          <p>{error}</p>
-          <button type="button" onClick={() => setTick((value) => value + 1)}>Thử lại</button>
-        </div>
-      ) : null}
-
-      {!loading && !error && stats && stats.total === 0 ? (
-        <div className="card empty">Không có giao dịch khớp bộ lọc. Thử đổi kỳ, sổ Live/Paper hoặc xóa bớt lọc.</div>
-      ) : null}
-
-      {stats && stats.total > 0 ? (
-        <>
-          <div className="perf-kpi-row">
-            <div className="perf-kpi-grid">
-              <Kpi
-                label="Lãi/lỗ ghi nhận"
-                value={money(stats.profit)}
-                toneClass={tone(stats.profit)}
-                note={`${stats.valid} lệnh có profit hợp lệ`}
-                tip={formulas.pnl || "Tổng profit sau bộ lọc."}
-              />
-              <Kpi
-                label="Tỷ lệ thắng"
-                value={stats.winRate == null ? "—" : `${fmt(stats.winRate, 1)}%`}
-                note={`${stats.wins} thắng / ${stats.losses} thua / ${stats.flats} hòa · mẫu ${stats.valid}`}
-                tip={formulas.winRate}
-              />
-              <Kpi
-                label="Profit factor"
-                value={stats.profitFactorLabel || (stats.profitFactor == null ? "—" : fmt(stats.profitFactor, 2))}
-                tip={formulas.profitFactor}
-              />
-              <Kpi
-                label="PnL TB/lệnh"
-                value={money(stats.avgProfit)}
-                toneClass={tone(stats.avgProfit)}
-                tip={formulas.avgProfit}
-              />
-            </div>
-
-            <aside className="card perf-extras" aria-label="Chỉ số bổ sung">
-              <h2 className="perf-extras-title">Chỉ số bổ sung</h2>
-              <dl className="perf-extras-list">
-                <div><dt>Tổng cost</dt><dd className="perf-num">{money(stats.cost)}</dd></div>
-                <div><dt>Volume</dt><dd className="perf-num">{money(stats.volume)}</dd></div>
-                <div><dt>Lãi lớn nhất</dt><dd className={`perf-num ${tone(stats.maxProfit)}`}>{money(stats.maxProfit)}</dd></div>
-                <div><dt>Lỗ lớn nhất</dt><dd className={`perf-num ${tone(stats.minProfit)}`}>{money(stats.minProfit)}</dd></div>
-                <div><dt>Lãi trung bình</dt><dd className={`perf-num ${tone(stats.avgWin)}`}>{money(stats.avgWin)}</dd></div>
-                <div><dt>Lỗ trung bình</dt><dd className={`perf-num ${tone(stats.avgLoss)}`}>{money(stats.avgLoss)}</dd></div>
-                <div><dt>Thời gian giữ TB</dt><dd className="perf-num">{holdLabel(stats.avgHoldMs)}</dd></div>
-                <div>
-                  <dt>Chuỗi thua dài nhất</dt>
-                  <dd className="perf-num">
-                    {stats.longestLosingStreak ?? "—"}
-                    <small className="muted">{stats.streakTruncated ? " · ≤10k lệnh" : ""}</small>
-                  </dd>
-                </div>
-                <div>
-                  <dt>PnL / tổng cost lệnh <Tip text={formulas.pnlOverCost} /></dt>
-                  <dd className="perf-num">{stats.pnlOverCost == null ? "—" : `${fmt(stats.pnlOverCost, 1)}%`}</dd>
-                </div>
-              </dl>
-            </aside>
-          </div>
-
-          <div className="perf-analysis">
-            <div className="perf-analysis-main">
-              <PnlChart
-                series={data?.series || []}
-                selectedDay={listDay}
-                timeField={data?.timeField}
-                onSelectDay={(day) => update({ listDay: day, page: "1" })}
-              />
-            </div>
-            <aside className="card perf-insights">
-              <h2>Điểm đáng chú ý</h2>
-              <p className="muted">Nhận xét theo quy tắc trên dữ liệu đã lọc — mô tả số liệu, không suy diễn nguyên nhân hay khuyên tăng vốn.</p>
-              {(data?.insights || []).length === 0 ? <p className="muted">Không đủ điều kiện để tạo nhận xét.</p> : null}
-              <ul>
-                {(data?.insights || []).map((item) => (
-                  <li key={item.code}>
-                    <strong>{item.title}</strong>
-                    <p>{item.text}</p>
-                    {item.action?.type === "signal" ? <button type="button" className="ghost" onClick={() => update({ signal: item.action.value })}>Xem signal</button> : null}
-                    {item.action?.type === "env" ? <button type="button" className="ghost" onClick={() => update({ env: item.action.value })}>Xem config</button> : null}
-                    {item.action?.type === "side" ? <button type="button" className="ghost" onClick={() => update({ side: item.action.value })}>Xem {item.action.value}</button> : null}
-                  </li>
-                ))}
-              </ul>
-            </aside>
-          </div>
-
-          <section className="card perf-groups">
-            <div className="perf-tabs" role="tablist" aria-label="Nhóm phân tích">
-              {[
-                ["signal", "Signal"],
-                ["config", "Config"],
-                ["symbol", "Symbol"],
-                ["side", "Long/Short"],
-              ].map(([id, label]) => (
-                <button key={id} type="button" role="tab" aria-selected={groupTab === id} className={groupTab === id ? "active" : ""} onClick={() => setGroupTab(id)}>{label}</button>
+            <div className="perf-chips perf-chips-inline">
+              {chips.map((chip) => (
+                <span key={chip.key} className="perf-chip">
+                  {chip.label}
+                  {chip.clear ? <button type="button" aria-label={`Xóa ${chip.label}`} onClick={() => update(chip.clear)}>×</button> : null}
+                </span>
               ))}
+              <button type="button" className="ghost" onClick={clearFilters}>Xóa lọc</button>
             </div>
-            <GroupTable
-              rows={groupRows.map((row) => ({ ...row, avgProfit: row.valid ? (Number(row.profit) || 0) / row.valid : null }))}
-              nameKey={groupNameKey}
-              nameLabel={groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
-              username={username}
-              active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : q}
-              sortKey={groupSort === "avgProfit" ? "avgProfit" : groupSort}
-              onSort={setGroupSort}
-              onPick={(value) => {
-                if (groupTab === "signal") update({ signal: signal === value ? "" : value });
-                else if (groupTab === "config") update({ env: env === value ? "" : value });
-                else if (groupTab === "side") update({ side: side === value ? "" : value });
-                else update({ q: q === value ? "" : value });
-              }}
-            />
-          </section>
+            <p className="muted perf-range-note">
+              {data?.rangeLabel || "Kỳ theo UTC"}. Live và Paper không trộn trong một tổng kết.
+              {stats?.excludedMissingClose ? ` ${stats.excludedMissingClose} bản ghi thiếu closeTime đã bị loại khi lọc ngày đóng.` : ""}
+            </p>
+          </header>
 
-          <section className="card perf-trades">
-            <div className="perf-trades-head">
-              <h2>Danh sách lệnh</h2>
-              <p className="muted">
-                Phân trang phía server · {data?.listTotal ?? data?.total ?? 0} lệnh
-                {listDay ? ` · đang xem ngày đóng ${listDay}` : ""}.
-                Tổng kết phía trên không đổi khi sang trang.
-              </p>
+          {loading && !data ? (
+            <div className="perf-skeleton" aria-busy="true">
+              <div className="perf-kpi-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="card skeleton-block" />)}</div>
+              <div className="card skeleton-block skeleton-chart" />
             </div>
-            <div className="perf-trades-layout">
-              <div className="table-wrap perf-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Ngày đóng</th>
-                      <th>Symbol</th>
-                      <th>Signal / Config</th>
-                      <th>Side</th>
-                      <th className="num">PnL</th>
-                      <th className="num">Thời gian giữ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data?.rows || []).length === 0 ? <tr><td colSpan={6}>{listDay ? "Không có lệnh đóng trong ngày đã chọn." : "Không có lệnh."}</td></tr> : null}
-                    {(data?.rows || []).map((row) => (
-                      <tr
-                        key={row.id}
-                        className={trade === row.id ? "trade-row active" : "trade-row"}
-                        tabIndex={0}
-                        onClick={(event) => {
-                          rowTriggerRef.current = event.currentTarget;
-                          update({ trade: trade === row.id ? "" : row.id });
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            rowTriggerRef.current = event.currentTarget;
-                            update({ trade: trade === row.id ? "" : row.id });
-                          }
-                        }}
-                      >
-                        <td>{fmtTime(row.closeTime || row.openTime)}</td>
-                        <td>{row.symbol}</td>
-                        <td>
-                          <div className="perf-stack">
-                            <span>{row.signal || "—"}</span>
-                            <span className="muted">{username}/{row.env}</span>
-                          </div>
-                        </td>
-                        <td>{row.side}</td>
-                        <td className={`num ${tone(row.profit)}`}>{money(row.profit)}</td>
-                        <td className="num">{holdLabel(row.holdMs)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {trade ? (
-                <TradePanel
-                  row={detail}
-                  triggerRef={rowTriggerRef}
-                  onClose={() => update({ trade: "" })}
-                  configHref={configAllowed && detail?.env ? configTo(detail.env) : ""}
-                  historyHref={signalAllowed && detail ? historyTo(detail.signal, detail.env) : ""}
-                  ledgerHref={staticAllowed && username ? `/ledger?username=${encodeURIComponent(username)}` : ""}
+          ) : null}
+
+          {error ? (
+            <div className="card form-error perf-error" role="alert">
+              <p>{error}</p>
+              <button type="button" onClick={() => setTick((value) => value + 1)}>Thử lại</button>
+            </div>
+          ) : null}
+
+          {!loading && !error && stats && stats.total === 0 ? (
+            <div className="card empty">Không có giao dịch khớp bộ lọc. Thử đổi kỳ, sổ Live/Paper hoặc xóa bớt lọc.</div>
+          ) : null}
+
+          {stats && stats.total > 0 ? (
+            <>
+              <div className="perf-kpi-grid">
+                <Kpi
+                  label="Lãi/lỗ ghi nhận"
+                  value={money(stats.profit)}
+                  toneClass={tone(stats.profit)}
+                  note={`${stats.valid} lệnh có profit hợp lệ`}
+                  tip={formulas.pnl || "Tổng profit sau bộ lọc."}
                 />
-              ) : null}
-            </div>
-            {(data?.listTotal || data?.total || 0) > (data?.limit || 50) ? (
-              <div className="audit-pagination">
-                <span className="muted">Trang {data.page} · {data.listTotal || data.total} bản ghi</span>
-                <div>
-                  <button type="button" className="ghost" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Trước</button>
-                  <button type="button" className="ghost" disabled={page * (data.limit || 50) >= (data.listTotal || data.total)} onClick={() => update({ page: String(page + 1) })}>Sau</button>
+                <Kpi
+                  label="Tỷ lệ thắng"
+                  value={stats.winRate == null ? "—" : `${fmt(stats.winRate, 1)}%`}
+                  note={`${stats.wins}/${stats.losses}/${stats.flats} · mẫu ${stats.valid}`}
+                  tip={formulas.winRate}
+                />
+                <Kpi
+                  label="Profit factor"
+                  value={stats.profitFactorLabel || (stats.profitFactor == null ? "—" : fmt(stats.profitFactor, 2))}
+                  tip={formulas.profitFactor}
+                />
+                <Kpi
+                  label="PnL TB/lệnh"
+                  value={money(stats.avgProfit)}
+                  toneClass={tone(stats.avgProfit)}
+                  tip={formulas.avgProfit}
+                />
+              </div>
+
+              <div className="perf-analysis">
+                <div className="perf-analysis-main">
+                  <PnlChart
+                    series={data?.series || []}
+                    selectedDay={listDay}
+                    timeField={data?.timeField}
+                    onSelectDay={(day) => update({ listDay: day, page: "1" })}
+                  />
                 </div>
+                <aside className="card perf-insights">
+                  <h2>Điểm đáng chú ý</h2>
+                  <p className="muted">Nhận xét theo quy tắc — mô tả số liệu, không khuyên tăng vốn.</p>
+                  {(data?.insights || []).length === 0 ? <p className="muted">Không đủ điều kiện để tạo nhận xét.</p> : null}
+                  <ul>
+                    {(data?.insights || []).map((item) => (
+                      <li key={item.code}>
+                        <strong>{item.title}</strong>
+                        <p>{item.text}</p>
+                        {item.action?.type === "signal" ? <button type="button" className="ghost" onClick={() => update({ signal: item.action.value })}>Xem signal</button> : null}
+                        {item.action?.type === "env" ? <button type="button" className="ghost" onClick={() => update({ env: item.action.value })}>Xem config</button> : null}
+                        {item.action?.type === "side" ? <button type="button" className="ghost" onClick={() => update({ side: item.action.value })}>Xem {item.action.value}</button> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </aside>
+              </div>
+
+              <section className="card perf-groups">
+                <div className="perf-tabs" role="tablist" aria-label="Nhóm phân tích">
+                  {[
+                    ["signal", "Signal"],
+                    ["config", "Config"],
+                    ["symbol", "Symbol"],
+                    ["side", "Long/Short"],
+                  ].map(([id, label]) => (
+                    <button key={id} type="button" role="tab" aria-selected={groupTab === id} className={groupTab === id ? "active" : ""} onClick={() => setGroupTab(id)}>{label}</button>
+                  ))}
+                </div>
+                <GroupTable
+                  rows={groupRows.map((row) => ({ ...row, avgProfit: row.valid ? (Number(row.profit) || 0) / row.valid : null }))}
+                  nameKey={groupNameKey}
+                  nameLabel={groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
+                  username={username}
+                  active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : q}
+                  sortKey={groupSort === "avgProfit" ? "avgProfit" : groupSort}
+                  onSort={setGroupSort}
+                  onPick={(value) => {
+                    if (groupTab === "signal") update({ signal: signal === value ? "" : value });
+                    else if (groupTab === "config") update({ env: env === value ? "" : value });
+                    else if (groupTab === "side") update({ side: side === value ? "" : value });
+                    else update({ q: q === value ? "" : value });
+                  }}
+                />
+              </section>
+
+              <section className="card perf-trades">
+                <div className="perf-trades-head">
+                  <h2>Danh sách lệnh</h2>
+                  <p className="muted">
+                    Phân trang phía server · {data?.listTotal ?? data?.total ?? 0} lệnh
+                    {listDay ? ` · đang xem ngày đóng ${listDay}` : ""}.
+                    Tổng kết phía trên không đổi khi sang trang.
+                  </p>
+                </div>
+                <div className="perf-trades-layout">
+                  <div className="table-wrap perf-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Ngày đóng</th>
+                          <th>Symbol</th>
+                          <th>Signal / Config</th>
+                          <th>Side</th>
+                          <th className="num">PnL</th>
+                          <th className="num">Thời gian giữ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data?.rows || []).length === 0 ? <tr><td colSpan={6}>{listDay ? "Không có lệnh đóng trong ngày đã chọn." : "Không có lệnh."}</td></tr> : null}
+                        {(data?.rows || []).map((row) => (
+                          <tr
+                            key={row.id}
+                            className={trade === row.id ? "trade-row active" : "trade-row"}
+                            tabIndex={0}
+                            onClick={(event) => {
+                              rowTriggerRef.current = event.currentTarget;
+                              update({ trade: trade === row.id ? "" : row.id });
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                rowTriggerRef.current = event.currentTarget;
+                                update({ trade: trade === row.id ? "" : row.id });
+                              }
+                            }}
+                          >
+                            <td>{fmtTime(row.closeTime || row.openTime)}</td>
+                            <td>{row.symbol}</td>
+                            <td>
+                              <div className="perf-stack">
+                                <span>{row.signal || "—"}</span>
+                                <span className="muted">{username}/{row.env}</span>
+                              </div>
+                            </td>
+                            <td>{row.side}</td>
+                            <td className={`num ${tone(row.profit)}`}>{money(row.profit)}</td>
+                            <td className="num">{holdLabel(row.holdMs)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {trade ? (
+                    <TradePanel
+                      row={detail}
+                      triggerRef={rowTriggerRef}
+                      onClose={() => update({ trade: "" })}
+                      configHref={configAllowed && detail?.env ? configTo(detail.env) : ""}
+                      historyHref={signalAllowed && detail ? historyTo(detail.signal, detail.env) : ""}
+                      ledgerHref={staticAllowed && username ? `/ledger?username=${encodeURIComponent(username)}` : ""}
+                    />
+                  ) : null}
+                </div>
+                {(data?.listTotal || data?.total || 0) > (data?.limit || 50) ? (
+                  <div className="audit-pagination">
+                    <span className="muted">Trang {data.page} · {data.listTotal || data.total} bản ghi</span>
+                    <div>
+                      <button type="button" className="ghost" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Trước</button>
+                      <button type="button" className="ghost" disabled={page * (data.limit || 50) >= (data.listTotal || data.total)} onClick={() => update({ page: String(page + 1) })}>Sau</button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            </>
+          ) : null}
+
+          {username && staticAllowed ? (
+            <p className="muted perf-ledger-link">
+              <Link to={`/ledger?username=${encodeURIComponent(username)}`}>Xem hiệu quả vốn tài khoản</Link>
+              {" · "}
+              {configAllowed ? <Link to={`/config-lab?user=${encodeURIComponent(username)}`}>Mở Config · {username}</Link> : null}
+            </p>
+          ) : null}
+        </div>
+
+        <aside className="perf-side">
+          <div className="card perf-filters" aria-label="Bộ lọc">
+            <div className="perf-filters-head">
+              <strong>Bộ lọc</strong>
+              <button type="button" className="ghost" onClick={() => setFiltersOpen((value) => !value)}>
+                {filtersOpen ? "Thu gọn" : "Mở rộng"}
+              </button>
+            </div>
+            <div className="perf-filters-main">
+              <label>Phạm vi
+                <select value={audience} onChange={(e) => {
+                  const next = e.target.value;
+                  const list = next === "others" ? otherBots : mineBots;
+                  setAudience(next);
+                  update({ username: list[0]?.username || "", env: "" });
+                }}
+                >
+                  <option value="mine">Của tôi</option>
+                  <option value="others">Người khác</option>
+                </select>
+              </label>
+              <label>User
+                <select value={username} onChange={(e) => update({ username: e.target.value, env: "" })}>
+                  {listedBots.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
+                  {username && !listedBots.some((bot) => bot.username === username) ? <option value={username}>{username}</option> : null}
+                </select>
+              </label>
+              <label>Config
+                <select value={env} onChange={(e) => update({ env: e.target.value })}>
+                  <option value="">Tất cả config</option>
+                  {(selectedBot?.accounts || []).map((name) => <option key={name} value={name}>{username ? `${username} / ${name}` : name}</option>)}
+                </select>
+              </label>
+              <label>Sổ
+                <select value={book === "paper" ? "paper" : "live"} onChange={(e) => update({ book: e.target.value })}>
+                  <option value="live">Live</option>
+                  <option value="paper">Paper</option>
+                </select>
+              </label>
+              <label className="perf-filter-span">Kỳ (UTC)
+                <div className="history-range">
+                  {RANGE_PRESETS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={range === item.id ? "active" : "ghost"}
+                      onClick={() => {
+                        if (item.id === "custom") update({ range: "custom", from: from || daysAgoIso(7).slice(0, 10), to: to || new Date().toISOString().slice(0, 10) });
+                        else update({ range: item.id, from: "", to: "" });
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </label>
+              <label className="perf-filter-span">Signal
+                <input
+                  value={signalDraft}
+                  onChange={(e) => setSignalDraft(e.target.value)}
+                  list="perf-signal-list"
+                  placeholder="Tìm signal"
+                  autoComplete="off"
+                />
+                <datalist id="perf-signal-list">
+                  {(stats?.bySignal || []).map((item) => <option key={item.signal} value={item.signal} />)}
+                </datalist>
+              </label>
+            </div>
+            {range === "custom" ? (
+              <div className="perf-filters-main">
+                <label>Từ ngày UTC<input type="date" value={toDateInput(from)} onChange={(e) => update({ range: "custom", from: e.target.value })} /></label>
+                <label>Đến ngày UTC<input type="date" value={toDateInput(to)} onChange={(e) => update({ range: "custom", to: e.target.value })} /></label>
               </div>
             ) : null}
-          </section>
-        </>
-      ) : null}
-
-      {username && staticAllowed ? (
-        <p className="muted perf-ledger-link">
-          <Link to={`/ledger?username=${encodeURIComponent(username)}`}>Xem hiệu quả vốn tài khoản</Link>
-          {" · "}
-          {configAllowed ? <Link to={`/config-lab?user=${encodeURIComponent(username)}`}>Mở Config · {username}</Link> : null}
-        </p>
-      ) : null}
+            {filtersOpen ? (
+              <div className="perf-filters-main">
+                <label>Symbol<input value={q} onChange={(e) => update({ q: e.target.value })} placeholder="BTCUSDT" /></label>
+                <label>Long/Short
+                  <select value={side} onChange={(e) => update({ side: e.target.value })}>
+                    <option value="">Tất cả</option>
+                    <option value="LONG">LONG</option>
+                    <option value="SHORT">SHORT</option>
+                  </select>
+                </label>
+                <label>Copy
+                  <select value={copy} onChange={(e) => update({ copy: e.target.value })}>
+                    <option value="">Tất cả</option>
+                    <option value="copy">Copy</option>
+                    <option value="manual">Không Copy</option>
+                  </select>
+                </label>
+                <label>Kết quả
+                  <select value={profit} onChange={(e) => update({ profit: e.target.value })}>
+                    <option value="">Tất cả</option>
+                    <option value="win">Thắng</option>
+                    <option value="loss">Thua</option>
+                    <option value="flat">Hòa vốn</option>
+                  </select>
+                </label>
+                <label>Tiêu chí thời gian
+                  <select value={timeField} onChange={(e) => update({ time: e.target.value })}>
+                    <option value="close">Theo ngày đóng</option>
+                    <option value="open">Theo ngày mở</option>
+                  </select>
+                </label>
+                <label>Trạng thái lệnh
+                  <select value={closed} onChange={(e) => update({ closed: e.target.value })}>
+                    <option value="closed">Đã đóng</option>
+                    <option value="">Tất cả</option>
+                    <option value="open">Đang mở</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
+            {!listedBots.length ? <p className="muted">{audience === "mine" ? "Bạn chưa có user bot đang active." : "Không có user active của người khác."}</p> : null}
+          </div>
+          {extrasCard}
+        </aside>
+      </div>
     </div>
   );
 }
