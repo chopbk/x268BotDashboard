@@ -19,7 +19,6 @@ import SignalSearchPage from "./pages/SignalSearchPage";
 import ProfilePage from "./pages/ProfilePage";
 import AccountLedgerPage from "./pages/AccountLedgerPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
-import PositionsPage from "./pages/PositionsPage";
 import TerminalPage from "./pages/TerminalPage";
 
 const USERS_MANAGE = "users.view";
@@ -54,6 +53,12 @@ function RedirectBotToConfig() {
 function RedirectLegacyConfig() {
   const { username = "", env = "" } = useParams();
   return <Navigate to={`/config-lab/${encodeURIComponent(username)}/${encodeURIComponent(env)}`} replace />;
+}
+
+/** Bookmark / deep-link cũ `/positions` → Terminal. */
+function RedirectPositionsToTerminal() {
+  const location = useLocation();
+  return <Navigate to={`/terminal${location.search || ""}`} replace />;
 }
 
 function ProtectedAny({ children, permissions }) {
@@ -96,7 +101,6 @@ function Shell({ children }) {
           {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/config-lab">Config</NavLink> : null}
           {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
-          {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/positions">Position</NavLink> : null}
           {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/terminal">Terminal</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Account Static</NavLink> : null}
@@ -162,10 +166,8 @@ function AppRoutes() {
       <Route
         path="/positions"
         element={
-          <ProtectedAny permissions={[POSITIONS_VIEW, STATISTICS_VIEW]}>
-            <Shell>
-              <PositionsPage />
-            </Shell>
+          <ProtectedAny permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW]}>
+            <RedirectPositionsToTerminal />
           </ProtectedAny>
         }
       />

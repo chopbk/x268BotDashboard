@@ -228,7 +228,7 @@ function buildOpenRisk(usernames, books) {
                 side,
                 unrealized,
                 notional,
-                href: `/positions?account=${encodeURIComponent(username)}`,
+                href: `/terminal?account=${encodeURIComponent(username)}`,
             });
         }
     }

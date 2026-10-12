@@ -267,7 +267,7 @@ export default function DashboardPage() {
                     ? `${openRisk.positions} vị thế${openRisk.staleBook ? " · sổ cũ" : ""}`
                     : "Chưa có sổ Redis"}
                   {" · "}
-                  <Link to="/positions">Position</Link>
+                  <Link to="/terminal">Terminal</Link>
                 </small>
               </article>
             ) : null}
@@ -275,7 +275,7 @@ export default function DashboardPage() {
               <article className="card">
                 <span className="muted">Vị thế mở</span>
                 <strong>{openRisk.available ? openRisk.positions : "—"}</strong>
-                <small className="muted"><Link to="/positions">Xem / đồng bộ sàn</Link></small>
+                <small className="muted"><Link to="/terminal">Xem / đồng bộ sàn</Link></small>
               </article>
             ) : null}
           </div>
@@ -303,7 +303,7 @@ export default function DashboardPage() {
             <section className="card dash-block">
               <div className="dash-health-head">
                 <h2>Rủi ro đang mở</h2>
-                <Link className="ghost link-btn" to="/positions">Position</Link>
+                <Link className="ghost link-btn" to="/terminal">Terminal</Link>
               </div>
               <p className="muted">Top theo |uPnL| từ sổ Redis — không gọi sàn tại đây. Cần sổ mới thì mở Position.</p>
               <div className="table-wrap">
@@ -324,7 +324,7 @@ export default function DashboardPage() {
                         <td>{row.symbol}</td>
                         <td>{row.side}</td>
                         <td className={tone(row.unrealized)}>{money(row.unrealized)}</td>
-                        <td><Link className="ghost link-btn" to={row.href || "/positions"}>Mở</Link></td>
+                        <td><Link className="ghost link-btn" to={row.href || "/terminal"}>Mở</Link></td>
                       </tr>
                     ))}
                   </tbody>
@@ -427,7 +427,7 @@ export default function DashboardPage() {
                         <td>{row.positions == null ? "—" : row.positions}</td>
                         <td className="dash-row-actions">
                           <Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(row.username)}`}>Config</Link>
-                          <Link className="ghost link-btn" to={`/positions?account=${encodeURIComponent(row.username)}`}>Position</Link>
+                          <Link className="ghost link-btn" to={`/terminal?account=${encodeURIComponent(row.username)}`}>Terminal</Link>
                           <Link className="ghost link-btn" to={`/ledger?username=${encodeURIComponent(row.username)}`}>Lãi lỗ</Link>
                         </td>
                       </tr>

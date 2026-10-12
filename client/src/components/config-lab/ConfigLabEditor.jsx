@@ -28,7 +28,7 @@ export function journeyPaths(username, env, signalText = "") {
     history: `/signal-search?${history}`,
     skip: `/signal-search?${skip}`,
     statics: `/signals?view=statics&username=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`,
-    positions: `/positions?account=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`,
+    positions: `/terminal?account=${encodeURIComponent(username)}&env=${encodeURIComponent(env)}`,
     bot: `/config-lab?user=${encodeURIComponent(username)}`,
     list: "/bots",
   };
@@ -38,7 +38,7 @@ export function LabJourneyLinks({ username, env, signals = "", canHistory, canSt
   const paths = journeyPaths(username, env, signals);
   return <nav className="lab-journey" aria-label="Tiếp theo sau cấu hình">
     <span className="lab-kicker">THEO DÕI</span>
-    {canPositions ? <Link className="ghost link-btn" to={paths.positions}>Position</Link> : null}
+    {canPositions ? <Link className="ghost link-btn" to={paths.positions}>Terminal</Link> : null}
     {canStatistics ? <Link className="ghost link-btn" to={paths.statics}>Account Static</Link> : null}
     {canHistory ? <Link className="ghost link-btn" to={paths.history}>Lịch sử signal</Link> : null}
     <Link className="ghost link-btn" to={paths.skip}>Lý do bỏ qua</Link>

@@ -720,7 +720,7 @@ export default function TerminalPage() {
       <header className="term-header">
         <div className="term-header-title">
           <h1>Terminal</h1>
-          <p className="muted">Workspace giao dịch — Position cũ vẫn ở /positions.</p>
+          <p className="muted">Workspace giao dịch (vị thế, lệnh, lịch sử).</p>
         </div>
         <div className="term-header-status">
           <span className={stale ? "term-badge term-badge-warn" : "term-badge"}>

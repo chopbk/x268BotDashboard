@@ -60,7 +60,7 @@ Nguồn tham chiếu (2026): [Cryptohopper Dashboard](https://docs.cryptohopper.
 | Ý tưởng | Ở đâu hay | Phù hợp web-bot? | Ghi chú |
 |---|---|---|---|
 | Tách **realized / unrealized / holdings** | 3Commas, Cryptohopper, VOIDX | **Bắt buộc** | Đã có realized + income; thiếu uPnL + số vị thế |
-| Open positions / reserved funds trên overview | Cryptohopper | **Tóm tắt** | Bảng rút gọn top lỗ/lãi mở + link `/positions` |
+| Open positions / reserved funds trên overview | Cryptohopper | **Tóm tắt** | Bảng rút gọn top lỗ/lãi mở + link `/terminal` |
 | Bot status: running / unhealthy / error / stopped | VolatiCloud | **Bắt buộc** | Map từ heartbeat + cờ `active` + lỗi runtime gần đây |
 | Activity feed + Output/errors | Cryptohopper | **Nên có** | 5–10 sự kiện gần (đóng lệnh / blocked / removed) |
 | Equity / PnL theo kỳ + fees + volume | 3Commas, Bitsgap | Phase 2 | Sparkline 7 ngày từ dữ liệu đã có; fees nếu có trong income |
@@ -132,7 +132,7 @@ Tuỳ chọn phase 2: delta vs hôm qua UTC (`profitToday - profitYesterday`) ch
 Khối tóm tắt (không phải full Position):
 
 - Tổng uPnL, tổng notional ước tính (qty × mark) nếu có mark.
-- Top N (mặc định 5) vị thế theo |uPnL| giảm dần: bot · env · symbol · side · uPnL · link `/positions?...`.
+- Top N (mặc định 5) vị thế theo |uPnL| giảm dần: bot · env · symbol · side · uPnL · link `/terminal?...`.
 - Cảnh báo gộp: “X vị thế không có monitor”, “Y monitor stale” — chỉ đếm, deep-link; chi tiết vẫn ở Position.
 
 `mode=fast` (Mongo+Redis). Nếu Redis trống: hiện “Chưa có sổ live — mở Position để đồng bộ”, không gọi Binance hàng loạt từ dashboard (tránh rate limit; đã có queue REST riêng).
@@ -212,7 +212,7 @@ Vẫn **`GET /api/dashboard`** — mở rộng response; không tách endpoint t
         "symbol": "BTCUSDT",
         "side": "LONG",
         "unrealized": -20.1,
-        "href": "/positions?account=bot-demo"
+        "href": "/terminal?account=bot-demo"
       }
     ]
   },
