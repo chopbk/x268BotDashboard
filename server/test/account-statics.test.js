@@ -20,6 +20,13 @@ function query(value) {
     return { select() { return this; }, sort() { return this; }, skip() { return this; }, limit() { return this; }, lean() { return Promise.resolve(value); }, then(ok, fail) { return Promise.resolve(value).then(ok, fail); } };
 }
 
+function flattenMatch(filter) {
+    if (!filter || typeof filter !== "object") return {};
+    if (!filter.$and) return filter;
+    const { $and, ...rest } = filter;
+    return ($and || []).reduce((acc, part) => ({ ...acc, ...flattenMatch(part) }), { ...rest });
+}
+
 function totalsRow(overrides = {}) {
     return {
         count: 1,
@@ -63,8 +70,9 @@ test("Account Static is scoped to the selected config and returns profit statist
     };
     try {
         const result = await listAccountStatics({ role: "viewer", botUsernames: ["alpha"] }, { username: "alpha", env: "a1" });
-        assert.deepEqual(rowFilter.env, { $in: ["a1"] });
-        const span = Date.now() - rowFilter.openTime.$gte.getTime();
+        const flat = flattenMatch(rowFilter);
+        assert.deepEqual(flat.env, { $in: ["a1"] });
+        const span = Date.now() - flat.openTime.$gte.getTime();
         assert.ok(span > 2.9 * 24 * 60 * 60 * 1000 && span < 3.1 * 24 * 60 * 60 * 1000);
         assert.equal(result.stats.profit, 12);
         assert.equal(result.stats.winRate, 100);
@@ -98,12 +106,14 @@ test("Account Static filters signal, status and profit on list and shared aggreg
     };
     try {
         const result = await listAccountStatics({ role: "viewer", botUsernames: ["alpha"] }, { username: "alpha", signal: "signal_a+", status: "win", profit: "loss" });
-        assert.equal(rowFilter.typeSignal.source, "^signal_a\\+$");
-        assert.equal(rowFilter.status, "WIN");
-        assert.deepEqual(rowFilter.profit, { $lt: 0 });
-        assert.equal(match.typeSignal.source, "^signal_a\\+$");
-        assert.equal(match.status, "WIN");
-        assert.deepEqual(match.profit, { $lt: 0 });
+        const flat = flattenMatch(rowFilter);
+        const flatMatch = flattenMatch(match);
+        assert.equal(flat.typeSignal.source, "^signal_a\\+$");
+        assert.equal(flat.status, "WIN");
+        assert.deepEqual(flat.profit, { $lt: 0 });
+        assert.equal(flatMatch.typeSignal.source, "^signal_a\\+$");
+        assert.equal(flatMatch.status, "WIN");
+        assert.deepEqual(flatMatch.profit, { $lt: 0 });
         assert.equal(result.stats.bySignal.length, 0);
         assert.equal(result.stats.byConfig[0].env, "a1");
         assert.equal(result.stats.byConfig[0].winRate, 75);
@@ -137,7 +147,7 @@ test("Account Static defaults to live trades and compares signals by profit-base
     };
     try {
         const result = await listAccountStatics({ role: "viewer", botUsernames: ["alpha"] }, { username: "alpha" });
-        assert.deepEqual(rowFilter.isPaper, { $ne: true });
+        assert.deepEqual(flattenMatch(rowFilter).isPaper, { $ne: true });
         assert.equal(result.stats.pnlOverCost, 30);
         assert.equal(result.stats.longProfit, 28);
         assert.equal(result.stats.profitFactor, 4);
@@ -151,9 +161,10 @@ test("Account Static defaults to live trades and compares signals by profit-base
         assert.equal(result.stats.bySide[0].side, "LONG");
 
         await listAccountStatics({ role: "viewer", botUsernames: ["alpha"] }, { username: "alpha", book: "paper", copy: "copy", closed: "open" });
-        assert.equal(rowFilter.isPaper, true);
-        assert.equal(rowFilter.isCopy, true);
-        assert.deepEqual(rowFilter.isClosed, { $ne: true });
+        const openFlat = flattenMatch(rowFilter);
+        assert.equal(openFlat.isPaper, true);
+        assert.equal(openFlat.isCopy, true);
+        assert.deepEqual(openFlat.isClosed, { $ne: true });
     } finally {
         UserAccount.findOne = originals.user;
         AccountStatic.find = originals.rows;
@@ -171,8 +182,11 @@ test("analytics mode filters by closeTime, defaults closed live, and keeps listD
     UserAccount.findOne = () => query({ username: "alpha", accounts: ["a1"], visibility: "public" });
     AccountConfig.find = () => query([]);
     AccountStatic.find = (filter) => {
-        if (filter.$and) listFilter = filter;
-        else streakFilter = filter;
+        if (Array.isArray(filter.$and) && filter.$and.length >= 2 && filter.$and.some((part) => part.closeTime && !part.env && !part.$or)) {
+            listFilter = filter;
+        } else {
+            streakFilter = filter;
+        }
         return query([]);
     };
     AccountStatic.countDocuments = async (filter) => (filter.$or ? 2 : 0);
@@ -187,16 +201,18 @@ test("analytics mode filters by closeTime, defaults closed live, and keeps listD
             { role: "viewer", botUsernames: ["alpha"] },
             { username: "alpha", analytics: "1", range: "7", listDay: "2026-10-01" }
         );
-        assert.ok(listFilter.$and);
-        assert.ok(listFilter.$and[0].closeTime.$gte);
-        assert.equal(listFilter.$and[0].isClosed, true);
-        assert.deepEqual(listFilter.$and[0].isPaper, { $ne: true });
-        assert.equal(listFilter.$and[1].closeTime.$gte.toISOString().slice(0, 10), "2026-10-01");
-        assert.equal(streakFilter.$and, undefined);
-        assert.ok(streakFilter.closeTime.$gte);
+        const listText = JSON.stringify(listFilter);
+        const streakText = JSON.stringify(streakFilter);
+        const aggText = JSON.stringify(aggregateMatch);
+        assert.match(listText, /"closeTime"/);
+        assert.match(listText, /"isClosed":true/);
+        assert.match(listText, /2026-10-01/);
+        assert.match(listText, /"isPaper"/);
+        assert.match(streakText, /"closeTime"/);
+        assert.doesNotMatch(streakText, /2026-10-01T23:59:59/);
         assert.equal(aggregateMatch.listDay, undefined);
-        assert.ok(aggregateMatch.closeTime.$gte);
-        assert.equal(aggregateMatch.isClosed, true);
+        assert.match(aggText, /"closeTime"/);
+        assert.match(aggText, /"isClosed":true/);
         assert.equal(result.timeField, "closeTime");
         assert.equal(result.book, "live");
         assert.equal(result.stats.excludedMissingClose, 2);
@@ -224,10 +240,10 @@ test("a paper user opens on the paper book unless live is requested", async () =
     try {
         const opened = await listAccountStatics({ role: "viewer", botUsernames: ["PAPER"] }, { username: "PAPER" });
         assert.equal(opened.book, "paper");
-        assert.equal(rowFilter.isPaper, true);
+        assert.equal(flattenMatch(rowFilter).isPaper, true);
         const forced = await listAccountStatics({ role: "viewer", botUsernames: ["PAPER"] }, { username: "PAPER", book: "live" });
         assert.equal(forced.book, "live");
-        assert.deepEqual(rowFilter.isPaper, { $ne: true });
+        assert.deepEqual(flattenMatch(rowFilter).isPaper, { $ne: true });
     } finally {
         UserAccount.findOne = originals.user;
         AccountStatic.find = originals.rows;

@@ -103,7 +103,8 @@ function Shell({ children }) {
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
           {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/terminal">Terminal</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
-          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Hiệu quả giao dịch</NavLink> : null}
+          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals?view=performance">Hiệu quả giao dịch</NavLink> : null}
+          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals?view=statics">Account Static</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
           {hasPermission(user, SUMMARY_VIEW) || hasPermission(user, BOTS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
           {showOps ? <p className="nav-label">Vận hành</p> : null}

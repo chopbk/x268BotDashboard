@@ -131,37 +131,37 @@ const volumeExpr = {
     $ifNull: ["$volume", { $multiply: [{ $ifNull: ["$costAmount", 0] }, { $abs: { $ifNull: ["$futuresLeverage", 1] } }] }],
 };
 
-/** Chỉ cộng profit khi là số hữu hạn; không ép null → 0 */
-const validProfitMatch = { profit: { $type: "number" } };
+/** Chỉ cộng profit khi là số BSON; không ép null/string → 0 */
+const profitTypeOk = { $in: [{ $type: "$profit" }, ["double", "int", "long", "decimal"]] };
 const profitValue = "$profit";
-const winCond = { $gt: [profitValue, 0] };
-const lossCond = { $lt: [profitValue, 0] };
-const flatCond = { $eq: [profitValue, 0] };
+const winCond = { $and: [profitTypeOk, { $gt: [profitValue, 0] }] };
+const lossCond = { $and: [profitTypeOk, { $lt: [profitValue, 0] }] };
+const flatCond = { $and: [profitTypeOk, { $eq: [profitValue, 0] }] };
 
 function groupMetrics(idExpr) {
     return {
         _id: idExpr,
         count: { $sum: 1 },
-        valid: { $sum: { $cond: [{ $eq: [{ $type: "$profit" }, "number"] }, 1, 0] } },
-        missingProfit: { $sum: { $cond: [{ $ne: [{ $type: "$profit" }, "number"] }, 1, 0] } },
-        profit: { $sum: { $cond: [{ $eq: [{ $type: "$profit" }, "number"] }, profitValue, 0] } },
+        valid: { $sum: { $cond: [profitTypeOk, 1, 0] } },
+        missingProfit: { $sum: { $cond: [profitTypeOk, 0, 1] } },
+        profit: { $sum: { $cond: [profitTypeOk, profitValue, 0] } },
         grossWin: { $sum: { $cond: [winCond, profitValue, 0] } },
         grossLoss: { $sum: { $cond: [lossCond, profitValue, 0] } },
-        cost: { $sum: { $cond: [{ $eq: [{ $type: "$costAmount" }, "number"] }, "$costAmount", 0] } },
+        cost: { $sum: { $cond: [{ $in: [{ $type: "$costAmount" }, ["double", "int", "long", "decimal"]] }, "$costAmount", 0] } },
         volume: { $sum: volumeExpr },
         maxVolume: { $max: volumeExpr },
         minVolume: { $min: volumeExpr },
         wins: { $sum: { $cond: [winCond, 1, 0] } },
         losses: { $sum: { $cond: [lossCond, 1, 0] } },
         flats: { $sum: { $cond: [flatCond, 1, 0] } },
-        maxProfit: { $max: { $cond: [{ $eq: [{ $type: "$profit" }, "number"] }, profitValue, null] } },
-        minProfit: { $min: { $cond: [{ $eq: [{ $type: "$profit" }, "number"] }, profitValue, null] } },
+        maxProfit: { $max: { $cond: [profitTypeOk, profitValue, null] } },
+        minProfit: { $min: { $cond: [profitTypeOk, profitValue, null] } },
         longCount: { $sum: { $cond: [{ $eq: ["$side", "LONG"] }, 1, 0] } },
         shortCount: { $sum: { $cond: [{ $eq: ["$side", "SHORT"] }, 1, 0] } },
         longProfit: {
             $sum: {
                 $cond: [
-                    { $and: [{ $eq: ["$side", "LONG"] }, { $eq: [{ $type: "$profit" }, "number"] }] },
+                    { $and: [{ $eq: ["$side", "LONG"] }, profitTypeOk] },
                     profitValue,
                     0,
                 ],
@@ -170,7 +170,7 @@ function groupMetrics(idExpr) {
         shortProfit: {
             $sum: {
                 $cond: [
-                    { $and: [{ $eq: ["$side", "SHORT"] }, { $eq: [{ $type: "$profit" }, "number"] }] },
+                    { $and: [{ $eq: ["$side", "SHORT"] }, profitTypeOk] },
                     profitValue,
                     0,
                 ],
@@ -181,8 +181,8 @@ function groupMetrics(idExpr) {
                 $cond: [
                     {
                         $and: [
-                            { $eq: [{ $type: "$openTime" }, "date"] },
-                            { $eq: [{ $type: "$closeTime" }, "date"] },
+                            { $in: [{ $type: "$openTime" }, ["date"]] },
+                            { $in: [{ $type: "$closeTime" }, ["date"]] },
                         ],
                     },
                     { $max: [0, { $subtract: ["$closeTime", "$openTime"] }] },
@@ -195,8 +195,8 @@ function groupMetrics(idExpr) {
                 $cond: [
                     {
                         $and: [
-                            { $eq: [{ $type: "$openTime" }, "date"] },
-                            { $eq: [{ $type: "$closeTime" }, "date"] },
+                            { $in: [{ $type: "$openTime" }, ["date"]] },
+                            { $in: [{ $type: "$closeTime" }, ["date"]] },
                         ],
                     },
                     1,
@@ -205,6 +205,28 @@ function groupMetrics(idExpr) {
             },
         },
     };
+}
+
+/** Bot thường ghi closeTime nhưng không set isClosed=true — coi có closeTime là đã đóng. */
+function closedClause(closed) {
+    const value = String(closed || "").trim().toLowerCase();
+    if (value === "closed") {
+        return {
+            $or: [
+                { isClosed: true },
+                { closeTime: { $exists: true, $ne: null } },
+            ],
+        };
+    }
+    if (value === "open") {
+        return {
+            isClosed: { $ne: true },
+            $and: [
+                { $or: [{ closeTime: null }, { closeTime: { $exists: false } }] },
+            ],
+        };
+    }
+    return null;
 }
 
 function presentGroup(row, nameKey, username) {
@@ -325,25 +347,29 @@ function buildTimeClause(timeField, range) {
 }
 
 function staticScope(input, envs, range, timeField) {
-    const scope = { env: { $in: envs }, ...buildTimeClause(timeField, range) };
+    const base = { env: { $in: envs }, ...buildTimeClause(timeField, range) };
     const book = String(input.book || "live").trim().toLowerCase();
-    if (book === "paper") scope.isPaper = true;
-    else if (book !== "all") scope.isPaper = { $ne: true };
+    if (book === "paper") base.isPaper = true;
+    else if (book !== "all") base.isPaper = { $ne: true };
     const copy = String(input.copy || "").trim().toLowerCase();
-    if (copy === "copy") scope.isCopy = true;
-    else if (copy === "manual") scope.isCopy = { $ne: true };
-    const closed = String(input.closed || "").trim().toLowerCase();
-    if (closed === "closed") scope.isClosed = true;
-    else if (closed === "open") scope.isClosed = { $ne: true };
-    if (["LONG", "SHORT"].includes(input.side)) scope.side = input.side;
+    if (copy === "copy") base.isCopy = true;
+    else if (copy === "manual") base.isCopy = { $ne: true };
+    if (["LONG", "SHORT"].includes(input.side)) base.side = input.side;
     const q = String(input.q || input.symbol || "").trim();
-    if (q) scope.symbol = new RegExp(escapeRegex(q), "i");
-    const filter = { ...scope, ...signalMatch(input) };
+    if (q) base.symbol = new RegExp(escapeRegex(q), "i");
+    const clauses = [base];
+    const closed = closedClause(input.closed);
+    if (closed) clauses.push(closed);
+    const signal = signalMatch(input);
+    if (Object.keys(signal).length) clauses.push(signal);
+    const extras = {};
     const status = String(input.status || "").trim().toUpperCase();
-    if (/^[A-Z0-9_]{1,16}$/.test(status)) filter.status = status;
+    if (/^[A-Z0-9_]{1,16}$/.test(status)) extras.status = status;
     const profit = profitFilter(input.profit);
-    if (profit !== null) filter.profit = profit;
-    return { scope, filter };
+    if (profit !== null) extras.profit = profit;
+    if (Object.keys(extras).length) clauses.push(extras);
+    const filter = clauses.length === 1 ? clauses[0] : { $and: clauses };
+    return { scope: filter, filter };
 }
 
 function listDayFilter(input) {
@@ -533,7 +559,6 @@ async function listAccountStatics(actor, input = {}) {
         const missingFilter = {
             env: { $in: envs },
             ...(book === "paper" ? { isPaper: true } : book === "all" ? {} : { isPaper: { $ne: true } }),
-            ...(closedDefault === "closed" ? { isClosed: true } : {}),
             $or: [{ closeTime: null }, { closeTime: { $exists: false } }],
         };
         try {
@@ -566,7 +591,7 @@ async function listAccountStatics(actor, input = {}) {
                     byConfig: [{ $group: groupMetrics("$env") }],
                     bySymbol: [{ $group: groupMetrics("$symbol") }],
                     bySide: [{ $group: groupMetrics("$side") }],
-                    byStatus: [{ $group: { _id: "$status", count: { $sum: 1 }, profit: { $sum: { $cond: [{ $eq: [{ $type: "$profit" }, "number"] }, "$profit", 0] } } } }],
+                    byStatus: [{ $group: { _id: "$status", count: { $sum: 1 }, profit: { $sum: { $cond: [profitTypeOk, "$profit", 0] } } } }],
                 },
             },
         ]),
@@ -577,7 +602,7 @@ async function listAccountStatics(actor, input = {}) {
                 $group: {
                     _id: { $dateToString: { format: "%Y-%m-%d", date: "$closeTime", timezone: "UTC" } },
                     count: { $sum: 1 },
-                    profit: { $sum: { $cond: [{ $eq: [{ $type: "$profit" }, "number"] }, "$profit", 0] } },
+                    profit: { $sum: { $cond: [profitTypeOk, "$profit", 0] } },
                 },
             },
             { $sort: { _id: 1 } },

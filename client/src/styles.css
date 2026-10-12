@@ -1328,7 +1328,10 @@ button.linkish:hover { background: none; }
 .order-detail dt { color: var(--muted); }
 .order-detail dd { margin: 0; }
 
-/* Hiệu quả giao dịch (/signals) */
+/* Hiệu quả giao dịch + Account Static (/signals) */
+.signals-shell { display: grid; gap: 12px; min-width: 0; }
+.signals-shell > .history-tabs { margin-bottom: 0; }
+.signals-shell > .history-tabs .link-btn.active { background: var(--accent); color: var(--ink); border-color: transparent; }
 .perf-page { display: grid; gap: 14px; min-width: 0; }
 .perf-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
 .perf-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
