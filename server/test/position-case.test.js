@@ -6,6 +6,42 @@ const {
     weightedEntry,
     buildDrift,
 } = require("../src/lib/position-case");
+const {
+    dedupeMonitors,
+    preferExactSymbol,
+    symbolKeys,
+    sameSymbol,
+} = require("../src/lib/positions");
+
+test("symbolKeys + sameSymbol ETH ↔ ETHUSDT", () => {
+    assert.deepEqual(symbolKeys("ETHUSDT"), ["ETHUSDT", "ETH"]);
+    assert.deepEqual(symbolKeys("ETH"), ["ETH", "ETHUSDT"]);
+    assert.equal(sameSymbol("ETH", "ETHUSDT"), true);
+    assert.equal(sameSymbol("BTCUSDT", "ETHUSDT"), false);
+});
+
+test("preferExactSymbol ưu tiên đúng symbol sàn", () => {
+    const docs = [
+        { symbol: "ETH", env: "A", updatedAt: "2026-10-01" },
+        { symbol: "ETHUSDT", env: "B", updatedAt: "2026-10-12" },
+    ];
+    assert.equal(preferExactSymbol(docs, "ETHUSDT").length, 1);
+    assert.equal(preferExactSymbol(docs, "ETHUSDT")[0].env, "B");
+    assert.equal(preferExactSymbol(docs, "ETH").length, 1);
+    assert.equal(preferExactSymbol(docs, "ETH")[0].env, "A");
+    // Không gắn zombie ETH vào case ETHUSDT
+    assert.equal(preferExactSymbol([{ symbol: "ETH", env: "A" }], "ETHUSDT").length, 0);
+});
+
+test("dedupeMonitors giữ bản mới nhất cùng env/symbol/side/signal", () => {
+    const kept = dedupeMonitors([
+        { env: "PAPER3", symbol: "QNT", side: "SHORT", signal: "X", ownQty: 10, updatedAt: "2026-10-01T00:00:00Z" },
+        { env: "PAPER3", symbol: "QNT", side: "SHORT", signal: "X", ownQty: 42, updatedAt: "2026-10-12T00:00:00Z" },
+        { env: "PAPER2", symbol: "QNT", side: "SHORT", signal: "X", ownQty: 7, updatedAt: "2026-10-12T00:00:00Z" },
+    ]);
+    assert.equal(kept.length, 2);
+    assert.equal(kept.find((row) => row.env === "PAPER3").ownQty, 42);
+});
 
 test("classifyTimeline tags dca partial and sl moves", () => {
     assert.equal(classifyTimeline({ event: "DCA_ADD", message: "avg in" }), "dca");

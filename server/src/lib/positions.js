@@ -42,10 +42,65 @@ function monitorIdentity(doc) {
     };
 }
 
+function symbolKeys(symbol) {
+    const raw = String(symbol || "").trim().toUpperCase();
+    if (!raw) return [];
+    const keys = [raw];
+    if (/(USDT|USDC|BUSD)$/.test(raw) && raw.length > 4) keys.push(raw.replace(/(USDT|USDC|BUSD)$/, ""));
+    else if (!/(USDT|USDC|BUSD|USD)$/.test(raw)) keys.push(`${raw}USDT`);
+    return [...new Set(keys.filter(Boolean))];
+}
+
+function sameSymbol(left, right) {
+    const a = String(left || "").toUpperCase();
+    const b = String(right || "").toUpperCase();
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return symbolKeys(a).includes(b) || symbolKeys(b).includes(a);
+}
+
 function samePosition(left, right) {
-    if (!left.symbol || left.symbol !== right.symbol || !left.side || left.side !== right.side) return false;
+    if (!left?.symbol || !right?.symbol || !left?.side || !right?.side) return false;
+    if (left.side !== right.side) return false;
+    if (!sameSymbol(left.symbol, right.symbol)) return false;
     if (left.mode !== "BOTH" && right.mode !== "BOTH" && left.mode !== right.mode) return false;
     return true;
+}
+
+/** Một env+signal+symbol+side chỉ giữ monitor mới nhất — tránh zombie trùng Mongo. */
+function dedupeMonitors(list, keyOf = (item) => {
+    const env = item?.env || "";
+    const symbol = String(item?.symbol || "").toUpperCase();
+    const side = String(item?.side || "").toUpperCase();
+    const signal = item?.signal || item?.type || "";
+    return `${env}|${symbol}|${side}|${signal}`;
+}) {
+    const best = new Map();
+    for (const item of list || []) {
+        const key = keyOf(item);
+        const prev = best.get(key);
+        const nextTs = new Date(item?.updatedAt || item?.openedAt || item?.startTime || item?.createdAt || 0).getTime() || 0;
+        const prevTs = prev
+            ? (new Date(prev.updatedAt || prev.openedAt || prev.startTime || prev.createdAt || 0).getTime() || 0)
+            : -1;
+        if (!prev || nextTs >= prevTs) best.set(key, item);
+    }
+    return [...best.values()];
+}
+
+/**
+ * Ưu tiên đúng symbol sàn (ETHUSDT).
+ * Không fallback base (ETH) khi đang hỏi form *USDT — tránh zombie short-symbol.
+ * Chỉ fallback alias khi hỏi đúng base (ETH) mà DB chỉ có ETHUSDT.
+ */
+function preferExactSymbol(docs, symbol) {
+    const want = String(symbol || "").toUpperCase();
+    const rows = Array.isArray(docs) ? docs : [];
+    if (!want) return rows;
+    const exact = rows.filter((doc) => String(doc?.symbol || "").toUpperCase() === want);
+    if (exact.length) return exact;
+    if (/(USDT|USDC|BUSD)$/.test(want)) return [];
+    return rows;
 }
 
 function rowKey(account, identity) {
@@ -511,12 +566,27 @@ function buildPositionView({
 
     for (const item of live) {
         const parent = parentFromExchange(account, item.row, connection);
+        const eligible = [];
         monitors.forEach((doc, index) => {
             if (isPaper(doc) || isPending(doc) || isClosedDoc(doc)) return;
             if (!samePosition(item.identity, monitorIdentity(doc))) return;
-            parent.monitors.push(publicMonitor(doc, heartbeatFresh, now, parent.mark));
-            used.add(index);
+            eligible.push({
+                doc,
+                index,
+                exact: String(doc.symbol || "").toUpperCase() === item.identity.symbol,
+            });
         });
+        const preferred = eligible.filter((row) => row.exact);
+        const chosen = preferred.length ? preferred : eligible;
+        for (const row of chosen) used.add(row.index);
+        const dedupedDocs = dedupeMonitors(chosen.map((row) => row.doc), (doc) => {
+            const env = doc.env || "";
+            const signal = doc.signal || doc.typeSignal || doc.type || "";
+            return `${env}|${item.identity.symbol}|${item.identity.side}|${signal}`;
+        });
+        for (const doc of dedupedDocs) {
+            parent.monitors.push(publicMonitor(doc, heartbeatFresh, now, parent.mark));
+        }
         if (!parent.monitors.length) parent.warnings.push("no-monitor");
         if (qtyMismatch(parent)) parent.warnings.push("qty-mismatch");
         parent.notpsl = parent.monitors.some((monitor) => monitor.notpsl);
@@ -1017,4 +1087,9 @@ module.exports = {
     visibleBots,
     deleteMonitorRecord,
     createMonitorRecord,
+    symbolKeys,
+    sameSymbol,
+    samePosition,
+    dedupeMonitors,
+    preferExactSymbol,
 };

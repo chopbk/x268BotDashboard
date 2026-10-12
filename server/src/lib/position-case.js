@@ -11,6 +11,9 @@ const {
     monitorDetail,
     buildPositionView,
     isClosedDoc,
+    symbolKeys,
+    preferExactSymbol,
+    dedupeMonitors,
 } = require("./positions");
 const { readExchangeBook, reconcile, cached } = require("./position-live");
 
@@ -182,17 +185,28 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
         for (const env of row.accounts || []) envOwners.set(env, row.username);
     }
 
+    const symbolQuery = symbolKeys(symbol);
     const docs = await Monitor.find({
-        symbol,
+        symbol: symbolQuery.length > 1 ? { $in: symbolQuery } : symbol,
         side,
         closed: { $ne: true },
         isClosed: { $ne: true },
         $or: [{ futuresClientName: account }, { env: { $in: bot.accounts || [] } }, { env: account }],
     }).lean();
 
-    const ownedDocs = (docs || []).filter((doc) => (
-        monitorOwner(doc, envOwners) === account && !isClosedDoc(doc)
-    ));
+    // Đúng owner + ưu tiên exact symbol sàn (ETHUSDT) trước base (ETH) — tránh zombie lệch format.
+    const ownedDocs = preferExactSymbol(
+        dedupeMonitors(
+            (docs || []).filter((doc) => monitorOwner(doc, envOwners) === account && !isClosedDoc(doc)),
+            (doc) => {
+                const env = doc.env || "";
+                const sym = String(doc.symbol || "").toUpperCase();
+                const signal = doc.signal || doc.typeSignal || doc.type || "";
+                return `${env}|${sym}|${side}|${signal}`;
+            }
+        ),
+        symbol
+    );
 
     let book = await readBook(account);
     if (!book) book = cachedBook(account);
@@ -243,8 +257,11 @@ async function loadPositionCase(actor, query = {}, deps = {}) {
         };
     });
 
-    // Chỉ monitor đang mở + còn qty config (đã đóng / qty=0 không hiện)
-    const liveMonitors = monitors.filter((m) => !m.paper && !m.pending && !m.closed && absNum(m.ownQty) > QTY_EPS);
+    // Chỉ monitor đang mở + còn qty config; dedupe lần nữa theo env (view đã public).
+    const liveMonitors = dedupeMonitors(
+        monitors.filter((m) => !m.paper && !m.pending && !m.closed && absNum(m.ownQty) > QTY_EPS),
+        (m) => `${m.env || ""}|${symbol}|${side}|${m.signal || m.type || ""}`
+    );
     const exchange = exchangePos
         ? {
             qty: absNum(exchangePos.positionAmt),

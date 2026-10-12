@@ -67,6 +67,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
     reduceOnly: true,
   });
   const autoReconcileKey = useRef("");
+  const loadSeq = useRef(0);
 
   async function fetchCase() {
     return api(
@@ -88,9 +89,11 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
 
   async function load({ autoOrders = true } = {}) {
     if (!row?.account || !row?.symbol || !row?.side) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       let body = await fetchCase();
+      if (seq !== loadSeq.current) return;
       const key = `${row.account}|${row.symbol}|${row.side}`;
       const noOrders = !orderRows(body.protective).length;
       const hasExchange = body.exchange?.qty > 0;
@@ -101,11 +104,12 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
           body = await fetchReconcile();
         } catch (err) {
           console.error("[positionCase]", err);
-          setNote(err.message || "reconcile order thất bại");
+          if (seq === loadSeq.current) setNote(err.message || "reconcile order thất bại");
         } finally {
-          setReconciling(false);
+          if (seq === loadSeq.current) setReconciling(false);
         }
       }
+      if (seq !== loadSeq.current) return;
       setCaseBody(body);
       setError("");
       setDraft((prev) => ({
@@ -117,14 +121,15 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
       if (!selectedMonitorId && body.monitors?.[0]?.id) onSelectMonitor?.(body.monitors[0].id);
     } catch (err) {
       console.error("[positionCase]", err);
-      setError(err.message || "Không tải được chi tiết position");
+      if (seq === loadSeq.current) setError(err.message || "Không tải được chi tiết position");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     autoReconcileKey.current = "";
+    setCaseBody(null);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row?.account, row?.symbol, row?.side, audience]);
@@ -277,8 +282,40 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
 
   const summary = caseBody?.ownershipSummary;
   const exchange = caseBody?.exchange;
-  const ownership = caseBody?.ownership || [];
-  const monitors = caseBody?.monitors || [];
+  // Khớp monitor với đúng vị thế đang chọn trên bảng (tránh zombie/trùng env hiện thừa).
+  const feedMonitorIds = useMemo(
+    () => new Set((row?.monitors || []).map((item) => String(item.id)).filter(Boolean)),
+    [row?.monitors]
+  );
+  const monitors = useMemo(() => {
+    const fromCase = caseBody?.monitors || [];
+    if (!feedMonitorIds.size) return fromCase;
+    const matched = fromCase.filter((item) => feedMonitorIds.has(String(item.id)));
+    return matched.length ? matched : fromCase;
+  }, [caseBody?.monitors, feedMonitorIds]);
+  const ownership = useMemo(() => {
+    const fromCase = caseBody?.ownership || [];
+    if (!feedMonitorIds.size) return fromCase;
+    const matched = fromCase.filter((item) => feedMonitorIds.has(String(item.id)));
+    if (matched.length) return matched;
+    // Case chưa có / lệch id — fallback từ feed của đúng symbol.
+    if (!(row?.monitors || []).length) return fromCase;
+    return (row.monitors || [])
+      .filter((item) => !item.paper && !item.pending && !item.closed && Number(item.ownQty) > 0)
+      .map((item) => ({
+        id: item.id,
+        env: item.env,
+        signal: item.signal || item.type,
+        ownQty: item.ownQty,
+        entry: item.entry,
+        share: exchange?.qty > 0 ? Number(item.ownQty) / exchange.qty : null,
+        notpsl: item.notpsl,
+        watching: item.watching,
+        tp: item.tp,
+        sl: item.sl,
+        trailing: item.trailing,
+      }));
+  }, [caseBody?.ownership, feedMonitorIds, row?.monitors, exchange?.qty]);
   const selected = monitors.find((item) => item.id === selectedMonitorId) || monitors[0];
   const showMonitor = monitorHasContent(selected);
   const openOrders = useMemo(() => orderRows(caseBody?.protective), [caseBody]);
@@ -485,6 +522,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
             {visible("monitor") && ownership.length ? (
               <section>
                 <h3>Config sở hữu quantity</h3>
+                <p className="muted">{row?.symbol} · {row?.side} · {ownership.length} config</p>
                 <div className="table-wrap">
                   <table className="pos-table">
                     <thead>
@@ -493,9 +531,9 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                         <th>Signal</th>
                         <th>Qty riêng</th>
                         <th>Share</th>
-                        <th>Entry riêng</th>
-                        <th>TP/SL monitor</th>
-                        <th>Flags</th>
+                        {!embedded ? <th>Entry riêng</th> : null}
+                        <th>TP/SL</th>
+                        {!embedded ? <th>Flags</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -507,12 +545,14 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                           <td>{item.signal || "—"}</td>
                           <td>{fmt(item.ownQty)}</td>
                           <td>{item.share == null ? "—" : `${fmt(item.share * 100, 1)}%`}</td>
-                          <td>{fmt(item.entry)}</td>
+                          {!embedded ? <td>{fmt(item.entry)}</td> : null}
                           <td>TP {item.tp || "—"} / SL {item.sl || "—"}{item.trailing ? ` · trail ${item.trailing}` : ""}</td>
-                          <td>
-                            {item.notpsl ? "NOTPSL " : ""}
-                            {item.watching ? "watching" : "no-hb"}
-                          </td>
+                          {!embedded ? (
+                            <td>
+                              {item.notpsl ? "NOTPSL " : ""}
+                              {item.watching ? "watching" : "no-hb"}
+                            </td>
+                          ) : null}
                         </tr>
                       ))}
                     </tbody>
@@ -619,9 +659,9 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
                   ))}
                 </ul>
               </section>
-            ) : (
+            ) : (!embedded ? (
               <p className="muted">Không có cảnh báo lệch Mongo/Redis/runtime/sàn.</p>
-            )}
+            ) : null)}
           </>
         ) : null}
       </div>
