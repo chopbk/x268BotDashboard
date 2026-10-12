@@ -565,147 +565,153 @@ export default function TradePerformancePage() {
 
   return (
     <div className={`perf-page${trade ? " has-panel" : ""}`}>
-      <header className="page-head perf-head">
-        <div>
-          <h1>Hiệu quả giao dịch</h1>
-          <p className="muted">Phân tích kết quả theo signal, cấu hình và từng lệnh.</p>
-        </div>
-        <div className="perf-head-actions">
-          <span className="muted">{data?.generatedAt ? `Cập nhật ${fmtTime(data.generatedAt)}` : "—"}{refreshing ? " · đang cập nhật" : ""}</span>
-          <button
-            type="button"
-            disabled={loading || refreshing || !username}
-            onClick={() => setTick((value) => value + 1)}
-          >
-            Làm mới
-          </button>
-        </div>
-      </header>
-
-      <div className="card perf-filters">
-        <div className="perf-filters-main">
-          <label>Phạm vi
-            <select value={audience} onChange={(e) => {
-              const next = e.target.value;
-              const list = next === "others" ? otherBots : mineBots;
-              setAudience(next);
-              update({ username: list[0]?.username || "", env: "" });
-            }}
+      <div className="perf-top">
+        <header className="page-head perf-head">
+          <div>
+            <h1>Hiệu quả giao dịch</h1>
+            <p className="muted">Phân tích kết quả theo signal, cấu hình và từng lệnh.</p>
+          </div>
+          <div className="perf-head-actions">
+            <span className="muted">{data?.generatedAt ? `Cập nhật ${fmtTime(data.generatedAt)}` : "—"}{refreshing ? " · đang cập nhật" : ""}</span>
+            <button
+              type="button"
+              disabled={loading || refreshing || !username}
+              onClick={() => setTick((value) => value + 1)}
             >
-              <option value="mine">Của tôi</option>
-              <option value="others">Người khác</option>
-            </select>
-          </label>
-          <label>User
-            <select value={username} onChange={(e) => update({ username: e.target.value, env: "" })}>
-              {listedBots.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
-              {username && !listedBots.some((bot) => bot.username === username) ? <option value={username}>{username}</option> : null}
-            </select>
-          </label>
-          <label>Config
-            <select value={env} onChange={(e) => update({ env: e.target.value })}>
-              <option value="">Tất cả config</option>
-              {(selectedBot?.accounts || []).map((name) => <option key={name} value={name}>{username ? `${username} / ${name}` : name}</option>)}
-            </select>
-          </label>
-          <fieldset className="perf-range">
-            <legend>Khoảng thời gian (UTC)</legend>
-            <div className="history-range">
-              {RANGE_PRESETS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={range === item.id ? "active" : "ghost"}
-                  onClick={() => {
-                    if (item.id === "custom") update({ range: "custom", from: from || daysAgoIso(7).slice(0, 10), to: to || new Date().toISOString().slice(0, 10) });
-                    else update({ range: item.id, from: "", to: "" });
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
+              Làm mới
+            </button>
+          </div>
+          <div className="perf-chips perf-chips-inline">
+            {chips.map((chip) => (
+              <span key={chip.key} className="perf-chip">
+                {chip.label}
+                {chip.clear ? <button type="button" aria-label={`Xóa ${chip.label}`} onClick={() => update(chip.clear)}>×</button> : null}
+              </span>
+            ))}
+            <button type="button" className="ghost" onClick={clearFilters}>Xóa lọc</button>
+          </div>
+          <p className="muted perf-range-note">
+            {data?.rangeLabel || "Kỳ theo UTC"}. Live và Paper không trộn trong một tổng kết.
+            {stats?.excludedMissingClose ? ` ${stats.excludedMissingClose} bản ghi thiếu closeTime đã bị loại khi lọc ngày đóng.` : ""}
+          </p>
+        </header>
+
+        <aside className="card perf-filters" aria-label="Bộ lọc">
+          <div className="perf-filters-head">
+            <strong>Bộ lọc</strong>
+            <button type="button" className="ghost" onClick={() => setFiltersOpen((value) => !value)}>
+              {filtersOpen ? "Thu gọn" : "Mở rộng"}
+            </button>
+          </div>
+          <div className="perf-filters-main">
+            <label>Phạm vi
+              <select value={audience} onChange={(e) => {
+                const next = e.target.value;
+                const list = next === "others" ? otherBots : mineBots;
+                setAudience(next);
+                update({ username: list[0]?.username || "", env: "" });
+              }}
+              >
+                <option value="mine">Của tôi</option>
+                <option value="others">Người khác</option>
+              </select>
+            </label>
+            <label>User
+              <select value={username} onChange={(e) => update({ username: e.target.value, env: "" })}>
+                {listedBots.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
+                {username && !listedBots.some((bot) => bot.username === username) ? <option value={username}>{username}</option> : null}
+              </select>
+            </label>
+            <label>Config
+              <select value={env} onChange={(e) => update({ env: e.target.value })}>
+                <option value="">Tất cả config</option>
+                {(selectedBot?.accounts || []).map((name) => <option key={name} value={name}>{username ? `${username} / ${name}` : name}</option>)}
+              </select>
+            </label>
+            <label>Sổ
+              <select value={book === "paper" ? "paper" : "live"} onChange={(e) => update({ book: e.target.value })}>
+                <option value="live">Live</option>
+                <option value="paper">Paper</option>
+              </select>
+            </label>
+            <label className="perf-filter-span">Kỳ (UTC)
+              <div className="history-range">
+                {RANGE_PRESETS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={range === item.id ? "active" : "ghost"}
+                    onClick={() => {
+                      if (item.id === "custom") update({ range: "custom", from: from || daysAgoIso(7).slice(0, 10), to: to || new Date().toISOString().slice(0, 10) });
+                      else update({ range: item.id, from: "", to: "" });
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </label>
+            <label className="perf-filter-span">Signal
+              <input
+                value={signalDraft}
+                onChange={(e) => setSignalDraft(e.target.value)}
+                list="perf-signal-list"
+                placeholder="Tìm signal"
+                autoComplete="off"
+              />
+              <datalist id="perf-signal-list">
+                {(stats?.bySignal || []).map((item) => <option key={item.signal} value={item.signal} />)}
+              </datalist>
+            </label>
+          </div>
+          {range === "custom" ? (
+            <div className="perf-filters-main">
+              <label>Từ ngày UTC<input type="date" value={toDateInput(from)} onChange={(e) => update({ range: "custom", from: e.target.value })} /></label>
+              <label>Đến ngày UTC<input type="date" value={toDateInput(to)} onChange={(e) => update({ range: "custom", to: e.target.value })} /></label>
             </div>
-          </fieldset>
-          <label>Sổ
-            <select value={book === "paper" ? "paper" : "live"} onChange={(e) => update({ book: e.target.value })}>
-              <option value="live">Live</option>
-              <option value="paper">Paper</option>
-            </select>
-          </label>
-          <label>Signal
-            <input
-              value={signalDraft}
-              onChange={(e) => setSignalDraft(e.target.value)}
-              list="perf-signal-list"
-              placeholder="Tìm signal"
-              autoComplete="off"
-            />
-            <datalist id="perf-signal-list">
-              {(stats?.bySignal || []).map((item) => <option key={item.signal} value={item.signal} />)}
-            </datalist>
-          </label>
-        </div>
-        {range === "custom" ? (
-          <div className="perf-filters-main">
-            <label>Từ ngày UTC<input type="date" value={toDateInput(from)} onChange={(e) => update({ range: "custom", from: e.target.value })} /></label>
-            <label>Đến ngày UTC<input type="date" value={toDateInput(to)} onChange={(e) => update({ range: "custom", to: e.target.value })} /></label>
-          </div>
-        ) : null}
-        <button type="button" className="ghost" onClick={() => setFiltersOpen((value) => !value)}>{filtersOpen ? "Thu gọn bộ lọc" : "Bộ lọc mở rộng"}</button>
-        {filtersOpen ? (
-          <div className="perf-filters-main">
-            <label>Symbol<input value={q} onChange={(e) => update({ q: e.target.value })} placeholder="BTCUSDT" /></label>
-            <label>Long/Short
-              <select value={side} onChange={(e) => update({ side: e.target.value })}>
-                <option value="">Tất cả</option>
-                <option value="LONG">LONG</option>
-                <option value="SHORT">SHORT</option>
-              </select>
-            </label>
-            <label>Copy
-              <select value={copy} onChange={(e) => update({ copy: e.target.value })}>
-                <option value="">Tất cả</option>
-                <option value="copy">Copy</option>
-                <option value="manual">Không Copy</option>
-              </select>
-            </label>
-            <label>Kết quả
-              <select value={profit} onChange={(e) => update({ profit: e.target.value })}>
-                <option value="">Tất cả</option>
-                <option value="win">Thắng</option>
-                <option value="loss">Thua</option>
-                <option value="flat">Hòa vốn</option>
-              </select>
-            </label>
-            <label>Tiêu chí thời gian
-              <select value={timeField} onChange={(e) => update({ time: e.target.value })}>
-                <option value="close">Theo ngày đóng</option>
-                <option value="open">Theo ngày mở</option>
-              </select>
-            </label>
-            <label>Trạng thái lệnh
-              <select value={closed} onChange={(e) => update({ closed: e.target.value })}>
-                <option value="closed">Đã đóng</option>
-                <option value="">Tất cả</option>
-                <option value="open">Đang mở</option>
-              </select>
-            </label>
-          </div>
-        ) : null}
-        <div className="perf-chips">
-          {chips.map((chip) => (
-            <span key={chip.key} className="perf-chip">
-              {chip.label}
-              {chip.clear ? <button type="button" aria-label={`Xóa ${chip.label}`} onClick={() => update(chip.clear)}>×</button> : null}
-            </span>
-          ))}
-          <button type="button" className="ghost" onClick={clearFilters}>Xóa lọc</button>
-        </div>
-        <p className="muted">
-          {data?.rangeLabel || "Kỳ theo UTC"}. Live và Paper không trộn trong một tổng kết.
-          {stats?.excludedMissingClose ? ` ${stats.excludedMissingClose} bản ghi thiếu closeTime đã bị loại khi lọc ngày đóng.` : ""}
-        </p>
-        {!listedBots.length ? <p className="muted">{audience === "mine" ? "Bạn chưa có user bot đang active." : "Không có user active của người khác."}</p> : null}
+          ) : null}
+          {filtersOpen ? (
+            <div className="perf-filters-main">
+              <label>Symbol<input value={q} onChange={(e) => update({ q: e.target.value })} placeholder="BTCUSDT" /></label>
+              <label>Long/Short
+                <select value={side} onChange={(e) => update({ side: e.target.value })}>
+                  <option value="">Tất cả</option>
+                  <option value="LONG">LONG</option>
+                  <option value="SHORT">SHORT</option>
+                </select>
+              </label>
+              <label>Copy
+                <select value={copy} onChange={(e) => update({ copy: e.target.value })}>
+                  <option value="">Tất cả</option>
+                  <option value="copy">Copy</option>
+                  <option value="manual">Không Copy</option>
+                </select>
+              </label>
+              <label>Kết quả
+                <select value={profit} onChange={(e) => update({ profit: e.target.value })}>
+                  <option value="">Tất cả</option>
+                  <option value="win">Thắng</option>
+                  <option value="loss">Thua</option>
+                  <option value="flat">Hòa vốn</option>
+                </select>
+              </label>
+              <label>Tiêu chí thời gian
+                <select value={timeField} onChange={(e) => update({ time: e.target.value })}>
+                  <option value="close">Theo ngày đóng</option>
+                  <option value="open">Theo ngày mở</option>
+                </select>
+              </label>
+              <label>Trạng thái lệnh
+                <select value={closed} onChange={(e) => update({ closed: e.target.value })}>
+                  <option value="closed">Đã đóng</option>
+                  <option value="">Tất cả</option>
+                  <option value="open">Đang mở</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+          {!listedBots.length ? <p className="muted">{audience === "mine" ? "Bạn chưa có user bot đang active." : "Không có user active của người khác."}</p> : null}
+        </aside>
       </div>
 
       {loading && !data ? (
