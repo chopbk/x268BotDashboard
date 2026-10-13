@@ -5,6 +5,7 @@ const { computeAccountMetrics } = require("../src/lib/decision-support/account-m
 const { buildPositionScenarios } = require("../src/lib/decision-support/scenarios");
 const { validateReport, directionOk } = require("../src/lib/decision-support/validate-report");
 const { buildRulesReport, generateAiReport } = require("../src/lib/decision-support/ai-report");
+const { buildTechnicalBrief } = require("../src/lib/decision-support/market-snapshot");
 const { serializeProfile, isConfigured, normalizeInput } = require("../src/lib/risk-profile");
 
 test("pnlLinear LONG/SHORT đúng chiều", () => {
@@ -192,6 +193,56 @@ test("buildRulesReport gắn risk_profile missing", () => {
         riskLevelHint: "attention",
     });
     assert.ok(raw.findings.some((f) => /ngân sách rủi ro/i.test(f.title)));
+});
+
+test("buildTechnicalBrief và rules có findings kỹ thuật symbol", () => {
+    const market = {
+        symbol: "BTCUSDT",
+        multiTf: "bullish_align",
+        alignment: "with",
+        atr14: 120,
+        tf15: {
+            structure: { bias: "bullish", label: "Cấu trúc tăng (HH+HL)" },
+            rsi14: 58,
+            atr14: 120,
+            atrPct: 1.2,
+            support: 94000,
+            resistance: 98000,
+            volumeRel: 1.4,
+            trendVsEma: "bullish",
+            formingCandle: false,
+        },
+        tf1h: {
+            structure: { bias: "bullish", label: "Cấu trúc tăng (HH+HL)" },
+            rsi14: 55,
+            support: 93000,
+            resistance: 99000,
+            trendVsEma: "bullish",
+        },
+        tf4h: {
+            structure: { bias: "bullish", label: "Cấu trúc tăng (HH+HL)" },
+            trendVsEma: "bullish",
+            rsi14: 52,
+        },
+        candidateLevels: { invalidation: 93500 },
+        levels: [{ id: "sl_atr", role: "sl", price: 94500, label: "SL ATR" }],
+    };
+    const brief = buildTechnicalBrief(market, { side: "LONG", symbol: "BTCUSDT" });
+    assert.ok(brief.headline);
+    assert.ok(brief.findings.some((f) => /cấu trúc/i.test(f.title)));
+    assert.ok(brief.cards.support === 94000);
+
+    const raw = buildRulesReport({
+        scope: "position",
+        metrics: { symbol: "BTCUSDT", side: "LONG", mark: 96000, qty: 1, sl: 95000 },
+        market,
+        technicalBrief: brief,
+        scenarios: [],
+        missingData: [],
+        riskLevelHint: "normal",
+    });
+    assert.ok(raw.findings.some((f) => /cấu trúc|RSI|hỗ trợ/i.test(f.title)));
+    assert.match(raw.summary, /đồng thuận tăng|cùng chiều/i);
 });
 
 test("risk profile normalize + isConfigured", () => {

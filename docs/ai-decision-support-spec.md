@@ -33,7 +33,7 @@ Collection: `web_ai_decision_reports`.
 
 `summary`, `riskLevel` (`normal|attention|high|insufficient_data`), `findings[]`, `scenarios[]` (≤3), `priorities[]`, `missingData[]`, `invalidationConditions[]`, `snapshotId`, `asOf`, `meta`.
 
-Văn phong (`promptVersion` ≥ `decision-v1.1`): tiếng Việt gọn, dễ hiểu, chuyên nghiệp; tránh jargon hệ thống; `summary` 1–2 câu nêu tình trạng + việc ưu tiên.
+Văn phong (`promptVersion` ≥ `decision-v1.2`): tiếng Việt gọn, dễ hiểu, chuyên nghiệp; tránh jargon hệ thống; `summary` 1–2 câu nêu tình trạng + việc ưu tiên. Báo cáo position **bắt buộc** có phân tích kỹ thuật symbol (cấu trúc 15m/1h/4h, khớp hướng lệnh, RSI/ATR, hỗ trợ–kháng cự) trong findings + card UI.
 
 ## Phase 2 (chưa làm)
 

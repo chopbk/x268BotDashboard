@@ -3,7 +3,7 @@ const { canAccessBot } = require("../../middleware/auth");
 const { PERMISSIONS } = require("../../auth/access-control");
 const { getRiskProfile, serializeProfile } = require("../risk-profile");
 const { getAccountBalance } = require("../account-balance-read");
-const { buildMarketSnapshot } = require("./market-snapshot");
+const { buildMarketSnapshot, buildTechnicalBrief } = require("./market-snapshot");
 const { computePositionMetrics } = require("./position-metrics");
 const { computeAccountMetrics } = require("./account-metrics");
 const { buildPositionScenarios, buildAccountScenarios } = require("./scenarios");
@@ -98,6 +98,8 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
         formulaVersion: "decision-v1",
     });
 
+    const technicalBrief = buildTechnicalBrief(market, { side, symbol });
+
     const snapshot = {
         scope: "position",
         account,
@@ -105,6 +107,7 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
         side,
         metrics,
         market: market.error ? { error: market.error } : market,
+        technicalBrief,
         scenarios,
         riskProfile: riskConfigured ? profile : null,
         riskProfileConfigured: riskConfigured,
@@ -146,8 +149,18 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
                 candidateLevels: market.candidateLevels,
                 tf15: market.tf15,
                 tf1h: market.tf1h,
+                tf4h: market.tf4h,
+                btc1h: market.btc1h
+                    ? {
+                        structure: market.btc1h.structure,
+                        trendVsEma: market.btc1h.trendVsEma,
+                        rsi14: market.btc1h.rsi14,
+                        atr14: market.btc1h.atr14,
+                    }
+                    : null,
                 note: market.note,
             },
+            technical: technicalBrief.cards,
             scenarios,
             riskProfileConfigured: riskConfigured,
             missingData,

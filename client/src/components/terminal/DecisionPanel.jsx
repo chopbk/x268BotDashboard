@@ -273,6 +273,92 @@ export default function DecisionPanel({ row }) {
             </div>
           ) : null}
 
+          {snap?.technical || (snap?.market && !snap.market.error) ? (
+            <div className="term-market-card">
+              <strong>Phân tích kỹ thuật · {row.symbol}</strong>
+              <dl className="term-kv term-kv-compact">
+                <div>
+                  <span>Đa khung</span>
+                  <strong>{snap.technical?.multiTfLabel || snap.market?.multiTf || "—"}</strong>
+                </div>
+                <div>
+                  <span>Khớp lệnh</span>
+                  <strong>{snap.technical?.alignmentLabel || snap.market?.alignment || "—"}</strong>
+                </div>
+                <div>
+                  <span>Cấu trúc 15m</span>
+                  <strong>{snap.technical?.structure15 || snap.market?.tf15?.structure?.label || "—"}</strong>
+                </div>
+                <div>
+                  <span>Cấu trúc 1h</span>
+                  <strong>{snap.technical?.structure1h || snap.market?.tf1h?.structure?.label || "—"}</strong>
+                </div>
+                <div>
+                  <span>Cấu trúc 4h</span>
+                  <strong>{snap.technical?.structure4h || snap.market?.tf4h?.structure?.label || "—"}</strong>
+                </div>
+                <div>
+                  <span>Xu hướng 4h</span>
+                  <strong>{snap.technical?.trend4h || "—"}</strong>
+                </div>
+                <div>
+                  <span>RSI 15m / 1h</span>
+                  <strong>
+                    {snap.technical?.rsi15 ?? snap.market?.tf15?.rsi14 ?? "—"}
+                    {" / "}
+                    {snap.technical?.rsi1h ?? snap.market?.tf1h?.rsi14 ?? "—"}
+                  </strong>
+                </div>
+                <div>
+                  <span>ATR</span>
+                  <strong>
+                    {fmt(snap.technical?.atr14 ?? snap.market?.atr14)}
+                    {snap.technical?.atrPct != null ? ` (${snap.technical.atrPct}%)` : ""}
+                  </strong>
+                </div>
+                <div>
+                  <span>Hỗ trợ</span>
+                  <strong className="term-num">{fmt(snap.technical?.support ?? snap.market?.tf15?.support)}</strong>
+                </div>
+                <div>
+                  <span>Kháng cự</span>
+                  <strong className="term-num">{fmt(snap.technical?.resistance ?? snap.market?.tf15?.resistance)}</strong>
+                </div>
+                {snap.technical?.invalidation != null ? (
+                  <div>
+                    <span>Mức hủy luận điểm</span>
+                    <strong className="term-num">{fmt(snap.technical.invalidation)}</strong>
+                  </div>
+                ) : null}
+                {snap.technical?.btcTrend ? (
+                  <div>
+                    <span>BTC 1h</span>
+                    <strong>{snap.technical.btcStructure || "—"} · {snap.technical.btcTrend}</strong>
+                  </div>
+                ) : null}
+              </dl>
+              {(snap.technical?.levels || snap.market?.levels || []).length ? (
+                <ul className="term-level-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {(snap.technical?.levels || snap.market?.levels || []).slice(0, 6).map((level) => (
+                    <li key={level.id || `${level.role}-${level.price}`} style={{ marginBottom: 4 }}>
+                      <span className={`term-level-role term-level-${level.role}`}>{level.role?.toUpperCase()}</span>
+                      {" "}
+                      <strong>{level.label}</strong>
+                      <span className="term-num"> {fmt(level.price)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {snap.technical?.forming?.length ? (
+                <p className="muted">Nến đang chạy: {snap.technical.forming.join(", ")} — tín hiệu có thể đổi khi đóng nến.</p>
+              ) : null}
+              {snap.technical?.note || snap.market?.note ? (
+                <p className="muted">{snap.technical?.note || snap.market?.note}</p>
+              ) : null}
+            </div>
+          ) : null}
+          {snap?.market?.error ? <p className="form-error">Nến: {snap.market.error}</p> : null}
+
           <details open>
             <summary>Bằng chứng / phát hiện</summary>
             <ul className="term-coach-list">
@@ -280,7 +366,6 @@ export default function DecisionPanel({ row }) {
                 <li key={`${f.title}-${i}`} className={`term-coach-item term-coach-${f.severity === "critical" ? "risk" : "market"}`}>
                   <strong>{f.title}</strong>
                   {f.detail ? <p className="muted">{f.detail}</p> : null}
-                  {f.evidence ? <p className="muted">Evidence: {f.evidence}</p> : null}
                 </li>
               ))}
               {!report.findings?.length ? <li className="muted">Không có phát hiện nổi bật.</li> : null}
@@ -303,11 +388,11 @@ export default function DecisionPanel({ row }) {
                     </p>
                   ) : null}
                   {s.riskFromMarkToSl != null ? (
-                    <p className="muted">Rủi ro mark→SL ≈ {fmt(s.riskFromMarkToSl)}
+                    <p className="muted">Rủi ro tới mức bảo vệ ≈ {fmt(s.riskFromMarkToSl)}
                       {s.rrRemaining != null ? ` · R:R còn lại ${s.rrRemaining}` : ""}
                     </p>
                   ) : null}
-                  {s.invalidation ? <p className="muted">Invalidation: {s.invalidation}</p> : null}
+                  {s.invalidation ? <p className="muted">Hủy luận điểm: {s.invalidation}</p> : null}
                 </li>
               ))}
             </ul>
@@ -316,7 +401,7 @@ export default function DecisionPanel({ row }) {
           <details>
             <summary>Giả định / thiếu dữ liệu</summary>
             <p className="muted">
-              missing: {(report.missingData || []).join(", ") || "không"}
+              Thiếu: {(report.missingData || []).join(", ") || "không"}
             </p>
             {(report.invalidationConditions || []).length ? (
               <ul>
@@ -327,10 +412,9 @@ export default function DecisionPanel({ row }) {
               <dl className="term-kv term-kv-compact">
                 <div><span>uPnL</span><strong>{snap.metrics.unrealized ?? "—"}</strong></div>
                 <div><span>Notional</span><strong>{snap.metrics.notional ?? "—"}</strong></div>
-                <div><span>Risk mark→SL</span><strong>{snap.metrics.riskMarkToSl ?? "—"}</strong></div>
+                <div><span>Rủi ro tới SL</span><strong>{snap.metrics.riskMarkToSl ?? "—"}</strong></div>
                 <div><span>R:R còn lại</span><strong>{snap.metrics.rrRemaining ?? "—"}</strong></div>
                 <div><span>SL/TP</span><strong>{snap.metrics.sl ?? "—"} / {snap.metrics.tp ?? "—"}</strong></div>
-                <div><span>MultiTF</span><strong>{snap.market?.multiTf ?? "—"}</strong></div>
               </dl>
             ) : null}
           </details>

@@ -107,7 +107,7 @@ function validateReport(raw, snapshot = {}) {
             severity: ["info", "warn", "critical"].includes(f?.severity) ? f.severity : "info",
         }))
         .filter((f) => f.title)
-        .slice(0, 8);
+        .slice(0, 12);
 
     const scenarios = (Array.isArray(raw?.scenarios) ? raw.scenarios : codeScenarios)
         .map((s) => {

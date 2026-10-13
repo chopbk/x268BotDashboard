@@ -1,20 +1,27 @@
 const { aiSettings, providerConfig, chatRequest, readChatText } = require("../dashboard-brief");
 const { validateReport } = require("./validate-report");
+const { buildTechnicalBrief } = require("./market-snapshot");
 
-const PROMPT_VERSION = "decision-v1.1";
+const PROMPT_VERSION = "decision-v1.2";
 const FORMULA_VERSION = "decision-v1";
 
 const SYSTEM = [
     "Bạn là chuyên gia quản trị rủi ro futures — viết báo cáo ngắn cho trader.",
-    "Chỉ giải thích số liệu đã có trong snapshot. Không bịa giá/mức ngoài scenarios, market.levels, metrics.",
+    "Chỉ giải thích số liệu đã có trong snapshot. Không bịa giá/mức ngoài scenarios, market.levels, metrics, technicalBrief.",
     "Phase 1 chỉ đọc: không bảo hệ thống tự đặt lệnh; có thể gợi ý việc trader nên cân nhắc.",
+    "",
+    "Nội dung bắt buộc khi có market/technicalBrief (phân tích symbol):",
+    "- summary phải nhắc ngắn cấu trúc/xu hướng symbol (không chỉ PnL/SL).",
+    "- findings phải có ít nhất 2 mục kỹ thuật: cấu trúc đa khung, khớp hướng lệnh,",
+    "  và nếu có thì RSI/ATR hoặc vùng hỗ trợ–kháng cự (diễn đạt lại technicalBrief, không bịa).",
+    "- Có thể giữ findings rủi ro lệnh (thiếu SL, gần liq…) sau phần kỹ thuật.",
     "",
     "Văn phong (bắt buộc):",
     "- Tiếng Việt tự nhiên, dễ hiểu, chuyên nghiệp; tránh jargon chồng chất (multiTf, alignment, mark→SL…).",
     "- Nếu dùng thuật ngữ kỹ thuật, giải thích ngắn trong ngoặc hoặc bằng lời thường.",
     "- Câu ngắn, chủ động; không sáo rỗng (“cần theo dõi sát sao”, “thị trường biến động”).",
-    "- summary: 1–2 câu, nêu tình trạng + việc ưu tiên nhất.",
-    "- findings.title: ngắn như tiêu đề tin (≤8 từ). detail: 1 câu nói rõ vì sao quan trọng.",
+    "- summary: 1–2 câu, nêu tình trạng kỹ thuật + việc ưu tiên nhất.",
+    "- findings.title: ngắn như tiêu đề tin (≤8 từ). detail: 1–2 câu nói rõ vì sao quan trọng.",
     "- priorities.action: động từ + việc cụ thể. why/impact: 1 cụm ngắn, không lặp summary.",
     "- scenarios: giữ nguyên id từ snapshot; chỉ viết lại title/rationale/invalidation cho dễ đọc;",
     "  không đổi candidateLevels, qtyImpact, số PnL/R:R đã tính.",
@@ -87,6 +94,16 @@ function buildRulesReport(snapshot) {
     const account = snapshot.accountMetrics || null;
     const sideLabel = metrics.side === "LONG" ? "Long" : metrics.side === "SHORT" ? "Short" : "";
 
+    const technical = snapshot.scope === "position"
+        ? (snapshot.technicalBrief || buildTechnicalBrief(snapshot.market, {
+            side: metrics.side,
+            symbol: metrics.symbol || snapshot.symbol,
+        }))
+        : null;
+    if (technical?.findings?.length) {
+        findings.push(...technical.findings);
+    }
+
     if (snapshot.scope === "position") {
         if (metrics.sl == null) {
             findings.push({
@@ -94,14 +111,6 @@ function buildRulesReport(snapshot) {
                 detail: "Lệnh đang mở mà không có mức cắt lỗ — rủi ro không bị giới hạn.",
                 evidence: "exchange_sl null",
                 severity: "critical",
-            });
-        }
-        if (metrics.marketAlignment === "against") {
-            findings.push({
-                title: "Đang đi ngược xu hướng chính",
-                detail: "Hướng lệnh lệch với cấu trúc trên các khung thời gian đang theo dõi.",
-                evidence: `multiTf=${snapshot.market?.multiTf}`,
-                severity: "warn",
             });
         }
         if (metrics.liqDistancePct != null && metrics.liqDistancePct < 5) {
@@ -168,16 +177,19 @@ function buildRulesReport(snapshot) {
     let summary = "Chưa đủ dữ liệu để đánh giá.";
     if (snapshot.scope === "position") {
         const head = `${metrics.symbol || "Vị thế"} ${sideLabel}`.trim();
+        const techBit = technical?.cards
+            ? ` Thị trường: ${technical.cards.multiTfLabel}, ${technical.cards.alignmentLabel}.`
+            : "";
         const pnl = moneyish(metrics.unrealized);
         if (metrics.sl == null) {
-            summary = `${head}: chưa có stop-loss — ưu tiên giới hạn rủi ro trước khi giữ thêm.`;
+            summary = `${head}: chưa có stop-loss — ưu tiên giới hạn rủi ro trước khi giữ thêm.${techBit}`;
         } else if (metrics.liqDistancePct != null && metrics.liqDistancePct < 5) {
-            summary = `${head}: sát thanh lý (~${fmtNum(metrics.liqDistancePct, 1)}%) — cần giảm rủi ro ngay.`;
+            summary = `${head}: sát thanh lý (~${fmtNum(metrics.liqDistancePct, 1)}%) — cần giảm rủi ro ngay.${techBit}`;
         } else if (metrics.riskMarkToSl != null) {
             const pnlBit = pnl != null ? ` PnL tạm ${pnl}.` : "";
-            summary = `${head}: rủi ro từ giá hiện tại tới stop-loss khoảng ${moneyish(metrics.riskMarkToSl)}.${pnlBit}`;
+            summary = `${head}: rủi ro từ giá hiện tại tới stop-loss khoảng ${moneyish(metrics.riskMarkToSl)}.${pnlBit}${techBit}`;
         } else {
-            summary = `${head}: đã có dữ liệu cơ bản; kiểm tra stop-loss và kế hoạch thoát.`;
+            summary = `${head}: đã có dữ liệu cơ bản; kiểm tra stop-loss và kế hoạch thoát.${techBit}`;
         }
     } else if (account) {
         const n = account.positionCount ?? 0;
@@ -253,17 +265,25 @@ async function generateAiReport(snapshot, deps = {}) {
                         structure: snapshot.market.tf4h?.structure,
                         rsi14: snapshot.market.tf4h?.rsi14,
                     },
+                    btc1h: snapshot.market.btc1h
+                        ? {
+                            structure: snapshot.market.btc1h.structure,
+                            trendVsEma: snapshot.market.btc1h.trendVsEma,
+                            rsi14: snapshot.market.btc1h.rsi14,
+                        }
+                        : null,
                     levels: snapshot.market.levels,
                     candidateLevels: snapshot.market.candidateLevels,
                 }
                 : null,
+            technicalBrief: snapshot.technicalBrief || null,
             scenarios: snapshot.scenarios,
             riskProfileConfigured: snapshot.riskProfileConfigured,
             missingData: snapshot.missingData,
         }),
         "Báo cáo rule tham khảo (giữ số liệu; viết lại cho gọn và dễ đọc hơn nếu cần):",
         JSON.stringify(rulesRaw),
-        "Yêu cầu thêm: summary và priorities phải nghe như lời tư vấn ngắn cho trader, không như log hệ thống.",
+        "Yêu cầu thêm: summary + findings phải có phần phân tích kỹ thuật symbol; priorities nghe như lời tư vấn ngắn, không như log hệ thống.",
     ].join("\n\n");
 
     const order = [primary.provider, ...primary.available.filter((n) => n !== primary.provider)].slice(0, 2);

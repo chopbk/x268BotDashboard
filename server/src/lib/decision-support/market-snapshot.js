@@ -241,8 +241,170 @@ async function buildMarketSnapshot(symbol, opts = {}) {
     };
 }
 
+function multiTfLabel(multiTf) {
+    if (multiTf === "bullish_align") return "đồng thuận tăng trên nhiều khung";
+    if (multiTf === "bearish_align") return "đồng thuận giảm trên nhiều khung";
+    if (multiTf === "conflict") return "các khung đang xung đột";
+    return "xu hướng đa khung chưa rõ";
+}
+
+function alignmentLabel(alignment, side) {
+    const s = String(side || "").toUpperCase();
+    if (alignment === "with") return s ? `cùng chiều lệnh ${s}` : "cùng chiều lệnh";
+    if (alignment === "against") return s ? `ngược chiều lệnh ${s}` : "ngược chiều lệnh";
+    return "trung lập so với lệnh";
+}
+
+function trendLabel(trend) {
+    if (trend === "bullish") return "tăng (giá trên EMA20 > EMA50)";
+    if (trend === "bearish") return "giảm (giá dưới EMA20 < EMA50)";
+    if (trend === "short_bull") return "ngắn hạn tăng (giá trên EMA20)";
+    if (trend === "short_bear") return "ngắn hạn giảm (giá dưới EMA20)";
+    return "trung lập";
+}
+
+/**
+ * Tóm tắt kỹ thuật + findings luôn có khi đủ nến — để báo cáo/UI không chỉ nói rủi ro lệnh.
+ */
+function buildTechnicalBrief(market, { side = null, symbol = null } = {}) {
+    if (!market || market.error) {
+        return {
+            headline: null,
+            findings: market?.error
+                ? [{
+                    title: "Chưa lấy được nến",
+                    detail: String(market.error),
+                    evidence: "market_error",
+                    severity: "info",
+                }]
+                : [],
+            cards: null,
+        };
+    }
+
+    const sym = symbol || market.symbol || "";
+    const tf15 = market.tf15 || {};
+    const tf1h = market.tf1h || {};
+    const tf4h = market.tf4h || {};
+    const btc = market.btc1h || null;
+    const findings = [];
+
+    const struct15 = tf15.structure?.label || "—";
+    const struct1h = tf1h.structure?.label || "—";
+    const struct4h = tf4h.structure?.label || "—";
+
+    findings.push({
+        title: "Cấu trúc đa khung",
+        detail: `15m: ${struct15}. 1h: ${struct1h}. 4h: ${struct4h}. Tổng thể ${multiTfLabel(market.multiTf)}.`,
+        evidence: `multiTf=${market.multiTf}`,
+        severity: market.multiTf === "conflict" ? "warn" : "info",
+    });
+
+    findings.push({
+        title: "Khớp với hướng lệnh",
+        detail: `Xu hướng đang ${alignmentLabel(market.alignment, side)}. 4h ${trendLabel(tf4h.trendVsEma)}.`,
+        evidence: `alignment=${market.alignment}`,
+        severity: market.alignment === "against" ? "warn" : "info",
+    });
+
+    if (tf15.rsi14 != null) {
+        let rsiTone = "info";
+        let rsiNote = "vùng trung tính";
+        if (tf15.rsi14 >= 70) {
+            rsiTone = "warn";
+            rsiNote = "vùng quá mua";
+        } else if (tf15.rsi14 <= 30) {
+            rsiTone = "warn";
+            rsiNote = "vùng quá bán";
+        }
+        findings.push({
+            title: "RSI và biến động",
+            detail: `RSI 15m ≈ ${tf15.rsi14} (${rsiNote}). ATR ≈ ${tf15.atr14 ?? market.atr14 ?? "—"}`
+                + (tf15.atrPct != null ? ` (~${tf15.atrPct}% giá)` : "")
+                + (tf15.volumeRel != null ? `; khối lượng nến đóng ≈ ${tf15.volumeRel}× trung bình` : "")
+                + ".",
+            evidence: `rsi15=${tf15.rsi14};atr=${tf15.atr14}`,
+            severity: rsiTone,
+        });
+    }
+
+    const support = tf15.support ?? tf1h.support;
+    const resistance = tf15.resistance ?? tf1h.resistance;
+    if (support != null || resistance != null) {
+        findings.push({
+            title: "Vùng hỗ trợ – kháng cự",
+            detail: [
+                support != null ? `Hỗ trợ gần ≈ ${support}` : null,
+                resistance != null ? `kháng cự gần ≈ ${resistance}` : null,
+                market.candidateLevels?.invalidation != null
+                    ? `mức hủy luận điểm ≈ ${market.candidateLevels.invalidation}`
+                    : null,
+            ].filter(Boolean).join("; ") + ".",
+            evidence: "candidateLevels",
+            severity: "info",
+        });
+    }
+
+    if (btc && !btc.error) {
+        findings.push({
+            title: "Bối cảnh BTC",
+            detail: `BTC 1h: ${btc.structure?.label || "—"}, xu hướng ${trendLabel(btc.trendVsEma)}.`,
+            evidence: `btc_trend=${btc.trendVsEma}`,
+            severity: "info",
+        });
+    }
+
+    const forming = [tf15.formingCandle && "15m", tf1h.formingCandle && "1h", tf4h.formingCandle && "4h"]
+        .filter(Boolean);
+    if (forming.length) {
+        findings.push({
+            title: "Nến đang chạy",
+            detail: `Khung ${forming.join(", ")} chưa đóng — tín hiệu khung đó có thể đổi khi đóng nến.`,
+            evidence: "formingCandle",
+            severity: "info",
+        });
+    }
+
+    const headline = [
+        sym || null,
+        multiTfLabel(market.multiTf),
+        side ? alignmentLabel(market.alignment, side) : null,
+    ].filter(Boolean).join(" · ");
+
+    return {
+        headline,
+        findings: findings.slice(0, 6),
+        cards: {
+            multiTf: market.multiTf,
+            multiTfLabel: multiTfLabel(market.multiTf),
+            alignment: market.alignment,
+            alignmentLabel: alignmentLabel(market.alignment, side),
+            atr14: market.atr14 ?? tf15.atr14,
+            atrPct: tf15.atrPct ?? tf1h.atrPct,
+            rsi15: tf15.rsi14,
+            rsi1h: tf1h.rsi14,
+            structure15: struct15,
+            structure1h: struct1h,
+            structure4h: struct4h,
+            trend4h: trendLabel(tf4h.trendVsEma),
+            support,
+            resistance,
+            invalidation: market.candidateLevels?.invalidation ?? null,
+            volumeRel15: tf15.volumeRel,
+            forming: forming,
+            btcTrend: btc && !btc.error ? trendLabel(btc.trendVsEma) : null,
+            btcStructure: btc && !btc.error ? (btc.structure?.label || null) : null,
+            levels: (market.levels || []).slice(0, 8),
+            note: market.note,
+        },
+    };
+}
+
 module.exports = {
     buildMarketSnapshot,
+    buildTechnicalBrief,
+    multiTfLabel,
+    alignmentLabel,
     frameMetrics,
     rsi,
     relativeVolume,
