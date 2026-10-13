@@ -123,6 +123,19 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
         forceRules: body.ai === false,
     });
 
+    // Fingerprint để UI biết báo cáo đã cũ khi SL/TP/qty/mark đổi
+    const positionFingerprint = [
+        tradeKeyOf(account, symbol, side),
+        metrics.mark,
+        metrics.entry,
+        metrics.qty,
+        metrics.unrealized,
+        metrics.sl,
+        metrics.tp,
+        metrics.liquidation,
+    ].join("|");
+    report.meta = { ...(report.meta || {}), positionFingerprint };
+
     const saved = await saveReport(actor, {
         scope: "position",
         tradeKey: tradeKeyOf(account, symbol, side),
@@ -164,6 +177,7 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
             scenarios,
             riskProfileConfigured: riskConfigured,
             missingData,
+            positionFingerprint,
         },
         configured: require("../dashboard-brief").aiSettings().configured,
     };

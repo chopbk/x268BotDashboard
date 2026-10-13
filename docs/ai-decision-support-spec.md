@@ -11,7 +11,8 @@ Ngày: 2026-10-13. Phạm vi: web-bot Terminal + Lãi lỗ. Code tính số; AI 
 
 ## UI
 
-- Terminal panel tab **AI phân tích** (Journal chỉ ghi chú).
+- Terminal **Tổng quan**: nút AI mở popup quyết định (không phải báo cáo dài). Bố cục: kết luận + KPI + bảng so sánh phương án trước; bối cảnh TF dạng bảng; bằng chứng mặc định thu gọn; cảnh báo `warn`/`critical` hiện trên. Modal ~1000px desktop, 2 cột khi đủ chỗ.
+- Một nút **Phân tích** (AI); quy tắc thuần là lựa chọn phụ. Hồ sơ rủi ro qua nút ⚙. Mở lại hiện báo cáo gần nhất + banner khi fingerprint vị thế/SL-TP đổi.
 - `/ledger` khối **AI đánh giá rủi ro**.
 - Dashboard: link/badge khi báo cáo account gần nhất `riskLevel` ∈ attention|high.
 
@@ -33,7 +34,7 @@ Collection: `web_ai_decision_reports`.
 
 `summary`, `riskLevel` (`normal|attention|high|insufficient_data`), `findings[]`, `scenarios[]` (≤3), `priorities[]`, `missingData[]`, `invalidationConditions[]`, `snapshotId`, `asOf`, `meta`.
 
-Văn phong (`promptVersion` ≥ `decision-v1.3`): tiếng Việt gọn, dễ hiểu; `priorities[0]` = khuyến nghị chính (hiện đầu popup); `summary` bối cảnh. Báo cáo position có phân tích kỹ thuật symbol; UI hiện SL/TP sàn + mức ứng viên rõ ràng, chữ lớn hơn.
+Văn phong (`promptVersion` ≥ `decision-v1.3`): tiếng Việt gọn, dễ hiểu; `priorities[0]` = khuyến nghị chính (hiện đầu popup); `summary` bối cảnh (không lặp lại trên UI nếu đã có `why`). Báo cáo position có phân tích kỹ thuật; UI so sánh phương án theo bảng (SL/TP/qty/rủi ro USDT toàn vị thế/điều kiện). `meta.positionFingerprint` dùng phát hiện báo cáo cũ.
 
 ## Phase 2 (chưa làm)
 

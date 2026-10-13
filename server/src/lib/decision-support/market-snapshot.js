@@ -250,9 +250,10 @@ function multiTfLabel(multiTf) {
 
 function alignmentLabel(alignment, side) {
     const s = String(side || "").toUpperCase();
-    if (alignment === "with") return s ? `cùng chiều lệnh ${s}` : "cùng chiều lệnh";
-    if (alignment === "against") return s ? `ngược chiều lệnh ${s}` : "ngược chiều lệnh";
-    return "trung lập so với lệnh";
+    const sideBit = s ? ` ${s}` : "";
+    if (alignment === "with") return `side${sideBit} thuận xu hướng`;
+    if (alignment === "against") return `side${sideBit} ngược xu hướng`;
+    return `side${sideBit} trung lập với xu hướng`;
 }
 
 function trendLabel(trend) {

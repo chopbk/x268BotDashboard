@@ -242,7 +242,7 @@ test("buildTechnicalBrief và rules có findings kỹ thuật symbol", () => {
         riskLevelHint: "normal",
     });
     assert.ok(raw.findings.some((f) => /cấu trúc|RSI|hỗ trợ/i.test(f.title)));
-    assert.match(raw.summary, /đồng thuận tăng|cùng chiều/i);
+    assert.match(raw.summary, /đồng thuận tăng|thuận xu hướng/i);
 });
 
 test("risk profile normalize + isConfigured", () => {
