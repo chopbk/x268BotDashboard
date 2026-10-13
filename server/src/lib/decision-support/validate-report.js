@@ -213,22 +213,37 @@ function validateReport(raw, snapshot = {}) {
 
 function derivePriorities(scenarios, findings, riskLevel) {
     const out = [];
-    if (riskLevel === "high" || riskLevel === "attention") {
+    if (riskLevel === "high") {
         out.push({
-            action: "Ưu tiên giảm rủi ro / phủ SL trước khi mở thêm",
-            why: `riskLevel=${riskLevel}`,
-            impact: "Hạ xác suất cháy tài khoản nhanh",
+            action: "Giảm rủi ro trước khi mở thêm lệnh",
+            why: "Mức rủi ro hiện tại đang cao",
+            impact: "Giới hạn thiệt hại nếu giá chạy ngược",
+        });
+    } else if (riskLevel === "attention") {
+        out.push({
+            action: "Rà soát stop-loss và quy mô trước khi giữ thêm",
+            why: "Có điểm cần chú ý trên lệnh hoặc tài khoản",
+            impact: "Tránh rủi ro âm thầm tích tụ",
         });
     }
     for (const f of findings.slice(0, 2)) {
-        out.push({ action: f.title, why: f.detail || f.evidence, impact: f.severity });
+        if (out.some((p) => p.action === f.title)) continue;
+        out.push({
+            action: f.title,
+            why: f.detail || f.evidence,
+            impact: f.severity === "critical" ? "Ưu tiên xử lý ngay" : f.severity === "warn" ? "Nên xử lý sớm" : "Ghi nhận",
+        });
+        if (out.length >= 3) break;
     }
     for (const s of scenarios.slice(0, 2)) {
         if (out.length >= 3) break;
+        if (out.some((p) => p.action === s.title)) continue;
         out.push({
             action: s.title,
             why: s.rationale,
-            impact: s.riskFromMarkToSl != null ? `Ước PnL mark→SL ${s.riskFromMarkToSl}` : "",
+            impact: s.riskFromMarkToSl != null
+                ? `Ước tính tới mức bảo vệ: ${s.riskFromMarkToSl}`
+                : "",
         });
     }
     return out.slice(0, 3);

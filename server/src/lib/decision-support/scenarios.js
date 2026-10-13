@@ -81,9 +81,9 @@ function buildPositionScenarios(metrics, market = null, riskProfile = null) {
     // 1) Giữ / quản trị theo SL-TP hiện có
     const hold = {
         id: "hold_manage",
-        title: "Giữ và quản trị theo mức hiện có",
-        rationale: "Theo dõi theo SL/TP sàn và cấu trúc khung gần nhất; không thay đổi size.",
-        conditions: ["Vị thế còn hợp lệ theo kế hoạch ban đầu", "Không vượt ngân sách rủi ro ngày"],
+        title: "Giữ lệnh, quản theo mức hiện có",
+        rationale: "Tiếp tục theo stop-loss / take-profit trên sàn và cấu trúc giá gần nhất; chưa đổi khối lượng.",
+        conditions: ["Luận điểm ban đầu vẫn còn hiệu lực", "Chưa vượt hạn mức lỗ trong ngày"],
         candidateLevels: {
             sl: metrics.sl,
             tp: metrics.tp,
@@ -99,8 +99,8 @@ function buildPositionScenarios(metrics, market = null, riskProfile = null) {
         rrRemaining: metrics.rrRemaining,
         accountBudgetImpact: null,
         invalidation: metrics.sl != null
-            ? `Giá chạm SL ${metrics.sl}`
-            : "Thiếu SL sàn — invalidation chưa xác định",
+            ? `Thoát kế hoạch nếu giá chạm stop-loss ${metrics.sl}`
+            : "Chưa có stop-loss trên sàn — chưa xác định mức hủy luận điểm",
     };
     scenarios.push(hold);
 
@@ -118,11 +118,16 @@ function buildPositionScenarios(metrics, market = null, riskProfile = null) {
             && Math.abs(riskNew) < Math.abs(metrics.riskMarkToSl) * 0.85)
             ? 0
             : 0.5;
+        const slSourceLabel = slCand.source === "structure"
+            ? "cấu trúc giá"
+            : slCand.source === "atr_1_2"
+                ? "biên độ ATR"
+                : slCand.source;
         scenarios.push({
             id: "reduce_risk",
-            title: reduce > 0 ? "Giảm rủi ro (siết SL + giảm 50%)" : "Giảm rủi ro (siết SL ứng viên)",
-            rationale: `Mức SL ứng viên từ ${slCand.source}; chỉ là đề xuất — Phase 1 không tự áp.`,
-            conditions: ["Cấu trúc/ATR đủ để đặt SL", "Xác nhận lại trước khi đặt lệnh"],
+            title: reduce > 0 ? "Siết stop-loss và giảm một nửa khối lượng" : "Siết stop-loss theo mức đề xuất",
+            rationale: `Mức cắt lỗ gợi ý lấy từ ${slSourceLabel}. Đây chỉ là ứng viên — bạn tự quyết định khi đặt lệnh.`,
+            conditions: ["Có cấu trúc hoặc ATR đủ để đặt cắt lỗ", "Xác nhận lại giá và khối lượng trước khi gửi sàn"],
             candidateLevels: {
                 sl: slCand.price,
                 tp: tpCand?.price ?? metrics.tp,
@@ -137,9 +142,9 @@ function buildPositionScenarios(metrics, market = null, riskProfile = null) {
             riskFromMarkToSl: riskNew,
             rrRemaining: rr,
             accountBudgetImpact: riskProfile?.maxLossPerTrade
-                ? { note: "Đối chiếu maxLossPerTrade khi áp (Phase 2)" }
+                ? { note: "Đối chiếu hạn mức lỗ mỗi lệnh khi áp dụng (Phase 2)" }
                 : null,
-            invalidation: `Giá vượt SL ứng viên ${slCand.price}`,
+            invalidation: `Hủy phương án nếu giá vượt stop đề xuất ${slCand.price}`,
         });
     } else {
         missingForScenarios.push("sl_candidate");
@@ -155,11 +160,13 @@ function buildPositionScenarios(metrics, market = null, riskProfile = null) {
         const pnlExit = pnlLinear(side, mark, exitLevel, qty);
         scenarios.push({
             id: "exit_invalidation",
-            title: "Thoát khi mất invalidation",
-            rationale: "Nếu mất cấu trúc / chạm mức hủy luận điểm thì ưu tiên thoát thay vì DCA.",
+            title: "Đóng lệnh khi mất luận điểm",
+            rationale: "Nếu giá phá mức hủy cấu trúc, ưu tiên thoát sạch thay vì trung bình giá thêm.",
             conditions: [
-                "Giá đóng nến vượt invalidation",
-                riskProfile?.allowDca === false ? "Profile không cho phép DCA" : "Không thêm vị thế khi luận điểm gãy",
+                "Nến đóng vượt mức hủy luận điểm",
+                riskProfile?.allowDca === false
+                    ? "Hồ sơ của bạn không cho phép DCA"
+                    : "Không tăng vị thế khi luận điểm đã gãy",
             ],
             candidateLevels: {
                 exit: exitLevel,
@@ -172,7 +179,7 @@ function buildPositionScenarios(metrics, market = null, riskProfile = null) {
             riskFromMarkToSl: pnlExit,
             rrRemaining: null,
             accountBudgetImpact: null,
-            invalidation: `Chạm/ vượt ${exitLevel}`,
+            invalidation: `Thực hiện khi giá chạm hoặc vượt ${exitLevel}`,
         });
     } else {
         missingForScenarios.push("invalidation_level");
@@ -193,9 +200,9 @@ function buildAccountScenarios(accountMetrics) {
 
     scenarios.push({
         id: "hold_monitor",
-        title: "Giữ và theo dõi coverage",
-        rationale: "Duy trì vị thế hiện có; ưu tiên bổ sung SL cho lệnh thiếu và giảm tập trung symbol.",
-        conditions: ["Equity và mark còn cập nhật"],
+        title: "Giữ danh mục và theo dõi bảo vệ",
+        rationale: "Duy trì vị thế hiện có; ưu tiên gắn stop-loss cho lệnh thiếu và hạn chế dồn một coin.",
+        conditions: ["Số dư và giá mark còn cập nhật"],
         candidateLevels: null,
         qtyImpact: null,
         pnlEstimates: {
@@ -207,15 +214,15 @@ function buildAccountScenarios(accountMetrics) {
             exposurePct: accountMetrics.exposurePct,
             missingSlCount: accountMetrics.missingSlCount,
         },
-        invalidation: "Equity ≤ 0 hoặc mất dữ liệu wallet",
+        invalidation: "Vốn về ≤ 0 hoặc mất dữ liệu ví",
     });
 
     if (accountMetrics.missingSlCount > 0) {
         scenarios.push({
             id: "cover_missing_sl",
-            title: "Ưu tiên phủ SL các vị thế thiếu",
-            rationale: `${accountMetrics.missingSlCount} vị thế chưa có SL sàn.`,
-            conditions: ["Có mark và entry để ước lượng rủi ro"],
+            title: "Gắn stop-loss cho lệnh còn thiếu",
+            rationale: `Còn ${accountMetrics.missingSlCount} vị thế chưa có cắt lỗ trên sàn.`,
+            conditions: ["Có giá mark và giá vào để ước lượng rủi ro"],
             candidateLevels: null,
             qtyImpact: null,
             pnlEstimates: null,
@@ -224,16 +231,16 @@ function buildAccountScenarios(accountMetrics) {
             accountBudgetImpact: {
                 symbols: accountMetrics.missingSl,
             },
-            invalidation: "Tiếp tục mở thêm vị thế không SL",
+            invalidation: "Tiếp tục mở thêm lệnh không có stop-loss",
         });
     }
 
     if (accountMetrics.profileBreaches?.length || (accountMetrics.exposurePct != null && accountMetrics.exposurePct > 250)) {
         scenarios.push({
             id: "reduce_exposure",
-            title: "Giảm exposure / tập trung",
-            rationale: "Gross notional hoặc concentration vượt ngưỡng an toàn / profile.",
-            conditions: ["Chọn symbol lớn nhất để giảm trước"],
+            title: "Giảm quy mô hoặc bớt tập trung",
+            rationale: "Tổng vị thế hoặc tỷ trọng một coin đang cao hơn mức an toàn / hồ sơ của bạn.",
+            conditions: ["Giảm symbol đang chiếm tỷ trọng lớn trước"],
             candidateLevels: null,
             qtyImpact: null,
             pnlEstimates: null,
@@ -244,7 +251,7 @@ function buildAccountScenarios(accountMetrics) {
                 exposurePct: accountMetrics.exposurePct,
                 breaches: accountMetrics.profileBreaches,
             },
-            invalidation: "Thêm vị thế cùng symbol đang tập trung",
+            invalidation: "Tiếp tục thêm vị thế cùng symbol đang tập trung",
         });
     }
 

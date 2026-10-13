@@ -33,6 +33,8 @@ Collection: `web_ai_decision_reports`.
 
 `summary`, `riskLevel` (`normal|attention|high|insufficient_data`), `findings[]`, `scenarios[]` (≤3), `priorities[]`, `missingData[]`, `invalidationConditions[]`, `snapshotId`, `asOf`, `meta`.
 
+Văn phong (`promptVersion` ≥ `decision-v1.1`): tiếng Việt gọn, dễ hiểu, chuyên nghiệp; tránh jargon hệ thống; `summary` 1–2 câu nêu tình trạng + việc ưu tiên.
+
 ## Phase 2 (chưa làm)
 
 Stress test đầy đủ, bản nháp TP/SL, tương quan sâu, theo dõi đề xuất theo thời gian.

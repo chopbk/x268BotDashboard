@@ -1,19 +1,43 @@
 const { aiSettings, providerConfig, chatRequest, readChatText } = require("../dashboard-brief");
 const { validateReport } = require("./validate-report");
 
-const PROMPT_VERSION = "decision-v1";
+const PROMPT_VERSION = "decision-v1.1";
 const FORMULA_VERSION = "decision-v1";
 
 const SYSTEM = [
-    "Bạn là trợ lý phân tích rủi ro giao dịch futures. Chỉ giải thích số liệu đã tính sẵn.",
-    "Không bịa giá, không đề xuất số ngoài snapshot.scenarios / market.levels / metrics.",
-    "Không bảo user đặt lệnh tự động. Phase 1 chỉ đọc.",
-    "Trả đúng JSON schema: summary, riskLevel (normal|attention|high|insufficient_data),",
+    "Bạn là chuyên gia quản trị rủi ro futures — viết báo cáo ngắn cho trader.",
+    "Chỉ giải thích số liệu đã có trong snapshot. Không bịa giá/mức ngoài scenarios, market.levels, metrics.",
+    "Phase 1 chỉ đọc: không bảo hệ thống tự đặt lệnh; có thể gợi ý việc trader nên cân nhắc.",
+    "",
+    "Văn phong (bắt buộc):",
+    "- Tiếng Việt tự nhiên, dễ hiểu, chuyên nghiệp; tránh jargon chồng chất (multiTf, alignment, mark→SL…).",
+    "- Nếu dùng thuật ngữ kỹ thuật, giải thích ngắn trong ngoặc hoặc bằng lời thường.",
+    "- Câu ngắn, chủ động; không sáo rỗng (“cần theo dõi sát sao”, “thị trường biến động”).",
+    "- summary: 1–2 câu, nêu tình trạng + việc ưu tiên nhất.",
+    "- findings.title: ngắn như tiêu đề tin (≤8 từ). detail: 1 câu nói rõ vì sao quan trọng.",
+    "- priorities.action: động từ + việc cụ thể. why/impact: 1 cụm ngắn, không lặp summary.",
+    "- scenarios: giữ nguyên id từ snapshot; chỉ viết lại title/rationale/invalidation cho dễ đọc;",
+    "  không đổi candidateLevels, qtyImpact, số PnL/R:R đã tính.",
+    "- Không emoji, không markdown trong JSON, không liệt kê dài.",
+    "",
+    "Schema JSON: summary, riskLevel (normal|attention|high|insufficient_data),",
     "findings[{title,detail,evidence,severity}], scenarios[{id,title,rationale,conditions,candidateLevels,qtyImpact,pnlEstimates,riskFromMarkToSl,rrRemaining,accountBudgetImpact,invalidation}],",
     "priorities[{action,why,impact}], missingData[], invalidationConditions[].",
-    "Dùng tiếng Việt, ngắn. Giữ scenarios.id khớp snapshot (hold_manage|reduce_risk|exit_invalidation|...).",
-    "Nếu missingData có risk_profile: nhắc chưa có ngân sách rủi ro cá nhân.",
+    "Giữ scenarios.id khớp snapshot (hold_manage|reduce_risk|exit_invalidation|…).",
+    "Nếu missingData có risk_profile: nhắc chưa có ngân sách rủi ro cá nhân — không tự bịa ngưỡng.",
 ].join(" ");
+
+function fmtNum(value, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Number(n.toFixed(digits));
+}
+
+function moneyish(value) {
+    const n = fmtNum(value, 2);
+    if (n == null) return null;
+    return `${n}`;
+}
 
 async function callProvider(settings, system, user, fetchImpl) {
     const request = chatRequest(settings, system, user);
@@ -61,36 +85,37 @@ function buildRulesReport(snapshot) {
     const findings = [];
     const metrics = snapshot.metrics || {};
     const account = snapshot.accountMetrics || null;
+    const sideLabel = metrics.side === "LONG" ? "Long" : metrics.side === "SHORT" ? "Short" : "";
 
     if (snapshot.scope === "position") {
         if (metrics.sl == null) {
             findings.push({
-                title: "Thiếu SL sàn",
-                detail: "Vị thế chưa có stop loss trên sàn.",
+                title: "Chưa có stop-loss trên sàn",
+                detail: "Lệnh đang mở mà không có mức cắt lỗ — rủi ro không bị giới hạn.",
                 evidence: "exchange_sl null",
                 severity: "critical",
             });
         }
         if (metrics.marketAlignment === "against") {
             findings.push({
-                title: "Ngược cấu trúc đa khung",
-                detail: "Side đang ngược alignment thị trường.",
+                title: "Đang đi ngược xu hướng chính",
+                detail: "Hướng lệnh lệch với cấu trúc trên các khung thời gian đang theo dõi.",
                 evidence: `multiTf=${snapshot.market?.multiTf}`,
                 severity: "warn",
             });
         }
         if (metrics.liqDistancePct != null && metrics.liqDistancePct < 5) {
             findings.push({
-                title: "Gần thanh lý",
-                detail: `Khoảng tới liq ~${metrics.liqDistancePct}% từ mark.`,
+                title: "Gần mức thanh lý",
+                detail: `Giá hiện tại chỉ còn khoảng ${fmtNum(metrics.liqDistancePct, 1)}% tới thanh lý.`,
                 evidence: `liq=${metrics.liquidation}`,
                 severity: "critical",
             });
         }
         if (metrics.rrRemaining != null && metrics.rrRemaining < 1) {
             findings.push({
-                title: "R:R còn lại thấp",
-                detail: `R:R mark→TP/SL ≈ ${metrics.rrRemaining}`,
+                title: "Tỷ lệ lời/rủi ro còn lại thấp",
+                detail: `Phần thưởng tới take-profit chưa bù đủ rủi ro tới stop-loss (≈ ${fmtNum(metrics.rrRemaining, 2)}R).`,
                 evidence: `riskMarkToSl=${metrics.riskMarkToSl}, rewardMarkToTp=${metrics.rewardMarkToTp}`,
                 severity: "warn",
             });
@@ -98,15 +123,15 @@ function buildRulesReport(snapshot) {
     } else if (account) {
         if (account.missingSlCount > 0) {
             findings.push({
-                title: "Có vị thế thiếu SL",
-                detail: `${account.missingSlCount} vị thế chưa phủ SL.`,
+                title: "Một số lệnh chưa có stop-loss",
+                detail: `${account.missingSlCount} vị thế đang mở chưa gắn cắt lỗ trên sàn.`,
                 evidence: JSON.stringify(account.missingSl?.slice(0, 5) || []),
                 severity: account.missingSlCount >= 2 ? "critical" : "warn",
             });
         }
         for (const b of account.profileBreaches || []) {
             findings.push({
-                title: "Vượt hồ sơ rủi ro",
+                title: "Vượt giới hạn hồ sơ rủi ro",
                 detail: b.detail,
                 evidence: b.code,
                 severity: "warn",
@@ -114,8 +139,8 @@ function buildRulesReport(snapshot) {
         }
         if (account.exposurePct != null && account.exposurePct > 300) {
             findings.push({
-                title: "Exposure cao",
-                detail: `Gross notional/equity ≈ ${account.exposurePct}%`,
+                title: "Đòn bẩy danh mục cao",
+                detail: `Tổng giá trị vị thế khoảng ${fmtNum(account.exposurePct, 0)}% so với vốn — biến động giá sẽ khuếch đại mạnh.`,
                 evidence: `grossNotional=${account.grossNotional}`,
                 severity: "warn",
             });
@@ -125,7 +150,7 @@ function buildRulesReport(snapshot) {
     if (missing.includes("risk_profile")) {
         findings.push({
             title: "Chưa có ngân sách rủi ro cá nhân",
-            detail: "Thiếu riskProfile — báo cáo không tự gán ngưỡng giả.",
+            detail: "Chưa khai báo hạn mức lỗ/ngày hay phong cách — báo cáo không tự đặt ngưỡng thay bạn.",
             evidence: "risk_profile",
             severity: "info",
         });
@@ -140,21 +165,36 @@ function buildRulesReport(snapshot) {
         riskLevel = "attention";
     }
 
-    const summaryParts = [];
+    let summary = "Chưa đủ dữ liệu để đánh giá.";
     if (snapshot.scope === "position") {
-        summaryParts.push(`${metrics.symbol || "?"} ${metrics.side || ""}`.trim());
-        if (metrics.unrealized != null) summaryParts.push(`uPnL ${metrics.unrealized}`);
-        if (metrics.sl == null) summaryParts.push("chưa có SL");
-        else if (metrics.riskMarkToSl != null) summaryParts.push(`rủi ro mark→SL ≈ ${metrics.riskMarkToSl}`);
-    } else {
-        summaryParts.push(`Tài khoản ${snapshot.account || "?"}`);
-        if (account?.positionCount != null) summaryParts.push(`${account.positionCount} vị thế`);
-        if (account?.missingSlCount) summaryParts.push(`${account.missingSlCount} thiếu SL`);
-        if (account?.exposurePct != null) summaryParts.push(`exposure ${account.exposurePct}%`);
+        const head = `${metrics.symbol || "Vị thế"} ${sideLabel}`.trim();
+        const pnl = moneyish(metrics.unrealized);
+        if (metrics.sl == null) {
+            summary = `${head}: chưa có stop-loss — ưu tiên giới hạn rủi ro trước khi giữ thêm.`;
+        } else if (metrics.liqDistancePct != null && metrics.liqDistancePct < 5) {
+            summary = `${head}: sát thanh lý (~${fmtNum(metrics.liqDistancePct, 1)}%) — cần giảm rủi ro ngay.`;
+        } else if (metrics.riskMarkToSl != null) {
+            const pnlBit = pnl != null ? ` PnL tạm ${pnl}.` : "";
+            summary = `${head}: rủi ro từ giá hiện tại tới stop-loss khoảng ${moneyish(metrics.riskMarkToSl)}.${pnlBit}`;
+        } else {
+            summary = `${head}: đã có dữ liệu cơ bản; kiểm tra stop-loss và kế hoạch thoát.`;
+        }
+    } else if (account) {
+        const n = account.positionCount ?? 0;
+        if (account.missingSlCount > 0) {
+            summary = `Tài khoản ${snapshot.account || ""}: ${n} vị thế, ${account.missingSlCount} chưa có stop-loss — ưu tiên phủ cắt lỗ.`.replace(/\s+/g, " ").trim();
+        } else if (account.exposurePct != null && account.exposurePct > 300) {
+            summary = `Tài khoản ${snapshot.account || ""}: đòn bẩy danh mục ~${fmtNum(account.exposurePct, 0)}% vốn — cân nhắc giảm quy mô.`.replace(/\s+/g, " ").trim();
+        } else {
+            summary = `Tài khoản ${snapshot.account || ""}: ${n} vị thế đang mở; chưa thấy cảnh báo nặng từ dữ liệu hiện có.`.replace(/\s+/g, " ").trim();
+        }
+    }
+    if (missing.includes("risk_profile") && !/ngân sách rủi ro/i.test(summary)) {
+        summary = `${summary} Chưa có ngân sách rủi ro cá nhân.`;
     }
 
     return {
-        summary: summaryParts.filter(Boolean).join(" · ") || "Báo cáo rule",
+        summary,
         riskLevel,
         findings,
         scenarios: snapshot.scenarios || [],
@@ -221,8 +261,9 @@ async function generateAiReport(snapshot, deps = {}) {
             riskProfileConfigured: snapshot.riskProfileConfigured,
             missingData: snapshot.missingData,
         }),
-        "Báo cáo rule tham khảo:",
+        "Báo cáo rule tham khảo (giữ số liệu; viết lại cho gọn và dễ đọc hơn nếu cần):",
         JSON.stringify(rulesRaw),
+        "Yêu cầu thêm: summary và priorities phải nghe như lời tư vấn ngắn cho trader, không như log hệ thống.",
     ].join("\n\n");
 
     const order = [primary.provider, ...primary.available.filter((n) => n !== primary.provider)].slice(0, 2);
@@ -246,7 +287,7 @@ async function generateAiReport(snapshot, deps = {}) {
     if (!parsed) {
         const fallback = validateReport(rulesRaw, { ...snapshot, formulaVersion: FORMULA_VERSION });
         fallback.meta.source = "rules";
-        fallback.summary = `${fallback.summary} (AI lỗi — fallback rule)`.trim();
+        fallback.summary = `${fallback.summary} (Dùng bản phân tích rule vì AI tạm không phản hồi.)`.trim();
         return fallback;
     }
 
