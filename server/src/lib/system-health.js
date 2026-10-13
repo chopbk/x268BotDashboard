@@ -6,6 +6,7 @@ const SummarySnapshot = require("../models/summary-snapshot");
 const config = require("../config");
 const { rateLimitStoreStatus } = require("./rate-limit-store");
 const { FORMULA_VERSION } = require("./summary-snapshots");
+const { loadProfileMaps, enrichProcessRow } = require("./process-admin");
 
 const STALE_MS = 90 * 1000;
 const CREDENTIAL_MS = 30 * 60 * 1000;
@@ -44,12 +45,16 @@ function assessHealth(input = {}) {
     const now = input.now instanceof Date ? input.now.getTime() : Date.now();
     const beats = Array.isArray(input.heartbeats) ? input.heartbeats : [];
     const alerts = [];
+    const profilesByEnv = input.profilesByEnv instanceof Map ? input.profilesByEnv : new Map();
+    const lastCommandByEnv =
+        input.lastCommandByEnv instanceof Map ? input.lastCommandByEnv : new Map();
     const processes = beats.map((row) => {
         const online = fresh(row, now);
         let status = online ? "ok" : "down";
         if (online && row.flags?.trader && row.mqttConnected === false) status = "warn";
         if (online && row.flags?.listener && row.mqttConnected === false) status = "warn";
-        return { ...publicBeat(row), status, ageMs: age(row.at, now) };
+        const base = { ...publicBeat(row), status, ageMs: age(row.at, now) };
+        return enrichProcessRow(base, profilesByEnv, lastCommandByEnv);
     });
 
     for (const row of processes) {
@@ -127,6 +132,9 @@ function publicBeat(row) {
         pmId: row.pmId || "",
         pid: row.pid || null,
         host: row.host || "",
+        hostId: row.hostId || "",
+        botEnv: row.botEnv || "",
+        profileRevision: row.profileRevision != null ? Number(row.profileRevision) : null,
         roles: row.roles || [],
         run: row.run || [],
         nodeEnv: row.nodeEnv || "",
@@ -140,6 +148,8 @@ function publicBeat(row) {
         memoryMb: row.memoryMb ?? null,
         cpuPercent: row.cpuPercent ?? null,
         restarts: row.restarts ?? null,
+        startedAt: row.startedAt || null,
+        lastStartupError: row.lastStartupError || "",
         at: row.at || null,
     };
 }
@@ -147,7 +157,7 @@ function publicBeat(row) {
 async function loadSystemHealth() {
     const now = new Date();
     const mongoOk = mongoose.connection.readyState === 1;
-    const [heartbeats, unmonitored, snapshots, credentials] = await Promise.all([
+    const [heartbeats, unmonitored, snapshots, credentials, profileMaps] = await Promise.all([
         ProcessHeartbeat.find({}).sort({ processName: 1 }).lean(),
         MonitorPosition.countDocuments({ closed: { $ne: true }, type: "NOTPSL", isPaper: { $ne: true } }),
         SummarySnapshot.find({}).select("range status staleAt lastError generatedAt").lean(),
@@ -156,6 +166,7 @@ async function loadSystemHealth() {
             .sort({ at: -1 })
             .limit(8)
             .lean(),
+        loadProfileMaps().catch(() => ({ profilesByEnv: new Map(), lastCommandByEnv: new Map() })),
     ]);
     const health = assessHealth({
         now,
@@ -166,6 +177,8 @@ async function loadSystemHealth() {
         snapshots,
         unmonitored,
         credentials: credentials.filter((row) => /invalid api|api-key|api key|signature|credential|-2014|-2015/i.test(row.message || "")),
+        profilesByEnv: profileMaps.profilesByEnv,
+        lastCommandByEnv: profileMaps.lastCommandByEnv,
     });
     return { checkedAt: now.toISOString(), staleMs: STALE_MS, ...health };
 }

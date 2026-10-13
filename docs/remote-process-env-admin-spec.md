@@ -1,25 +1,25 @@
 # Spec: Quản lý Process Env & Restart (trên trang Hệ thống)
 
-Trạng thái: **chưa implement admin env/restart** — chỉ có xem heartbeat trên `/system`.  
+Trạng thái: **Phase 1 đã implement** (2026-10-13) — `/system` bảng Process + panel admin env/restart.  
 Phạm vi: **mở rộng tab Hệ thống** (`SystemHealthPage`) để admin xem tình trạng, sửa `bot_profile`, restart/reload PM2. **Không** tạo menu/trang `/admin/processes` riêng.  
 Cập nhật: 2026-10-13  
 Nguồn đối chiếu:
 
-- Implementation hiện tại: [`SystemHealthPage.jsx`](../client/src/pages/SystemHealthPage.jsx), [`GET /api/system-health`](../server/src/routes/system-health.js), [`system-health.js`](../server/src/lib/system-health.js)
+- Implementation: [`SystemHealthPage.jsx`](../client/src/pages/SystemHealthPage.jsx), [`GET /api/system-health`](../server/src/routes/system-health.js), [`process-admin.js`](../server/src/lib/process-admin.js), [`admin-processes.js`](../server/src/routes/admin-processes.js)
 - Backend bot: [binance-bot SPEC](../../binance-bot/docs/SPEC-REMOTE-ENV-ADMIN.md), [API contract](../../binance-bot/services/bot-admin/API-CONTRACT.md)
 - Auth: [auth-rbac-spec.md](auth-rbac-spec.md)
 
 ## 0. Kết luận hiện trạng
 
-| Hạng mục | web-bot hôm nay |
+| Hạng mục | web-bot |
 |---|---|
-| Menu **Hệ thống** `/system` | Có — service cards + bảng **Process** (PM2, role, RUN, MQTT, TELE_CLIENT, RAM/CPU, heartbeat) |
+| Menu **Hệ thống** `/system` | Service cards + bảng Process (kèm Rev/Drift/Host/Command) |
 | Quyền vào `/system` | `logs.view` scope `all` |
-| Sửa `bot_profile` / env process | **Không** |
-| Restart PM2 từ web | **Không** (command bridge chỉ `APPLY_CONFIG`) |
-| Revision desired vs actual | **Không** hiện trên bảng Process |
+| Sửa `bot_profile` / env process | Admin — panel `?process=` + `/api/admin/processes*` |
+| Restart PM2 từ web | Admin — `bot_control_commands` (không qua APPLY_CONFIG) |
+| Revision desired vs actual | Có trên bảng Process |
 
-→ Ghép admin vào **cùng trang `/system`**, mở rộng bảng Process + panel chi tiết; thêm API mutation riêng (không nhét mutation vào `GET /api/system-health`).
+→ Admin ghép **cùng trang `/system`**; mutation chỉ qua `/api/admin/processes*` (không nhét vào `GET /api/system-health`).
 
 ---
 
@@ -267,10 +267,10 @@ Thêm Mongoose model mirror schema bot. Không phá dữ liệu hiện có.
 
 ## 10. Kế hoạch triển khai
 
-1. **Sửa spec** (doc này) + cập nhật `feature-spec` / `index` — **bước hiện tại**.
-2. Server: mở rộng `loadSystemHealth` join profile; models + `/api/admin/processes*`; test quyền/redact/409.
-3. Client: mở rộng `SystemHealthPage` (cột + panel + poll); không tạo page menu mới.
-4. Phase 2: `processes.*` trong access-control + auth-rbac-spec.
+1. ~~Sửa spec + feature-spec / index~~ — xong.
+2. ~~Server: join profile + models + `/api/admin/processes*` + unit test~~ — xong.
+3. ~~Client: cột + panel + poll trên `SystemHealthPage`~~ — xong.
+4. Phase 2: `processes.*` trong access-control + auth-rbac-spec (không chỉ `role === admin`).
 5. E2E staging: 1 listener + control agent.
 
 ---

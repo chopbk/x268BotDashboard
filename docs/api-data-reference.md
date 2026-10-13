@@ -91,7 +91,15 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | PATCH | `/api/admin/users/:id` | [admin-users](../server/src/routes/admin-users.js) |
 | GET | `/api/audit-logs` | [audit-logs](../server/src/routes/audit-logs.js) |
 | GET | `/api/runtime-logs` | [runtime-logs](../server/src/routes/runtime-logs.js) |
-| GET | `/api/system-health` | [system-health](../server/src/routes/system-health.js) |
+| GET | `/api/system-health` | [system-health](../server/src/routes/system-health.js) — processes kèm `profileEnv`, `desiredRevision`, `actualRevision`, `drift`, `hostId`, `lastCommand` |
+| GET | `/api/admin/processes/registry` | [admin-processes](../server/src/routes/admin-processes.js) — admin only |
+| GET | `/api/admin/processes/:env` | [admin-processes](../server/src/routes/admin-processes.js) |
+| GET | `/api/admin/processes/:env/revisions` | [admin-processes](../server/src/routes/admin-processes.js) |
+| GET | `/api/admin/processes/:env/commands` | [admin-processes](../server/src/routes/admin-processes.js) |
+| PATCH | `/api/admin/processes/:env` | [admin-processes](../server/src/routes/admin-processes.js) — `expectedRevision`, `reason`, `patch`, `unset`, `dryRun?` |
+| POST | `/api/admin/processes/:env/rollback` | [admin-processes](../server/src/routes/admin-processes.js) |
+| POST | `/api/admin/processes/:env/commands` | [admin-processes](../server/src/routes/admin-processes.js) — `restart`/`reload` → `bot_control_commands` |
+| GET | `/api/admin/processes/commands/:id` | [admin-processes](../server/src/routes/admin-processes.js) — poll |
 | GET | `/api/dashboard` | [dashboard](../server/src/routes/dashboard.js) |
 | POST | `/api/dashboard/attention` | [dashboard](../server/src/routes/dashboard.js) |
 | GET | `/api/positions` | [positions](../server/src/routes/positions.js) |

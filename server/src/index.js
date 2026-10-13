@@ -85,6 +85,11 @@ async function main() {
         app.use("/api/audit-logs", require("./routes/audit-logs"));
         app.use("/api/runtime-logs", require("./routes/runtime-logs"));
         app.use("/api/system-health", require("./routes/system-health"));
+        app.use(
+            "/api/admin/processes",
+            (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
+            require("./routes/admin-processes")
+        );
         app.use("/api/dashboard", require("./routes/dashboard"));
         app.use("/api/positions", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/positions"));
         app.use("/api/orders", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/orders"));

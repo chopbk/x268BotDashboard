@@ -403,7 +403,8 @@ Các invariant:
 | `GET /api/admin/users/access-control` | `requireAuth` | `users.view`; trả catalog gồm group + allowedScopes và template role |
 | `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server. Đây là lịch sử chỉnh sửa web, collection `web_audit_logs` |
 | `GET /api/runtime-logs` | `requireAuth` | `logs.view`; log lỗi runtime của binance-bot trong `bot_runtime_logs`, giữ 30 ngày. Category `open`, `exchange`, `monitor`, `tpsl`, `listener`, `mqtt`, `signal`, `process`. Scope không phải `all` chỉ thấy log của bot user được gán và không thấy listener, MQTT, PM2 |
-| `GET /api/system-health` | `requireAuth` | `logs.view` scope `all`. Heartbeat `bot_heartbeats`: MongoDB, Redis, MQTT, Telegram V1/V2, Discord, trader, monitor, signal, DCA/MTF, poster/webhook, PM2. Kèm RAM, CPU, restart, RUN, NODE_ENV, MQTT, TELE_CLIENT. Cảnh báo listener mất heartbeat, trader không nhận MQTT, monitor không heartbeat, position NOTPSL, snapshot lỗi hoặc quá hạn, Redis fallback memory, credential lỗi |
+| `GET /api/system-health` | `requireAuth` | `logs.view` scope `all`. Heartbeat `bot_heartbeats` (+ join `bot_profile` Rev/Drift): MongoDB, Redis, MQTT, Telegram V1/V2, Discord, trader, monitor, signal, DCA/MTF, poster/webhook, PM2. Cảnh báo listener/trader MQTT/monitor/position/snapshot/Redis/credential |
+| `GET/PATCH/POST /api/admin/processes*` | `requireAuth` + `role === admin` | Đọc/sửa `bot_profile`, revisions, queue `bot_control_commands`. Phase 1 chưa tách permission `processes.*` |
 
 Quy ước HTTP:
 
