@@ -19,6 +19,7 @@
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
 | Hệ thống `/system` | SystemHealthPage | Heartbeat và cảnh báo hạ tầng; API yêu cầu `logs.view` scope `all` |
+| Process env (chưa có) `/admin/processes` | — | Spec: [remote-process-env-admin-spec](remote-process-env-admin-spec.md). Sửa `bot_profile`, xem drift revision/heartbeat, restart PM2 qua control agent. **Chưa implement** |
 | User API `/user-apis`, `/user-apis/new`, `/user-apis/:username` | UserApisPage, UserApiDetailPage | Xem cờ có credential, tạo/sửa/xóa với quyền riêng; không trả raw secret |
 | User `/admin/users` | AdminUsersPage | Quản trị tài khoản web, role/permission/scope theo từng hành động |
 | Hồ sơ `/profile` | ProfilePage | Sửa hồ sơ/mật khẩu của chính mình theo spec auth |

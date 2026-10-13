@@ -19,6 +19,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Config Lab (thay UI config cũ) | [Spec Config](config-lab-spec.md) |
 | Xếp hạng channel theo feed + PnL thật | [Provider Scorecard](provider-scorecard-spec.md) |
 | Nâng trang Tổng quan (health, uPnL, triage) | [Dashboard overview spec](dashboard-overview-spec.md) |
+| Quản lý process env / restart PM2 (`bot_profile`) | [Remote process env admin](remote-process-env-admin-spec.md) — **chưa có UI** |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
 | Đăng ký, đăng nhập, quyền và scope | [Spec auth/RBAC](auth-rbac-spec.md) |
 | Cài Debian, Nginx, HTTPS, cập nhật server | [Deploy Debian](deploy-debian.md) |
