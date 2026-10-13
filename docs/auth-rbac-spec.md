@@ -344,6 +344,12 @@ Các invariant:
 | `POST /api/trading/orders/cancel` | `requireAuth` | `orders.cancel` + scope bot. Cancel một order (regular/algo) qua Binance REST trực tiếp. Body: username, kind, symbol, orderId |
 | `POST /api/trading/orders/cancel-batch` | `requireAuth` | `orders.cancel` + scope bot. Cancel nhiều orders (tối đa 20). Body: username, orders[] |
 | `GET /api/orders/mark` | `requireAuth` | `orders.view`. Mark price từ feed public theo symbol |
+| `GET /api/orders/balance` | `requireAuth` | `orders.view` hoặc `positions.view` + scope bot. available/wallet từ Redis `wb:bal` theo account/env — phục vụ sizing % ví Terminal. Không gọi REST sàn |
+| `GET /api/terminal/journal` | `requireAuth` | `positions.view` + scope bot. Ghi chú cá nhân của actor theo tradeKey |
+| `POST /api/terminal/journal` | `requireAuth` | `positions.view` + scope bot. Tạo note (≤2000 ký tự, ≤10 tags). Không ghi stats bot |
+| `PATCH /api/terminal/journal/:id` | `requireAuth` | `positions.view`. Chỉ sửa note của chính actor |
+| `DELETE /api/terminal/journal/:id` | `requireAuth` | `positions.view`. Chỉ xoá note của chính actor |
+| `POST /api/terminal/coach` | `requireAuth` | `positions.view` + scope bot của `position.account`. Phân tích factors + gợi ý rule/AI; rate limit AI 15s/user |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
 | `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |

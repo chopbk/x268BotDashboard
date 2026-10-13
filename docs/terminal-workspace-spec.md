@@ -15,7 +15,7 @@ Tạo menu **Terminal**, route `/terminal`, nằm cạnh menu Position. Người
 Ba cấp triển khai:
 
 - **R1 — bắt buộc:** đầy đủ chức năng cũ trong menu mới, bố cục gọn, panel chi tiết, lọc/lưu view, trạng thái dữ liệu và xử lý mutation chính xác.
-- **R2 — bổ sung:** sizing USDT/rủi ro, biểu đồ giá chỉ đọc, lịch sử fills, analytics và xuất CSV. Cần hoàn thành nguồn dữ liệu/API còn thiếu.
+- **R2 — bổ sung:** sizing Qty/% ví/USDT/rủi ro + CLI gợi ý + journal/AI coach đã có phần đầu ([terminal-r2-tools-spec](terminal-r2-tools-spec.md)). Còn biểu đồ giá chỉ đọc, lịch sử fills, analytics/CSV.
 - **R3 — nâng cao:** sửa lệnh trên chart, chia TP nhiều mức, dời SL hòa vốn và tự động hóa có trạng thái bền vững. Không được ghép vài request phía browser rồi gọi đó là automation hoàn chỉnh.
 
 R1 có thể bàn giao riêng; phải ghi rõ R2/R3 chưa làm. Nếu yêu cầu triển khai toàn bộ spec thì cả ba cấp đều thuộc phạm vi, không dừng ở mockup.

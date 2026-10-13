@@ -907,3 +907,130 @@ main:has(.term-screen) {
   }
   .term-summary { grid-template-columns: 1fr 1fr; }
 }
+
+/* Size modes, CLI, journal */
+.term-size-modes,
+.term-journal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.term-size-modes button {
+  border: 1px solid var(--term-line);
+  background: transparent;
+  color: var(--muted, #888);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.term-size-modes button.active {
+  color: var(--text, #eee);
+  border-color: var(--accent, #7a9e7e);
+  background: color-mix(in srgb, var(--accent, #7a9e7e) 18%, transparent);
+}
+.term-size-hint { font-size: 12px; margin: 0; }
+.term-cli {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface, #111) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+.term-cli-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.term-cli-prompt {
+  color: var(--accent, #7a9e7e);
+  font-weight: 700;
+}
+.term-cli-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.term-cli-suggest {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow: auto;
+  border-top: 1px solid var(--term-line);
+}
+.term-cli-suggest button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 6px 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.term-cli-suggest button.active,
+.term-cli-suggest button:hover {
+  background: color-mix(in srgb, var(--surface-2, #222) 90%, transparent);
+}
+.term-cli-log {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 100px;
+  overflow: auto;
+}
+.term-cli-log pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.term-cli-log-error pre { color: #c45c5c; }
+.term-cli-log-ok pre { color: #5a9e6f; }
+.term-cli-log-help pre { color: var(--muted, #888); }
+.term-journal textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
+}
+.term-journal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.term-journal-list li {
+  border-top: 1px solid var(--term-line);
+  padding-top: 8px;
+}
+.term-journal-list p { margin: 4px 0 0; white-space: pre-wrap; }
+.term-journal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.term-coach-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.term-kv-compact {
+  font-size: 12px;
+}
+.order-ticket .term-size { margin: 8px 0; }

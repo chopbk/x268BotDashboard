@@ -29,6 +29,8 @@ import { needsAttention } from "../components/terminal/protection.js";
 import { loadPrefs, savePrefs, clampPanelWidth, DEFAULT_COLUMNS, COLUMN_LABELS, rowMatchesSavedView } from "../components/terminal/prefs.js";
 import { usePositionsFeed } from "../components/terminal/usePositionsFeed.js";
 import { CLOSE_PERCENTS, exchangeTpsl, monitorTpsl, newIdempotencyKey, numInput, when } from "../components/terminal/format.js";
+import { estimateSize } from "../components/terminal/sizing.js";
+import TerminalCli from "../components/terminal/TerminalCli.jsx";
 
 export default function TerminalPage() {
   const { user } = useAuth();
@@ -395,7 +397,29 @@ export default function TerminalPage() {
       setError("Ticket cần tài khoản và symbol cụ thể");
       return;
     }
-    if (!(Number(form.quantity) > 0)) {
+    let quantity = form.quantity;
+    if (form.sizeMode && form.sizeMode !== "qty") {
+      const est = form.estimate?.ready
+        ? form.estimate
+        : estimateSize({
+          mode: form.sizeMode,
+          percent: form.percent,
+          usdt: form.usdt,
+          riskBudget: form.riskBudget,
+          stop: form.stop,
+          available: form.balance?.available,
+          leverage: form.leverage,
+          price: form.orderType === "LIMIT" ? form.price : (form.mark || form.price),
+        });
+      if (!est?.ready) {
+        setError(form.sizeMode === "percent"
+          ? "Không tính được qty từ % ví — kiểm tra availableBalance"
+          : "Không tính được quantity từ mode size");
+        return;
+      }
+      quantity = String(est.quantity);
+    }
+    if (!(Number(quantity) > 0)) {
       setError("Quantity phải > 0");
       return;
     }
@@ -408,12 +432,165 @@ export default function TerminalPage() {
     setMutation({ phase: "preview" });
     setOpenConfirm({
       ...form,
+      quantity,
       preview: openPreview({
         side: form.side,
         entryOrMark: form.orderType === "LIMIT" ? form.price : (form.mark || form.price),
-        quantity: form.quantity,
+        quantity,
       }),
     });
+  }
+
+  async function handleCliAction(action) {
+    const pickRow = (symbol) => {
+      const sym = String(symbol || "").toUpperCase();
+      if (sym) {
+        return rows.find((r) => String(r.symbol).toUpperCase() === sym)
+          || (payload?.rows || []).find((r) => String(r.symbol).toUpperCase() === sym);
+      }
+      return selectedRow || rows[0];
+    };
+
+    if (action.type === "select") {
+      const row = pickRow(action.symbol);
+      if (!row) return { ok: false, message: action.symbol ? `Không thấy ${action.symbol}` : "Không có vị thế" };
+      go((q) => {
+        q.set("tab", "positions");
+        q.set("selected", row.key);
+        q.set("panelTab", "overview");
+      });
+      updatePrefs({ panelOpen: true });
+      return { ok: true, message: `Chọn ${row.account} ${row.symbol} ${row.side}` };
+    }
+
+    if (action.type === "balance") {
+      const acc = action.account || selectedRow?.account || account || accountRows[0]?.username;
+      if (!acc) return { ok: false, message: "Thiếu account" };
+      try {
+        const data = await api(`/api/orders/balance?account=${encodeURIComponent(acc)}`);
+        return {
+          ok: true,
+          message: data.available != null
+            ? `${acc} available ${data.available} · wallet ${data.balance ?? "—"} · env ${data.env}${data.stale ? " (stale)" : ""}`
+            : `${acc}: ${data.message || "Chưa có wb:bal"}`,
+        };
+      } catch (err) {
+        return { ok: false, message: err.message || "Không đọc balance" };
+      }
+    }
+
+    if (action.type === "close") {
+      if (!perms.canClose) return { ok: false, message: "Thiếu quyền positions.close" };
+      const row = pickRow(action.symbol);
+      if (!row) return { ok: false, message: "Chọn vị thế hoặc /cl SYMBOL 50%" };
+      askClose(row, {
+        orderType: "MARKET",
+        percent: action.percent != null ? action.percent : null,
+        qty: action.quantity != null ? String(action.quantity) : undefined,
+      });
+      return { ok: true, message: `Preview đóng ${row.symbol}${action.percent != null ? ` ${action.percent}%` : ""}` };
+    }
+
+    if (action.type === "open") {
+      if (!perms.canOpen) return { ok: false, message: "Thiếu quyền positions.open" };
+      const acc = selectedRow?.account || account || accountRows[0]?.username;
+      if (!acc) return { ok: false, message: "Thiếu account để mở" };
+      let balance = null;
+      if (action.sizeMode === "percent" || action.sizeMode === "usdt") {
+        try {
+          balance = await api(`/api/orders/balance?account=${encodeURIComponent(acc)}`);
+        } catch {
+          balance = null;
+        }
+      }
+      let mark = selectedRow?.mark;
+      try {
+        const m = await api(`/api/orders/mark?symbol=${encodeURIComponent(action.symbol)}`);
+        if (m.mark != null) mark = m.mark;
+      } catch {
+        /* keep mark */
+      }
+      const form = {
+        account: acc,
+        symbol: action.symbol,
+        side: action.side,
+        orderType: "MARKET",
+        sizeMode: action.sizeMode || "qty",
+        quantity: action.quantity != null ? String(action.quantity) : "",
+        percent: action.percent != null ? String(action.percent) : "",
+        usdt: action.usdt != null ? String(action.usdt) : "",
+        mark: numInput(mark),
+        price: numInput(mark),
+        leverage: selectedRow?.leverage,
+        balance,
+        estimate: estimateSize({
+          mode: action.sizeMode || "qty",
+          quantity: action.quantity,
+          percent: action.percent,
+          usdt: action.usdt,
+          available: balance?.available,
+          leverage: selectedRow?.leverage,
+          price: mark,
+        }),
+      };
+      askOpen(form);
+      go((q) => {
+        q.set("tab", "positions");
+        q.set("panelTab", "trade");
+      });
+      updatePrefs({ panelOpen: true });
+      return { ok: true, message: `Preview mở ${action.side} ${action.symbol}` };
+    }
+
+    if (action.type === "protect") {
+      if (!perms.canTpsl) return { ok: false, message: "Thiếu quyền positions.tpsl" };
+      const row = pickRow();
+      if (!row) return { ok: false, message: "Chọn vị thế trước" };
+      const form = { tab: "tpsl", tpEnabled: true, slEnabled: true };
+      if (action.kind === "sl") form.sl = String(action.price);
+      if (action.kind === "tp") form.tp = String(action.price);
+      askTpsl(row, form);
+      return { ok: true, message: `Preview ${action.kind.toUpperCase()} ${action.price}` };
+    }
+
+    if (action.type === "reverse") {
+      const row = pickRow();
+      if (!row) return { ok: false, message: "Chọn vị thế trước" };
+      askReverse(row);
+      return { ok: true, message: `Preview reverse ${row.symbol}` };
+    }
+
+    if (action.type === "journal") {
+      const row = pickRow();
+      if (!row) return { ok: false, message: "Chọn vị thế trước" };
+      try {
+        await api("/api/terminal/journal", {
+          method: "POST",
+          body: { account: row.account, symbol: row.symbol, side: row.side, body: action.body },
+        });
+        go((q) => {
+          q.set("selected", row.key);
+          q.set("panelTab", "journal");
+        });
+        updatePrefs({ panelOpen: true });
+        return { ok: true, message: "Đã ghi journal" };
+      } catch (err) {
+        return { ok: false, message: err.message || "Không ghi journal" };
+      }
+    }
+
+    if (action.type === "coach") {
+      const row = pickRow();
+      if (!row) return { ok: false, message: "Chọn vị thế trước" };
+      go((q) => {
+        q.set("selected", row.key);
+        q.set("panelTab", "journal");
+      });
+      updatePrefs({ panelOpen: true });
+      return { ok: true, message: "Mở tab Journal — bấm Gợi ý AI" };
+    }
+
+    return { ok: false, message: "Lệnh chưa hỗ trợ" };
   }
 
   async function submitOpen() {
@@ -994,6 +1171,12 @@ export default function TerminalPage() {
         onChange={setMonitorDraft}
         onCancel={() => setMonitorDraft(null)}
         onSubmit={submitMonitor}
+      />
+
+      <TerminalCli
+        selectedAccount={selectedRow?.account || account}
+        disabled={false}
+        onSubmit={handleCliAction}
       />
 
       <details className="term-data-details">

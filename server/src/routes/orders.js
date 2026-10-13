@@ -8,6 +8,7 @@ const { PERMISSIONS } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 const { loadOpenOrders, loadOrderHistory, getOrderDetail } = require("../lib/orders");
 const { markOf } = require("../lib/mark-prices");
+const { getAccountBalance } = require("../lib/account-balance-read");
 
 const router = express.Router();
 
@@ -26,6 +27,27 @@ router.get("/mark", requireAuth, requirePermission(PERMISSIONS.ORDERS_VIEW), asy
         res.json({ symbol, mark: mark == null ? null : Number(mark) });
     } catch (error) {
         sendError(res, error, "GET /api/orders/mark");
+    }
+});
+
+/**
+ * GET /api/orders/balance?account=&env=
+ * availableBalance Redis wb:bal — phục vụ sizing % ví trên Terminal.
+ * Cần orders.view hoặc positions.view + scope bot (lib kiểm tra).
+ */
+router.get("/balance", requireAuth, async (req, res) => {
+    try {
+        const perms = req.webUser?.permissions || [];
+        if (!perms.includes(PERMISSIONS.ORDERS_VIEW) && !perms.includes(PERMISSIONS.POSITIONS_VIEW)) {
+            res.status(403).json({ error: "Không có quyền" });
+            return;
+        }
+        res.json(await getAccountBalance(req.webUser, {
+            account: req.query.account,
+            env: req.query.env,
+        }));
+    } catch (error) {
+        sendError(res, error, "GET /api/orders/balance");
     }
 });
 

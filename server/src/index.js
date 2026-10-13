@@ -95,6 +95,7 @@ async function main() {
         app.use("/api/provider-scorecard", require("./routes/provider-scorecard"));
         app.use("/api/account-statics", require("./routes/account-statics"));
         app.use("/api/account-ledger", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/account-ledger"));
+        app.use("/api/terminal", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/terminal"));
 
         app.use((err, req, res, next) => {
             if (res.headersSent || res.writableEnded) {

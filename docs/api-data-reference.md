@@ -39,6 +39,7 @@ erDiagram
 | `monitor_positions` | Monitor phía bot | Position/monitor và thống kê |
 | `web_exchange_order_events` | Web consumer từ user stream/reconcile | Order history read model |
 | `web_exchange_fills` | Web consumer từ user stream/reconcile | Fill/trade history |
+| `web_trade_journal` | Web UI Terminal Journal | Ghi chú cá nhân theo actor + tradeKey |
 | `web_trading_receipts` | Web trading bridge | Durable idempotency cho trading mutations |
 | `futures_profits` | Bot và thao tác refresh ledger của web | Ví, income, số dư và dòng tiền |
 | `futures_symbols` | Dữ liệu symbol phía bot | Tick/step/precision khi hiển thị |
@@ -103,7 +104,10 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/positions/history/:id` | [positions](../server/src/routes/positions.js) — `statistics.view` |
 | GET | `/api/orders/open` | [orders](../server/src/routes/orders.js) |
 | GET | `/api/orders/mark` | [orders](../server/src/routes/orders.js) |
+| GET | `/api/orders/balance` | [orders](../server/src/routes/orders.js) |
 | GET | `/api/orders/history` | [orders](../server/src/routes/orders.js) |
+| GET/POST/PATCH/DELETE | `/api/terminal/journal` | [terminal](../server/src/routes/terminal.js) |
+| POST | `/api/terminal/coach` | [terminal](../server/src/routes/terminal.js) |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders/cancel-batch` | [trading](../server/src/routes/trading.js) |

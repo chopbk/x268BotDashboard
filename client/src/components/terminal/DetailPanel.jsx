@@ -9,6 +9,8 @@ import { ownershipView } from "./summary.js";
 import PreviewBlock from "./PreviewBlock.jsx";
 import PriceStrip from "./PriceStrip.jsx";
 import MutationStatus from "./MutationStatus.jsx";
+import SizeControls from "./SizeControls.jsx";
+import JournalPanel from "./JournalPanel.jsx";
 
 const PANEL_TABS = [
   { id: "overview", label: "Tổng quan" },
@@ -16,6 +18,7 @@ const PANEL_TABS = [
   { id: "monitor", label: "Monitor" },
   { id: "timeline", label: "Timeline" },
   { id: "trade", label: "Giao dịch" },
+  { id: "journal", label: "Journal" },
 ];
 
 export default function DetailPanel({
@@ -216,14 +219,32 @@ export default function DetailPanel({
                     <option value="LIMIT">LIMIT</option>
                   </select>
                 </label>
-                <label>Quantity
-                  <input value={openForm.quantity} disabled={!canOpen} onChange={(e) => { setOpenForm({ ...openForm, quantity: e.target.value.replace(/,/g, "") }); markDirty(); }} />
-                </label>
                 {openForm.orderType === "LIMIT" ? (
                   <label>Giá
                     <input value={openForm.price} disabled={!canOpen} onChange={(e) => { setOpenForm({ ...openForm, price: e.target.value.replace(/,/g, "") }); markDirty(); }} />
                   </label>
                 ) : null}
+                <SizeControls
+                  account={openForm.account}
+                  price={openForm.orderType === "LIMIT" ? openForm.price : (openForm.mark || openForm.price || row.mark)}
+                  leverage={row.leverage}
+                  disabled={!canOpen}
+                  value={openForm}
+                  onChange={(next) => {
+                    setOpenForm({
+                      ...openForm,
+                      sizeMode: next.sizeMode,
+                      quantity: next.sizeMode === "qty" ? next.quantity : (next.estimate?.ready ? String(next.estimate.quantity) : ""),
+                      percent: next.percent,
+                      usdt: next.usdt,
+                      riskBudget: next.riskBudget,
+                      stop: next.stop,
+                      estimate: next.estimate,
+                      balance: next.balance,
+                    });
+                    markDirty();
+                  }}
+                />
                 <PreviewBlock
                   title="Preview mở"
                   preview={openPreview({
@@ -284,6 +305,8 @@ export default function DetailPanel({
           </section>
         ) : null}
 
+        {panelTab === "journal" ? <JournalPanel row={row} /> : null}
+
         {(panelTab === "orders" || panelTab === "monitor" || panelTab === "timeline") && !canOrders && panelTab === "orders" ? (
           <p className="muted">Cần quyền orders.view để xem lệnh liên quan.</p>
         ) : null}
@@ -320,7 +343,12 @@ function defaultOpen(row, accounts) {
     symbol: row?.symbol || "",
     side: row?.side || "LONG",
     orderType: "MARKET",
+    sizeMode: "qty",
     quantity: "",
+    percent: "",
+    usdt: "",
+    riskBudget: "",
+    stop: "",
     price: numInput(row?.mark),
     mark: numInput(row?.mark),
   };

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import SizeControls from "./terminal/SizeControls.jsx";
 
 const TYPES = [
   { id: "MARKET", label: "Market" },
@@ -31,6 +32,7 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [sizeForm, setSizeForm] = useState({ sizeMode: "qty", quantity: "", percent: "", usdt: "", riskBudget: "", stop: "" });
   const [reduceOnly, setReduceOnly] = useState(false);
   const [mark, setMark] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -264,10 +266,26 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
         </label>
       ) : null}
 
-      <label className="order-ticket-field">
-        Số lượng
-        <input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Qty" />
-      </label>
+      <SizeControls
+        account={account}
+        price={type === "MARKET" ? mark : (price || triggerPrice || mark)}
+        disabled={busy}
+        value={{ ...sizeForm, quantity }}
+        onChange={(next) => {
+          setSizeForm({
+            sizeMode: next.sizeMode,
+            quantity: next.quantity,
+            percent: next.percent,
+            usdt: next.usdt,
+            riskBudget: next.riskBudget,
+            stop: next.stop,
+          });
+          const qty = next.sizeMode === "qty"
+            ? next.quantity
+            : (next.estimate?.ready ? String(next.estimate.quantity) : "");
+          setQuantity(qty || "");
+        }}
+      />
 
       <label className="order-ticket-check">
         <input type="checkbox" checked={reduceOnly} onChange={(e) => setReduceOnly(e.target.checked)} />
