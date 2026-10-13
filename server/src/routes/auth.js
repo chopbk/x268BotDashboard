@@ -154,4 +154,22 @@ router.patch("/me", requireAuth, profileLimit, async (req, res) => {
     }
 });
 
+router.get("/me/risk-profile", requireAuth, async (req, res) => {
+    try {
+        const { getRiskProfile } = require("../lib/risk-profile");
+        res.json(await getRiskProfile(req.webUser));
+    } catch (error) {
+        sendError(res, error, "GET /api/auth/me/risk-profile");
+    }
+});
+
+router.put("/me/risk-profile", requireAuth, profileLimit, async (req, res) => {
+    try {
+        const { putRiskProfile } = require("../lib/risk-profile");
+        res.json(await putRiskProfile(req.webUser, req.body));
+    } catch (error) {
+        sendError(res, error, "PUT /api/auth/me/risk-profile");
+    }
+});
+
 module.exports = router;

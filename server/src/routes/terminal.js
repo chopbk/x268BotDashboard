@@ -1,12 +1,24 @@
 const express = require("express");
-const { requireAuth, requirePermission } = require("../middleware/auth");
-const { PERMISSIONS } = require("../auth/access-control");
+const { requireAuth, requirePermission, canAccessBot } = require("../middleware/auth");
+const { PERMISSIONS, hasPermission } = require("../auth/access-control");
 const { sendError, httpError } = require("../lib/http");
 const { listNotes, createNote, updateNote, deleteNote } = require("../lib/trade-journal");
-const { analyzeLocal, askTradeCoach } = require("../lib/trade-coach");
+const {
+    runPositionDecision,
+    runAccountDecision,
+    listReports,
+    latestAccountReport,
+} = require("../lib/decision-support/run-decision");
 
 const router = express.Router();
-const lastCoach = new Map();
+
+function requirePositionsOrStats(req, res, next) {
+    if (hasPermission(req.webUser, PERMISSIONS.POSITIONS_VIEW)
+        || hasPermission(req.webUser, PERMISSIONS.STATISTICS_VIEW)) {
+        return next();
+    }
+    return res.status(403).json({ error: "Không có quyền" });
+}
 
 /**
  * GET /api/terminal/journal?account=&symbol=&side=&tradeKey=
@@ -47,36 +59,102 @@ router.delete("/journal/:id", requireAuth, requirePermission(PERMISSIONS.POSITIO
 });
 
 /**
- * POST /api/terminal/coach
- * Body: { position: {...}, ai?: boolean }
- * Phân tích factors + gợi ý rule/AI. Rate limit 15s/user khi gọi AI.
+ * POST /api/terminal/decision/position
+ * Body: { account, symbol, side, ...metrics fields } hoặc { position: {...}, ai?: boolean }
+ */
+router.post("/decision/position", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        const result = await runPositionDecision(req.webUser, req.body || {});
+        res.json(result);
+    } catch (error) {
+        if (error.status === 429) {
+            res.status(429).json({ error: error.message, retryAfter: error.retryAfter });
+            return;
+        }
+        sendError(res, error, "POST /api/terminal/decision/position");
+    }
+});
+
+/**
+ * POST /api/terminal/decision/account
+ * Body: { username|account, ai?: boolean }
+ */
+router.post("/decision/account", requireAuth, requirePositionsOrStats, async (req, res) => {
+    try {
+        const account = String(req.body?.username || req.body?.account || "").trim();
+        if (account
+            && !canAccessBot(req.webUser, account, PERMISSIONS.POSITIONS_VIEW)
+            && !canAccessBot(req.webUser, account, PERMISSIONS.STATISTICS_VIEW)) {
+            throw httpError(403, "Không có quyền với bot này");
+        }
+        const result = await runAccountDecision(req.webUser, req.body || {});
+        res.json(result);
+    } catch (error) {
+        if (error.status === 429) {
+            res.status(429).json({ error: error.message, retryAfter: error.retryAfter });
+            return;
+        }
+        sendError(res, error, "POST /api/terminal/decision/account");
+    }
+});
+
+/**
+ * GET /api/terminal/decision/reports?scope=&account=&tradeKey=&limit=
+ */
+router.get("/decision/reports", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json(await listReports(req.webUser, req.query));
+    } catch (error) {
+        sendError(res, error, "GET /api/terminal/decision/reports");
+    }
+});
+
+/**
+ * GET /api/terminal/decision/latest-account?account=
+ * Đọc cache báo cáo account gần nhất (dashboard badge — không gọi AI).
+ */
+router.get("/decision/latest-account", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        const report = await latestAccountReport(req.webUser, req.query.account);
+        res.json({ report });
+    } catch (error) {
+        sendError(res, error, "GET /api/terminal/decision/latest-account");
+    }
+});
+
+/**
+ * POST /api/terminal/coach — wrapper tương thích: chuyển sang decision pipeline.
+ * Body: { position, ai?: boolean }
  */
 router.post("/coach", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
     try {
         const position = req.body?.position;
         if (!position || typeof position !== "object") throw httpError(400, "Thiếu position");
-        const account = String(position.account || "").trim();
-        if (!account) throw httpError(400, "Thiếu account trong position");
-        const { canAccessBot } = require("../middleware/auth");
-        if (!canAccessBot(req.webUser, account, PERMISSIONS.POSITIONS_VIEW)) {
-            throw httpError(403, "Không có quyền với bot này");
-        }
-
-        const wantAi = req.body?.ai !== false;
-        if (!wantAi) {
-            res.json(await analyzeLocal(position));
-            return;
-        }
-        const id = String(req.webUser?.id || "");
-        const now = Date.now();
-        if (now - (lastCoach.get(id) || 0) < 15000) {
-            const local = await analyzeLocal(position);
-            res.status(429).json({ error: "Đợi một chút rồi hỏi AI lại", ...local });
-            return;
-        }
-        lastCoach.set(id, now);
-        res.json(await askTradeCoach(position));
+        const result = await runPositionDecision(req.webUser, {
+            ...position,
+            position,
+            ai: req.body?.ai !== false,
+        });
+        // Shape cũ tối thiểu để UI cũ không vỡ nếu còn cache
+        const report = result.report || {};
+        res.json({
+            ...result,
+            factors: result.snapshot?.metrics || null,
+            suggestions: (report.priorities || []).map((p) => ({
+                title: p.action,
+                detail: [p.why, p.impact].filter(Boolean).join(" — "),
+                kind: "risk",
+            })),
+            levels: result.snapshot?.market?.levels || [],
+            source: report.meta?.source || "rules",
+            configured: result.configured,
+            message: report.summary,
+        });
     } catch (error) {
+        if (error.status === 429) {
+            res.status(429).json({ error: error.message, retryAfter: error.retryAfter });
+            return;
+        }
         sendError(res, error, "POST /api/terminal/coach");
     }
 });

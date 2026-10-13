@@ -69,6 +69,11 @@ const WebUserSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        /** Hồ sơ rủi ro cá nhân cho AI hỗ trợ quyết định — không đưa vào JWT. */
+        riskProfile: {
+            type: mongoose.Schema.Types.Mixed,
+            default: undefined,
+        },
     },
     {
         versionKey: false,

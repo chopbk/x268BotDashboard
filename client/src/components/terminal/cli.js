@@ -14,7 +14,7 @@ const COMMANDS = [
   { id: "tp", aliases: ["tp"], usage: "/tp PRICE", hint: "Đặt TP vị thế đang chọn" },
   { id: "rev", aliases: ["rev", "reverse"], usage: "/rev", hint: "Đảo chiều vị thế đang chọn" },
   { id: "j", aliases: ["j", "journal", "note"], usage: "/j nội dung", hint: "Ghi journal nhanh" },
-  { id: "ai", aliases: ["ai", "coach"], usage: "/ai", hint: "Phân tích AI lệnh đang chọn" },
+  { id: "ai", aliases: ["ai", "coach"], usage: "/ai", hint: "Mở tab AI phân tích lệnh đang chọn" },
 ];
 
 function normToken(value) {

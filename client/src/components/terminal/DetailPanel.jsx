@@ -11,6 +11,7 @@ import PriceStrip from "./PriceStrip.jsx";
 import MutationStatus from "./MutationStatus.jsx";
 import SizeControls from "./SizeControls.jsx";
 import JournalPanel from "./JournalPanel.jsx";
+import DecisionPanel from "./DecisionPanel.jsx";
 
 const PANEL_TABS = [
   { id: "overview", label: "Tổng quan" },
@@ -18,6 +19,7 @@ const PANEL_TABS = [
   { id: "monitor", label: "Monitor" },
   { id: "timeline", label: "Timeline" },
   { id: "trade", label: "Giao dịch" },
+  { id: "ai", label: "AI phân tích" },
   { id: "journal", label: "Journal" },
 ];
 
@@ -306,15 +308,12 @@ export default function DetailPanel({
           </section>
         ) : null}
 
+        {panelTab === "ai" ? (
+          <DecisionPanel row={row} />
+        ) : null}
+
         {panelTab === "journal" ? (
-          <JournalPanel
-            row={row}
-            canTpsl={canTpsl}
-            onApplyProtect={(patch) => {
-              if (onApplyProtect) onApplyProtect(row, patch);
-              else onTpslRequest?.(row, { tab: "tpsl", ...patch });
-            }}
-          />
+          <JournalPanel row={row} />
         ) : null}
 
         {(panelTab === "orders" || panelTab === "monitor" || panelTab === "timeline") && !canOrders && panelTab === "orders" ? (

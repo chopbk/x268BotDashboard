@@ -15,6 +15,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Menu Terminal mới, giữ nguyên Position: parity, UX và roadmap R1–R3 | [Terminal workspace spec](terminal-workspace-spec.md) |
 | Hoàn thiện 5 gap Terminal R1: ticket, receipt, TP/SL, SL và view/nháp | [Terminal R1 gaps spec](terminal-r1-gaps-spec.md) |
 | Terminal R2 tools: sizing %/USDT/risk, CLI gợi ý, journal + AI coach | [Terminal R2 tools](terminal-r2-tools-spec.md) |
+| AI hỗ trợ quyết định Phase 1 (metrics code + schema, Terminal/Ledger) | [AI decision support](ai-decision-support-spec.md) |
 | Config Lab (thay UI config cũ) | [Spec Config](config-lab-spec.md) |
 | Xếp hạng channel theo feed + PnL thật | [Provider Scorecard](provider-scorecard-spec.md) |
 | Nâng trang Tổng quan (health, uPnL, triage) | [Dashboard overview spec](dashboard-overview-spec.md) |

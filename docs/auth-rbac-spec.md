@@ -327,6 +327,8 @@ Các invariant:
 | `POST /api/auth/login` | Public | Không áp permission |
 | `POST /api/auth/logout` | Public/idempotent | Xóa cookie |
 | `GET /api/auth/me` | `requireAuth` | Không áp permission |
+| `GET /api/auth/me/risk-profile` | `requireAuth` | Hồ sơ rủi ro cá nhân (`web_users.riskProfile`). Không đưa vào JWT |
+| `PUT /api/auth/me/risk-profile` | `requireAuth` | Cập nhật `riskProfile` (style, ngân sách loss, concentration, allowDca…). Rate limit riêng |
 | `PATCH /api/auth/me` | `requireAuth` | `users.edit` cho tên, Telegram ID, Telegram username và số điện thoại. `users.reset_password` cho mật khẩu mới, bắt buộc đúng mật khẩu hiện tại. Không đổi email, username, role hay quyền. Không trả `passwordHash` |
 | `GET /api/dashboard` | `requireAuth` | Không thêm permission riêng. Chỉ bot actor đang sở hữu hoặc được gán, kể cả admin. Không có `bots.view` thì các mục đều rỗng. `configs` chỉ khi có `config.view`. `profitToday` / `closedToday` từ lệnh đóng `account_statics` live theo closeTime ngày UTC. `incomeToday` từ `futures_profits` ngày UTC. `openRisk` (uPnL, số vị thế, top) chỉ Redis `wb:ex`, cần `positions.view`, không REST sàn. `health` map heartbeat trader/monitor theo `run` chứa username bot. Attention có `severity`: lỗi sàn, lỗ ví, uPnL lớn, signal lỗ, heartbeat; bỏ NOT OPEN vì đã có vị thế; filter blacklist gom tóm tắt. Thêm `compare`/`series` 7 ngày UTC, `activity`, cache memory (`DASHBOARD_CACHE_MS`); `?refresh=1` bỏ cache. Ngưỡng attention qua env `DASHBOARD_*`. API key thiếu chỉ khi `credentials.view`. Log signal/exchange chỉ khi `logs.view`. `mine` tối đa 10. Chi tiết [dashboard-overview-spec](dashboard-overview-spec.md) |
 | `POST /api/dashboard/attention` | `requireAuth` | Cùng phạm vi bot với GET. Gửi gói số liệu đó cho AI đã cấu hình (`AI_PROVIDER` và key Gemini, OpenAI, DeepSeek hoặc Claude). Không nhận role từ client. Giới hạn 1 lần / 15 giây / user. Không trả API key |
@@ -349,7 +351,11 @@ Các invariant:
 | `POST /api/terminal/journal` | `requireAuth` | `positions.view` + scope bot. Tạo note (≤2000 ký tự, ≤10 tags). Không ghi stats bot |
 | `PATCH /api/terminal/journal/:id` | `requireAuth` | `positions.view`. Chỉ sửa note của chính actor |
 | `DELETE /api/terminal/journal/:id` | `requireAuth` | `positions.view`. Chỉ xoá note của chính actor |
-| `POST /api/terminal/coach` | `requireAuth` | `positions.view` + scope bot của `position.account`. Phân tích factors + gợi ý rule/AI; rate limit AI 15s/user |
+| `POST /api/terminal/decision/position` | `requireAuth` | `positions.view` + scope bot. Pipeline decision-support; quota ~20s/user/job |
+| `POST /api/terminal/decision/account` | `requireAuth` | `positions.view` hoặc `statistics.view` + scope. Báo cáo rủi ro tài khoản |
+| `GET /api/terminal/decision/reports` | `requireAuth` | `positions.view`. Lịch sử report của chính actor |
+| `GET /api/terminal/decision/latest-account` | `requireAuth` | `positions.view`. Cache báo cáo account gần nhất (dashboard badge; không gọi AI) |
+| `POST /api/terminal/coach` | `requireAuth` | Wrapper tương thích → `decision/position` |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
 | `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |

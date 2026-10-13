@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import AccountRiskAi from "../components/AccountRiskAi";
 
 function money(value) {
   const n = Number(value);
@@ -179,6 +180,10 @@ export default function AccountLedgerPage() {
           <p className="muted">{data.view === "all"
             ? `Tổng ${(data.included || []).map((item) => `${item.username} (${item.env})`).join(", ") || "không có ví"}. Kỳ ${data.from} → ${data.to} UTC. Hai user trùng env chỉ tính một lần. Cập nhật sàn vẫn chọn từng user.`
             : `User ${data.username} · ví ghi ở env ${data.env}. Kỳ ${data.from} → ${data.to} UTC. Số dư và income lấy futures_profits${live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.`}</p>
+          {username !== ALL && data?.username ? (
+            <AccountRiskAi username={data.username} />
+          ) : null}
+
           <div className="stats-grid summary-grid">
             <article className="card summary-stat"><small>Ví futures · futures_profits</small><strong>{plain(live.wallet)}</strong></article>
             <article className="card summary-stat"><small>Khả dụng · sàn lúc cập nhật</small><strong>{plain(live.available)}</strong></article>

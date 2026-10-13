@@ -670,10 +670,10 @@ export default function TerminalPage() {
       if (!row) return { ok: false, message: "Chọn vị thế trước" };
       go((q) => {
         q.set("selected", row.key);
-        q.set("panelTab", "journal");
+        q.set("panelTab", "ai");
       });
       updatePrefs({ panelOpen: true });
-      return { ok: true, message: "Mở tab Journal — bấm Gợi ý AI" };
+      return { ok: true, message: "Mở tab AI phân tích" };
     }
 
     return { ok: false, message: "Lệnh chưa hỗ trợ" };

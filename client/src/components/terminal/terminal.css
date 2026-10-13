@@ -1117,3 +1117,59 @@ main:has(.term-screen) {
   gap: 4px;
 }
 .term-coach-item p { margin: 0; font-size: 12px; }
+
+.term-risk-badge {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--term-line);
+  font-size: 13px;
+}
+.term-risk-high {
+  border-color: #c45c5c;
+  background: rgba(196, 92, 92, 0.12);
+  color: #e8a0a0;
+}
+.term-risk-attention {
+  border-color: #c4a35a;
+  background: rgba(196, 163, 90, 0.12);
+  color: #e0c88a;
+}
+.term-risk-normal {
+  border-color: #5a9e6f;
+  background: rgba(90, 158, 111, 0.1);
+}
+.term-risk-low {
+  border-color: var(--term-line);
+  color: var(--muted, #888);
+}
+.term-priority-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.term-risk-profile {
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+  padding: 10px;
+}
+.term-inline {
+  display: flex;
+  gap: 6px;
+}
+.term-inline input,
+.term-inline select {
+  flex: 1;
+}
+.dash-risk-banner {
+  margin: 0 0 12px;
+  display: block;
+}
+.ledger-ai-risk {
+  margin-bottom: 1.25rem;
+}

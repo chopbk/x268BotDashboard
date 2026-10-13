@@ -110,6 +110,7 @@ export default function DashboardPage() {
   const [aiBusy, setAiBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [riskBadge, setRiskBadge] = useState(null);
 
   async function loadDashboard({ refresh = false, signal } = {}) {
     const path = refresh ? "/api/dashboard?refresh=1" : "/api/dashboard";
@@ -138,6 +139,22 @@ export default function DashboardPage() {
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
+    // Badge rủi ro: đọc cache báo cáo account gần nhất — không gọi AI mỗi load
+    api("/api/terminal/decision/latest-account", { signal: controller.signal })
+      .then((pack) => {
+        const level = pack?.report?.riskLevel || pack?.report?.report?.riskLevel;
+        if (level === "high" || level === "attention") {
+          setRiskBadge({
+            level,
+            account: pack.report.account,
+            summary: pack.report?.report?.summary || pack.report?.summary,
+            asOf: pack.report?.asOf || pack.report?.createdAt,
+          });
+        } else {
+          setRiskBadge(null);
+        }
+      })
+      .catch(() => setRiskBadge(null));
     return () => controller.abort();
   }, [user?.id]);
 
@@ -212,6 +229,17 @@ export default function DashboardPage() {
       ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       {loading && !data ? <p className="muted">Đang tải…</p> : null}
+      {riskBadge ? (
+        <p className={`dash-risk-banner term-risk-badge ${riskBadge.level === "high" ? "term-risk-high" : "term-risk-attention"}`}>
+          <strong>Rủi ro tài khoản: {riskBadge.level === "high" ? "Cao" : "Cần chú ý"}</strong>
+          {riskBadge.account ? ` · ${riskBadge.account}` : ""}
+          {riskBadge.summary ? ` — ${riskBadge.summary}` : ""}
+          {" · "}
+          <Link to={riskBadge.account ? `/ledger?username=${encodeURIComponent(riskBadge.account)}` : "/ledger"}>
+            Mở Lãi lỗ / AI rủi ro
+          </Link>
+        </p>
+      ) : null}
       {data ? (
         <>
           {health ? (

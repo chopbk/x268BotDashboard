@@ -45,7 +45,11 @@ Lệnh chính: `/help`, `/p`, `/b`, `/cl`, `/o` (`/long` `/short`), `/sl`, `/tp`
 |---|---|---|
 | GET | `/api/orders/balance` | `orders.view` hoặc `positions.view` |
 | GET/POST/PATCH/DELETE | `/api/terminal/journal` | `positions.view` |
-| POST | `/api/terminal/coach` | `positions.view` |
+| POST | `/api/terminal/decision/position` | `positions.view` — Phase 1 AI hỗ trợ quyết định |
+| POST | `/api/terminal/decision/account` | `positions.view` |
+| POST | `/api/terminal/coach` | Wrapper → decision (giữ tương thích) |
+
+Xem thêm [ai-decision-support-spec](ai-decision-support-spec.md). Phase 1 **không** có nút Áp SL/TP từ AI.
 
 ## 5. Kiểm tra
 
