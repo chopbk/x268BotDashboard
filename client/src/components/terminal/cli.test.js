@@ -34,3 +34,10 @@ test("suggestCli gợi ý khi gõ /", () => {
   const items = suggestCli("/c");
   assert.ok(items.length >= 1);
 });
+
+test("parseCli /clall 50%", () => {
+  const r = parseCli("/clall 50%");
+  assert.equal(r.ok, true);
+  assert.equal(r.action.type, "closeAll");
+  assert.equal(r.action.percent, 50);
+});

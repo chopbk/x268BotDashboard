@@ -1034,3 +1034,34 @@ main:has(.term-screen) {
   font-size: 12px;
 }
 .order-ticket .term-size { margin: 8px 0; }
+
+.term-dialog-wide {
+  width: min(720px, 96vw);
+  max-height: min(90vh, 900px);
+  overflow: auto;
+}
+.term-close-all-table-wrap {
+  overflow: auto;
+  max-height: 280px;
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+}
+.term-close-all-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.term-close-all-table th,
+.term-close-all-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--term-line);
+  white-space: nowrap;
+}
+.term-close-all-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface, #111);
+  font-weight: 600;
+  color: var(--muted, #888);
+}

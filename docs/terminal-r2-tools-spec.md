@@ -17,6 +17,10 @@ Ticket **Mở** (panel Giao dịch) và **OrderTicket** nâng cao có bốn mode
 - Hiển thị rõ notional ≠ margin. Làm tròn xuống step client; sàn/server vẫn validate.
 - Số dư: `GET /api/orders/balance?account=&env=` đọc Redis `wb:bal:<ENV>`. Thiếu Redis → không tính % ví.
 
+## 1b. Đóng toàn bộ (bộ lọc)
+
+Nút **Đóng toàn bộ** (và CLI `/clall [%]`) mở dialog giống đóng đơn: chọn % (10/25/50/75/100), bảng từng vị thế live trong bộ lọc hiện tại với qty đóng và PnL≈, tổng ước tính. Chọn 50% → mỗi vị thế đóng 50% size của nó (không chia đều một pool). Bỏ paper/pending. Gửi lần lượt `POST /api/trading/positions/close` MARKET · `PERCENT`/`ALL`; dừng khi một lệnh lỗi. Không phải “đóng mọi account hệ thống” — chỉ hàng đang hiện sau filter/view.
+
 ## 2. CLI lệnh nhanh
 
 Thanh `TerminalCli` dưới workspace. Cú pháp gần Telegram (`/cl`, `/o`, `/sl`…).

@@ -1,6 +1,7 @@
 import { closePreview } from "../../trade-preview";
 import PreviewBlock from "./PreviewBlock.jsx";
-import { CLOSE_PERCENTS, fmt, numInput, qtyAtPercent } from "./format.js";
+import { CLOSE_PERCENTS, fmt, numInput, pnlClass, qtyAtPercent } from "./format.js";
+import { buildCloseAllItems, summarizeCloseAll } from "./closeAll.js";
 
 export function CloseConfirmDialog({ confirm, busy, formError, onChange, onCancel, onSubmit }) {
   if (!confirm) return null;
@@ -109,6 +110,108 @@ export function CloseConfirmDialog({ confirm, busy, formError, onChange, onCance
           <button type="button" className="ghost" disabled={busy} onClick={onCancel}>Giữ lệnh</button>
           <button type="button" className="term-primary" disabled={busy} onClick={onSubmit}>
             {busy ? "Đang gửi…" : `Xác nhận đóng ${confirm.orderType}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Đóng hàng loạt theo bộ lọc hiện tại: cùng % cho mỗi vị thế live.
+ * confirm = { percent, orderType, itemsSourceRows } — items tính lại khi đổi %.
+ */
+export function CloseAllConfirmDialog({ confirm, busy, formError, onChange, onCancel, onSubmit }) {
+  if (!confirm) return null;
+
+  const percent = Number(confirm.percent) > 0 && Number(confirm.percent) <= 100
+    ? Number(confirm.percent)
+    : 100;
+  const items = buildCloseAllItems(confirm.rows || [], percent);
+  const summary = summarizeCloseAll(items);
+
+  function patch(next) {
+    onChange?.({ ...confirm, ...next });
+  }
+
+  return (
+    <div className="modal-backdrop term-modal" onClick={() => { if (!busy) onCancel(); }}>
+      <div className="modal-card stack term-dialog term-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="term-close-all-title" onClick={(e) => e.stopPropagation()}>
+        <header>
+          <h2 id="term-close-all-title">Đóng toàn bộ (bộ lọc)</h2>
+          <button type="button" disabled={busy} onClick={onCancel}>Huỷ</button>
+        </header>
+        <p className="muted">
+          {items.length} vị thế live · mỗi dòng đóng <strong>{percent}%</strong> size của chính nó.
+          Paper/pending đã bỏ qua. Không đóng account ngoài bộ lọc.
+        </p>
+
+        <div className="term-percents" role="group" aria-label="Chọn % đóng mỗi vị thế">
+          {CLOSE_PERCENTS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={percent === p ? "active" : ""}
+              disabled={busy}
+              onClick={() => patch({ percent: p })}
+            >
+              {p}%
+            </button>
+          ))}
+        </div>
+
+        <div className="term-close-all-table-wrap">
+          <table className="term-close-all-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Symbol</th>
+                <th>Side</th>
+                <th>Size</th>
+                <th>Đóng</th>
+                <th>PnL≈</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.key}>
+                  <td>{item.account}</td>
+                  <td>{item.symbol}</td>
+                  <td className={`term-side term-side-${String(item.side).toLowerCase()}`}>{item.side}</td>
+                  <td className="term-num">{fmt(item.fullQty)}</td>
+                  <td className="term-num">{fmt(item.closeQty)}</td>
+                  <td className={`term-num ${pnlClass(item.preview?.estimatedPnl)}`}>
+                    {item.preview?.estimatedPnl == null ? "—" : fmt(item.preview.estimatedPnl, 2)}
+                  </td>
+                </tr>
+              ))}
+              {!items.length ? (
+                <tr><td colSpan={6} className="muted">Không có vị thế live trong bộ lọc.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="term-preview">
+          <strong>Tổng ước tính (MARKET @ mark)</strong>
+          <ul>
+            <li>Số lệnh: {summary.count}</li>
+            <li className={pnlClass(summary.estimatedPnl)}>
+              PnL dự kiến ≈ {summary.estimatedPnl == null ? "—" : fmt(summary.estimatedPnl, 2)} USDT
+            </li>
+            <li>Phí ước tính ≈ {summary.estimatedFee == null ? "—" : fmt(summary.estimatedFee, 4)} USDT</li>
+            <li className={pnlClass(summary.netAfterFee)}>
+              Net sau phí ≈ {summary.netAfterFee == null ? "—" : fmt(summary.netAfterFee, 2)} USDT
+            </li>
+          </ul>
+        </div>
+
+        {formError ? <p className="form-error">{formError}</p> : null}
+        <p className="muted">Gửi lần lượt POSITION_CLOSE MARKET · quantityMode PERCENT/ALL. Dừng nếu một lệnh lỗi (các lệnh trước có thể đã gửi).</p>
+        <div className="term-dialog-actions">
+          <button type="button" className="ghost" disabled={busy} onClick={onCancel}>Giữ lệnh</button>
+          <button type="button" className="term-primary" disabled={busy || !items.length} onClick={onSubmit}>
+            {busy ? "Đang gửi…" : `Xác nhận đóng ${percent}% × ${items.length}`}
           </button>
         </div>
       </div>

@@ -8,6 +8,7 @@ const COMMANDS = [
   { id: "p", aliases: ["p", "pos", "position", "v"], usage: "/p [SYMBOL]", hint: "Chọn / lọc vị thế" },
   { id: "b", aliases: ["b", "bal", "balance"], usage: "/b [ACCOUNT]", hint: "Số dư available (Redis)" },
   { id: "cl", aliases: ["cl", "close"], usage: "/cl [SYMBOL] [%|qty]", hint: "Đóng vị thế đã chọn hoặc theo symbol" },
+  { id: "clall", aliases: ["clall", "closeall", "cla"], usage: "/clall [%]", hint: "Đóng toàn bộ vị thế live trong bộ lọc (cùng % mỗi dòng)" },
   { id: "o", aliases: ["o", "open", "long", "short"], usage: "/o SYMBOL SIDE qty|N%|$N", hint: "Mở lệnh (qty / % ví / $ notional)" },
   { id: "sl", aliases: ["sl"], usage: "/sl PRICE", hint: "Đặt SL vị thế đang chọn" },
   { id: "tp", aliases: ["tp"], usage: "/tp PRICE", hint: "Đặt TP vị thế đang chọn" },
@@ -126,6 +127,18 @@ export function parseCli(input, ctx = {}) {
       if (!(quantity > 0)) return { ok: false, error: "Qty đóng phải > 0 hoặc dùng 50%" };
     }
     return { ok: true, action: { type: "close", symbol, percent, quantity, orderType: "MARKET" } };
+  }
+
+  if (cmd.id === "clall") {
+    const sizeRaw = rest[0] || "100%";
+    let percent = 100;
+    if (/%$/.test(sizeRaw)) {
+      percent = Number(String(sizeRaw).replace(/%$/, ""));
+    } else if (rest[0]) {
+      percent = Number(String(sizeRaw).replace(/,/g, ""));
+    }
+    if (!(percent > 0 && percent <= 100)) return { ok: false, error: "% đóng phải trong (0,100]" };
+    return { ok: true, action: { type: "closeAll", percent, orderType: "MARKET" } };
   }
 
   if (cmd.id === "o") {

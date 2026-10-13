@@ -245,7 +245,7 @@ Hai tính năng riêng:
 
 Automation “TP1 khớp → dời SL” chạy ở backend/bot với plan lưu bền vững, hoạt động khi đóng trình duyệt, chống xử lý lặp và phục hồi sau restart. Trạng thái plan tối thiểu: draft/armed/active/partially_completed/completed/paused/failed/canceled; child execution có trạng thái độc lập. Một position/config chỉ có một chủ thể điều khiển SL cho cùng phạm vi; phát hiện xung đột với monitor thì chặn kích hoạt và giải thích. Không tự viết đè TP/SL monitor.
 
-Không đưa vào R1/R2: auto-reverse, chase, TWAP, iceberg, đổi leverage/margin mode, nút đóng tất cả tài khoản. Những việc này cần spec riêng.
+Không đưa vào R1/R2: auto-reverse, chase, TWAP, iceberg, đổi leverage/margin mode. **Đóng toàn bộ theo bộ lọc** (cùng % mỗi vị thế live đang hiện) đã có trên Terminal — không phải đóng mọi account hệ thống ngoài filter; xem [terminal-r2-tools-spec](terminal-r2-tools-spec.md).
 
 ## 10. Dữ liệu, tính toán và độ mới
 

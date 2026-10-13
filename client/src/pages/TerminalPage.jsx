@@ -18,11 +18,13 @@ import MutationStatus from "../components/terminal/MutationStatus.jsx";
 import { classifyMutationResult } from "../components/terminal/mutation.js";
 import {
   CloseConfirmDialog,
+  CloseAllConfirmDialog,
   ReverseConfirmDialog,
   OpenConfirmDialog,
   TpslConfirmDialog,
   MonitorDraftDialog,
 } from "../components/terminal/ConfirmDialogs.jsx";
+import { buildCloseAllItems, closableRows } from "../components/terminal/closeAll.js";
 import { matches, normalizeTab, bookForApi } from "../components/terminal/matches.js";
 import { buildSummary } from "../components/terminal/summary.js";
 import { needsAttention } from "../components/terminal/protection.js";
@@ -68,8 +70,10 @@ export default function TerminalPage() {
   const [overlay, setOverlay] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);
 
   const [closeConfirm, setCloseConfirm] = useState(null);
+  const [closeAllConfirm, setCloseAllConfirm] = useState(null);
   const [closeFormError, setCloseFormError] = useState("");
   const [closing, setClosing] = useState(false);
+  const [closingAll, setClosingAll] = useState(false);
   const [reverseConfirm, setReverseConfirm] = useState(null);
   const [reversing, setReversing] = useState(false);
   const [openConfirm, setOpenConfirm] = useState(null);
@@ -321,6 +325,82 @@ export default function TerminalPage() {
     }
   }
 
+  function askCloseAll(percent = 100) {
+    if (!perms.canClose) {
+      setError("Thiếu quyền positions.close");
+      return;
+    }
+    const live = closableRows(rows);
+    if (!live.length) {
+      setError("Không có vị thế live trong bộ lọc để đóng");
+      return;
+    }
+    setError("");
+    setCloseFormError("");
+    setMutation({ phase: "preview" });
+    setCloseAllConfirm({
+      percent: Number(percent) > 0 && Number(percent) <= 100 ? Number(percent) : 100,
+      orderType: "MARKET",
+      rows: live,
+    });
+  }
+
+  async function submitCloseAll() {
+    if (!closeAllConfirm || closingAll) return;
+    const percent = Number(closeAllConfirm.percent);
+    if (!(percent > 0 && percent <= 100)) {
+      setCloseFormError("% đóng phải trong (0,100]");
+      return;
+    }
+    const items = buildCloseAllItems(closeAllConfirm.rows || [], percent);
+    if (!items.length) {
+      setCloseFormError("Không có vị thế live để đóng");
+      return;
+    }
+
+    setClosingAll(true);
+    setCloseFormError("");
+    setMutation({ phase: "submitting", message: `Đang đóng ${percent}% × ${items.length}…` });
+    const results = [];
+    try {
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        setMutation({ phase: "submitting", message: `Đóng ${i + 1}/${items.length}: ${item.account} ${item.symbol}` });
+        const quantityMode = percent === 100 ? "ALL" : "PERCENT";
+        const body = {
+          username: item.account,
+          symbol: item.symbol,
+          positionSide: item.side,
+          orderType: "MARKET",
+          quantityMode,
+          idempotencyKey: newIdempotencyKey(`closeall-${i}`),
+        };
+        if (quantityMode === "PERCENT") body.percent = String(percent);
+        try {
+          const result = await api("/api/trading/positions/close", { method: "POST", body });
+          results.push({ key: item.key, ok: true, result });
+        } catch (err) {
+          results.push({ key: item.key, ok: false, error: err.message || "Lỗi" });
+          setCloseFormError(`${item.account} ${item.symbol}: ${err.message || "Không đóng được"}`);
+          setMutation({
+            phase: "rejected",
+            message: `Dừng sau ${results.filter((r) => r.ok).length}/${items.length} thành công · lỗi ${item.symbol}`,
+          });
+          return;
+        }
+      }
+      setMutation({
+        phase: "accepted",
+        message: `Đã gửi đóng ${percent}% cho ${results.length} vị thế`,
+      });
+      setCloseAllConfirm(null);
+      setDirty(false);
+      setError("");
+    } finally {
+      setClosingAll(false);
+    }
+  }
+
   function askReverse(row) {
     if (!perms.canClose || !perms.canOpen) {
       setError("Cần quyền positions.close và positions.open");
@@ -489,6 +569,12 @@ export default function TerminalPage() {
         qty: action.quantity != null ? String(action.quantity) : undefined,
       });
       return { ok: true, message: `Preview đóng ${row.symbol}${action.percent != null ? ` ${action.percent}%` : ""}` };
+    }
+
+    if (action.type === "closeAll") {
+      if (!perms.canClose) return { ok: false, message: "Thiếu quyền positions.close" };
+      askCloseAll(action.percent ?? 100);
+      return { ok: true, message: `Preview đóng toàn bộ ${action.percent ?? 100}%` };
     }
 
     if (action.type === "open") {
@@ -913,6 +999,17 @@ export default function TerminalPage() {
           >
             {refreshing ? "Đang đồng bộ…" : "Đồng bộ"}
           </button>
+          {perms.canClose && tab === "positions" ? (
+            <button
+              type="button"
+              className="ghost"
+              disabled={!closableRows(rows).length || closingAll}
+              title="Đóng mọi vị thế live trong bộ lọc hiện tại (cùng % mỗi dòng)"
+              onClick={() => askCloseAll(100)}
+            >
+              Đóng toàn bộ
+            </button>
+          ) : null}
           {perms.canOpen && tab === "positions" ? (
             <button
               type="button"
@@ -1152,6 +1249,14 @@ export default function TerminalPage() {
         onChange={setCloseConfirm}
         onCancel={() => { setCloseConfirm(null); setCloseFormError(""); setMutation({ phase: "draft" }); }}
         onSubmit={submitClose}
+      />
+      <CloseAllConfirmDialog
+        confirm={closeAllConfirm}
+        busy={closingAll}
+        formError={closeFormError}
+        onChange={setCloseAllConfirm}
+        onCancel={() => { setCloseAllConfirm(null); setCloseFormError(""); setMutation({ phase: "draft" }); }}
+        onSubmit={submitCloseAll}
       />
       <ReverseConfirmDialog confirm={reverseConfirm} busy={reversing} onCancel={() => setReverseConfirm(null)} onSubmit={submitReverse} />
       <OpenConfirmDialog confirm={openConfirm} busy={opening} onCancel={() => setOpenConfirm(null)} onSubmit={submitOpen} />
