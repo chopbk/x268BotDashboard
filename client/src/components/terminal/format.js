@@ -15,6 +15,25 @@ export function fmt(value, digits = 4) {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
+/** Giá futures: đủ chữ số theo độ lớn — tránh cắt SL/TP altcoin hoặc làm tròn BTC lệch. */
+export function fmtPrice(value) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  let digits = 4;
+  if (abs >= 1000) digits = 2;
+  else if (abs >= 100) digits = 3;
+  else if (abs >= 1) digits = 4;
+  else if (abs >= 0.1) digits = 5;
+  else if (abs >= 0.01) digits = 6;
+  else digits = 8;
+  return n.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+}
+
 export function when(value) {
   if (!value) return "—";
   const date = new Date(value);

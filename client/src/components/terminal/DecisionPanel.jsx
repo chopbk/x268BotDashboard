@@ -1,9 +1,46 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { fmt, when } from "./format.js";
+import { fmt, fmtPrice, when } from "./format.js";
 import { ownershipView } from "./summary.js";
 import { protectionStatus } from "./protection.js";
 import { qtyOf } from "../../position-sort";
+
+const LEVEL_LABELS = {
+  sl: "Stop-loss",
+  tp: "Take-profit",
+  exit: "Thoát",
+  invalidation: "Hủy luận điểm",
+};
+
+function namedLevels(levels) {
+  if (!levels || typeof levels !== "object") return [];
+  return Object.entries(levels)
+    .filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v > 0)
+    .map(([key, price]) => ({
+      key,
+      role: /tp/i.test(key) ? "tp" : /sl|exit|invalid/i.test(key) ? "sl" : "zone",
+      label: LEVEL_LABELS[key] || key,
+      price,
+    }));
+}
+
+function primaryAdvice(report) {
+  const first = report?.priorities?.[0];
+  if (first?.action) {
+    return {
+      action: first.action,
+      why: first.why || "",
+      impact: first.impact || "",
+    };
+  }
+  if (report?.riskLevel === "high") {
+    return { action: "Giảm rủi ro trước khi giữ thêm", why: report.summary || "", impact: "" };
+  }
+  if (report?.riskLevel === "attention") {
+    return { action: "Rà soát stop-loss và quy mô", why: report.summary || "", impact: "" };
+  }
+  return { action: "Theo dõi theo kế hoạch hiện tại", why: report?.summary || "", impact: "" };
+}
 
 function factorsPayload(row) {
   if (!row) return null;
@@ -157,9 +194,13 @@ export default function DecisionPanel({ row }) {
 
   const report = reportPack?.report;
   const snap = reportPack?.snapshot;
+  const advice = report ? primaryAdvice(report) : null;
+  const techLevels = snap?.technical?.levels || snap?.market?.levels || [];
+  const exchangeSl = snap?.metrics?.sl;
+  const exchangeTp = snap?.metrics?.tp;
 
   return (
-    <section className="term-panel-section stack term-decision">
+    <section className="term-panel-section stack term-decision term-decision-readable">
       <div className="term-journal-actions">
         <button type="button" className="ghost" disabled={busy} onClick={() => run(false)}>Phân tích rule</button>
         <button type="button" className="term-primary" disabled={busy} onClick={() => run(true)}>AI phân tích</button>
@@ -167,8 +208,8 @@ export default function DecisionPanel({ row }) {
           Hồ sơ rủi ro{profileConfigured ? "" : " *"}
         </button>
       </div>
-      <p className="muted">
-        Phase 1 chỉ đọc: số do code tính, AI giải thích. Không tự đặt SL/TP.
+      <p className="muted term-decision-hint">
+        Chỉ đọc — không tự đặt lệnh. Số liệu do hệ thống tính; AI giải thích và khuyến nghị.
         {!profileConfigured ? " · Chưa có ngân sách rủi ro cá nhân." : ""}
       </p>
 
@@ -252,18 +293,44 @@ export default function DecisionPanel({ row }) {
       {error ? <p className="form-error">{error}</p> : null}
 
       {report ? (
-        <div className="term-coach stack">
-          <div className={`term-risk-badge ${riskClass(report.riskLevel)}`}>
-            <strong>{riskLabel(report.riskLevel)}</strong>
-            <span className="muted"> · {report.meta?.source || "—"} · {when(report.asOf)}</span>
+        <div className="term-coach stack term-decision-report">
+          <div className={`term-verdict ${riskClass(report.riskLevel)}`}>
+            <div className="term-verdict-meta">
+              <span className="term-verdict-risk">{riskLabel(report.riskLevel)}</span>
+              <span className="muted">{report.meta?.source || "—"} · {when(report.asOf)}</span>
+            </div>
+            <p className="term-verdict-label">Khuyến nghị</p>
+            <h3 className="term-verdict-action">{advice?.action}</h3>
+            {advice?.why ? <p className="term-verdict-why">{advice.why}</p> : null}
+            {report.summary && report.summary !== advice?.why ? (
+              <p className="term-verdict-summary">{report.summary}</p>
+            ) : null}
           </div>
-          <p>{report.summary}</p>
 
-          {report.priorities?.length ? (
+          <div className="term-tpsl-strip">
+            <div className="term-tpsl-cell">
+              <span>SL sàn</span>
+              <strong className="term-num term-level-sl">{fmtPrice(exchangeSl)}</strong>
+            </div>
+            <div className="term-tpsl-cell">
+              <span>TP sàn</span>
+              <strong className="term-num term-level-tp">{fmtPrice(exchangeTp)}</strong>
+            </div>
+            <div className="term-tpsl-cell">
+              <span>Entry / Mark</span>
+              <strong className="term-num">{fmtPrice(snap?.metrics?.entry)} / {fmtPrice(snap?.metrics?.mark)}</strong>
+            </div>
+            <div className="term-tpsl-cell">
+              <span>Rủi ro → SL</span>
+              <strong className="term-num">{fmt(snap?.metrics?.riskMarkToSl, 2)}</strong>
+            </div>
+          </div>
+
+          {report.priorities?.length > 1 ? (
             <div className="stack">
-              <strong>Ưu tiên</strong>
+              <strong className="term-section-title">Việc nên làm tiếp</strong>
               <ol className="term-priority-list">
-                {report.priorities.map((p, i) => (
+                {report.priorities.slice(1).map((p, i) => (
                   <li key={`${p.action}-${i}`}>
                     <strong>{p.action}</strong>
                     {p.why ? <span className="muted"> — {p.why}</span> : null}
@@ -275,8 +342,8 @@ export default function DecisionPanel({ row }) {
 
           {snap?.technical || (snap?.market && !snap.market.error) ? (
             <div className="term-market-card">
-              <strong>Phân tích kỹ thuật · {row.symbol}</strong>
-              <dl className="term-kv term-kv-compact">
+              <strong className="term-section-title">Phân tích kỹ thuật · {row.symbol}</strong>
+              <dl className="term-kv term-kv-decision">
                 <div>
                   <span>Đa khung</span>
                   <strong>{snap.technical?.multiTfLabel || snap.market?.multiTf || "—"}</strong>
@@ -312,22 +379,22 @@ export default function DecisionPanel({ row }) {
                 <div>
                   <span>ATR</span>
                   <strong>
-                    {fmt(snap.technical?.atr14 ?? snap.market?.atr14)}
+                    {fmtPrice(snap.technical?.atr14 ?? snap.market?.atr14)}
                     {snap.technical?.atrPct != null ? ` (${snap.technical.atrPct}%)` : ""}
                   </strong>
                 </div>
                 <div>
                   <span>Hỗ trợ</span>
-                  <strong className="term-num">{fmt(snap.technical?.support ?? snap.market?.tf15?.support)}</strong>
+                  <strong className="term-num">{fmtPrice(snap.technical?.support ?? snap.market?.tf15?.support)}</strong>
                 </div>
                 <div>
                   <span>Kháng cự</span>
-                  <strong className="term-num">{fmt(snap.technical?.resistance ?? snap.market?.tf15?.resistance)}</strong>
+                  <strong className="term-num">{fmtPrice(snap.technical?.resistance ?? snap.market?.tf15?.resistance)}</strong>
                 </div>
                 {snap.technical?.invalidation != null ? (
                   <div>
                     <span>Mức hủy luận điểm</span>
-                    <strong className="term-num">{fmt(snap.technical.invalidation)}</strong>
+                    <strong className="term-num">{fmtPrice(snap.technical.invalidation)}</strong>
                   </div>
                 ) : null}
                 {snap.technical?.btcTrend ? (
@@ -337,23 +404,21 @@ export default function DecisionPanel({ row }) {
                   </div>
                 ) : null}
               </dl>
-              {(snap.technical?.levels || snap.market?.levels || []).length ? (
-                <ul className="term-level-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {(snap.technical?.levels || snap.market?.levels || []).slice(0, 6).map((level) => (
-                    <li key={level.id || `${level.role}-${level.price}`} style={{ marginBottom: 4 }}>
-                      <span className={`term-level-role term-level-${level.role}`}>{level.role?.toUpperCase()}</span>
-                      {" "}
-                      <strong>{level.label}</strong>
-                      <span className="term-num"> {fmt(level.price)}</span>
+              {techLevels.length ? (
+                <ul className="term-level-cards">
+                  {techLevels.slice(0, 8).map((level) => (
+                    <li key={level.id || `${level.role}-${level.price}`}>
+                      <span className={`term-level-role term-level-${level.role}`}>{String(level.role || "").toUpperCase()}</span>
+                      <div className="term-level-card-body">
+                        <strong>{level.label || level.role}</strong>
+                        <span className="term-num term-level-price">{fmtPrice(level.price)}</span>
+                      </div>
                     </li>
                   ))}
                 </ul>
               ) : null}
               {snap.technical?.forming?.length ? (
                 <p className="muted">Nến đang chạy: {snap.technical.forming.join(", ")} — tín hiệu có thể đổi khi đóng nến.</p>
-              ) : null}
-              {snap.technical?.note || snap.market?.note ? (
-                <p className="muted">{snap.technical?.note || snap.market?.note}</p>
               ) : null}
             </div>
           ) : null}
@@ -375,26 +440,34 @@ export default function DecisionPanel({ row }) {
           <details open>
             <summary>Phương án (≤3)</summary>
             <ul className="term-coach-list">
-              {(report.scenarios || []).map((s) => (
-                <li key={s.id} className="term-coach-item">
-                  <strong>{s.title}</strong>
-                  {s.rationale ? <p className="muted">{s.rationale}</p> : null}
-                  {s.candidateLevels ? (
-                    <p className="muted">
-                      Mức: {Object.entries(s.candidateLevels)
-                        .filter(([, v]) => typeof v === "number")
-                        .map(([k, v]) => `${k}=${fmt(v)}`)
-                        .join(" · ") || "—"}
-                    </p>
-                  ) : null}
-                  {s.riskFromMarkToSl != null ? (
-                    <p className="muted">Rủi ro tới mức bảo vệ ≈ {fmt(s.riskFromMarkToSl)}
-                      {s.rrRemaining != null ? ` · R:R còn lại ${s.rrRemaining}` : ""}
-                    </p>
-                  ) : null}
-                  {s.invalidation ? <p className="muted">Hủy luận điểm: {s.invalidation}</p> : null}
-                </li>
-              ))}
+              {(report.scenarios || []).map((s) => {
+                const levels = namedLevels(s.candidateLevels);
+                return (
+                  <li key={s.id} className="term-coach-item">
+                    <strong>{s.title}</strong>
+                    {s.rationale ? <p className="muted">{s.rationale}</p> : null}
+                    {levels.length ? (
+                      <ul className="term-level-cards term-level-cards-compact">
+                        {levels.map((level) => (
+                          <li key={`${s.id}-${level.key}`}>
+                            <span className={`term-level-role term-level-${level.role}`}>{level.role.toUpperCase()}</span>
+                            <div className="term-level-card-body">
+                              <strong>{level.label}</strong>
+                              <span className="term-num term-level-price">{fmtPrice(level.price)}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {s.riskFromMarkToSl != null ? (
+                      <p className="muted">Rủi ro tới mức bảo vệ ≈ {fmt(s.riskFromMarkToSl, 2)}
+                        {s.rrRemaining != null ? ` · R:R còn lại ${fmt(s.rrRemaining, 2)}` : ""}
+                      </p>
+                    ) : null}
+                    {s.invalidation ? <p className="muted">Hủy luận điểm: {s.invalidation}</p> : null}
+                  </li>
+                );
+              })}
             </ul>
           </details>
 
@@ -409,12 +482,12 @@ export default function DecisionPanel({ row }) {
               </ul>
             ) : null}
             {snap?.metrics ? (
-              <dl className="term-kv term-kv-compact">
-                <div><span>uPnL</span><strong>{snap.metrics.unrealized ?? "—"}</strong></div>
-                <div><span>Notional</span><strong>{snap.metrics.notional ?? "—"}</strong></div>
-                <div><span>Rủi ro tới SL</span><strong>{snap.metrics.riskMarkToSl ?? "—"}</strong></div>
-                <div><span>R:R còn lại</span><strong>{snap.metrics.rrRemaining ?? "—"}</strong></div>
-                <div><span>SL/TP</span><strong>{snap.metrics.sl ?? "—"} / {snap.metrics.tp ?? "—"}</strong></div>
+              <dl className="term-kv term-kv-decision">
+                <div><span>uPnL</span><strong>{fmt(snap.metrics.unrealized, 2)}</strong></div>
+                <div><span>Notional</span><strong>{fmt(snap.metrics.notional, 2)}</strong></div>
+                <div><span>Rủi ro tới SL</span><strong>{fmt(snap.metrics.riskMarkToSl, 2)}</strong></div>
+                <div><span>R:R còn lại</span><strong>{fmt(snap.metrics.rrRemaining, 2)}</strong></div>
+                <div><span>SL / TP</span><strong>{fmtPrice(snap.metrics.sl)} / {fmtPrice(snap.metrics.tp)}</strong></div>
               </dl>
             ) : null}
           </details>

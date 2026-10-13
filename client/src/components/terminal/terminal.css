@@ -897,6 +897,136 @@ main:has(.term-screen) {
   padding: 12px 16px 20px;
   flex: 1;
   min-height: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.term-decision-readable,
+.term-decision-report {
+  font-size: 15px;
+  line-height: 1.45;
+}
+.term-decision-hint { font-size: 13px; }
+.term-section-title {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+.term-verdict {
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+.term-verdict-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.term-verdict-risk {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.term-verdict-label {
+  margin: 4px 0 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #888);
+}
+.term-verdict-action {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 700;
+}
+.term-verdict-why,
+.term-verdict-summary {
+  margin: 0;
+  font-size: 14px;
+}
+.term-verdict-summary { color: var(--muted, #a0a0a8); }
+.term-tpsl-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (min-width: 560px) {
+  .term-tpsl-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.term-tpsl-cell {
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+.term-tpsl-cell > span {
+  font-size: 12px;
+  color: var(--muted, #888);
+}
+.term-tpsl-cell > strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+.term-kv-decision {
+  font-size: 14px;
+  gap: 8px 12px;
+}
+.term-kv-decision strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.term-level-cards {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.term-level-cards > li {
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.term-level-cards-compact > li { padding: 8px 10px; }
+.term-level-card-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.term-level-price {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.term-decision-report .term-level-role {
+  font-size: 11px;
+  padding-top: 2px;
+}
+.term-decision-report .term-coach-item {
+  font-size: 14px;
+  padding: 12px 14px;
+}
+.term-decision-report .term-coach-item p {
+  font-size: 14px;
+}
+.term-decision-report .term-priority-list {
+  font-size: 14px;
+}
+.term-decision-report details summary {
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
 }
 
 @media (max-width: 1023px) {

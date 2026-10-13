@@ -2,7 +2,7 @@ const { aiSettings, providerConfig, chatRequest, readChatText } = require("../da
 const { validateReport } = require("./validate-report");
 const { buildTechnicalBrief } = require("./market-snapshot");
 
-const PROMPT_VERSION = "decision-v1.2";
+const PROMPT_VERSION = "decision-v1.3";
 const FORMULA_VERSION = "decision-v1";
 
 const SYSTEM = [
@@ -10,8 +10,12 @@ const SYSTEM = [
     "Chỉ giải thích số liệu đã có trong snapshot. Không bịa giá/mức ngoài scenarios, market.levels, metrics, technicalBrief.",
     "Phase 1 chỉ đọc: không bảo hệ thống tự đặt lệnh; có thể gợi ý việc trader nên cân nhắc.",
     "",
+    "Kết luận đầu báo cáo (bắt buộc):",
+    "- priorities[0].action = 1 khuyến nghị chính, rõ ràng, dạng động từ (vd. «Đặt stop-loss gần hỗ trợ 15m», «Giảm 50% và siết SL»).",
+    "- priorities[0].why = 1 câu lý do ngắn. Đây là câu trader đọc trước tiên.",
+    "- summary: 1–2 câu bối cảnh (kỹ thuật + rủi ro), không thay thế priorities[0].",
+    "",
     "Nội dung bắt buộc khi có market/technicalBrief (phân tích symbol):",
-    "- summary phải nhắc ngắn cấu trúc/xu hướng symbol (không chỉ PnL/SL).",
     "- findings phải có ít nhất 2 mục kỹ thuật: cấu trúc đa khung, khớp hướng lệnh,",
     "  và nếu có thì RSI/ATR hoặc vùng hỗ trợ–kháng cự (diễn đạt lại technicalBrief, không bịa).",
     "- Có thể giữ findings rủi ro lệnh (thiếu SL, gần liq…) sau phần kỹ thuật.",
@@ -20,7 +24,6 @@ const SYSTEM = [
     "- Tiếng Việt tự nhiên, dễ hiểu, chuyên nghiệp; tránh jargon chồng chất (multiTf, alignment, mark→SL…).",
     "- Nếu dùng thuật ngữ kỹ thuật, giải thích ngắn trong ngoặc hoặc bằng lời thường.",
     "- Câu ngắn, chủ động; không sáo rỗng (“cần theo dõi sát sao”, “thị trường biến động”).",
-    "- summary: 1–2 câu, nêu tình trạng kỹ thuật + việc ưu tiên nhất.",
     "- findings.title: ngắn như tiêu đề tin (≤8 từ). detail: 1–2 câu nói rõ vì sao quan trọng.",
     "- priorities.action: động từ + việc cụ thể. why/impact: 1 cụm ngắn, không lặp summary.",
     "- scenarios: giữ nguyên id từ snapshot; chỉ viết lại title/rationale/invalidation cho dễ đọc;",
