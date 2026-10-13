@@ -18,8 +18,7 @@
 | Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
-| Hệ thống `/system` | SystemHealthPage | Heartbeat và cảnh báo hạ tầng; API yêu cầu `logs.view` scope `all` |
-| Process env (chưa có) `/admin/processes` | — | Spec: [remote-process-env-admin-spec](remote-process-env-admin-spec.md). Sửa `bot_profile`, xem drift revision/heartbeat, restart PM2 qua control agent. **Chưa implement** |
+| Hệ thống `/system` | SystemHealthPage | Heartbeat + service cards + bảng Process (`logs.view` scope `all`). **Sắp mở rộng:** sửa `bot_profile`/env, restart PM2, drift revision ngay trên trang này (panel chi tiết) — [remote-process-env-admin-spec](remote-process-env-admin-spec.md). **Chưa implement** admin env/restart |
 | User API `/user-apis`, `/user-apis/new`, `/user-apis/:username` | UserApisPage, UserApiDetailPage | Xem cờ có credential, tạo/sửa/xóa với quyền riêng; không trả raw secret |
 | User `/admin/users` | AdminUsersPage | Quản trị tài khoản web, role/permission/scope theo từng hành động |
 | Hồ sơ `/profile` | ProfilePage | Sửa hồ sơ/mật khẩu của chính mình theo spec auth |
@@ -97,5 +96,5 @@ Dashboard có POST `/api/dashboard/attention`: server dựng lại facts theo ac
 
 - Audit: các mutation của web, nguồn `web_audit_logs`; xem actor/target/diff đã sanitize.
 - Runtime: cảnh báo/lỗi bot ghi vào `bot_runtime_logs`; không đọc trực tiếp file PM2 log trên máy khác.
-- Hệ thống: `bot_heartbeats`, trạng thái kết nối và snapshot; ngưỡng heartbeat cũ hiện 90 giây. Trang trống có thể do bot chưa ghi heartbeat, database khác hoặc scope không đủ.
+- Hệ thống: `bot_heartbeats`, trạng thái kết nối và snapshot; ngưỡng heartbeat cũ hiện 90 giây. Trang trống có thể do bot chưa ghi heartbeat, database khác hoặc scope không đủ. Roadmap admin: mở rộng bảng Process + panel sửa env/restart trên cùng `/system` (không tách menu) — xem [remote-process-env-admin-spec](remote-process-env-admin-spec.md).
 - Một response `200` với danh sách trống không chứng minh query sai: kiểm tra filter, quyền và nguồn ghi dữ liệu trước.

@@ -1,48 +1,49 @@
-# Spec: Quản lý Process Env & Restart (Remote Env Admin)
+# Spec: Quản lý Process Env & Restart (trên trang Hệ thống)
 
-Trạng thái: **chưa có UI/API trong web-bot** — chỉ có backend contract ở `binance-bot`.  
-Phạm vi: trang admin trên web-bot để xem tình trạng process, sửa `bot_profile`, restart/reload PM2 qua control agent.  
+Trạng thái: **chưa implement admin env/restart** — chỉ có xem heartbeat trên `/system`.  
+Phạm vi: **mở rộng tab Hệ thống** (`SystemHealthPage`) để admin xem tình trạng, sửa `bot_profile`, restart/reload PM2. **Không** tạo menu/trang `/admin/processes` riêng.  
 Cập nhật: 2026-10-13  
 Nguồn đối chiếu:
 
-- [binance-bot SPEC](../../binance-bot/docs/SPEC-REMOTE-ENV-ADMIN.md) (cùng workspace; nếu clone tách thì lấy từ repo `binance-bot`)
-- [binance-bot API contract](../../binance-bot/services/bot-admin/API-CONTRACT.md)
-- Auth: [auth-rbac-spec.md](auth-rbac-spec.md) — không tin role từ client
+- Implementation hiện tại: [`SystemHealthPage.jsx`](../client/src/pages/SystemHealthPage.jsx), [`GET /api/system-health`](../server/src/routes/system-health.js), [`system-health.js`](../server/src/lib/system-health.js)
+- Backend bot: [binance-bot SPEC](../../binance-bot/docs/SPEC-REMOTE-ENV-ADMIN.md), [API contract](../../binance-bot/services/bot-admin/API-CONTRACT.md)
+- Auth: [auth-rbac-spec.md](auth-rbac-spec.md)
 
 ## 0. Kết luận hiện trạng
 
 | Hạng mục | web-bot hôm nay |
 |---|---|
-| Trang list/edit `bot_profile` | **Không có** |
-| Restart PM2 process từ web | **Không có** (command bridge hiện chỉ `APPLY_CONFIG` account config) |
-| Xem heartbeat | Có một phần ở `/system` (`SystemHealthPage`, `bot_heartbeats`) — **không** gắn revision profile / desired-vs-actual env |
-| Sửa env process (`TELE_CLIENT`, `RUN`, role flags…) | **Không có** — Config Lab chỉ sửa `Account_Config` theo bot username |
+| Menu **Hệ thống** `/system` | Có — service cards + bảng **Process** (PM2, role, RUN, MQTT, TELE_CLIENT, RAM/CPU, heartbeat) |
+| Quyền vào `/system` | `logs.view` scope `all` |
+| Sửa `bot_profile` / env process | **Không** |
+| Restart PM2 từ web | **Không** (command bridge chỉ `APPLY_CONFIG`) |
+| Revision desired vs actual | **Không** hiện trên bảng Process |
 
-→ Cần trang mới + API wrap trong web-bot. Spec này mô tả sản phẩm/UI/API/RBAC trước khi implement.
+→ Ghép admin vào **cùng trang `/system`**, mở rộng bảng Process + panel chi tiết; thêm API mutation riêng (không nhét mutation vào `GET /api/system-health`).
 
 ---
 
 ## 1. Mục tiêu
 
-Admin (hoặc role được cấp quyền process) trên web có thể:
+Trên **Hệ thống**, admin có thể:
 
-1. **Xem tình trạng** từng process: online/stale, host, PID, roles, MQTT/TELE/TELE_CLIENT, revision desired vs actual, lệnh restart đang chạy.
-2. **Sửa thông tin profile** (label, active) và **sửa env** trong registry allowlist — không sửa secret (`MONGODB`, `REDIS_URL`, API key…).
-3. **Lưu** desired state (Mongo `bot_profile` + audit revision).
-4. **Restart / reload** process trên đúng host (queue `bot_control_commands` → control agent → PM2).
-5. **Rollback** env về snapshot revision cũ (tạo revision mới, không hạ số revision).
+1. **Xem tình trạng** process (giữ bảng hiện có) + cột mới: profile revision, drift, hostId, lệnh gần nhất.
+2. **Mở chi tiết một process** (drawer / panel / hash route trên cùng trang) để sửa label/active/env registry.
+3. **Lưu** desired state → `bot_profile` + audit revision.
+4. **Restart / reload** qua `bot_control_commands` → control agent → PM2.
+5. **Rollback** snapshot revision cũ (tạo revision mới).
 
-Không dùng web để SSH hoặc chạy shell tùy ý.
+Không SSH/shell từ web. Không trang menu mới.
 
 ---
 
-## 2. Persona và câu hỏi trong 30 giây
+## 2. Persona
 
-| Persona | Câu hỏi |
+| Persona | Câu hỏi trên `/system` |
 |---|---|
-| Admin vận hành | Process `V12` còn sống không? Revision web và process có khớp không? |
-| Admin cấu hình | Đổi `TELE_CLIENT` của listener rồi restart — đã apply chưa? |
-| Auditor | Ai đổi `RUN` lúc nào? Diff ra sao? |
+| Admin vận hành | Process nào stale? Drift revision? Restart xong chưa? |
+| Admin cấu hình | Đổi `TELE_CLIENT` / `RUN` ngay từ dòng process đang xem |
+| Người có `logs.view` all nhưng không admin | Vẫn xem health như nay; **không** thấy nút Sửa/Restart |
 
 ---
 
@@ -50,211 +51,245 @@ Không dùng web để SSH hoặc chạy shell tùy ý.
 
 ### Trong phạm vi (Phase 1)
 
-- List process/profile + status heartbeat (desired vs actual).
-- Editor env theo **env-registry** (binance-bot).
-- Preview diff + validate (runtime-config + reference MQTT/TELE/TELE_CLIENT).
-- Save / Save + restart / Restart only / Rollback.
-- Timeline revision + command status (poll).
-- Chỉ role flags dạng `"true"` hoặc unset — không lưu `"false"` cho `TRADER`/`MONITOR`/`LISTENER`/…
+- Mở rộng UI `/system` (không đổi URL menu).
+- Join heartbeat ↔ `bot_profile` theo `processName` / `botEnv` / `NODE_ENV`.
+- Editor env registry; Preview / Lưu / Lưu+Restart / Restart / Rollback.
+- Poll command status trong panel.
+- Role flags: `"true"` hoặc unset — không lưu `"false"` cho TRADER/MONITOR/LISTENER/…
 
 ### Ngoài phạm vi Phase 1
 
-- Hot-reload MQTT/Telegram trong cùng Node process (luôn restart/reload).
-- Sửa `Account_Config` / `/sc` (vẫn Config Lab).
-- Sửa/hiển thị raw secret, Mongo URI, Redis URL, API key.
-- Đổi allowlist host↔process từ UI (file local trên server; Phase 2+ nếu cần).
-- Bulk restart hàng loạt mặc định (chỉ multi-select có confirm từng bước Phase 2).
-- Tự đóng/mở position khi đổi config.
+- Menu/route độc lập `/admin/processes`.
+- Hot-reload MQTT/Telegram không restart.
+- Sửa `Account_Config` (Config Lab).
+- Hiển thị/sửa secret (`MONGODB`, `REDIS_URL`, API key…).
+- Đổi allowlist host↔PM2 từ UI.
+- Bulk restart mặc định.
 
 ---
 
-## 4. Thông tin kiến trúc (chuỗi E2E)
+## 4. Kiến trúc E2E
 
 ```text
-Browser (admin)
-  → web-bot Express (auth + permission + redact)
-  → Mongo: bot_profile / bot_profile_revisions / bot_control_commands / bot_heartbeats
-  → (restart) control agent trên host (allowlist local)
-  → pm2 restart|reload <name> --update-env
-  → bot bootstrap: dotenv → applyBotProfile(BOT_ENV) → heartbeat(profileRevision)
-  → UI poll command + heartbeat → “applied” khi revision khớp trong ≤ 90s
+/system (SystemHealthPage)
+  GET /api/system-health          → alerts + services + processes (đọc, mở rộng field)
+  click process → panel chi tiết
+  GET/PATCH /api/admin/processes… → profile / revisions / commands (mutation)
+       ↓
+  Mongo bot_profile + revisions + bot_control_commands + bot_heartbeats
+       ↓
+  control agent (host) → pm2 restart|reload --update-env
+       ↓
+  bot: BOT_ENV profile → heartbeat profileRevision
 ```
 
-web-bot **không** gọi SSH/PM2 trực tiếp. Không copy service layer binance-bot bằng cách `require` cross-repo trong runtime production trừ khi monorepo/deploy chủ đích; khuyến nghị:
-
-- **Option A (ưu tiên):** web-bot tự implement thin service đọc/ghi cùng schema Mongo (duplicate logic validate tối thiểu hoặc package shared sau).
-- **Option B:** web-bot gọi HTTP nội bộ nếu sau này binance-bot mở admin API — hiện **chưa** có HTTP server admin trong binance-bot.
-
-Phase 1 chọn **Option A**: implement trong `server/src/` của web-bot, mirror contract binance-bot, dùng chung Mongo.
+web-bot implement thin service mirror contract binance-bot trên Mongo chung (**Option A**). Không `require` cross-repo runtime.
 
 ---
 
 ## 5. RBAC
 
-### 5.1 Phase 1 (ship nhanh)
+### Xem `/system` (giữ nguyên)
 
-- Chỉ **`role === admin`** vào trang và API.
-- Không mở cho `operator`/`trader` cho đến khi permission catalog sẵn sàng.
-- Mọi mutation ghi `actor` từ session server (`userId`, `email`), không nhận actor từ body client.
+- `logs.view` + scope `all` — như hiện tại ([auth-rbac-spec](auth-rbac-spec.md) § system-health).
+- Response health **không** trả secret; có thể kèm `desiredRevision` / `drift` (metadata công khai vận hành).
 
-### 5.2 Phase 2 — permission mới (bắt buộc cập nhật `access-control.js` + auth-rbac-spec cùng PR)
+### Sửa env / restart (Phase 1)
 
-| Permission | Ý nghĩa | Scope cho phép |
-|---|---|---|
-| `processes.view` | Xem list/detail/revisions/commands/status | `all` |
-| `processes.edit` | PATCH profile, rollback, đổi label/active | `all` |
-| `processes.restart` | Tạo restart/reload command | `all` |
+- Mutation API: chỉ **`role === admin`**.
+- UI: nút Sửa / Restart / Rollback chỉ hiện khi `user.role === "admin"` (Phase 1). User chỉ `logs.view` vẫn xem bảng, không thao tác.
 
-Ghi chú:
+### Phase 2 — permission (cập nhật `access-control.js` + auth-rbac-spec cùng PR)
 
-- Đây là **process fleet** (env `V12`, `SIN_22`), không map `botUsernames` — scope chỉ `all`.
-- Template: `admin` có cả ba; có thể gán `auditor` chỉ `processes.view`.
-- `bots.operate` hiện dành bridge/milestone khác — **không** tái dụng mơ hồ cho restart PM2; dùng `processes.restart` rõ nghĩa.
-- Ẩn menu không thay cho `requirePermission` trên server.
+| Permission | Dùng cho |
+|---|---|
+| `processes.view` | (optional) tách xem profile detail giàu hơn health |
+| `processes.edit` | PATCH / rollback |
+| `processes.restart` | POST command |
 
-High-risk keys (`TRADER`, `MONITOR`, `LISTENER`, `RUN`, `MQTT`, `TELE`, `TELE_CLIENT`, `SERVER`, `MAX_VOLUME`): UI bắt confirm gõ lại `profileEnv`; server vẫn validate registry + runtime-config.
+Scope chỉ `all` (fleet process, không map `botUsernames`).  
+Ẩn nút ≠ bỏ check server.
+
+High-risk keys (`TRADER`, `MONITOR`, `LISTENER`, `RUN`, `MQTT`, `TELE`, `TELE_CLIENT`, `SERVER`, `MAX_VOLUME`): confirm gõ lại tên process/profile trước Save+Restart.
 
 ---
 
-## 6. UI / UX
+## 6. UI / UX — gắn vào Hệ thống
 
-### 6.1 Điều hướng
+### 6.1 Bố cục trang `/system` (giữ + mở rộng)
 
-- Menu: **Process** hoặc **Runtime** — URL đề xuất `/admin/processes`.
-- Gate: Phase 1 admin; Phase 2 `processes.view`.
-- Không nhầm với `/system` (health tổng quát) hay `/config-lab` (account trade config).
+Thứ tự khối **không đảo** trải nghiệm hiện tại:
 
-### 6.2 Màn list `/admin/processes`
+1. Header “Hệ thống” + mô tả (bổ sung một câu: admin có thể mở process để sửa env / restart).
+2. Alerts + **service cards** (Mongo/Redis/MQTT/…) — giữ nguyên.
+3. **Bảng Process** — mở rộng cột và hành động (trọng tâm spec này).
+4. **Panel chi tiết process** — mở khi chọn một dòng (drawer phải trên desktop, full-sheet mobile; hoặc query `?process=V12` / hash `#process=V12` để deep-link/F5 giữ panel).
 
-Bảng mỗi dòng = một `bot_profile` (hoặc process map nếu sau này có collection mapping):
+Không thêm tab menu ngang mới trừ khi bảng quá tải — ưu tiên **một bảng + panel**.
 
-| Cột | Nguồn |
+### 6.2 Bảng Process (mở rộng)
+
+Cột hiện có giữ: PM2, Role, RUN, NODE_ENV, MQTT, TELE_CLIENT, RAM, CPU, Restart, Heartbeat.
+
+Thêm cột (có thể ẩn bớt trên mobile):
+
+| Cột mới | Nguồn |
 |---|---|
-| Process / Profile (`env`) | `bot_profile.env` |
-| Label | `bot_profile.label` |
-| Active | `bot_profile.active` |
-| Roles | flags từ variables hoặc heartbeat |
-| MQTT / TELE / TELE_CLIENT | variables (redact nếu secret — các key này không secret) |
-| Desired rev | `bot_profile.revision` |
-| Actual rev | `bot_heartbeats.profileRevision` (mới nhất theo `botEnv` / `processName`) |
-| Drift | desired ≠ actual hoặc thiếu heartbeat |
-| Heartbeat | `at` — online nếu &lt; 90s |
-| Host / hostId / PID | heartbeat |
-| Last command | status command mới nhất cho process |
+| Profile | `bot_profile.env` khớp được / “—” nếu chưa seed |
+| Rev | `desiredRevision` → `actualRevision` (vd `2→2` hoặc `3→2` đỏ khi drift) |
+| Drift | badge: khớp / lệch / chưa profile / stale |
+| Host | `host` / `hostId` từ heartbeat |
+| Command | status lệnh non-terminal gần nhất (nếu có) |
 
-Filter: online/stale/drift/active; search theo env/label/host.  
-Click dòng → detail.
+Hành động trên dòng (chỉ admin Phase 1):
 
-### 6.3 Màn detail `/admin/processes/:env`
+- **Chi tiết / Sửa** — mở panel.
+- **Restart** — confirm nhanh + reason bắt buộc (optional shortcut; đủ lý do thì chỉ trong panel cũng được).
 
-Tabs:
+Click cả hàng (trừ nút) cũng mở panel.  
+Filter nhanh phía trên bảng: Tất cả | Online | Stale | Drift | Đang restart (optional Phase 1.1).
 
-1. **Tổng quan** — status desired vs actual, startedAt, lastStartupError, nút Refresh status.
-2. **Env** — form theo registry (nhóm: Role, Kết nối, Signal, Listener, Exchange, Log…).  
-   - Toggle role = set `"true"` / unset.  
-   - Unset rõ ràng (không để chuỗi rỗng giả “tắt”).  
-   - Reference select: MQTT / TELE / TELE_CLIENT load option từ `mqtt-config`, `telegram-config`, `telegram-client` (chỉ `env`, không token/session).
-3. **Lịch sử** — `bot_profile_revisions` (diff đã redact).
-4. **Commands** — timeline restart/reload.
+Join rule heartbeat → profile:
 
-Actions (toolbar):
+1. `botEnv` heartbeat (uppercase) = `bot_profile.env`, else
+2. `processName` uppercase = `bot_profile.env`, else
+3. `nodeEnv` uppercase = `bot_profile.env`, else không gắn profile (vẫn hiện heartbeat; panel báo “chưa có bot_profile”).
 
-| Nút | Quyền Phase 2 | Hành vi |
+### 6.3 Panel chi tiết process
+
+Header: `processName` · roles · online/stale · hostId/PID · desired/actual rev.
+
+Tabs trong panel:
+
+1. **Tổng quan** — startedAt, lastStartupError, MQTT connected, diff ngắn desired vs actual keys chính (`TELE_CLIENT`, `RUN`, roles…).
+2. **Env** — form theo registry (nhóm Role / Kết nối / Signal / Listener / Exchange / Log).  
+   Toggle role = `"true"` / unset. Reference select MQTT·TELE·TELE_CLIENT từ config collections (chỉ field `env`).
+3. **Lịch sử** — `bot_profile_revisions` (diff redact).
+4. **Commands** — timeline + poll khi đang chạy.
+
+Toolbar panel:
+
+| Nút | Ai thấy (Phase 1) | Hành vi |
 |---|---|---|
-| Preview | edit | `dryRun: true` — hiện diff + lỗi validate, không ghi |
-| Lưu | edit | PATCH profile + `expectedRevision` + `reason` bắt buộc |
-| Lưu + Restart | edit + restart | PATCH thành công → POST command; nếu command lỗi vẫn báo “đã lưu, chưa apply” |
-| Restart | restart | Command với revision hiện tại, không đổi env |
-| Rollback | edit | Chọn revision cũ + reason → tạo revision mới |
+| Preview | admin | `dryRun: true` |
+| Lưu | admin | PATCH + `expectedRevision` + `reason` |
+| Lưu + Restart | admin | PATCH rồi POST command; lỗi command → “đã lưu, chưa apply” |
+| Restart | admin | command, không đổi env |
+| Rollback | admin | chọn revision + reason |
+| Đóng | mọi user mở được panel xem | đóng panel |
 
-Optimistic lock: nếu 409, hiện snapshot mới + diff; không ghi đè im lặng.
+Optimistic lock 409 → hiện revision mới, không ghi đè.
 
-### 6.4 Trạng thái command (UI)
+### 6.4 Command status trong panel / badge bảng
 
 `queued → claimed → restarting → waiting_heartbeat → succeeded | failed | timed_out | cancelled`
 
-- Poll `GET .../commands/:id` mỗi 2–3s khi đang non-terminal.
-- `cancelled` + `superseded`: giải thích “đã có revision mới hơn”.
-- Timeout 90s: hướng dẫn xem heartbeat / log runtime, không auto retry vô hạn từ UI.
+- Poll 2–3s khi non-terminal.
+- `superseded`: “đã có revision mới hơn”.
+- Timeout 90s: hướng dẫn xem heartbeat; không auto-retry vô hạn từ UI.
+- Sau succeeded: refresh `GET /api/system-health` (hoặc chỉ patch dòng process) để Rev/Drift cập nhật.
 
 ---
 
-## 7. API web-bot (đề xuất)
+## 7. API
+
+### 7.1 Mở rộng đọc health (không phá client cũ)
+
+`GET /api/system-health` (vẫn `logs.view` scope `all`):
+
+Mỗi phần tử `processes[]` **thêm field optional** (backward compatible):
+
+```json
+{
+  "key": "V12:3",
+  "processName": "V12",
+  "botEnv": "V12",
+  "profileEnv": "V12",
+  "desiredRevision": 3,
+  "actualRevision": 2,
+  "drift": true,
+  "hostId": "sgp-1",
+  "profileActive": true,
+  "lastCommand": { "id": "...", "status": "waiting_heartbeat", "kind": "restart" }
+}
+```
+
+Không trả `variables` đầy đủ trên list health (tránh payload lớn / lộ config). Detail env chỉ qua API admin bên dưới.
+
+### 7.2 API admin process (mutation + detail)
 
 Prefix: `/api/admin/processes`  
-Tất cả: `requireAuth` + permission (Phase 1: admin).
+Phase 1: `requireAuth` + **admin only**.
 
 | Method | Path | Mô tả |
 |---|---|---|
-| GET | `/api/admin/processes` | List profile + status (redact) |
-| GET | `/api/admin/processes/:env` | Detail + status |
+| GET | `/api/admin/processes/:env` | Detail profile + status + variables redact |
 | GET | `/api/admin/processes/:env/revisions` | Audit |
-| GET | `/api/admin/processes/registry` | Allowlist key metadata cho form |
-| PATCH | `/api/admin/processes/:env` | Body: `expectedRevision`, `reason`, `patch`, `unset`, `dryRun?`, `label?`, `active?` |
-| POST | `/api/admin/processes/:env/rollback` | Body: `toRevision`, `expectedRevision`, `reason` |
-| POST | `/api/admin/processes/:env/commands` | Body: `kind` restart\|reload, `hostId`, `processName?`, `reason` |
-| GET | `/api/admin/processes/commands/:id` | Command status |
+| GET | `/api/admin/processes/registry` | Metadata key cho form Env |
+| PATCH | `/api/admin/processes/:env` | `expectedRevision`, `reason`, `patch`, `unset`, `dryRun?`, `label?`, `active?` |
+| POST | `/api/admin/processes/:env/rollback` | `toRevision`, `expectedRevision`, `reason` |
+| POST | `/api/admin/processes/:env/commands` | `kind`, `hostId` (từ heartbeat nếu omit), `reason` |
+| GET | `/api/admin/processes/commands/:id` | Poll status |
 
-Mapping host:
+`hostId`: ưu tiên body → heartbeat `hostId` của process; thiếu → 400 hướng dẫn set `BOT_CONTROL_HOST_ID` trên bot.  
+`processName`: mặc định tên PM2 từ heartbeat / profile label; server không nhận argv PM2 tùy ý ngoài allowlist phía agent.
 
-- Phase 1: client/server lấy `hostId` từ heartbeat gần nhất của process; nếu thiếu → 400 “chưa có heartbeat/hostId — cấu hình BOT_CONTROL_HOST_ID trên process”.
-- `processName` mặc định = profile `env` (case theo PM2 name trong allowlist server — agent so khớp `profileEnv` uppercase với allowlist `botEnv`).
-
-Response không bao giờ chứa raw `MONGODB`, Redis URI, token, API key. Audit web (`web_audit_logs`) cũng sanitize.
+Redact secret trên mọi response + `web_audit_logs`.
 
 ---
 
-## 8. Model dữ liệu (Mongo dùng chung bot)
+## 8. Model Mongo (chung với bot)
 
 | Collection | Vai trò |
 |---|---|
+| `bot_heartbeats` | Đã dùng bởi system-health |
 | `bot_profile` | Desired state |
-| `bot_profile_revisions` | Audit bất biến |
+| `bot_profile_revisions` | Audit |
 | `bot_control_commands` | Queue restart |
-| `bot_heartbeats` | Actual state (+ `botEnv`, `profileRevision`, `hostId`, …) |
 
-web-bot thêm Mongoose model mirror schema binance-bot (hoặc schema tối thiểu đọc được). Không migration phá dữ liệu bot.
+Thêm Mongoose model mirror schema bot. Không phá dữ liệu hiện có.
 
 ---
 
 ## 9. Acceptance criteria
 
-1. Admin mở `/admin/processes` thấy đủ profile đã seed; stale &gt; 90s đánh dấu rõ.
-2. Đổi `TELE_CLIENT` → Preview OK → Lưu → revision +1; Save+Restart → command `succeeded` khi heartbeat cùng revision trong 90s.
-3. Bỏ `LISTENER` (unset) → sau restart process không còn bật listener (env không còn truthy).
-4. PATCH thiếu `RUN` khi `TRADER=true` → 400, không tạo command.
-5. Hai tab cùng sửa: tab sau nhận 409.
-6. Rollback revision 8 khi đang 10 → tạo 11 với snapshot 8.
-7. User không phải admin (Phase 1) → 403; không thấy menu.
-8. Response/UI/audit không lộ Redis/Mongo URI hay API key.
-9. Không gọi được restart với `processName` tùy ý ngoài mapping/heartbeat (server kiểm soát).
+1. User `logs.view` all mở `/system` vẫn thấy service cards + bảng Process như cũ; có thêm cột Rev/Drift khi server đã deploy field mới.
+2. Admin click process → panel Env; Preview/Lưu/`TELE_CLIENT` → revision +1.
+3. Lưu+Restart → command `succeeded` khi heartbeat cùng revision ≤ 90s; bảng Process cập nhật Rev khớp.
+4. Unset `LISTENER` + restart → process không còn bật listener.
+5. `TRADER` không `RUN` → 400, không tạo command.
+6. Conflict revision → 409 trên UI.
+7. Non-admin không thấy nút Sửa/Restart; gọi PATCH → 403.
+8. Không lộ Redis/Mongo URI / API key trên health hay panel.
+9. Không có route menu mới bắt buộc; deep-link `?process=` hoạt động trên `/system`.
 
 ---
 
 ## 10. Kế hoạch triển khai
 
-1. Spec này + link `docs/index.md` / `feature-spec.md` (**xong khi merge spec**).
-2. Server: models + routes + service validate/redact; test permission + 409 + redact.
-3. Client: list + detail + env editor + command poll.
-4. Cập nhật `auth-rbac-spec` khi thêm `processes.*` (Phase 2).
-5. Manual E2E trên staging với 1 listener + control agent — không deploy production từ máy dev nếu chưa được yêu cầu.
+1. **Sửa spec** (doc này) + cập nhật `feature-spec` / `index` — **bước hiện tại**.
+2. Server: mở rộng `loadSystemHealth` join profile; models + `/api/admin/processes*`; test quyền/redact/409.
+3. Client: mở rộng `SystemHealthPage` (cột + panel + poll); không tạo page menu mới.
+4. Phase 2: `processes.*` trong access-control + auth-rbac-spec.
+5. E2E staging: 1 listener + control agent.
 
 ---
 
-## 11. Liên hệ tài liệu khác
+## 11. Liên hệ tài liệu
 
 | Doc | Liên hệ |
 |---|---|
-| [feature-spec.md](feature-spec.md) | Thêm dòng màn Process khi implement |
-| [api-data-reference.md](api-data-reference.md) | Bảng endpoint khi có code |
-| [bot-command-bridge.md](bot-command-bridge.md) | Khác kênh: bridge = APPLY_CONFIG account; trang này = PM2 process env |
-| [auth-rbac-spec.md](auth-rbac-spec.md) | Permission `processes.*` Phase 2 |
-| binance-bot SPEC / RUNBOOK | Bootstrap `BOT_ENV`, control agent, migration |
+| [feature-spec.md](feature-spec.md) | Dòng Hệ thống — ghi mở rộng process admin |
+| [api-data-reference.md](api-data-reference.md) | system-health fields + admin processes khi code |
+| [bot-command-bridge.md](bot-command-bridge.md) | Khác kênh: APPLY_CONFIG ≠ PM2 restart |
+| [auth-rbac-spec.md](auth-rbac-spec.md) | Giữ `logs.view` cho xem; mutation admin / `processes.*` |
+| binance-bot SPEC / RUNBOOK | Bootstrap `BOT_ENV`, control agent |
 
 ---
 
-## 12. Rủi ro còn lại
+## 12. Rủi ro
 
-- Process chưa set `BOT_ENV` / chưa heartbeat revision → UI báo drift nhưng restart có thể không “apply profile”.
-- `.env` host chung từng sync vào nhiều profile — admin cần hiểu key listener trên trader có thể thừa; chỉnh tay trên detail.
-- Allowlist control agent sai host → command `failed` allowlist_reject; UI phải hiện `statusReason`.
+- Process chưa `BOT_ENV` / chưa ghi `profileRevision` → Drift “chưa profile” hoặc actual null; restart chưa chắc apply profile.
+- Heartbeat không có `hostId` → Restart bị chặn đến khi cấu hình bootstrap host.
+- Allowlist agent reject → hiện `statusReason` trên panel Commands.
+- Bảng Process thêm cột dễ chật — ưu tiên Rev/Drift/Host; RAM/CPU có thể nhóm “…” trên mobile.
