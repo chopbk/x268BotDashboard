@@ -64,13 +64,13 @@ router.post("/coach", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW)
 
         const wantAi = req.body?.ai !== false;
         if (!wantAi) {
-            res.json(analyzeLocal(position));
+            res.json(await analyzeLocal(position));
             return;
         }
         const id = String(req.webUser?.id || "");
         const now = Date.now();
         if (now - (lastCoach.get(id) || 0) < 15000) {
-            const local = analyzeLocal(position);
+            const local = await analyzeLocal(position);
             res.status(429).json({ error: "Đợi một chút rồi hỏi AI lại", ...local });
             return;
         }

@@ -31,12 +31,13 @@ Thanh `TerminalCli` dưới workspace. Cú pháp gần Telegram (`/cl`, `/o`, `/
 
 Lệnh chính: `/help`, `/p`, `/b`, `/cl`, `/o` (`/long` `/short`), `/sl`, `/tp`, `/rev`, `/j`, `/ai`.
 
-## 3. Journal + phân tích + AI
+## 3. Journal + phân tích kỹ thuật + AI
 
 - Tab panel **Journal**: ghi chú cá nhân (`web_trade_journal`), tối đa 2000 ký tự, 10 tags.
 - Chỉ actor tạo mới xem/sửa/xoá; cần `positions.view` + scope bot.
-- **Phân tích nhanh**: rule-based từ factors (uPnL, ROI margin≈, khoảng SL/TP/liq, lev, ownership, paper).
-- **Gợi ý AI**: `POST /api/terminal/coach` dùng cùng provider dashboard (`AI_PROVIDER` + key). Rate limit 15s/user. Chưa cấu hình → fallback rules.
+- **Phân tích kỹ thuật** (`ai=false`): klines public Binance Futures 15m+1h → EMA20/50, ATR14, swing HH/HL, hỗ trợ/kháng cự, alignment với side; gợi ý mức SL/TP (ATR / swing) kèm nút **Áp SL/TP** mở confirm bảo vệ hiện có (không tự gửi sàn).
+- **Gợi ý AI**: cùng factors + market; JSON có `kind` và `action.{type,price}`; rate limit 15s/user. Chưa cấu hình AI → vẫn trả rule + kỹ thuật.
+- Cache klines ~60s trong process. Không thêm dependency chart.
 
 ## 4. API
 

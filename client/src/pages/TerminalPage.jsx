@@ -1210,6 +1210,7 @@ export default function TerminalPage() {
                 onReverseRequest={askReverse}
                 onDirtyChange={setDirty}
                 onClosePanel={closePanel}
+                onApplyProtect={(r, patch) => askTpsl(r, { tab: "tpsl", ...patch })}
                 width={prefs.panelWidth}
                 overlay={overlay}
               />

@@ -1065,3 +1065,55 @@ main:has(.term-screen) {
   font-weight: 600;
   color: var(--muted, #888);
 }
+
+.term-market-card {
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.term-level-list ul,
+.term-coach-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.term-level-list li,
+.term-coach-item {
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+.term-level-list li {
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 8px;
+}
+.term-level-role {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+.term-level-sl { color: var(--term-sl, #c45c5c); }
+.term-level-tp { color: var(--term-tp, #5a9e6f); }
+.term-level-zone { color: var(--term-mark, #c4a35a); }
+.term-coach-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #888);
+  margin-right: 6px;
+}
+.term-coach-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+}
+.term-coach-item p { margin: 0; font-size: 12px; }

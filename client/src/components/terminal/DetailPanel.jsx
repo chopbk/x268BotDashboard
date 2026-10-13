@@ -41,6 +41,7 @@ export default function DetailPanel({
   onReverseRequest,
   onDirtyChange,
   onClosePanel,
+  onApplyProtect,
   width = 360,
   overlay,
 }) {
@@ -305,7 +306,16 @@ export default function DetailPanel({
           </section>
         ) : null}
 
-        {panelTab === "journal" ? <JournalPanel row={row} /> : null}
+        {panelTab === "journal" ? (
+          <JournalPanel
+            row={row}
+            canTpsl={canTpsl}
+            onApplyProtect={(patch) => {
+              if (onApplyProtect) onApplyProtect(row, patch);
+              else onTpslRequest?.(row, { tab: "tpsl", ...patch });
+            }}
+          />
+        ) : null}
 
         {(panelTab === "orders" || panelTab === "monitor" || panelTab === "timeline") && !canOrders && panelTab === "orders" ? (
           <p className="muted">Cần quyền orders.view để xem lệnh liên quan.</p>
