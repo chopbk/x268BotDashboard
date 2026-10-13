@@ -54,6 +54,7 @@ export default function TerminalPage() {
   const book = params.get("book") || "";
   const selected = params.get("selected") || params.get("panel") || "";
   const panelTab = params.get("panelTab") || "overview";
+  const aiOpen = params.get("ai") === "1";
   const viewId = params.get("view") || "all";
   const tab = normalizeTab(params.get("tab") || "", perms);
 
@@ -103,7 +104,7 @@ export default function TerminalPage() {
   function startPanelResize(event) {
     event.preventDefault();
     const startX = event.clientX;
-    const startW = prefs.panelWidth || 360;
+    const startW = prefs.panelWidth || 480;
     function onMove(ev) {
       const next = clampPanelWidth(startW + (startX - ev.clientX));
       setPrefs((prev) => {
@@ -201,6 +202,7 @@ export default function TerminalPage() {
         q.delete("selected");
         q.delete("panel");
         q.delete("panelTab");
+        q.delete("ai");
       }, { replace: true });
     }
     window.setTimeout(() => document.querySelector(`[data-row="${CSS.escape(key || "")}"]`)?.focus(), 0);
@@ -215,6 +217,7 @@ export default function TerminalPage() {
     go((q) => {
       q.set("selected", key);
       q.delete("panel");
+      q.delete("ai");
       if (opts.panelTab) q.set("panelTab", opts.panelTab);
       else q.set("panelTab", "overview");
     }, { layer: true });
@@ -656,10 +659,11 @@ export default function TerminalPage() {
         });
         go((q) => {
           q.set("selected", row.key);
-          q.set("panelTab", "journal");
+          q.set("panelTab", "overview");
+          q.delete("ai");
         });
         updatePrefs({ panelOpen: true });
-        return { ok: true, message: "Đã ghi journal" };
+        return { ok: true, message: "Đã ghi journal — xem Tổng quan" };
       } catch (err) {
         return { ok: false, message: err.message || "Không ghi journal" };
       }
@@ -670,10 +674,11 @@ export default function TerminalPage() {
       if (!row) return { ok: false, message: "Chọn vị thế trước" };
       go((q) => {
         q.set("selected", row.key);
-        q.set("panelTab", "ai");
+        q.set("panelTab", "overview");
+        q.set("ai", "1");
       });
       updatePrefs({ panelOpen: true });
-      return { ok: true, message: "Mở tab AI phân tích" };
+      return { ok: true, message: "Mở AI phân tích" };
     }
 
     return { ok: false, message: "Lệnh chưa hỗ trợ" };
@@ -1105,9 +1110,9 @@ export default function TerminalPage() {
             Rộng panel
             <input
               type="range"
-              min={360}
-              max={560}
-              value={prefs.panelWidth || 360}
+              min={400}
+              max={720}
+              value={prefs.panelWidth || 480}
               onChange={(e) => updatePrefs({ panelWidth: clampPanelWidth(e.target.value) })}
             />
           </label>
@@ -1141,7 +1146,7 @@ export default function TerminalPage() {
           <TerminalSummary summary={summary} bookLabel={bookLabel} />
           <div
             className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""} ${showPanel && overlay ? "with-overlay" : ""}`}
-            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 360}px` } : undefined}
+            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 480}px` } : undefined}
           >
             <div className="term-main">
               {!payload ? (
@@ -1194,7 +1199,10 @@ export default function TerminalPage() {
                 row={selectedRow}
                 audience={audience}
                 panelTab={panelTab}
-                onPanelTab={(id) => go((q) => q.set("panelTab", id), { replace: true })}
+                onPanelTab={(id) => go((q) => {
+                  q.set("panelTab", id);
+                  if (id !== "overview") q.delete("ai");
+                }, { replace: true })}
                 monitorId={monitorId}
                 onSelectMonitor={setMonitorId}
                 accounts={payload?.accounts}
@@ -1213,6 +1221,12 @@ export default function TerminalPage() {
                 onApplyProtect={(r, patch) => askTpsl(r, { tab: "tpsl", ...patch })}
                 width={prefs.panelWidth}
                 overlay={overlay}
+                aiOpen={aiOpen}
+                onAiOpen={() => go((q) => {
+                  q.set("panelTab", "overview");
+                  q.set("ai", "1");
+                }, { replace: true })}
+                onAiClose={() => go((q) => q.delete("ai"), { replace: true })}
               />
             ) : null}
           </div>

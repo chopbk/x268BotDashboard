@@ -1,4 +1,4 @@
-const VERSION = 3;
+const VERSION = 4;
 const PREFIX = "web-bot.terminal.v1";
 
 export const DEFAULT_COLUMNS = {
@@ -54,17 +54,27 @@ export function loadPrefs(userId) {
       version: VERSION,
       columns,
       customViews: Array.isArray(data.customViews) ? data.customViews : [],
-      panelWidth: clampPanelWidth(data.panelWidth ?? 360),
+      panelWidth: clampPanelWidth(migratePanelWidth(data)),
     };
   } catch {
     return defaultPrefs();
   }
 }
 
+function migratePanelWidth(data) {
+  const raw = data?.panelWidth;
+  // v4: panel chi tiết rộng hơn (mặc định cũ 360 → 480)
+  if (data?.version != null && data.version < 4 && (raw == null || Number(raw) <= 360)) {
+    return 480;
+  }
+  return raw ?? 480;
+}
+
 function migrateColumns(data) {
   const prev = data?.columns || {};
   // v1: size mặc định bật, notional tắt → v2: volume mặc định
   // v3: bật PnL ghi nhận cạnh PnL/ROI (cùng field `recorded` như /positions)
+  // v4: panel rộng hơn (xem migratePanelWidth)
   if (data?.version !== VERSION) {
     const next = { ...DEFAULT_COLUMNS, ...prev };
     if (prev.notional === true && prev.volume == null) next.volume = true;
@@ -112,7 +122,7 @@ export function defaultPrefs() {
     version: VERSION,
     columns: { ...DEFAULT_COLUMNS },
     density: "compact",
-    panelWidth: 360,
+    panelWidth: 480,
     panelOpen: true,
     notifyOptIn: false,
     customViews: [],
@@ -121,8 +131,8 @@ export function defaultPrefs() {
 
 export function clampPanelWidth(width) {
   const n = Number(width);
-  if (!Number.isFinite(n)) return 360;
-  return Math.min(560, Math.max(360, Math.round(n)));
+  if (!Number.isFinite(n)) return 480;
+  return Math.min(720, Math.max(400, Math.round(n)));
 }
 
 /** Áp view đã lưu lên filter client (pnl up/down) — không đổi quyền. */

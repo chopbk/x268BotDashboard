@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import OrderTicket from "../OrderTicket";
 import PositionCasePanel from "../PositionCasePanel";
 import { closePreview, openPreview } from "../../trade-preview";
@@ -17,11 +18,16 @@ const PANEL_TABS = [
   { id: "overview", label: "Tổng quan" },
   { id: "orders", label: "Lệnh" },
   { id: "monitor", label: "Monitor" },
-  { id: "timeline", label: "Timeline" },
   { id: "trade", label: "Giao dịch" },
-  { id: "ai", label: "AI phân tích" },
-  { id: "journal", label: "Journal" },
 ];
+
+/** Tab cũ → tab mới (AI/Journal nằm Tổng quan; Timeline gộp Monitor). */
+function normalizePanelTab(tab) {
+  if (tab === "timeline") return "monitor";
+  if (tab === "ai" || tab === "journal") return "overview";
+  if (PANEL_TABS.some((t) => t.id === tab)) return tab;
+  return "overview";
+}
 
 export default function DetailPanel({
   row,
@@ -44,21 +50,45 @@ export default function DetailPanel({
   onDirtyChange,
   onClosePanel,
   onApplyProtect,
-  width = 360,
+  width = 480,
   overlay,
+  aiOpen = false,
+  onAiOpen,
+  onAiClose,
 }) {
   const [tradeMode, setTradeMode] = useState("close"); // close | open | protect | advanced
   const [closeForm, setCloseForm] = useState(() => defaultClose(row));
   const [openForm, setOpenForm] = useState(() => defaultOpen(row, accounts));
   const [protectForm, setProtectForm] = useState(() => defaultProtect(row));
+  const [localAiOpen, setLocalAiOpen] = useState(false);
+  const activeTab = normalizePanelTab(panelTab);
+  const decisionOpen = onAiOpen ? Boolean(aiOpen) : localAiOpen;
+
   useEffect(() => {
     setCloseForm(defaultClose(row));
     setOpenForm(defaultOpen(row, accounts));
     setProtectForm(defaultProtect(row));
     onDirtyChange?.(false);
+    if (!onAiOpen) setLocalAiOpen(false);
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (panelTab === "timeline" || panelTab === "ai" || panelTab === "journal") {
+      onPanelTab?.(normalizePanelTab(panelTab));
+    }
+  }, [panelTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const panelStyle = overlay ? undefined : { width, maxWidth: "100%" };
+
+  function openAi() {
+    if (onAiOpen) onAiOpen();
+    else setLocalAiOpen(true);
+  }
+
+  function closeAi() {
+    if (onAiClose) onAiClose();
+    else setLocalAiOpen(false);
+  }
 
   if (!row) {
     return (
@@ -92,8 +122,8 @@ export default function DetailPanel({
             key={tab.id}
             type="button"
             role="tab"
-            aria-selected={panelTab === tab.id}
-            className={panelTab === tab.id ? "active" : ""}
+            aria-selected={activeTab === tab.id}
+            className={activeTab === tab.id ? "active" : ""}
             onClick={() => onPanelTab(tab.id)}
           >
             {tab.label}
@@ -102,7 +132,7 @@ export default function DetailPanel({
       </nav>
 
       <div className="term-panel-body">
-        {panelTab === "overview" ? (
+        {activeTab === "overview" ? (
           <section className="term-panel-section stack">
             <PriceStrip entry={row.entry} mark={row.mark} sl={status.exchange.sl} tp={status.exchange.tp} />
             <div className="term-kv">
@@ -120,11 +150,20 @@ export default function DetailPanel({
             {own.allocation === "under" ? <p className="muted">Leftover ~{fmt(own.leftover)} chưa gán monitor (không tự gán config).</p> : null}
             {own.allocation === "unassigned" ? <p className="muted">Qty sàn chưa có monitor.</p> : null}
             <MutationStatus phase={mutation?.phase} message={mutation?.message} requestId={mutation?.requestId} exchangeStatus={mutation?.exchangeStatus} />
-            <button type="button" onClick={() => onPanelTab("monitor")}>Xem monitor & phân bổ</button>
+            <div className="term-journal-actions">
+              <button type="button" className="term-primary" onClick={openAi}>AI phân tích</button>
+              <button type="button" className="ghost" onClick={() => onPanelTab("monitor")}>Monitor & timeline</button>
+              <button type="button" className="ghost" onClick={() => onPanelTab("trade")}>Giao dịch</button>
+            </div>
+
+            <div className="term-overview-journal">
+              <h3 className="term-overview-subhead">Journal</h3>
+              <JournalPanel row={row} />
+            </div>
           </section>
         ) : null}
 
-        {panelTab === "trade" ? (
+        {activeTab === "trade" ? (
           <section className="term-panel-section stack">
             <div className="term-trade-modes">
               <button type="button" className={tradeMode === "close" ? "active" : ""} onClick={() => setTradeMode("close")}>Đóng</button>
@@ -308,23 +347,15 @@ export default function DetailPanel({
           </section>
         ) : null}
 
-        {panelTab === "ai" ? (
-          <DecisionPanel row={row} />
-        ) : null}
-
-        {panelTab === "journal" ? (
-          <JournalPanel row={row} />
-        ) : null}
-
-        {(panelTab === "orders" || panelTab === "monitor" || panelTab === "timeline") && !canOrders && panelTab === "orders" ? (
+        {(activeTab === "orders" || activeTab === "monitor") && !canOrders && activeTab === "orders" ? (
           <p className="muted">Cần quyền orders.view để xem lệnh liên quan.</p>
         ) : null}
 
-        {["orders", "monitor", "timeline"].includes(panelTab) && (panelTab !== "orders" || canOrders) ? (
+        {["orders", "monitor"].includes(activeTab) && (activeTab !== "orders" || canOrders) ? (
           <PositionCasePanel
             key={`${row.key}|${audience}`}
             embedded
-            section={panelTab}
+            section={activeTab}
             row={row}
             audience={audience}
             selectedMonitorId={monitorId}
@@ -332,6 +363,36 @@ export default function DetailPanel({
           />
         ) : null}
       </div>
+
+      {decisionOpen && typeof document !== "undefined"
+        ? createPortal(
+          <div
+            className="modal-backdrop term-modal term-ai-modal"
+            role="presentation"
+            onClick={closeAi}
+          >
+            <div
+              className="modal-card term-ai-dialog stack"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="term-ai-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <header className="term-ai-dialog-head">
+                <div>
+                  <h2 id="term-ai-title">AI phân tích · {row.symbol} {row.side}</h2>
+                  <p className="muted">{row.account}</p>
+                </div>
+                <button type="button" className="ghost" onClick={closeAi} aria-label="Đóng">✕</button>
+              </header>
+              <div className="term-ai-dialog-body">
+                <DecisionPanel row={row} />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+        : null}
 
     </aside>
   );

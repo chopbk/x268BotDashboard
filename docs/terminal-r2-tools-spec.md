@@ -33,7 +33,8 @@ Lệnh chính: `/help`, `/p`, `/b`, `/cl`, `/o` (`/long` `/short`), `/sl`, `/tp`
 
 ## 3. Journal + phân tích kỹ thuật + AI
 
-- Tab panel **Journal**: ghi chú cá nhân (`web_trade_journal`), tối đa 2000 ký tự, 10 tags.
+- **Tổng quan**: Journal nhúng trong tab; nút **AI phân tích** mở popup (decision-support Phase 1). Monitor gộp timeline.
+- Journal: ghi chú cá nhân (`web_trade_journal`), tối đa 2000 ký tự, 10 tags.
 - Chỉ actor tạo mới xem/sửa/xoá; cần `positions.view` + scope bot.
 - **Phân tích kỹ thuật** (`ai=false`): klines public Binance Futures 15m+1h → EMA20/50, ATR14, swing HH/HL, hỗ trợ/kháng cự, alignment với side; gợi ý mức SL/TP (ATR / swing) kèm nút **Áp SL/TP** mở confirm bảo vệ hiện có (không tự gửi sàn).
 - **Gợi ý AI**: cùng factors + market; JSON có `kind` và `action.{type,price}`; rate limit 15s/user. Chưa cấu hình AI → vẫn trả rule + kỹ thuật.

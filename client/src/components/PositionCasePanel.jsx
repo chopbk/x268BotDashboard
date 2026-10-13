@@ -321,13 +321,15 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
   const openOrders = useMemo(() => orderRows(caseBody?.protective), [caseBody]);
   const history = caseBody?.orderHistory || [];
 
-  const visible = (name) => !embedded || section === "all" || section === name;
+  // Monitor tab gộp luôn Timeline (không còn tab Timeline riêng).
+  const visible = (name) => !embedded || section === "all" || section === name
+    || (section === "monitor" && name === "timeline");
 
   return (
     <div className={embedded ? "term-case-inline" : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
       <div className={embedded ? "stack term-case-content" : "modal-card stack pos-case-panel"} role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : "true"} aria-labelledby="pos-case-title" onClick={(event) => event.stopPropagation()}>
         <header>
-          <h2 id="pos-case-title">{embedded ? ({ orders: "Lệnh liên quan", monitor: "Monitor & phân bổ", timeline: "Timeline quyết định" }[section] || "Chi tiết") : `${row.account} · ${row.symbol} · ${row.side}`}</h2>
+          <h2 id="pos-case-title">{embedded ? ({ orders: "Lệnh liên quan", monitor: "Monitor · phân bổ · timeline", timeline: "Monitor · phân bổ · timeline" }[section] || "Chi tiết") : `${row.account} · ${row.symbol} · ${row.side}`}</h2>
           <div className="pos-inline">
             <button type="button" className="ghost" disabled={loading || reconciling} onClick={() => load({ autoOrders: false })}>Tải lại</button>
             <button type="button" className="pos-tpsl-confirm" disabled={reconciling || loading} onClick={reconcile}>
@@ -628,9 +630,13 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
               </div>
             </section> : null}
 
-            {embedded && section === "timeline" && selected && !(selected.timeline || []).length ? <p className="muted">Monitor này chưa có sự kiện timeline.</p> : null}
-            {embedded && section === "monitor" && selected && !showMonitor ? <p className="muted">Monitor chưa có thống kê hoặc lệnh dự kiến.</p> : null}
-            {visible("timeline") && showMonitor && (selected.timeline || []).length ? (
+            {embedded && (section === "monitor" || section === "timeline") && selected && !showMonitor && !(selected.timeline || []).length ? (
+              <p className="muted">Monitor chưa có thống kê, lệnh dự kiến hoặc timeline.</p>
+            ) : null}
+            {embedded && (section === "monitor" || section === "timeline") && selected && showMonitor && !(selected.timeline || []).length ? (
+              <p className="muted">Monitor này chưa có sự kiện timeline.</p>
+            ) : null}
+            {visible("timeline") && (selected?.timeline || []).length ? (
               <section className="pos-case-monitor">
                 <h3>Timeline quyết định monitor</h3>
                 <ol className="pos-case-timeline">

@@ -80,11 +80,11 @@ test("ownership over-allocation không clamp", () => {
 });
 
 test("prefs clamp + saved view pnl", () => {
-  assert.equal(clampPanelWidth(100), 360);
-  assert.equal(clampPanelWidth(999), 560);
-  assert.equal(defaultPrefs().version, 3);
+  assert.equal(clampPanelWidth(100), 400);
+  assert.equal(clampPanelWidth(999), 720);
+  assert.equal(defaultPrefs().version, 4);
   assert.equal(defaultPrefs().density, "compact");
-  assert.equal(defaultPrefs().panelWidth, 360);
+  assert.equal(defaultPrefs().panelWidth, 480);
   assert.equal(defaultPrefs().columns.volume, true);
   assert.equal(defaultPrefs().columns.size, false);
   assert.equal(defaultPrefs().columns.recorded, true);

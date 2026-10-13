@@ -83,7 +83,7 @@ export default function JournalPanel({ row }) {
 
   return (
     <section className="term-panel-section stack term-journal">
-      <p className="muted">Ghi chú cá nhân (chỉ bạn thấy). Phân tích AI nằm tab «AI phân tích».</p>
+      <p className="muted">Ghi chú cá nhân (chỉ bạn thấy). Bấm «AI phân tích» phía trên để mở popup phân tích.</p>
 
       <label>Ghi chú
         <textarea
