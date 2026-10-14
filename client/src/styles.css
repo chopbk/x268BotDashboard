@@ -925,6 +925,46 @@ th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
 .ledger-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .ledger-tools label { width: 160px; }
 .ledger-tools .check { width: auto; align-items: center; }
+.modal-card.process-admin-panel {
+  width: min(1080px, 96vw);
+  max-height: min(92vh, 920px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.process-admin-tabs { gap: 8px; margin-bottom: 12px; flex-shrink: 0; }
+.process-admin-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+.process-admin-footer {
+  flex-shrink: 0;
+  display: grid;
+  gap: 10px;
+  margin: 0 -18px 0;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+}
+.process-admin-footer .form-error,
+.process-admin-footer > .muted { margin: 0; }
+.process-admin-footer-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px 14px;
+}
+.process-admin-footer-actions { margin-top: 0; }
+.process-env-diff {
+  margin: 0;
+  max-height: 88px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+.process-env-layout { display: grid; gap: 12px; }
 .process-env-toolbar { flex-wrap: wrap; gap: 8px; }
 .process-env-section { padding: 0; overflow: hidden; }
 .process-env-section-toggle {
@@ -933,7 +973,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
   align-items: center;
   gap: 10px;
   margin: 0;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -946,16 +986,37 @@ th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
 .process-env-section-toggle strong { flex: 1; font-size: 0.95rem; }
 .process-env-section-body {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   padding: 0 14px 14px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
+.process-env-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
 .process-env-row {
   display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(96px, 132px) minmax(0, 1fr) auto;
+  gap: 6px;
   align-items: center;
+  margin: 0;
+  font-size: 0.9rem;
+}
+.process-env-key { overflow-wrap: anywhere; font-weight: 600; }
+.process-env-unset { padding: 4px 8px; font-size: 0.8rem; }
+.process-env-empty { margin: 0; font-size: 0.88rem; }
+.process-env-add { display: grid; gap: 8px; }
+.process-env-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.process-env-chip {
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+@media (max-width: 820px) {
+  .process-env-grid { grid-template-columns: 1fr; }
+  .process-admin-footer-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .process-env-row { grid-template-columns: 1fr; }

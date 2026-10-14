@@ -275,6 +275,8 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
   const [preview, setPreview] = useState(null);
   const [rollbackTo, setRollbackTo] = useState("");
   const [openEnvGroups, setOpenEnvGroups] = useState(() => new Set(DEFAULT_OPEN_ENV_GROUPS));
+  /** Key unset đang được mở để nhập (chưa có giá trị trong draft). */
+  const [editingKeys, setEditingKeys] = useState(() => new Set());
 
   const loadDetail = useCallback(async () => {
     if (!envKey) return;
@@ -289,6 +291,7 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
       setDetail(d);
       setDraft({ ...(d.variables || {}) });
       setUnset(new Set());
+      setEditingKeys(new Set());
       setRegistry(reg.registry || []);
       setReferences(reg.references || { mqtt: [], tele: [], teleClient: [] });
       setRevisions(rev.revisions || []);
@@ -330,6 +333,11 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
       next.delete(key);
       return next;
     });
+    setEditingKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
   }
 
   function clearKey(key) {
@@ -339,6 +347,43 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
       return next;
     });
     setUnset((prev) => new Set(prev).add(key));
+    setEditingKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  function isKeyActive(key) {
+    if (unset.has(key)) return false;
+    if (editingKeys.has(key)) return true;
+    const value = draft[key];
+    return value != null && String(value) !== "";
+  }
+
+  function activateKey(entry) {
+    if (!canEdit) return;
+    const key = entry.key;
+    if (entry.type === "role_flag" || ROLE_KEYS.has(key)) {
+      setKey(key, "true");
+      return;
+    }
+    setEditingKeys((prev) => new Set(prev).add(key));
+    setUnset((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    if (draft[key] == null) {
+      setDraft((prev) => ({ ...prev, [key]: "" }));
+    }
+  }
+
+  function refOptionsFor(entry) {
+    if (entry.ref === "mqtt-config") return references.mqtt;
+    if (entry.ref === "telegram-config") return references.tele;
+    if (entry.ref === "telegram-client") return references.teleClient;
+    return null;
   }
 
   function buildPatch() {
@@ -564,9 +609,11 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
     }).length;
   }
 
+  const showEnvFooter = tab === "env" && (canEdit || canRestart);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card process-admin-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920, width: "96vw", maxHeight: "92vh", overflow: "auto" }}>
+      <div className="modal-card process-admin-panel" onClick={(e) => e.stopPropagation()}>
         <header>
           <div>
             <h2>{envKey}</h2>
@@ -581,7 +628,7 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
           </button>
         </header>
 
-        <div className="btn-row" style={{ gap: 8, marginBottom: 12 }}>
+        <div className="btn-row process-admin-tabs">
           {[
             ["overview", "Tổng quan"],
             ["env", "Env"],
@@ -594,9 +641,10 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
           ))}
         </div>
 
-        {error ? <p className="form-error">{error}</p> : null}
-        {message ? <p className="muted">{message}</p> : null}
+        {!showEnvFooter && error ? <p className="form-error">{error}</p> : null}
+        {!showEnvFooter && message ? <p className="muted">{message}</p> : null}
 
+        <div className="process-admin-scroll">
         {!detail && !error ? <p className="muted">Đang tải profile…</p> : null}
 
         {detail && tab === "overview" ? (
@@ -614,7 +662,7 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
         ) : null}
 
         {detail && tab === "env" ? (
-          <div style={{ display: "grid", gap: 16 }}>
+          <div className="process-env-layout">
             <div className="btn-row process-env-toolbar">
               <button type="button" className="ghost" onClick={() => setAllEnvGroups(true)}>
                 Mở tất cả
@@ -626,12 +674,17 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
                 Chỉ Role + Kết nối
               </button>
             </div>
+            {!canEdit && !canRestart ? (
+              <p className="muted">Chỉ xem. Cần processes.edit để sửa env, processes.restart để restart.</p>
+            ) : null}
 
             {Object.entries(grouped).map(([name, entries]) => {
               if (!entries.length) return null;
               const open = openEnvGroups.has(name);
               const setCount = filledCount(entries);
               const title = name.replace("_", " ");
+              const activeEntries = entries.filter((entry) => isKeyActive(entry.key));
+              const idleEntries = entries.filter((entry) => !isKeyActive(entry.key));
               return (
                 <section key={name} className={`card process-env-section${open ? " is-open" : ""}`}>
                   <button
@@ -648,118 +701,92 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
                   </button>
                   {open ? (
                     <div className="process-env-section-body">
-                      {entries.map((entry) => {
-                        const value = unset.has(entry.key) ? "" : draft[entry.key] ?? "";
-                        const isRole = entry.type === "role_flag" || ROLE_KEYS.has(entry.key);
-                        const refOptions =
-                          entry.ref === "mqtt-config"
-                            ? references.mqtt
-                            : entry.ref === "telegram-config"
-                              ? references.tele
-                              : entry.ref === "telegram-client"
-                                ? references.teleClient
-                                : null;
-                        return (
-                          <label key={entry.key} className="process-env-row">
-                            <span>
-                              {entry.key}
-                              {entry.risk === "high" ? " *" : ""}
-                            </span>
-                            {isRole ? (
-                              <select
-                                value={value === "true" ? "true" : "unset"}
-                                disabled={!canEdit}
-                                onChange={(e) => {
-                                  if (e.target.value === "true") setKey(entry.key, "true");
-                                  else clearKey(entry.key);
-                                }}
+                      {activeEntries.length ? (
+                        <div className="process-env-grid">
+                          {activeEntries.map((entry) => {
+                            const value = unset.has(entry.key) ? "" : draft[entry.key] ?? "";
+                            const isRole = entry.type === "role_flag" || ROLE_KEYS.has(entry.key);
+                            const refOptions = refOptionsFor(entry);
+                            return (
+                              <label key={entry.key} className="process-env-row">
+                                <span className="process-env-key">
+                                  {entry.key}
+                                  {entry.risk === "high" ? " *" : ""}
+                                </span>
+                                {isRole ? (
+                                  <select
+                                    value={value === "true" ? "true" : "unset"}
+                                    disabled={!canEdit}
+                                    onChange={(e) => {
+                                      if (e.target.value === "true") setKey(entry.key, "true");
+                                      else clearKey(entry.key);
+                                    }}
+                                  >
+                                    <option value="unset">unset (tắt)</option>
+                                    <option value="true">true</option>
+                                  </select>
+                                ) : refOptions ? (
+                                  <select
+                                    value={value}
+                                    disabled={!canEdit}
+                                    onChange={(e) => {
+                                      if (!e.target.value) clearKey(entry.key);
+                                      else setKey(entry.key, e.target.value);
+                                    }}
+                                  >
+                                    <option value="">— chọn —</option>
+                                    {refOptions.map((opt) => (
+                                      <option key={opt} value={opt}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    value={value}
+                                    disabled={!canEdit}
+                                    onChange={(e) => setKey(entry.key, e.target.value)}
+                                    placeholder={entry.help || "Nhập giá trị"}
+                                    autoFocus={editingKeys.has(entry.key) && !value}
+                                  />
+                                )}
+                                {canEdit ? (
+                                  <button type="button" className="ghost process-env-unset" onClick={() => clearKey(entry.key)}>
+                                    Bỏ
+                                  </button>
+                                ) : (
+                                  <span />
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="muted process-env-empty">Chưa set key nào trong nhóm này.</p>
+                      )}
+                      {canEdit && idleEntries.length ? (
+                        <div className="process-env-add">
+                          <span className="muted">Thêm:</span>
+                          <div className="process-env-chips">
+                            {idleEntries.map((entry) => (
+                              <button
+                                key={entry.key}
+                                type="button"
+                                className="ghost process-env-chip"
+                                title={entry.help || entry.key}
+                                onClick={() => activateKey(entry)}
                               >
-                                <option value="unset">unset (tắt)</option>
-                                <option value="true">true</option>
-                              </select>
-                            ) : refOptions ? (
-                              <select
-                                value={value}
-                                disabled={!canEdit}
-                                onChange={(e) => {
-                                  if (!e.target.value) clearKey(entry.key);
-                                  else setKey(entry.key, e.target.value);
-                                }}
-                              >
-                                <option value="">— unset —</option>
-                                {refOptions.map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                value={value}
-                                disabled={!canEdit}
-                                onChange={(e) => setKey(entry.key, e.target.value)}
-                                placeholder={entry.help || ""}
-                              />
-                            )}
-                            {canEdit ? (
-                              <button type="button" className="ghost" onClick={() => clearKey(entry.key)}>
-                                Unset
+                                + {entry.key}{entry.risk === "high" ? " *" : ""}
                               </button>
-                            ) : (
-                              <span />
-                            )}
-                          </label>
-                        );
-                      })}
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </section>
               );
             })}
-
-            {canEdit || canRestart ? (
-              <div className="card" style={{ display: "grid", gap: 8 }}>
-                <label>
-                  Reason (bắt buộc khi lưu / restart)
-                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Vì sao đổi" />
-                </label>
-                {canEdit ? (
-                  <label>
-                    Confirm process name (high-risk)
-                    <input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={envKey} />
-                  </label>
-                ) : null}
-                {preview?.diff?.length ? (
-                  <pre className="muted" style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
-                    {preview.diff.map((d) => `${d.key}: ${d.before ?? "∅"} → ${d.after ?? "∅"}`).join("\n")}
-                  </pre>
-                ) : null}
-                <div className="modal-actions">
-                  {canEdit ? (
-                    <>
-                      <button type="button" className="ghost" disabled={busy} onClick={runPreview}>
-                        Preview
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => runSave({ restart: false })}>
-                        Lưu
-                      </button>
-                      {canRestart ? (
-                        <button type="button" disabled={busy} onClick={() => runSave({ restart: true })}>
-                          Lưu + Restart
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {canRestart ? (
-                    <button type="button" className="ghost" disabled={busy} onClick={runRestartOnly}>
-                      Restart
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <p className="muted">Chỉ xem. Cần processes.edit để sửa env, processes.restart để restart.</p>
-            )}
           </div>
         ) : null}
 
@@ -820,6 +847,53 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
             ))}
             {!commands?.length ? <p className="muted">Chưa có command.</p> : null}
           </div>
+        ) : null}
+        </div>
+
+        {showEnvFooter ? (
+          <footer className="process-admin-footer">
+            {error ? <p className="form-error">{error}</p> : null}
+            {message ? <p className="muted">{message}</p> : null}
+            {preview?.diff?.length ? (
+              <pre className="process-env-diff muted">
+                {preview.diff.map((d) => `${d.key}: ${d.before ?? "∅"} → ${d.after ?? "∅"}`).join("\n")}
+              </pre>
+            ) : null}
+            <div className="process-admin-footer-fields">
+              <label>
+                Lý do (bắt buộc khi lưu / restart)
+                <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Vì sao đổi" />
+              </label>
+              {canEdit ? (
+                <label>
+                  Confirm process (high-risk)
+                  <input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={envKey} />
+                </label>
+              ) : null}
+            </div>
+            <div className="modal-actions process-admin-footer-actions">
+              {canEdit ? (
+                <>
+                  <button type="button" className="ghost" disabled={busy} onClick={runPreview}>
+                    Preview
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => runSave({ restart: false })}>
+                    Lưu
+                  </button>
+                  {canRestart ? (
+                    <button type="button" disabled={busy} onClick={() => runSave({ restart: true })}>
+                      Lưu + Restart
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              {canRestart ? (
+                <button type="button" className="ghost" disabled={busy} onClick={runRestartOnly}>
+                  Restart
+                </button>
+              ) : null}
+            </div>
+          </footer>
         ) : null}
       </div>
     </div>
