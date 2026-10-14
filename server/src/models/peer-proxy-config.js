@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 /**
- * Fleet peer-proxy (tinyproxy) — cấu hình dùng chung để bật BINANCE_PEER_* trên bot_profile.
+ * Peer tinyproxy — pool + kết quả probe sức khỏe (panel /system).
  * Password chỉ lưu server-side; API GET không trả plaintext.
  */
 const peerSchema = new mongoose.Schema(
@@ -14,6 +14,28 @@ const peerSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const probeResultSchema = new mongoose.Schema(
+    {
+        ip: String,
+        ok: Boolean,
+        ms: Number,
+        error: { type: String, default: "" },
+        at: Date,
+    },
+    { _id: false }
+);
+
+const probeHistorySchema = new mongoose.Schema(
+    {
+        at: Date,
+        ok: Number,
+        fail: Number,
+        probedBy: String,
+        summary: String,
+    },
+    { _id: false }
+);
+
 const schema = new mongoose.Schema(
     {
         key: { type: String, required: true, unique: true, default: "default" },
@@ -21,8 +43,13 @@ const schema = new mongoose.Schema(
         authUser: { type: String, default: "botpeer", trim: true },
         /** Chỉ ghi khi admin gửi; không trả ra API */
         authPass: { type: String, default: "", select: false },
-        /** hostId (heartbeat) → IP public của máy đó */
         hostSelfIp: { type: Map, of: String, default: {} },
+        lastProbe: {
+            at: Date,
+            probedBy: String,
+            results: { type: [probeResultSchema], default: [] },
+        },
+        probeHistory: { type: [probeHistorySchema], default: [] },
         updatedBy: { type: String, default: "" },
     },
     { timestamps: true, versionKey: false, collection: "peer_proxy_config" }

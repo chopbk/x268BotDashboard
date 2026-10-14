@@ -13,7 +13,7 @@ Nguồn đối chiếu:
 
 | Hạng mục | web-bot |
 |---|---|
-| Menu **Hệ thống** `/system` | Service cards + bảng Process (kèm Rev/Drift/Host/Command) + panel Peer proxy (pool tinyproxy → `BINANCE_PEER_*`) |
+| Menu **Hệ thống** `/system` | Service cards + bảng Process (kèm Rev/Drift/Host/Command) + panel Peer proxy (probe/log sức khỏe tinyproxy) |
 | Quyền vào `/system` | `logs.view` scope `all` |
 | Sửa `bot_profile` / env process | Admin — panel `?process=` + `/api/admin/processes*` |
 | Restart PM2 từ web | Admin — `bot_control_commands` (không qua APPLY_CONFIG) |

@@ -15,7 +15,8 @@ function requireProcessRead(req, res, next) {
         isAdminUser(req.webUser) ||
         hasPermission(req.webUser, PERMISSIONS.PROCESSES_VIEW) ||
         hasPermission(req.webUser, PERMISSIONS.PROCESSES_EDIT) ||
-        hasPermission(req.webUser, PERMISSIONS.PROCESSES_RESTART)
+        hasPermission(req.webUser, PERMISSIONS.PROCESSES_RESTART) ||
+        hasPermission(req.webUser, PERMISSIONS.LOGS_VIEW)
     ) {
         return next();
     }
@@ -29,17 +30,6 @@ function requireProcessEdit(req, res, next) {
     return res.status(403).json({ error: "Không có quyền sửa peer proxy" });
 }
 
-function canRestart(user) {
-    return isAdminUser(user) || hasPermission(user, PERMISSIONS.PROCESSES_RESTART);
-}
-
-/** Bật/tắt có restart thì cần processes.restart; không thì strip flag. */
-function stripRestartIfUnauthorized(req) {
-    if (req.body?.restart && !canRestart(req.webUser)) {
-        req.body = { ...req.body, restart: false };
-    }
-}
-
 router.use(requireAuth);
 
 router.get("/", requireProcessRead, async (req, res) => {
@@ -50,29 +40,20 @@ router.get("/", requireProcessRead, async (req, res) => {
     }
 });
 
+router.post("/probe", requireProcessRead, async (req, res) => {
+    try {
+        res.json(await peerProxyAdmin.runProbe(req.webUser));
+    } catch (error) {
+        sendError(res, error, "POST /api/admin/peer-proxy/probe");
+    }
+});
+
+/** Sửa pool (dùng để probe / hydrate web) — không gắn env process bot. */
 router.put("/config", requireProcessEdit, async (req, res) => {
     try {
         res.json({ config: await peerProxyAdmin.saveConfig(req.body || {}, req.webUser) });
     } catch (error) {
         sendError(res, error, "PUT /api/admin/peer-proxy/config");
-    }
-});
-
-router.post("/enable", requireProcessEdit, async (req, res) => {
-    try {
-        stripRestartIfUnauthorized(req);
-        res.json(await peerProxyAdmin.applyEnable(req.body || {}, req.webUser));
-    } catch (error) {
-        sendError(res, error, "POST /api/admin/peer-proxy/enable");
-    }
-});
-
-router.post("/disable", requireProcessEdit, async (req, res) => {
-    try {
-        stripRestartIfUnauthorized(req);
-        res.json(await peerProxyAdmin.applyDisable(req.body || {}, req.webUser));
-    } catch (error) {
-        sendError(res, error, "POST /api/admin/peer-proxy/disable");
     }
 });
 

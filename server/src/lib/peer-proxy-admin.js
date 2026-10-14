@@ -1,15 +1,23 @@
 /**
- * Quản lý peer proxy fleet + apply BINANCE_PEER_* vào bot_profile.
+ * Peer proxy — theo dõi sức khỏe + probe fapi qua tinyproxy.
+ * Không phải UI gắn BINANCE_PEER_* vào bot_profile (env process vẫn sửa ở panel Env).
  */
 const PeerProxyConfig = require("../models/peer-proxy-config");
-const ProcessHeartbeat = require("../models/process-heartbeat");
-const BotProfile = require("../models/bot-profile");
-const processAdmin = require("./process-admin");
+const RuntimeLog = require("../models/runtime-log");
 const { httpError } = require("./http");
-const { setPeerList, urlsFromConfigDoc } = require("./binance-peer-proxy");
+const {
+    setPeerList,
+    urlsFromConfigDoc,
+    peerProxyCount,
+    peerProxySource,
+    fetchViaHttpProxy,
+    parseEnvList,
+} = require("./binance-peer-proxy");
 
 const CONFIG_KEY = "default";
 const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+const PROBE_HISTORY_MAX = 40;
+const PING_PATH = "https://fapi.binance.com/fapi/v1/ping";
 
 function normalizeIp(raw) {
     const ip = String(raw || "").trim();
@@ -36,6 +44,23 @@ function redactProxyList(raw) {
     return String(raw).replace(/:([^:@/]+)@/g, ":***@");
 }
 
+function peersFromEnvCsv(raw) {
+    return parseEnvList(raw, "").map((url) => {
+        try {
+            const u = new URL(url);
+            return {
+                ip: u.hostname,
+                port: Number(u.port) || 13128,
+                enabled: true,
+                label: "",
+                from: "env",
+            };
+        } catch {
+            return null;
+        }
+    }).filter(Boolean);
+}
+
 async function loadConfigDoc({ withPass = false } = {}) {
     let q = PeerProxyConfig.findOne({ key: CONFIG_KEY });
     if (withPass) q = q.select("+authPass");
@@ -47,6 +72,8 @@ async function loadConfigDoc({ withPass = false } = {}) {
             authUser: "botpeer",
             authPass: "",
             hostSelfIp: {},
+            lastProbe: null,
+            probeHistory: [],
             updatedBy: "",
             updatedAt: null,
         };
@@ -75,49 +102,197 @@ function publicConfig(doc) {
     };
 }
 
-function matchProfileEnv(hb) {
-    return String(hb.botEnv || hb.nodeEnv || hb.processName || "")
-        .trim()
-        .toUpperCase();
+/** Danh sách peer để hiển thị / probe: env ưu tiên, không thì Mongo. */
+function resolvePeers(doc) {
+    const envRaw = String(process.env.BINANCE_PEER_PROXIES || "").trim();
+    if (envRaw) {
+        return { peers: peersFromEnvCsv(envRaw), source: "env" };
+    }
+    return {
+        peers: (doc.peers || [])
+            .filter((p) => p.enabled !== false && p.ip)
+            .map((p) => ({
+                ip: p.ip,
+                port: p.port || 13128,
+                enabled: true,
+                label: p.label || "",
+                from: "mongo",
+            })),
+        source: doc.peers?.length ? "mongo" : "none",
+    };
+}
+
+function summarizeProbe(lastProbe) {
+    if (!lastProbe?.results?.length) return null;
+    const ok = lastProbe.results.filter((r) => r.ok).length;
+    const fail = lastProbe.results.length - ok;
+    return {
+        at: lastProbe.at || null,
+        ok,
+        fail,
+        total: lastProbe.results.length,
+        probedBy: lastProbe.probedBy || "",
+    };
+}
+
+async function getRelatedLogs(peers, limit = 30) {
+    const ips = peers.map((p) => p.ip).filter(Boolean);
+    const or = [
+        { message: /peer.?proxy|binancePeerProxy|tinyproxy/i },
+        { source: /peer.?proxy/i },
+    ];
+    for (const ip of ips.slice(0, 12)) {
+        or.push({ message: new RegExp(ip.replace(/\./g, "\\.")) });
+    }
+    const rows = await RuntimeLog.find({ $or: or })
+        .sort({ at: -1 })
+        .limit(limit)
+        .select("at level category processName host env usernames source message")
+        .lean();
+    return rows.map((r) => ({
+        at: r.at,
+        level: r.level || "",
+        category: r.category || "",
+        processName: r.processName || "",
+        host: r.host || "",
+        env: r.env || "",
+        usernames: r.usernames || [],
+        source: r.source || "",
+        message: String(r.message || "").slice(0, 400),
+    }));
 }
 
 async function getStatus() {
     const doc = await loadConfigDoc({ withPass: true });
-    const pub = publicConfig(doc);
-    const heartbeats = await ProcessHeartbeat.find({}).sort({ at: -1 }).limit(300).lean();
-    const byProcess = new Map();
-    for (const hb of heartbeats) {
-        const name = String(hb.processName || "").trim();
-        if (!name || byProcess.has(name)) continue;
-        byProcess.set(name, hb);
-    }
+    const { peers, source: peerSource } = resolvePeers(doc);
+    const lastProbe = doc.lastProbe || null;
+    const byIp = new Map((lastProbe?.results || []).map((r) => [r.ip, r]));
 
-    const processes = [];
-    for (const [processName, hb] of byProcess) {
-        const profileEnv = matchProfileEnv(hb);
-        const profile = profileEnv
-            ? await BotProfile.findOne({ env: profileEnv }).lean()
-            : null;
-        const vars = profile?.variables || {};
-        const proxies = vars.BINANCE_PEER_PROXIES || "";
-        const selfIp = vars.BINANCE_PEER_PROXY_SELF_IP || "";
-        const hostId = String(hb.hostId || "").trim();
-        const mappedSelf = pub.hostSelfIp[hostId] || "";
-        processes.push({
-            processName,
-            profileEnv: profile?.env || profileEnv,
-            hasProfile: Boolean(profile),
-            revision: profile?.revision ?? null,
-            hostId,
-            mappedSelfIp: mappedSelf,
-            enabled: Boolean(proxies),
-            selfIp,
-            proxyCount: proxies ? String(proxies).split(",").filter(Boolean).length : 0,
-            proxiesPreview: redactProxyList(proxies),
+    const peerRows = peers.map((p) => {
+        const hit = byIp.get(p.ip);
+        return {
+            ...p,
+            lastOk: hit ? Boolean(hit.ok) : null,
+            lastMs: hit?.ms ?? null,
+            lastError: hit?.error || "",
+            lastCheckedAt: hit?.at || lastProbe?.at || null,
+        };
+    });
+
+    const history = Array.isArray(doc.probeHistory) ? doc.probeHistory.slice(0, 20) : [];
+    const relatedLogs = await getRelatedLogs(peers);
+
+    return {
+        runtime: {
+            activeCount: peerProxyCount(),
+            source: peerProxySource(),
+            selfIp: String(process.env.BINANCE_PEER_PROXY_SELF_IP || "").trim(),
+        },
+        peerSource,
+        peers: peerRows,
+        passwordSet: Boolean(doc.authPass) || Boolean(String(process.env.BINANCE_PEER_PROXIES || "").trim()),
+        authUser: doc.authUser || "botpeer",
+        lastProbe: summarizeProbe(lastProbe),
+        lastProbeResults: lastProbe?.results || [],
+        probeHistory: history,
+        relatedLogs,
+        /** Cấu hình Mongo (sửa pool cho web hydrate) — không gắn process bot */
+        config: publicConfig(doc),
+    };
+}
+
+async function resolveProbeTargets(doc) {
+    const envRaw = String(process.env.BINANCE_PEER_PROXIES || "").trim();
+    if (envRaw) {
+        return parseEnvList(envRaw, "").map((url) => {
+            const u = new URL(url);
+            return { ip: u.hostname, port: Number(u.port) || 13128, url };
         });
     }
+    if (!doc.authPass) throw httpError(400, "Chưa có mật khẩu proxy — lưu pool trên panel hoặc set BINANCE_PEER_PROXIES");
+    const urls = urlsFromConfigDoc(doc, "");
+    if (!urls.length) throw httpError(400, "Chưa có peer trong pool");
+    return urls.map((url) => {
+        const u = new URL(url);
+        return { ip: u.hostname, port: Number(u.port) || 13128, url };
+    });
+}
 
-    return { config: pub, processes };
+/** Probe: CONNECT qua peer → GET fapi/v1/ping */
+async function probePeer(proxyUrl) {
+    const started = Date.now();
+    const ip = (() => {
+        try {
+            return new URL(proxyUrl).hostname;
+        } catch {
+            return "";
+        }
+    })();
+    try {
+        const res = await fetchViaHttpProxy(PING_PATH, proxyUrl, { timeoutMs: 12000 });
+        const ms = Date.now() - started;
+        if (!res.ok) {
+            return { ip, ok: false, ms, error: `HTTP ${res.status}`, at: new Date() };
+        }
+        return { ip, ok: true, ms, error: "", at: new Date() };
+    } catch (error) {
+        return {
+            ip,
+            ok: false,
+            ms: Date.now() - started,
+            error: String(error.message || error).slice(0, 160),
+            at: new Date(),
+        };
+    }
+}
+
+async function runProbe(actor) {
+    const doc = await loadConfigDoc({ withPass: true });
+    const targets = await resolveProbeTargets(doc);
+    const results = [];
+    for (const t of targets) {
+        results.push(await probePeer(t.url));
+    }
+    const snapshot = {
+        at: new Date(),
+        probedBy: String(actor?.email || actor?.id || "").slice(0, 128),
+        results: results.map((r) => ({
+            ip: r.ip,
+            ok: r.ok,
+            ms: r.ms,
+            error: r.error || "",
+            at: r.at,
+        })),
+    };
+    const historyEntry = {
+        at: snapshot.at,
+        ok: results.filter((r) => r.ok).length,
+        fail: results.filter((r) => !r.ok).length,
+        probedBy: snapshot.probedBy,
+        summary: results.map((r) => `${r.ip}:${r.ok ? "ok" : "fail"}(${r.ms}ms)`).join(", "),
+    };
+
+    await PeerProxyConfig.findOneAndUpdate(
+        { key: CONFIG_KEY },
+        {
+            $set: { lastProbe: snapshot },
+            $push: {
+                probeHistory: {
+                    $each: [historyEntry],
+                    $position: 0,
+                    $slice: PROBE_HISTORY_MAX,
+                },
+            },
+        },
+        { upsert: true }
+    );
+
+    return {
+        at: snapshot.at,
+        ok: historyEntry.ok,
+        fail: historyEntry.fail,
+        results: snapshot.results,
+    };
 }
 
 async function saveConfig(body, actor) {
@@ -140,16 +315,6 @@ async function saveConfig(body, actor) {
     }
 
     const authUser = String(body?.authUser || "botpeer").trim() || "botpeer";
-    const hostSelfIpIn =
-        body?.hostSelfIp && typeof body.hostSelfIp === "object" ? body.hostSelfIp : {};
-    const hostSelfIp = {};
-    for (const [hid, rawIp] of Object.entries(hostSelfIpIn)) {
-        const h = String(hid || "").trim();
-        const ip = normalizeIp(rawIp);
-        if (!h || !ip) continue;
-        hostSelfIp[h] = ip;
-    }
-
     const existing = await PeerProxyConfig.findOne({ key: CONFIG_KEY }).select("+authPass");
     let authPass = existing?.authPass || "";
     if (body?.authPass != null && String(body.authPass).trim() !== "") {
@@ -164,189 +329,35 @@ async function saveConfig(body, actor) {
                 peers,
                 authUser,
                 authPass,
-                hostSelfIp,
                 updatedBy: String(actor?.email || actor?.id || actor || "").slice(0, 128),
             },
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
     ).select("+authPass");
 
-    // Web server cũng dùng pool này cho public GET (trừ khi đã set BINANCE_PEER_PROXIES env).
     if (!String(process.env.BINANCE_PEER_PROXIES || "").trim()) {
         const selfIp = String(process.env.BINANCE_PEER_PROXY_SELF_IP || "").trim();
-        const plain = doc.toObject();
-        setPeerList(urlsFromConfigDoc(plain, selfIp), { selfIp, label: "peer_proxy_config" });
+        setPeerList(urlsFromConfigDoc(doc.toObject(), selfIp), {
+            selfIp,
+            label: "peer_proxy_config",
+        });
     }
 
     return publicConfig(doc.toObject());
 }
 
-function resolveSelfIp(processRow, config, overrideSelfIp) {
-    if (overrideSelfIp) {
-        const ip = normalizeIp(overrideSelfIp);
-        if (!ip) throw httpError(400, `selfIp không hợp lệ: ${overrideSelfIp}`);
-        return ip;
-    }
-    const hostId = String(processRow.hostId || "").trim();
-    if (hostId && config.hostSelfIp?.[hostId]) {
-        return config.hostSelfIp[hostId];
-    }
-    if (processRow.selfIp && normalizeIp(processRow.selfIp)) {
-        return normalizeIp(processRow.selfIp);
-    }
-    if (processRow.mappedSelfIp && normalizeIp(processRow.mappedSelfIp)) {
-        return normalizeIp(processRow.mappedSelfIp);
-    }
-    throw httpError(
-        400,
-        `Chưa map selfIp cho ${processRow.processName} (hostId=${hostId || "—"}). Điền hostSelfIp trong cấu hình.`
-    );
-}
-
-function buildPeerUrls(config, selfIp, authPass) {
-    const user = config.authUser || "botpeer";
-    if (!authPass) throw httpError(400, "Chưa đặt mật khẩu proxy — lưu authPass trước");
-    const urls = [];
-    for (const peer of config.peers || []) {
-        if (peer.enabled === false) continue;
-        if (peer.ip === selfIp) continue;
-        urls.push(buildProxyUrl(user, authPass, peer.ip, peer.port || 13128));
-    }
-    if (!urls.length) {
-        throw httpError(400, "Không còn peer nào (pool trống hoặc chỉ còn self)");
-    }
-    return urls.join(",");
-}
-
-async function applyEnable(body, actor) {
-    const doc = await loadConfigDoc({ withPass: true });
-    const config = publicConfig(doc);
-    const status = await getStatus();
-    const wanted = new Set(
-        (body?.processNames || []).map((s) => String(s).trim()).filter(Boolean)
-    );
-    const targets = status.processes.filter((p) => !wanted.size || wanted.has(p.processName));
-    if (!targets.length) throw httpError(400, "Không có process để bật");
-
-    const reason = String(body?.reason || `peer-proxy enable`).trim();
-    const results = [];
-    for (const row of targets) {
-        try {
-            if (!row.hasProfile) {
-                throw httpError(400, `Chưa có bot_profile ${row.profileEnv}`);
-            }
-            const selfIp = resolveSelfIp(row, config, body?.selfIpByProcess?.[row.processName]);
-            const urls = buildPeerUrls(config, selfIp, doc.authPass);
-            const saved = await processAdmin.patchProfile(
-                row.profileEnv,
-                {
-                    patch: {
-                        BINANCE_PEER_PROXIES: urls,
-                        BINANCE_PEER_PROXY_SELF_IP: selfIp,
-                    },
-                    expectedRevision: Number(row.revision || 1),
-                    reason,
-                },
-                actor
-            );
-            let command = null;
-            if (body?.restart) {
-                command = await processAdmin.createCommand(
-                    row.profileEnv,
-                    {
-                        kind: "restart",
-                        reason: `${reason} + restart`,
-                        requestedRevision: saved.revision,
-                        processName: row.processName,
-                        hostId: row.hostId,
-                    },
-                    actor
-                );
-            }
-            results.push({
-                processName: row.processName,
-                profileEnv: row.profileEnv,
-                ok: true,
-                selfIp,
-                proxyCount: urls.split(",").length,
-                revision: saved.revision,
-                commandId: command?.id || null,
-            });
-        } catch (err) {
-            results.push({
-                processName: row.processName,
-                profileEnv: row.profileEnv,
-                ok: false,
-                error: err.message || String(err),
-            });
-        }
-    }
-    return { results };
-}
-
-async function applyDisable(body, actor) {
-    const status = await getStatus();
-    const wanted = new Set(
-        (body?.processNames || []).map((s) => String(s).trim()).filter(Boolean)
-    );
-    const targets = status.processes.filter((p) => !wanted.size || wanted.has(p.processName));
-    if (!targets.length) throw httpError(400, "Không có process để tắt");
-
-    const reason = String(body?.reason || `peer-proxy disable`).trim();
-    const results = [];
-    for (const row of targets) {
-        try {
-            if (!row.hasProfile) {
-                throw httpError(400, `Chưa có bot_profile ${row.profileEnv}`);
-            }
-            const saved = await processAdmin.patchProfile(
-                row.profileEnv,
-                {
-                    unset: ["BINANCE_PEER_PROXIES", "BINANCE_PEER_PROXY_SELF_IP"],
-                    expectedRevision: Number(row.revision || 1),
-                    reason,
-                },
-                actor
-            );
-            let command = null;
-            if (body?.restart) {
-                command = await processAdmin.createCommand(
-                    row.profileEnv,
-                    {
-                        kind: "restart",
-                        reason: `${reason} + restart`,
-                        requestedRevision: saved.revision,
-                        processName: row.processName,
-                        hostId: row.hostId,
-                    },
-                    actor
-                );
-            }
-            results.push({
-                processName: row.processName,
-                profileEnv: row.profileEnv,
-                ok: true,
-                revision: saved.revision,
-                commandId: command?.id || null,
-            });
-        } catch (err) {
-            results.push({
-                processName: row.processName,
-                profileEnv: row.profileEnv,
-                ok: false,
-                error: err.message || String(err),
-            });
-        }
-    }
-    return { results };
-}
-
 module.exports = {
     getStatus,
+    runProbe,
     saveConfig,
-    applyEnable,
-    applyDisable,
     redactProxyList,
     buildProxyUrl,
     normalizeIp,
+    // giữ export cũ nếu test còn gọi — stub
+    applyEnable: async () => {
+        throw httpError(410, "Bật proxy process đã bỏ khỏi panel — sửa BINANCE_PEER_* trong Env process");
+    },
+    applyDisable: async () => {
+        throw httpError(410, "Tắt proxy process đã bỏ khỏi panel — sửa BINANCE_PEER_* trong Env process");
+    },
 };

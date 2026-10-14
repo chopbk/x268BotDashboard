@@ -334,7 +334,7 @@ export default function SystemHealthPage() {
           {!rows.length ? <p className="muted">Không có process khớp bộ lọc.</p> : null}
 
           {canProcessView ? (
-            <PeerProxyPanel canEdit={canProcessEdit} canRestart={canProcessRestart} />
+            <PeerProxyPanel canEdit={canProcessEdit} />
           ) : null}
         </>
       ) : null}
