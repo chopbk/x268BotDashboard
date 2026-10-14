@@ -1,10 +1,11 @@
 # Spec Trading Terminal: Position, TP/SL và Order
 
-Trạng thái: **đang vận hành (web-bot gọi Binance API trực tiếp)**  
+Trạng thái: **đang vận hành (adapter đa sàn; Binance mutation đầy đủ, Bybit/Aster/OKX Phase 1 read-only)**
+
 Phạm vi: `web-bot` (UI + REST) + Redis sổ sàn từ `binance-bot` WS  
 Cập nhật: 2026-10-11
 
-Tài liệu mô tả đích đến và trạng thái hiện tại của trading terminal trên web. Mutation giao dịch **không** đi MQTT chờ ACK; web-bot gọi Binance Futures REST trực tiếp (rate limit + receipt idempotency). `binance-bot` giữ vai trò stream → Redis để UI đọc realtime.
+Tài liệu mô tả đích đến và trạng thái hiện tại của trading terminal trên web. Mutation giao dịch **không** đi MQTT chờ ACK; web-bot gọi sàn qua `getExchangeAdapter` → adapter REST (rate limit theo exchange+account + receipt idempotency). Binance đủ open/close/order/TP-SL; Bybit/Aster/OKX Phase 1 chỉ snapshot. `binance-bot` giữ vai trò stream → Redis để UI đọc realtime. Chi tiết: [multi-exchange-futures-spec](multi-exchange-futures-spec.md).
 
 ## 1. Mục tiêu
 
@@ -20,7 +21,7 @@ Người dùng có quyền và đúng scope được:
 8. Preview trước Confirm: qty, PnL ước tính, phí ước tính, sibling bị ảnh hưởng.
 9. Idempotency (`TradingReceipt`) và audit log cho mutation.
 
-MVP chỉ Binance USD-M Futures. Hỗ trợ cả Hedge (`LONG|SHORT`) và One-way (`BOTH`).
+Binance USD-M Futures: Hedge (`LONG|SHORT`) và One-way (`BOTH`) — mutation đủ. Bybit Linear / Aster Futures / OKX Swap: đọc sổ live; mutation khóa bằng capability registry cho đến Phase 2/3.
 
 ## 2. Hiện trạng
 
@@ -71,7 +72,7 @@ Ghi giao dịch:
 Browser
   → web API: auth + CSRF + permission + scope + validation
   → trading-bridge (idempotency TradingReceipt)
-  → direct-trading → Binance Futures REST / Algo Order API
+  → direct-trading → getExchangeAdapter → exchange REST (Binance /fapi + algo; sàn khác theo adapter)
   → audit log
   → UI (receipt + refresh sổ)
 ```

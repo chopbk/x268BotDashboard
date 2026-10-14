@@ -5,7 +5,11 @@ export function matches(row, params) {
   const side = (params.get("side") || "").trim().toUpperCase();
   const book = (params.get("book") || "").trim().toLowerCase();
   const env = (params.get("env") || "").trim();
-  if (symbol && !String(row.symbol || "").toUpperCase().includes(symbol)) return false;
+  const exchange = (params.get("exchange") || "").trim().toLowerCase();
+  if (symbol
+    && !String(row.symbol || "").toUpperCase().includes(symbol)
+    && !String(row.instrumentId || "").toUpperCase().includes(symbol)) return false;
+  if (exchange && String(row.exchange || "").toLowerCase() !== exchange) return false;
   if (signal && !(row.monitors || []).some((monitor) => `${monitor.signal || ""} ${monitor.type || ""}`.toUpperCase().includes(signal))) return false;
   if (side && row.side !== side) return false;
   if (book === "all") {

@@ -597,15 +597,25 @@ export default function AccountStaticLegacyPage() {
         },
       });
       const suggestion = result.suggestion || {};
-      update({
+      const next = {
         signal: suggestion.signal || "",
         minWin: suggestion.minWin || "",
         minTrades: suggestion.minTrades || "",
         gain: suggestion.gain || "",
         side: suggestion.side || "",
         profit: suggestion.profit || "",
-      }, { replace: true });
-      setAiNote(suggestion.note || (suggestion.signal ? `Đã chọn ${suggestion.signal}` : "AI không chọn signal cụ thể; đã áp ngưỡng nếu có."));
+      };
+      if (suggestion.from) {
+        next.from = suggestion.from;
+        next.to = suggestion.to || "";
+      }
+      if (suggestion.clearSymbol) next.q = "";
+      update(next, { replace: true });
+      const sampleNote = result.sample?.rangeNote ? ` · kỳ ${result.sample.rangeNote}` : "";
+      setAiNote(
+        (suggestion.note || (suggestion.signal ? `Đã chọn ${suggestion.signal}` : "AI không chọn signal cụ thể; đã áp ngưỡng nếu có."))
+        + sampleNote
+      );
     } catch (err) {
       setAiError(err.message || "Không hỏi được AI");
     } finally {
@@ -682,7 +692,7 @@ export default function AccountStaticLegacyPage() {
             rows={2}
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
-            placeholder="Ví dụ: tìm signal ổn win rate ≥ 60%, ≥ 10 lệnh, đang lãi"
+            placeholder="Ví dụ: tìm signal win rate trên 70% trong tháng 10 này"
             disabled={!username || aiBusy}
           />
         </label>

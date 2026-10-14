@@ -107,6 +107,15 @@ export default function FilterBar({
               <option value="SHORT">SHORT</option>
             </select>
           </label>
+          <label>Sàn
+            <select value={params.get("exchange") || ""} onChange={(e) => onFilter("exchange", e.target.value)}>
+              <option value="">Tất cả</option>
+              <option value="binance">Binance</option>
+              <option value="bybit">Bybit</option>
+              <option value="aster">Aster</option>
+              <option value="okex">OKX</option>
+            </select>
+          </label>
           <label>Cảnh báo
             <select value={params.get("warn") || ""} onChange={(e) => onFilter("warn", e.target.value)}>
               <option value="">Tất cả</option>

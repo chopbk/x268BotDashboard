@@ -21,24 +21,39 @@ function sideFromAmount(amount) {
     return "";
 }
 
-function exchangeIdentity(row) {
-    const mode = String(row?.positionSide || "BOTH").toUpperCase();
+function exchangeOf(row, fallback = "unknown") {
+    const raw = String(row?.exchange || fallback || "unknown").trim().toLowerCase();
+    return raw || "unknown";
+}
+
+function exchangeIdentity(row, accountExchange = null) {
+    const mode = String(row?.positionSide || row?.side || "BOTH").toUpperCase();
     const hedge = mode === "LONG" || mode === "SHORT";
-    const amount = num(row?.positionAmt);
+    const amount = num(row?.positionAmt ?? row?.quantity);
+    const instrumentId = String(row?.instrumentId || row?.symbol || "").toUpperCase();
     return {
-        symbol: String(row?.symbol || "").toUpperCase(),
+        exchange: exchangeOf(row, accountExchange),
+        symbol: instrumentId,
+        instrumentId,
         side: hedge ? mode : sideFromAmount(amount),
         mode: hedge ? mode : "BOTH",
+        positionIdx: row?.positionIdx != null && row?.positionIdx !== "" ? Number(row.positionIdx) : null,
+        quantityUnit: row?.quantityUnit === "contracts" ? "contracts" : "base",
     };
 }
 
-function monitorIdentity(doc) {
+function monitorIdentity(doc, accountExchange = null) {
     const mode = String(doc?.position?.positionSide || "BOTH").toUpperCase();
     const hedge = mode === "LONG" || mode === "SHORT";
+    // Monitor cũ không có exchange: derive từ account, không merge với exchange thật nếu unknown.
+    const exchange = exchangeOf(doc, accountExchange);
     return {
+        exchange,
         symbol: String(doc?.symbol || "").toUpperCase(),
+        instrumentId: String(doc?.instrumentId || doc?.symbol || "").toUpperCase(),
         side: String(doc?.side || "").toUpperCase(),
         mode: hedge ? mode : "BOTH",
+        positionIdx: doc?.positionIdx != null && doc?.positionIdx !== "" ? Number(doc.positionIdx) : null,
     };
 }
 
@@ -62,8 +77,15 @@ function sameSymbol(left, right) {
 function samePosition(left, right) {
     if (!left?.symbol || !right?.symbol || !left?.side || !right?.side) return false;
     if (left.side !== right.side) return false;
-    if (!sameSymbol(left.symbol, right.symbol)) return false;
+    // Không merge khác exchange. unknown chỉ khớp unknown — không gắn nhầm vào sàn thật.
+    const leftEx = exchangeOf(left);
+    const rightEx = exchangeOf(right);
+    if (leftEx !== rightEx) return false;
+    if (!sameSymbol(left.symbol, right.symbol) && !sameSymbol(left.instrumentId, right.instrumentId)) return false;
     if (left.mode !== "BOTH" && right.mode !== "BOTH" && left.mode !== right.mode) return false;
+    if (left.positionIdx != null && right.positionIdx != null && Number(left.positionIdx) !== Number(right.positionIdx)) {
+        return false;
+    }
     return true;
 }
 
@@ -104,7 +126,10 @@ function preferExactSymbol(docs, symbol) {
 }
 
 function rowKey(account, identity) {
-    return `${account}|${identity.symbol}|${identity.side}|${identity.mode}`;
+    const exchange = exchangeOf(identity);
+    const instrument = identity.instrumentId || identity.symbol;
+    const idx = identity.positionIdx != null ? `|${identity.positionIdx}` : "";
+    return `${account}|${exchange}|${instrument}|${identity.side}|${identity.mode}${idx}`;
 }
 
 function isPaper(doc) {
@@ -393,25 +418,36 @@ function pickExchangeTpsl(orders) {
     };
 }
 
-function parentFromExchange(account, row, connection) {
-    const identity = exchangeIdentity(row);
-    const qty = Math.abs(num(row.positionAmt));
+function parentFromExchange(account, row, connection, accountExchange = null) {
+    const identity = exchangeIdentity(row, accountExchange);
+    const qty = Math.abs(num(row.positionAmt ?? row.quantity));
+    const baseQty = row.baseQuantity != null ? Math.abs(num(row.baseQuantity)) : null;
     return {
         key: rowKey(account, identity),
         book: "live",
         account,
+        exchange: identity.exchange,
+        exchangeDisplay: row.exchangeDisplay || null,
         symbol: identity.symbol,
+        instrumentId: identity.instrumentId,
         side: identity.side,
         mode: identity.mode,
+        positionIdx: identity.positionIdx,
+        quantityUnit: identity.quantityUnit,
+        baseQuantity: baseQty,
         exchangeQty: qty,
         entry: num(row.entryPrice) || null,
         mark: num(row.markPrice) || null,
         unrealized: row.unRealizedProfit == null || row.unRealizedProfit === ""
-            ? estimatedPnl(identity.side, row.entryPrice, row.markPrice, qty)
+            ? (row.unrealizedPnl == null || row.unrealizedPnl === ""
+                ? estimatedPnl(identity.side, row.entryPrice, row.markPrice, baseQty || qty)
+                : num(row.unrealizedPnl))
             : num(row.unRealizedProfit),
         leverage: row.leverage == null || row.leverage === "" ? null : num(row.leverage),
         liquidation: num(row.liquidationPrice) || null,
+        marginMode: row.marginMode || row.marginType || null,
         exchangeLoaded: true,
+        source: row.source || null,
         warnings: connection === "stale" ? ["stale"] : [],
         monitors: [],
         exchangeOrders: [],
@@ -425,8 +461,13 @@ function emptyParent(account, identity, book, connection) {
         key: `${rowKey(account, identity)}|${book}`,
         book,
         account,
+        exchange: identity.exchange || "unknown",
+        exchangeDisplay: null,
         symbol: identity.symbol,
+        instrumentId: identity.instrumentId || identity.symbol,
         side: identity.side,
+        positionIdx: identity.positionIdx,
+        quantityUnit: identity.quantityUnit || "base",
         mode: identity.mode,
         exchangeQty: null,
         entry: null,
@@ -550,6 +591,8 @@ function buildPositionView({
     exchangePositions = [],
     openOrders = [],
     algoOrders = [],
+    conditionalOrders = null,
+    accountExchange = null,
     heartbeatFresh = false,
     now = Date.now(),
     connection = "snapshot",
@@ -560,16 +603,20 @@ function buildPositionView({
 }) {
     const parents = [];
     const used = new Set();
+    const inferredExchange = accountExchange
+        || (Array.isArray(exchangePositions) ? exchangePositions.find((row) => row?.exchange)?.exchange : null)
+        || null;
     const live = (Array.isArray(exchangePositions) ? exchangePositions : [])
-        .map((row) => ({ row, identity: exchangeIdentity(row) }))
-        .filter((item) => item.identity.symbol && item.identity.side && Math.abs(num(item.row.positionAmt)) > QTY_EPS);
+        .map((row) => ({ row, identity: exchangeIdentity(row, inferredExchange) }))
+        .filter((item) => item.identity.symbol && item.identity.side && Math.abs(num(item.row.positionAmt ?? item.row.quantity)) > QTY_EPS);
 
     for (const item of live) {
-        const parent = parentFromExchange(account, item.row, connection);
+        const parent = parentFromExchange(account, item.row, connection, inferredExchange);
         const eligible = [];
         monitors.forEach((doc, index) => {
             if (isPaper(doc) || isPending(doc) || isClosedDoc(doc)) return;
-            if (!samePosition(item.identity, monitorIdentity(doc))) return;
+            // Derive exchange từ account/book — không để unknown merge vào sàn thật.
+            if (!samePosition(item.identity, monitorIdentity(doc, item.identity.exchange))) return;
             eligible.push({
                 doc,
                 index,
@@ -582,7 +629,7 @@ function buildPositionView({
         const dedupedDocs = dedupeMonitors(chosen.map((row) => row.doc), (doc) => {
             const env = doc.env || "";
             const signal = doc.signal || doc.typeSignal || doc.type || "";
-            return `${env}|${item.identity.symbol}|${item.identity.side}|${signal}`;
+            return `${env}|${item.identity.exchange}|${item.identity.symbol}|${item.identity.side}|${signal}`;
         });
         for (const doc of dedupedDocs) {
             parent.monitors.push(publicMonitor(doc, heartbeatFresh, now, parent.mark));
@@ -596,7 +643,7 @@ function buildPositionView({
 
     monitors.forEach((doc, index) => {
         if (used.has(index) || isClosedDoc(doc)) return;
-        const identity = monitorIdentity(doc);
+        const identity = monitorIdentity(doc, inferredExchange);
         if (!identity.symbol || !identity.side) return;
         const book = isPaper(doc) ? "paper" : isPending(doc) ? "pending" : "live";
         const parent = emptyParent(account, identity, book, connection);
@@ -609,15 +656,18 @@ function buildPositionView({
         parents.push(parent);
     });
 
+    const algoList = Array.isArray(conditionalOrders) ? conditionalOrders
+        : Array.isArray(algoOrders) ? algoOrders : [];
     const orders = [
         ...(Array.isArray(openOrders) ? openOrders : []).map((row) => publicOrder(row, "order")),
-        ...(Array.isArray(algoOrders) ? algoOrders : []).map((row) => publicOrder(row, "algo")),
+        ...algoList.map((row) => publicOrder(row, "algo")),
     ];
     for (const parent of parents) {
         const identity = { symbol: parent.symbol, side: parent.side, mode: parent.mode };
         const matched = orders.filter((order) => orderMatches(order, identity));
         parent.exchangeOrders = matched.filter((order) => order.kind === "order");
         parent.algoOrders = matched.filter((order) => order.kind === "algo");
+        parent.conditionalOrders = parent.algoOrders;
         Object.assign(parent, pickExchangeTpsl(matched));
     }
     const placed = new Set(parents.filter((parent) => parent.book === "live" && parent.exchangeQty != null).map((parent) => `${parent.symbol}|${parent.side}`));
@@ -720,11 +770,14 @@ function filterRows(rows, query = {}) {
     const side = String(query.side || "").trim().toUpperCase();
     const book = String(query.book || "").trim().toLowerCase();
     const env = String(query.env || "").trim();
+    const exchange = String(query.exchange || "").trim().toLowerCase();
     const warn = String(query.warn || "") === "1";
     return rows.filter((row) => {
-        if (symbol && !String(row.symbol || "").toUpperCase().includes(symbol)) return false;
+        if (symbol && !String(row.symbol || "").toUpperCase().includes(symbol)
+            && !String(row.instrumentId || "").toUpperCase().includes(symbol)) return false;
         if (signal && !(row.monitors || []).some((monitor) => `${monitor.signal || ""} ${monitor.type || ""}`.toUpperCase().includes(signal))) return false;
         if (side && row.side !== side) return false;
+        if (exchange && String(row.exchange || "").toLowerCase() !== exchange) return false;
         if (book === "all") {
             if (row.book === "pending") return false;
         } else if (book === "notpsl") {
@@ -891,6 +944,8 @@ async function loadPositions(actor, query = {}, deps = {}) {
             exchangePositions: current?.positions || [],
             openOrders: current?.openOrders || [],
             algoOrders: current?.algoOrders || [],
+            conditionalOrders: current?.conditionalOrders || current?.algoOrders || [],
+            accountExchange: current?.exchange || null,
             income: current?.income || [],
             positionHistory: current?.positionHistory || [],
             trades: current?.trades || [],
@@ -1092,4 +1147,8 @@ module.exports = {
     samePosition,
     dedupeMonitors,
     preferExactSymbol,
+    exchangeIdentity,
+    monitorIdentity,
+    rowKey,
+    exchangeOf,
 };

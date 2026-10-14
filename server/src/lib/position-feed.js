@@ -1,6 +1,5 @@
 const { httpError } = require("./http");
-const { createBinanceFutures } = require("./binance-futures");
-const { enqueueBinanceRest, sleep } = require("./binance-rest-queue");
+const { getExchangeAdapter } = require("./exchanges");
 
 const PRIVATE_EVENTS = "ACCOUNT_UPDATE,ORDER_TRADE_UPDATE,ALGO_UPDATE,listenKeyExpired";
 const POLL_MS = 15 * 1000;
@@ -374,12 +373,17 @@ function exactName(username) {
     return new RegExp(`^${String(username).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
 }
 
+async function exchangeAdapter(account) {
+    return getExchangeAdapter(account);
+}
+
+/** @deprecated Dùng exchangeAdapter — giữ tên cho listenKey Binance WS hub. */
 async function binanceClient(account) {
-    const UserApi = require("../models/user-api");
-    const api = await UserApi.findOne({ username: exactName(account) }).select("username exchange api_key api_secret").lean();
-    if (!api?.api_key || !api?.api_secret) throw httpError(400, "User chưa có API key");
-    if (String(api.exchange || "binance").toLowerCase() !== "binance") throw httpError(400, "Chỉ hỗ trợ Binance futures");
-    return createBinanceFutures({ apiKey: api.api_key, apiSecret: api.api_secret });
+    const adapter = await exchangeAdapter(account);
+    if (adapter.exchange !== "binance") {
+        throw httpError(400, `${adapter.displayName} chưa hỗ trợ user-stream listenKey trên web`);
+    }
+    return adapter.client;
 }
 
 const exchangeCache = new Map();
@@ -428,13 +432,9 @@ function resetHistoryCacheForTests() {
     historyCache.clear();
 }
 
-async function signedGetQueued(client, path, params = {}, { weight = 1 } = {}) {
-    return enqueueBinanceRest(() => client.signedGet(path, params), { weight });
-}
-
 /**
- * Lịch sử phân tích (income / positionHistory / userTrades).
- * Cache 3 phút; giãn từng symbol. Không dùng cho sổ live.
+ * Lịch sử phân tích — qua adapter (Binance history; sàn khác capability.history=false).
+ * Cache 3 phút. Không dùng cho sổ live.
  */
 async function loadBinanceHistoryDetails(account, { positions = null, force = false } = {}) {
     const key = String(account || "").trim();
@@ -445,139 +445,43 @@ async function loadBinanceHistoryDetails(account, { positions = null, force = fa
         if (hit && now - hit.at < HISTORY_CACHE_MS) return hit.data;
     }
 
-    const client = await binanceClient(key);
-    const startTime = now - 3 * 24 * 60 * 60 * 1000;
-
-    let openPositions = Array.isArray(positions) ? positions : null;
-    if (!openPositions) {
-        const raw = await signedGetQueued(client, "/fapi/v2/positionRisk", {}, { weight: 5 });
-        if (!Array.isArray(raw)) throw new Error("Sổ vị thế sàn không hợp lệ");
-        openPositions = raw.filter((row) => Math.abs(num(row.positionAmt)) > 0);
+    const adapter = await exchangeAdapter(key);
+    if (!adapter.capabilities().history) {
+        const empty = { income: [], positionHistory: [], trades: [], at: new Date(now).toISOString(), unsupported: true };
+        historyCache.set(key, { at: now, data: empty });
+        return empty;
     }
-
-    let income = [];
-    try {
-        const incomeRaw = await signedGetQueued(
-            client,
-            "/fapi/v1/income",
-            { startTime, limit: 1000 },
-            { weight: 30 }
-        );
-        income = (Array.isArray(incomeRaw) ? incomeRaw : []).map((row) => ({
-            symbol: row.symbol,
-            incomeType: row.incomeType,
-            income: row.income,
-            time: row.time,
-        }));
-    } catch (error) {
-        if (error.status === 429) throw error;
-        console.error("[loadBinanceHistoryDetails]", key, error.message);
-    }
-
-    let history = [];
-    try {
-        const raw = await signedGetQueued(
-            client,
-            "/fapi/v1/positionHistory",
-            { startTime, limit: 100 },
-            { weight: 5 }
-        );
-        const rows = Array.isArray(raw) ? raw : raw?.rows || raw?.list || [];
-        history = rows.map((row) => ({
-            symbol: row.symbol,
-            positionSide: row.positionSide,
-            realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.pnl,
-            commission: row.commission ?? row.fee,
-            fundingFee: row.fundingFee ?? row.funding,
-            closedVolume: row.closedVolume ?? row.closedQty ?? row.qty,
-            entryPrice: row.entryPrice ?? row.avgEntryPrice,
-            avgClosePrice: row.avgClosePrice ?? row.closePrice,
-            time: row.updateTime || row.closedTime || row.time,
-        }));
-    } catch (error) {
-        if (error.status === 429) throw error;
-        console.error("[loadBinanceHistoryDetails]", key, error.message);
-    }
-
-    const symbols = [
-        ...new Set(
-            (openPositions || [])
-                .map((row) => String(row.symbol || "").toUpperCase())
-                .filter(Boolean)
-        ),
-    ].slice(0, 15);
-    const trades = [];
-    for (let i = 0; i < symbols.length; i += 1) {
-        const symbol = symbols[i];
-        if (i > 0) await sleep(HISTORY_SYMBOL_GAP_MS);
-        try {
-            const rows = await signedGetQueued(
-                client,
-                "/fapi/v1/userTrades",
-                { symbol, startTime, limit: 1000 },
-                { weight: 5 }
-            );
-            if (!Array.isArray(rows)) continue;
-            for (const row of rows) {
-                trades.push({
-                    symbol: row.symbol,
-                    positionSide: row.positionSide,
-                    side: row.side,
-                    realizedPnl: row.realizedPnl,
-                    commission: row.commission,
-                    qty: row.qty,
-                    price: row.price,
-                    time: row.time,
-                });
-            }
-        } catch (error) {
-            if (error.status === 429) throw error;
-            console.error("[loadBinanceHistoryDetails]", `${key} ${symbol} ${error.message}`);
-        }
-    }
-
-    const data = { income, positionHistory: history, trades, at: new Date(now).toISOString() };
+    const data = await adapter.getHistoryDetails({ positions });
     historyCache.set(key, { at: now, data });
     return data;
 }
 
 /**
- * Sổ live: positionRisk trước, rồi openOrders, rồi openAlgoOrders.
- * Mỗi call đi hàng đợi chung (1 request toàn process). Không kéo income/history.
+ * Sổ live qua exchange adapter (Binance / Bybit / Aster / OKX).
+ * Không hard-code /fapi trong route — mọi REST đi qua getExchangeAdapter.
  */
-async function loadBinanceSnapshot(account, { liveOnly = true } = {}) {
-    const client = await binanceClient(account);
-
-    const positions = await signedGetQueued(client, "/fapi/v2/positionRisk", {}, { weight: 5 });
-    if (!Array.isArray(positions)) throw new Error("Sổ vị thế sàn không hợp lệ");
-    const openPositions = positions.filter((row) => Math.abs(num(row.positionAmt)) > 0);
-
-    const openOrders = await signedGetQueued(client, "/fapi/v1/openOrders", {}, { weight: 1 });
-    let algoRaw = [];
-    try {
-        algoRaw = await signedGetQueued(client, "/fapi/v1/openAlgoOrders", {}, { weight: 1 });
-    } catch (error) {
-        if (error.status === 429) throw error;
-        console.error("[loadBinanceSnapshot]", error.message);
-        algoRaw = [];
-    }
-
-    const live = {
-        positions: openPositions,
-        openOrders: Array.isArray(openOrders) ? openOrders : [],
-        algoOrders: Array.isArray(algoRaw) ? algoRaw : algoRaw?.orders || [],
-    };
-
-    // liveOnly mặc định true. details=false path cũ vẫn có thể gọi liveOnly:false → history tách riêng + cache.
-    if (liveOnly) return live;
-
-    const details = await loadBinanceHistoryDetails(account, { positions: openPositions });
+async function loadExchangeSnapshot(account, { liveOnly = true } = {}) {
+    const adapter = await exchangeAdapter(account);
+    adapter.requireCapability("snapshot");
+    const snap = await adapter.getSnapshot({ liveOnly });
+    const conditional = Array.isArray(snap.conditionalOrders)
+        ? snap.conditionalOrders
+        : Array.isArray(snap.algoOrders) ? snap.algoOrders : [];
     return {
-        ...live,
-        income: details.income,
-        positionHistory: details.positionHistory,
-        trades: details.trades,
+        ...snap,
+        exchange: adapter.exchange,
+        exchangeDisplay: adapter.displayName,
+        capabilities: adapter.capabilities(),
+        positions: Array.isArray(snap.positions) ? snap.positions : [],
+        openOrders: Array.isArray(snap.openOrders) ? snap.openOrders : [],
+        conditionalOrders: conditional,
+        algoOrders: conditional,
     };
+}
+
+/** Alias tương thích test/callers cũ. */
+async function loadBinanceSnapshot(account, opts) {
+    return loadExchangeSnapshot(account, opts);
 }
 
 async function openBinanceListenKey(account) {
@@ -629,6 +533,7 @@ module.exports = {
     createPositionHub,
     getPositionHub,
     loadBinanceSnapshot,
+    loadExchangeSnapshot,
     loadBinanceHistoryDetails,
     loadExchangeBook,
     resetExchangeCache,

@@ -179,7 +179,7 @@ Ví dụ message (dữ liệu giả):
 {"type":"watch","account":"bot-demo","audience":"mine","book":"live"}
 ```
 
-`account:""` hoặc bỏ account theo dõi tất cả tài khoản được phép trong audience. View có `sources:[{account,version,checkedAt,stale}]`; `checkedAt` là lần đối chiếu sàn, không phải lần cập nhật giá. `positions:[]` từ sổ sàn là snapshot hợp lệ.
+`account:""` hoặc bỏ account theo dõi tất cả tài khoản được phép trong audience. View có `sources:[{account,version,checkedAt,stale}]`; `checkedAt` là lần đối chiếu sàn, không phải lần cập nhật giá. `positions:[]` từ sổ sàn là snapshot hợp lệ. Row/public snapshot có thêm `exchange`, `exchangeDisplay`, `instrumentId`, `quantityUnit`, `capabilities` (khi REST reconcile). Redis `wb:ex:<account>` body gồm `exchange` + `conditionalOrders` (đọc alias `algoOrders`). Filter query `exchange=binance|bybit|aster|okex`.
 
 `resume` mang cùng lựa chọn; `pause` dừng watcher. Server trả `{type:"snapshot", ...view}` hoặc `{type:"error", error:...}`. Không dùng socket này để gửi lệnh giao dịch. Xem [luồng và giới hạn](flows.md#4-position-live).
 

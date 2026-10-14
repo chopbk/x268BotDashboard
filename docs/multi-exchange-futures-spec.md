@@ -8,13 +8,15 @@ Terminal của `web-bot` phải quản lý futures account thuộc Binance, Bybi
 
 Ví dụ: account `DEMO_1` có `exchange: "okex"`, instrument `BTC-USDT-SWAP`, long 3 contract. Người có quyền `positions.close` bấm đóng 50%. Web xác minh chính xác vị thế OKX, chuyển 50% sang số contract hợp lệ, gửi close reduce-only theo API OKX, ghi `trading_receipts`, sau đó reconcile sổ OKX. Không gửi endpoint/format Binance cho account này.
 
-## Hiện trạng
+## Hiện trạng (implementation)
 
-- `user_apis.exchange` đã chấp nhận `binance`, `bybit`, `aster`, `okex` và nhiều exchange khác trong `server/src/lib/user-api-directory.js`.
-- Terminal direct action hiện dừng tại `server/src/lib/direct-trading.js:getClient`: exchange khác Binance trả `Chỉ hỗ trợ Binance futures`.
-- `position-feed.js`, `position-live.js`, `binance-rest-queue.js` và tài liệu hiện gọi/sắp hàng REST theo Binance. Các endpoint `/fapi/*`, `algoOrder`, `positionRisk` là Binance-specific.
-- `binance-bot` đã có wrapper riêng cho Bybit V5, Aster và OKX, có thể lấy vị thế/order ở mức độ khác nhau. Đây không đồng nghĩa giao diện web có thể gửi lệnh an toàn; web cần adapter và contract độc lập.
-- Sổ Redis hiện `wb:ex:<account>` đã là dữ liệu normalized từ bot hoặc web. Snapshot cần thêm `exchange` nhưng không được dựa vào tên key để đoán sàn.
+- Adapter factory: `server/src/lib/exchanges/` (`registry`, `factory`, `*-adapter`, `normalizers`, `rate-limiters`, `errors`).
+- `direct-trading.js` / `position-feed.js` / `position-live.js` đi qua `getExchangeAdapter(account)` — không `switch(exchange)` ở route.
+- **Phase 1 đã bật:** Binance full mutation + history; Bybit / Aster / OKX `snapshot: true`, mọi mutation capability `false`.
+- Redis `wb:ex:<account>`: migration read hỗ trợ `algoOrders` → `conditionalOrders`; thiếu `exchange` chỉ mặc định binance khi account là binance/unknown; non-Binance thiếu exchange → reconcile.
+- Identity merge: `account|exchange|instrumentId|side|mode|positionIdx`. Monitor không resolve được exchange → `unknown`, không merge với sàn thật.
+- UI Terminal: badge exchange, filter sàn, hiển thị contracts / instrumentId.
+- `binance-bot` wrapper không thay thế adapter web; không bật mutation Bybit/Aster/OKX chỉ vì bot có wrapper.
 
 ## Phạm vi
 

@@ -111,7 +111,15 @@ export default function DetailPanel({
       <header className="term-panel-head">
         <div>
           <h2>{row.symbol} <span className={`term-side term-side-${String(row.side).toLowerCase()}`}>{row.side}</span></h2>
-          <p className="muted">{row.account}{row.leverage != null ? ` · ${fmt(row.leverage, 0)}x` : ""}{row.book === "paper" ? " · Paper" : ""}</p>
+          <p className="muted">
+            {row.account}
+            {row.exchangeDisplay || row.exchange ? ` · ${row.exchangeDisplay || row.exchange}` : ""}
+            {row.instrumentId && row.instrumentId !== row.symbol ? ` · ${row.instrumentId}` : ""}
+            {row.quantityUnit === "contracts" ? " · contracts" : ""}
+            {row.leverage != null ? ` · ${fmt(row.leverage, 0)}x` : ""}
+            {row.book === "paper" ? " · Paper" : ""}
+            {row.source ? ` · ${row.source}` : ""}
+          </p>
         </div>
         <button type="button" className="ghost" onClick={onClosePanel} aria-label="Đóng panel">✕</button>
       </header>

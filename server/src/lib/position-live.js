@@ -54,25 +54,65 @@ async function readRedis(account) {
     }
 }
 
+async function accountExchangeOf(account) {
+    try {
+        const { resolveAccountExchange } = require("./exchanges");
+        return await resolveAccountExchange(account);
+    } catch (error) {
+        console.error("[positionLive]", error.message);
+        return "unknown";
+    }
+}
+
 async function readExchangeBook(account) {
     if (!account) return null;
-    if (!reader?.isReady) return localBooks.get(account) || null;
+    if (!reader?.isReady) {
+        const local = localBooks.get(account) || null;
+        return local ? migrateBook(local, account) : null;
+    }
     try {
         const raw = await reader.get(EXCHANGE_KEY + account);
         if (!raw) return null;
         const book = JSON.parse(raw);
-        if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
+        const migrated = await migrateBook(book, account);
+        if (!migrated) return null;
         touchBook(account);
-        return book;
+        return migrated;
     } catch (error) {
         console.error("[positionLive]", error.message);
         return null;
     }
 }
 
+async function migrateBook(book, account) {
+    if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
+    const { migrateExchangeBook } = require("./exchanges");
+    // Chỉ resolve UserApi khi snapshot thiếu exchange — tránh Mongo gọi mỗi Redis read.
+    let accountExchange = null;
+    if (!book.exchange) {
+        accountExchange = await accountExchangeOf(account);
+    }
+    const result = migrateExchangeBook(book, { accountExchange });
+    if (!result.ok) {
+        if (result.needsReconcile) {
+            console.warn("[positionLive]", account, "stale book:", result.reason);
+        }
+        return null;
+    }
+    return result.book;
+}
+
 async function readExchangeBooks(names) {
     if (!names?.length) return {};
-    if (!reader?.isReady) return Object.fromEntries(names.filter((name) => localBooks.has(name)).map((name) => [name, localBooks.get(name)]));
+    if (!reader?.isReady) {
+        const out = {};
+        for (const name of names) {
+            if (!localBooks.has(name)) continue;
+            const migrated = await migrateBook(localBooks.get(name), name);
+            if (migrated) out[name] = migrated;
+        }
+        return out;
+    }
     try {
         const values = await reader.mGet(names.map((name) => EXCHANGE_KEY + name));
         const out = {};
@@ -80,8 +120,9 @@ async function readExchangeBooks(names) {
             if (!values[index]) continue;
             try {
                 const book = JSON.parse(values[index]);
-                if (book?.source === "exchange" && Array.isArray(book.positions)) {
-                    out[names[index]] = book;
+                const migrated = await migrateBook(book, names[index]);
+                if (migrated) {
+                    out[names[index]] = migrated;
                     touchBook(names[index]);
                 }
             } catch (error) {
@@ -120,29 +161,32 @@ async function reconcileViaMqtt(account, current) {
 async function loadFromBinance(account, current, { details = false } = {}) {
     const cachedError = accountErrors.get(account);
     if (cachedError && Date.now() < cachedError.until) {
-        console.warn("[positionReconcile]", account, "skipping Binance (cached error):", cachedError.message);
+        console.warn("[positionReconcile]", account, "skipping exchange REST (cached error):", cachedError.message);
         return current;
     }
     const expected = reader?.isReady ? Number(await reader.get(EXCHANGE_KEY + account + ":ver")) || 0 : null;
-    const { loadBinanceSnapshot, loadBinanceHistoryDetails } = require("./position-feed");
-    // Live trước (position → orders → algo, hàng đợi chung). History tách + cache 3 phút.
-    const loaded = await loadBinanceSnapshot(account, { liveOnly: true });
+    // Dùng exports object để test có thể mock loadBinanceSnapshot.
+    const feed = require("./position-feed");
+    const loaded = await feed.loadBinanceSnapshot(account, { liveOnly: true });
     accountErrors.delete(account);
     let income = current?.income || [];
     let positionHistory = current?.positionHistory || [];
     let trades = current?.trades || [];
     if (details) {
         try {
-            const hist = await loadBinanceHistoryDetails(account, {
+            const hist = await feed.loadBinanceHistoryDetails(account, {
                 positions: loaded.positions || [],
             });
             income = hist.income || [];
             positionHistory = hist.positionHistory || [];
             trades = hist.trades || [];
         } catch (error) {
-            console.error("[loadFromBinance] history", account, error.message);
+            console.error("[loadFromExchange] history", account, error.message);
         }
     }
+    const conditional = Array.isArray(loaded.conditionalOrders)
+        ? loaded.conditionalOrders
+        : Array.isArray(loaded.algoOrders) ? loaded.algoOrders : [];
     const at = new Date().toISOString();
     const book = {
         ...(current || {}),
@@ -151,6 +195,11 @@ async function loadFromBinance(account, current, { details = false } = {}) {
         positionHistory,
         trades,
         source: "exchange",
+        account,
+        exchange: loaded.exchange,
+        exchangeDisplay: loaded.exchangeDisplay,
+        conditionalOrders: conditional,
+        algoOrders: conditional,
         status: "live",
         complete: true,
         stale: false,

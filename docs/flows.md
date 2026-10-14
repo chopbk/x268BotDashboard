@@ -78,9 +78,9 @@ flowchart TD
 
 Source: [position-ws](../server/src/lib/position-ws.js), [position-live](../server/src/lib/position-live.js), [position-cache](../server/src/lib/position-cache.js), [positions](../server/src/lib/positions.js), [binance-rest-queue](../server/src/lib/binance-rest-queue.js).
 
-**Paint trước, sync sau:** `mode=fast` (mặc định GET) chỉ đọc Mongo monitor + Redis `wb:ex` — không gọi Binance. WS gửi snapshot fast ngay; `reconcileLive` chạy nền (MQTT ưu tiên, fallback REST liveOnly), ghi Redis, publish notify → client patch theo account.
+**Paint trước, sync sau:** `mode=fast` (mặc định GET) chỉ đọc Mongo monitor + Redis `wb:ex` — không gọi REST sàn. WS gửi snapshot fast ngay; `reconcileLive` chạy nền (MQTT ưu tiên, fallback REST liveOnly qua adapter), ghi Redis, publish notify → client patch theo account.
 
-**REST Binance (web):** hàng đợi chung — một request signed tại một thời điểm, giãn ~400ms (tăng khi 429). Trong một account: `positionRisk` trước, rồi `openOrders`, rồi `openAlgoOrders`. Refresh nhiều account: concurrency 1, gap ~400ms giữa account. `POST /refresh` luôn live-only. Income / positionHistory / userTrades chỉ khi mở Chi tiết / case reconcile (`details:true`), cache 3 phút, giãn từng symbol.
+**REST đa sàn (web):** mọi call qua `getExchangeAdapter(account)`. Queue/rate limit theo `{exchange, account}` (Binance vẫn dùng hàng đợi signed riêng). Snapshot thiếu `exchange` chỉ mặc định Binance khi account là binance; Bybit/Aster/OKX thiếu exchange → stale/reconcile. `POST /refresh` luôn live-only. History (income/trades) chỉ khi adapter `history: true` (hiện Binance), cache 3 phút.
 
 Redis `wb:ex:<account>` là sổ vị thế sàn; `wb:pos` chỉ bổ sung monitor, không thay danh sách sàn. `wb:bal:<ENV>` là availableBalance + wallet/total do binance-bot AccountMonitor ghi (Config Lab ước lượng RATIO). Redis **không** lưu tên signal kênh (ROSE/BULL…) — signal nằm Mongo `account_configs` / `signal_infos`. Binance-bot áp dụng ACCOUNT_UPDATE vào đúng symbol + positionSide: qty=0 xóa dòng, không ảnh hưởng vị thế khác. Delta chưa có baseline mang `complete:false`; REST bổ sung baseline. Snapshot sàn `positions:[]` là kết quả hợp lệ, không phục hồi monitor đã đóng từ dữ liệu cũ.
 

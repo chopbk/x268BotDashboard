@@ -169,6 +169,12 @@ function PositionRow({
             <div className="term-symbol-cell">
               <strong>{row.symbol}</strong>
               <span className={`term-side term-side-${String(row.side).toLowerCase()}`}>{row.side}</span>
+              {row.exchangeDisplay || row.exchange ? (
+                <span className="term-badge" title={row.instrumentId || row.symbol}>
+                  {row.exchangeDisplay || row.exchange}
+                </span>
+              ) : null}
+              {row.quantityUnit === "contracts" ? <span className="term-badge">contracts</span> : null}
               {row.leverage != null ? <span className="muted">{fmt(row.leverage, 0)}x</span> : null}
               {row.book === "paper" ? <span className="term-badge">Paper</span> : null}
               {row.book === "pending" ? <span className="term-badge">Lệnh chờ</span> : null}

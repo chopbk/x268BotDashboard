@@ -4,7 +4,7 @@
 
 Dashboard đọc dữ liệu bot, quản lý user/quyền và cập nhật cấu hình trong MongoDB. Tiến trình nhận signal, mở/đóng lệnh, monitor SL/TP và ghi heartbeat thuộc project bot giao dịch riêng. Chạy dashboard không tự khởi động các process đó.
 
-Web vẫn có truy cập Binance: ba API sổ vị thế khi chưa có `wb:ex`, khi bấm cập nhật, hoặc khi sổ quá 15 phút; cập nhật lãi lỗ ví theo yêu cầu. Nút refresh dữ liệu không phải lệnh giao dịch.
+Web gọi sàn qua adapter factory `server/src/lib/exchanges/` (`getExchangeAdapter(account)`): Binance Futures đủ mutation; Bybit Linear / Aster Futures / OKX Swap (`okex`) Phase 1 read-only snapshot. REST sổ vị thế khi chưa có `wb:ex`, khi bấm cập nhật, hoặc sổ quá hạn; cập nhật lãi lỗ ví theo yêu cầu. Nút refresh dữ liệu không phải lệnh giao dịch.
 
 ```mermaid
 flowchart LR
@@ -15,7 +15,7 @@ flowchart LR
     API --> Redis[(Redis: rate limit và position snapshot)]
     Bot[Process bot giao dịch riêng] --> Mongo
     Bot --> Redis
-    API --> Exchange[Binance: snapshot / wallet income]
+    API --> Exchange[Exchange adapters: snapshot / wallet / trading]
     API --> AI[Nhà cung cấp AI tùy chọn]
 ```
 
@@ -79,6 +79,7 @@ Invariant: publish MQTT thành công ≠ bot đã áp dụng. Chỉ báo applied
 
 - REST kiểm tra user/quyền mỗi request. WebSocket xác thực khi upgrade và đọc lại session/user từ Mongo trước mỗi snapshot; mỗi view lọc lại scope tài khoản.
 - [Nginx mẫu](../deploy/nginx.conf) và [mẫu IP](../deploy/nginx-ip.conf) có location WebSocket riêng. Với host đã cài, cần bổ sung location này vào config hiện tại rồi `nginx -t` và reload; không chép đè cấu hình TLS của Certbot. REST fallback không thay thế kiểm tra upgrade 101.
-- `position-feed.js` chứa cả hub stream sàn. Luồng đang nối vào server là `position-ws → position-live`, dùng `loadBinanceSnapshot` từ position-feed để fallback. Không suy ra mọi hàm export đều đang chạy.
+- `position-feed.js` chứa cả hub stream sàn. Luồng đang nối vào server là `position-ws → position-live`, dùng `loadBinanceSnapshot` / `loadExchangeSnapshot` (qua adapter) để fallback REST. User-stream listenKey hiện chỉ Binance. Không suy ra mọi hàm export đều đang chạy.
+- Identity vị thế public: `account + exchange + instrumentId + side (+ positionIdx)`. Redis `wb:ex:<account>` giữ key cũ; body bắt buộc có `exchange` + `conditionalOrders` (alias đọc `algoOrders`). Spec: [multi-exchange-futures-spec](multi-exchange-futures-spec.md).
 - Có permission `positions.open`, `positions.close`, `bots.operate` trong catalog không có nghĩa project đã cung cấp endpoint mở/đóng lệnh hay quản lý PM2. Status runtime qua bridge dùng quyền xem (`positions.view`, `config.view`, `statistics.view`), không bắt buộc `bots.operate` — xem [command bridge](bot-command-bridge.md#7-action-allowlist-phase-status--apply).
 - Deploy hiện restart tại chỗ, có gián đoạn ngắn; không tự rollback dependency/backend khi lỗi. Các file mới trên GitHub chưa đồng nghĩa frontend đã xuất thành công.
