@@ -220,6 +220,19 @@ add("DCA_MTF_BREAKOUT_ENABLED", { type: "bool_explicit", risk: "low", falseMode:
 add("DCA_MTF_ONCE", { type: "bool_explicit", risk: "low", falseMode: "false_string" });
 add("PAPER", { type: "bool_explicit", risk: "high", falseMode: "false_string" });
 
+// Peer proxy (GET Binance REST) — key chứa "PROXY" nên phải đăng ký để vượt FORBIDDEN_PATTERN
+add("BINANCE_PEER_PROXIES", {
+    type: "string",
+    risk: "high",
+    secret: true,
+    help: "CSV http://user:pass@ip:port — chỉ GET; TRADE đi direct. Quản lý qua panel Peer Proxy.",
+});
+add("BINANCE_PEER_PROXY_SELF_IP", {
+    type: "string",
+    risk: "medium",
+    help: "IP public máy này — loại khỏi round-robin peer list",
+});
+
 function isForbiddenKey(key) {
     if (!key) return true;
     if (FORBIDDEN_EXACT.has(key)) return true;

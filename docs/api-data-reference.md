@@ -100,6 +100,10 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/admin/processes/:env/rollback` | [admin-processes](../server/src/routes/admin-processes.js) |
 | POST | `/api/admin/processes/:env/commands` | [admin-processes](../server/src/routes/admin-processes.js) — `restart`/`reload` → `bot_control_commands` |
 | GET | `/api/admin/processes/commands/:id` | [admin-processes](../server/src/routes/admin-processes.js) — poll |
+| GET | `/api/admin/peer-proxy` | [admin-peer-proxy](../server/src/routes/admin-peer-proxy.js) — pool + trạng thái `BINANCE_PEER_*` theo process (`processes.view`+) |
+| PUT | `/api/admin/peer-proxy/config` | Lưu pool peers / auth / `hostSelfIp` → collection `peer_proxy_config` (`processes.edit`) |
+| POST | `/api/admin/peer-proxy/enable` | Ghi `BINANCE_PEER_PROXIES` + `SELF_IP` vào `bot_profile`; optional restart (`processes.edit`, restart cần `processes.restart`) |
+| POST | `/api/admin/peer-proxy/disable` | Unset hai key peer proxy; optional restart |
 | GET | `/api/dashboard` | [dashboard](../server/src/routes/dashboard.js) |
 | POST | `/api/dashboard/attention` | [dashboard](../server/src/routes/dashboard.js) |
 | GET | `/api/positions` | [positions](../server/src/routes/positions.js) |

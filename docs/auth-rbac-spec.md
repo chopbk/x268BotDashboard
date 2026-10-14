@@ -410,6 +410,9 @@ Các invariant:
 | `GET /api/admin/processes*` (đọc) | `requireAuth` | `processes.view` hoặc `processes.edit` hoặc `processes.restart` |
 | `PATCH/POST …/rollback` | `requireAuth` | `processes.edit` — sửa `bot_profile` / rollback revision |
 | `POST …/commands` | `requireAuth` | `processes.restart` — queue `bot_control_commands` |
+| `GET /api/admin/peer-proxy` | `requireAuth` | Cùng quyền đọc process (`processes.view` / edit / restart) |
+| `PUT /api/admin/peer-proxy/config` | `requireAuth` | `processes.edit` — pool `peer_proxy_config` (không trả plaintext pass) |
+| `POST /api/admin/peer-proxy/enable\|disable` | `requireAuth` | `processes.edit`; `restart:true` chỉ hiệu lực khi có `processes.restart` |
 
 Quy ước HTTP:
 

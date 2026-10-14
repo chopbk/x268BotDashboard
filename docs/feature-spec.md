@@ -18,7 +18,7 @@
 | Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; thêm Attribution & equity (curve account/signal/config, Max DD, PF, expectancy, time-in-trade, slippage/fill); `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
-| Hệ thống `/system` | SystemHealthPage | Heartbeat + bảng Process (`logs.view` scope `all`). Sửa env: `processes.edit`; restart: `processes.restart`; role `ops` có sẵn cả hai + xem Hệ thống — [remote-process-env-admin-spec](remote-process-env-admin-spec.md) |
+| Hệ thống `/system` | SystemHealthPage | Heartbeat + bảng Process (`logs.view` scope `all`). Sửa env: `processes.edit`; restart: `processes.restart`; role `ops` có sẵn cả hai + xem Hệ thống — [remote-process-env-admin-spec](remote-process-env-admin-spec.md). Panel **Peer proxy**: pool tinyproxy + bật/tắt `BINANCE_PEER_*` theo process (`processes.view`+) |
 | User API `/user-apis`, `/user-apis/new`, `/user-apis/:username` | UserApisPage, UserApiDetailPage | Xem cờ có credential, tạo/sửa/xóa với quyền riêng; không trả raw secret |
 | User `/admin/users` | AdminUsersPage | Quản trị tài khoản web, role/permission/scope theo từng hành động |
 | Hồ sơ `/profile` | ProfilePage | Sửa hồ sơ/mật khẩu của chính mình theo spec auth |

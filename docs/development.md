@@ -15,7 +15,7 @@
 | Position / REST Binance | PositionsPage → routes/positions → position-live + binance-rest-queue → position-feed | positions, binance-rest-queue, position-sync |
 | Terminal workspace R1 | TerminalPage + components/terminal → cùng API Position/Orders/Trading | `node --test client/src/components/terminal/protection.test.js` (+ trade-preview / position-sort / position-alerts) |
 | AI/dashboard | DashboardPage → routes/dashboard → dashboard-ai/brief/dashboard | dashboard |
-| Lịch sử/Hệ thống | AuditLogsPage/SystemHealthPage → routes → lib → models | audit, runtime-logs, system-health |
+| Lịch sử/Hệ thống | AuditLogsPage/SystemHealthPage → routes → lib → models | audit, runtime-logs, system-health, peer-proxy (`/api/admin/peer-proxy`) |
 | Deploy | update.sh → deploy.sh → ecosystem.config.cjs → deploy/nginx*.conf | `npm run test:deploy` |
 
 Các file client ở [client/src](../client/src), backend ở [server/src](../server/src), test ở [server/test](../server/test).

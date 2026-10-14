@@ -14,6 +14,7 @@ const {
     isManagedKey,
     normalizeManagedValue,
     listRegistryEntries,
+    getRegistryEntry,
     BOOTSTRAP_KEYS,
 } = require("./env-registry");
 const { httpError } = require("./http");
@@ -29,12 +30,14 @@ const HIGH_RISK = new Set([
     "TELE_CLIENT",
     "SERVER",
     "MAX_VOLUME",
+    "BINANCE_PEER_PROXIES",
 ]);
 
 function shouldRedactKey(key) {
     if (!key) return true;
     if (isForbiddenKey(key)) return true;
     if (FORBIDDEN_VALUE.test(key)) return true;
+    if (getRegistryEntry(key)?.secret) return true;
     return false;
 }
 

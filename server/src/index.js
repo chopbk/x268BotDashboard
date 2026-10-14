@@ -90,6 +90,11 @@ async function main() {
             (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
             require("./routes/admin-processes")
         );
+        app.use(
+            "/api/admin/peer-proxy",
+            (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
+            require("./routes/admin-peer-proxy")
+        );
         app.use("/api/dashboard", require("./routes/dashboard"));
         app.use("/api/positions", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/positions"));
         app.use("/api/orders", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/orders"));

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import PeerProxyPanel from "../components/PeerProxyPanel";
 
 function when(value) {
   if (!value) return "—";
@@ -241,6 +242,10 @@ export default function SystemHealthPage() {
             </table>
           </div>
           {!rows.length ? <p className="muted">Không có process khớp bộ lọc.</p> : null}
+
+          {canProcessView ? (
+            <PeerProxyPanel canEdit={canProcessEdit} canRestart={canProcessRestart} />
+          ) : null}
         </>
       ) : null}
 
@@ -569,6 +574,7 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
         k.startsWith("UNIVERSE_") ||
         k.startsWith("NUM_OF_") ||
         k.startsWith("DCA_MTF_") ||
+        k.startsWith("BINANCE_PEER_") ||
         ["START_COIN", "END_COIN", "SYMBOL_START_INDEX", "PAPER"].includes(k)
       ) {
         groups.Exchange.push(entry);
