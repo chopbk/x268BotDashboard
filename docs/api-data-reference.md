@@ -142,7 +142,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/account-statics` | [account-statics](../server/src/routes/account-statics.js) |
 | POST | `/api/account-statics/ai-suggest` | [account-statics](../server/src/routes/account-statics.js) + [account-statics-ai](../server/src/lib/account-statics-ai.js) |
 | GET | `/api/account-statics/:id` | [account-statics](../server/src/routes/account-statics.js) |
-| GET | `/api/account-ledger` | [account-ledger](../server/src/routes/account-ledger.js) |
+| GET | `/api/account-ledger` | [account-ledger](../server/src/routes/account-ledger.js) (+ attribution [ledger-attribution](../server/src/lib/ledger-attribution.js)) |
 | POST | `/api/account-ledger/:username/refresh` | [account-ledger](../server/src/routes/account-ledger.js) |
 
 Không có REST `/api/logs`, `/api/user/stats` hay wildcard `/api/signals/*` chỉ vì menu có tên tương tự. Path parameter phải URL-encode.

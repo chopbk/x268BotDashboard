@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import AccountRiskAi from "../components/AccountRiskAi";
+import LedgerAttribution from "../components/LedgerAttribution";
 
 function money(value) {
   const n = Number(value);
@@ -182,6 +183,10 @@ export default function AccountLedgerPage() {
             : `User ${data.username} · ví ghi ở env ${data.env}. Kỳ ${data.from} → ${data.to} UTC. Số dư và income lấy futures_profits${live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.`}</p>
           {username !== ALL && data?.username ? (
             <AccountRiskAi username={data.username} />
+          ) : null}
+
+          {data?.attribution ? (
+            <LedgerAttribution attribution={data.attribution} username={data.username || (username !== ALL ? username : "")} />
           ) : null}
 
           <div className="stats-grid summary-grid">

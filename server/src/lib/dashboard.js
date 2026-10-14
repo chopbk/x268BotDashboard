@@ -9,6 +9,7 @@ const { PERMISSIONS, hasPermission, scopeForPermission } = require("../auth/acce
 const { httpError } = require("./http");
 const { ledgerEnv } = require("./account-ledger");
 const { attentionPackage } = require("./dashboard-brief");
+const { loadAttribution, attentionFromAttribution } = require("./ledger-attribution");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEARTBEAT_MS = 90 * 1000;
@@ -871,11 +872,50 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
         });
     }
     activity.splice(ACTIVITY_LIMIT);
+
+    let attributionIssues = [];
+    let attributionFacts = [];
+    if (canStats && mine.length) {
+        const attrFrom = new Date(dayStart.getTime() - 13 * DAY_MS);
+        const attrTo = new Date(dayStart.getTime() + DAY_MS);
+        const samples = mine.slice(0, 3);
+        const packs = await Promise.all(samples.map(async (bot) => {
+            try {
+                const attr = await loadAttribution({
+                    envs: bot.accounts || [],
+                    from: attrFrom,
+                    to: attrTo,
+                    username: bot.username,
+                });
+                return { bot, attr };
+            } catch (error) {
+                console.error("[dashboard.attribution]", bot.username, error?.code || error?.name || "attr");
+                return null;
+            }
+        }));
+        for (const pack of packs.filter(Boolean)) {
+            const m = pack.attr.account?.metrics || {};
+            attributionFacts.push({
+                username: pack.bot.username,
+                valid: m.valid || 0,
+                profit: m.profit,
+                maxDrawdown: m.maxDrawdown,
+                maxDrawdownPct: m.maxDrawdownPct,
+                profitFactor: m.profitFactor,
+                expectancy: m.expectancy,
+                avgHoldLabel: m.avgHoldLabel,
+                href: `/ledger?username=${encodeURIComponent(pack.bot.username)}`,
+            });
+            attributionIssues = attributionIssues.concat(attentionFromAttribution(pack.attr, pack.bot.username));
+        }
+    }
+
     const listed = dedupeAttention(sortAttention([
         ...exchangeItems,
         ...accountLosing,
         ...riskItems,
         ...signalItems,
+        ...attributionIssues,
         ...staleHealthItems,
         ...attention,
     ])).slice(0, 12);
@@ -885,6 +925,13 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
         incomeToday,
         compare,
         closedToday,
+        attribution: attributionFacts,
+        attributionIssues: attributionIssues.map((row) => ({
+            title: row.title,
+            href: row.href,
+            severity: row.severity,
+            type: row.type,
+        })),
         openRisk: openRisk
             ? {
                 available: openRisk.available,

@@ -258,7 +258,7 @@ Admin cũng chỉ thấy bot sở hữu/được gán trên dashboard (giữ inv
 
 ### `POST /api/dashboard/attention`
 
-Không đổi contract ngoài việc facts giàu hơn (`openRisk`, `health`). Rate limit 15s/user giữ nguyên.
+Facts gồm thêm `attribution` / `attributionIssues` (Max DD, profit factor, signal lỗ, slippage trên tối đa 3 bot của mình, 14 ngày UTC) với href `/ledger`. Rate limit 15s/user giữ nguyên.
 
 ---
 

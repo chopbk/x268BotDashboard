@@ -15,7 +15,7 @@
 | Terminal `/terminal` | TerminalPage | Workspace giao dịch (R1): vị thế, lệnh, lịch sử, panel chi tiết. Menu Position đã gỡ; `/positions` redirect sang `/terminal`. Gate: `positions.view` \| `orders.view` \| `statistics.view`. Spec: [terminal-workspace-spec](terminal-workspace-spec.md) |
 | Hiệu quả giao dịch `/signals?view=performance` | TradePerformancePage | Analytics PnL; KPI/biểu đồ/nhóm/panel. `closed` = có closeTime hoặc isClosed (bot thường không ghi isClosed) |
 | Account Static `/signals?view=statics` | AccountStaticLegacyPage | UI so sánh signal/config; preset thời gian (Hôm nay / 1–90 ngày); soft-refresh bảng khi đổi signal; popup xem config; ô AI gợi ý lọc (`POST /api/account-statics/ai-suggest`). openTime mặc định 3 ngày |
-| Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; `statistics.view` |
+| Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; thêm Attribution & equity (curve account/signal/config, Max DD, PF, expectancy, time-in-trade, slippage/fill); `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
 | Hệ thống `/system` | SystemHealthPage | Heartbeat + bảng Process (`logs.view` scope `all`). Sửa env: `processes.edit`; restart: `processes.restart`; role `ops` có sẵn cả hai + xem Hệ thống — [remote-process-env-admin-spec](remote-process-env-admin-spec.md) |
@@ -82,7 +82,8 @@ Khi sổ live đổi (đóng, mở, đổi size), Terminal hiện toast trong tr
 | Tìm Signal | Lệnh thật theo openTime, signal và config; điều kiện win dựa vào profit trong module này |
 | Tổng kết | Lệnh live; lọc closeTime, fallback openTime nếu thiếu closeTime; win/loss dựa trạng thái WIN và LOSS/LOSE |
 | Lãi lỗ ví | `futures_profits`, income và số dư ngày UTC; trading PnL tách dòng tiền |
-| Dashboard | Bot sở hữu/được gán; đã chốt / ví / uPnL Redis tách riêng; ngày UTC; chi tiết nặng deep-link Terminal · Ledger · Static · Hệ thống |
+| Attribution trên Ledger | `account_statics` live đã đóng cùng kỳ; equity từ 0 theo closeTime; Max DD trên equity lệnh; slippage khi khớp `stats` hoặc `signal_infos.prices` |
+| Dashboard | Bot sở hữu/được gán; đã chốt / ví / uPnL Redis tách riêng; ngày UTC; AI attention thêm attributionIssues (DD/PF/signal lỗ/slippage) deep-link Ledger |
 
 Kiểm tra cùng audience, bot/env, khoảng thời gian, live/paper và định nghĩa thắng trước khi kết luận số sai. Account Static profit không tự bằng income ví vì phí, funding, nạp/rút và thời điểm ghi nhận có thể khác.
 

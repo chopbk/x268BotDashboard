@@ -2,7 +2,7 @@ const { httpError } = require("./http");
 
 const INSTRUCTIONS = [
     "Viết tiếng Việt, tối đa 6 việc, mỗi việc một câu ngắn.",
-    "Chỉ nêu vấn đề tài khoản/trading thật từ dữ liệu: exchangeErrors, walletLosses, openRisk.top lỗ lớn, health.staleBots, signalLosses, removed, blocked (lỗi thật).",
+    "Chỉ nêu vấn đề tài khoản/trading thật từ dữ liệu: exchangeErrors, walletLosses, openRisk.top lỗ lớn, health.staleBots, signalLosses, attributionIssues (Max DD / profit factor / signal lỗ / slippage), removed, blocked (lỗi thật).",
     "Bỏ qua skippedNoiseCount và mọi ý 'đã có vị thế' / Position is open — đó là hành vi bình thường, không phải việc cần xử lý.",
     "skippedFilters chỉ nhắc nếu không còn việc nặng hơn; config thiếu signal / thiếu API key chỉ nêu khi danh sách còn chỗ.",
     "Dùng đúng href có trong dữ liệu. Không viết lại cùng một việc hai lần. Không bịa số, user, signal.",

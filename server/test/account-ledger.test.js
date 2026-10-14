@@ -14,6 +14,8 @@ function chain(value) {
     return {
         select() { return this; },
         sort() { return this; },
+        limit() { return this; },
+        skip() { return this; },
         lean() { return Promise.resolve(value); },
         then(onOk, onErr) { return Promise.resolve(value).then(onOk, onErr); },
     };
@@ -56,18 +58,23 @@ test("a member sees an assigned bot on the ledger", async () => {
         { username: "HOA", accounts: ["HOA"], ownerUserId: "other", visibility: "public", active: true },
         { username: "ZED", accounts: ["Z"], ownerUserId: "other", visibility: "public", active: true },
     ]);
+    const originalFind = AccountStatic.find;
     FuturesProfit.find = () => chain([{ env: "HOA", day: new Date("2026-10-09T00:00:00.000Z"), profit: 3, balance: 100 }]);
     AccountStatic.aggregate = async () => [];
+    AccountStatic.find = () => chain([]);
     try {
         const apex = { id: "apex", role: "member", username: "apex", botUsernames: ["HOA"] };
         const ledger = await loadLedger(apex, { username: "HOA", days: "14" });
         assert.equal(ledger.username, "HOA");
         assert.deepEqual(ledger.users.map((item) => item.username), ["HOA"]);
+        assert.ok(ledger.attribution);
+        assert.equal(ledger.attribution.account.metrics.valid, 0);
         await assert.rejects(() => loadLedger(apex, { username: "ZED" }), (error) => error.status === 404);
     } finally {
         UserAccount.find = original;
         FuturesProfit.find = originalProfit;
         AccountStatic.aggregate = originalStatic;
+        AccountStatic.find = originalFind;
     }
 });
 

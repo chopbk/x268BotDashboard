@@ -11,6 +11,7 @@ const {
     loadPriceMap,
     quoteUsdt,
 } = require("./binance-futures");
+const { loadAttribution, emptyAttribution } = require("./ledger-attribution");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_CHOICES = new Set([1, 3, 7, 14, 30, 90]);
@@ -341,7 +342,21 @@ async function loadLedger(actor, query = {}) {
     const { days, from, to, today } = window;
     const users = await visibleUsers(actor);
     const user = pickUser(users, query.username, actor);
-    const empty = { users: [], username: null, env: null, range: window.range, days, from: ymd(from), to: ymd(today), series: [], totals: summarizeLedger([]).totals, live: {}, compare: {}, flows: [] };
+    const empty = {
+        users: [],
+        username: null,
+        env: null,
+        range: window.range,
+        days,
+        from: ymd(from),
+        to: ymd(today),
+        series: [],
+        totals: summarizeLedger([]).totals,
+        live: {},
+        compare: {},
+        flows: [],
+        attribution: emptyAttribution({ from: ymd(from), to: ymd(today) }),
+    };
     if (!user) return empty;
     const env = ledgerEnv(user);
     const docs = await FuturesProfit.find({
@@ -354,7 +369,15 @@ async function loadLedger(actor, query = {}) {
         const current = byDay.get(key);
         if (!current || String(doc.env).toUpperCase() === env) byDay.set(key, doc);
     }
-    const summary = summarizeLedger([...byDay.values()], await staticProfit(user.accounts.length ? user.accounts : [env], from, to));
+    const tradeEnvs = user.accounts.length ? user.accounts : [env];
+    const [staticPnL, attribution] = await Promise.all([
+        staticProfit(tradeEnvs, from, to),
+        loadAttribution({ envs: tradeEnvs, from, to, username: user.username }).catch((error) => {
+            console.error("[loadLedger]", error?.code || error?.name || "attribution");
+            return emptyAttribution({ username: user.username, from: ymd(from), to: ymd(today) });
+        }),
+    ]);
+    const summary = summarizeLedger([...byDay.values()], staticPnL);
     return {
         users: users.map((item) => ({ username: item.username, active: item.active, mine: isOwnUser(actor, item) })),
         username: user.username,
@@ -368,6 +391,7 @@ async function loadLedger(actor, query = {}) {
         live: summary.live,
         compare: summary.compare,
         flows: summary.flows,
+        attribution,
     };
 }
 
@@ -399,7 +423,14 @@ async function loadCombinedLedger(actor, query = {}) {
         : [];
     const series = combineDayGroups(targets.map((target) => rowsForTarget(docs, target)));
     const tradeEnvs = targets.flatMap((item) => (item.accounts.length ? item.accounts : [item.env]));
-    const rebuilt = summarizeFromDays(series, await staticProfit(tradeEnvs, from, to));
+    const [staticPnL, attribution] = await Promise.all([
+        staticProfit(tradeEnvs, from, to),
+        loadAttribution({ envs: tradeEnvs, from, to, username: null }).catch((error) => {
+            console.error("[loadCombinedLedger]", error?.code || error?.name || "attribution");
+            return emptyAttribution({ from: ymd(from), to: ymd(today) });
+        }),
+    ]);
+    const rebuilt = summarizeFromDays(series, staticPnL);
     return {
         view: "all",
         users: users.map((item) => ({ username: item.username, active: item.active, mine: isOwnUser(actor, item) })),
@@ -415,6 +446,7 @@ async function loadCombinedLedger(actor, query = {}) {
         live: rebuilt.live,
         compare: rebuilt.compare,
         flows: rebuilt.flows,
+        attribution,
     };
 }
 
