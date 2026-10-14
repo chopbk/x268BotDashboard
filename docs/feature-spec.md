@@ -15,7 +15,7 @@
 | Terminal `/terminal` | TerminalPage | Workspace giao dịch (R1): vị thế, lệnh, lịch sử, panel chi tiết. Menu Position đã gỡ; `/positions` redirect sang `/terminal`. Gate: `positions.view` \| `orders.view` \| `statistics.view`. Spec: [terminal-workspace-spec](terminal-workspace-spec.md) |
 | Hiệu quả giao dịch `/signals?view=performance` | TradePerformancePage | Analytics PnL; KPI/biểu đồ/nhóm/panel. `closed` = có closeTime hoặc isClosed (bot thường không ghi isClosed) |
 | Account Static `/signals?view=statics` | AccountStaticLegacyPage | UI so sánh signal/config; preset thời gian (Hôm nay / 1–90 ngày); soft-refresh bảng khi đổi signal; popup xem config; ô AI gợi ý lọc (`POST /api/account-statics/ai-suggest`). openTime mặc định 3 ngày |
-| Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; thêm Attribution & equity (curve account/signal/config, Max DD, PF, expectancy, time-in-trade, slippage/fill); `statistics.view` |
+| Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; view Tất cả có nút Breakdown từng user/ví; Attribution & equity; `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
 | Hệ thống `/system` | SystemHealthPage | Heartbeat + bảng Process (`logs.view` scope `all`). Sửa env: `processes.edit`; restart: `processes.restart`; role `ops` có sẵn cả hai + xem Hệ thống — [remote-process-env-admin-spec](remote-process-env-admin-spec.md). Panel **Peer proxy**: pool tinyproxy + bật/tắt `BINANCE_PEER_*` theo process (`processes.view`+) |

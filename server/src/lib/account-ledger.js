@@ -323,6 +323,16 @@ function pickUser(users, username, actor) {
 async function staticProfit(accounts, from, to) {
     const envs = [...new Set((accounts || []).map((item) => String(item)).filter(Boolean))];
     if (!envs.length) return 0;
+    const byEnv = await staticProfitByEnv(envs, from, to);
+    let total = 0;
+    for (const value of byEnv.values()) total += value;
+    return total;
+}
+
+async function staticProfitByEnv(accounts, from, to) {
+    const envs = [...new Set((accounts || []).map((item) => String(item)).filter(Boolean))];
+    const out = new Map();
+    if (!envs.length) return out;
     const upper = envs.map((item) => item.toUpperCase());
     const rows = await AccountStatic.aggregate([
         {
@@ -332,9 +342,48 @@ async function staticProfit(accounts, from, to) {
                 closeTime: { $gte: from, $lt: to },
             },
         },
-        { $group: { _id: null, profit: { $sum: "$profit" } } },
+        { $group: { _id: "$env", profit: { $sum: "$profit" } } },
     ]);
-    return rows[0]?.profit || 0;
+    for (const row of rows || []) {
+        const key = String(row?._id || "").toUpperCase();
+        if (!key) continue;
+        out.set(key, r3((out.get(key) || 0) + toNum(row.profit)));
+    }
+    return out;
+}
+
+function staticSumForAccounts(byEnv, accounts) {
+    const keys = [...new Set((accounts || []).map((item) => String(item || "").toUpperCase()).filter(Boolean))];
+    let total = 0;
+    for (const key of keys) total += byEnv.get(key) || 0;
+    return r3(total);
+}
+
+function buildUserBreakdown(targets, docs, staticByEnv = new Map()) {
+    return (targets || []).map((target) => {
+        const days = rowsForTarget(docs, target);
+        const accounts = target.accounts?.length ? target.accounts : [target.env];
+        const summary = summarizeFromDays(days, staticSumForAccounts(staticByEnv, accounts));
+        const last = days[days.length - 1] || null;
+        return {
+            username: target.username,
+            env: target.env,
+            days: days.length,
+            balance: last?.balance ?? null,
+            available: summary.live?.available ?? last?.available ?? null,
+            unrealized: summary.live?.unrealized ?? last?.unrealized ?? null,
+            trading: summary.totals.trading,
+            fee: summary.totals.fee,
+            funding: summary.totals.funding,
+            rebate: summary.totals.rebate,
+            cashIn: summary.totals.cashIn,
+            cashOut: summary.totals.cashOut,
+            conversion: summary.totals.conversion,
+            staticProfit: summary.totals.staticProfit,
+            staticDiff: summary.totals.staticDiff,
+        };
+    }).sort((a, b) => (Number(b.trading) || 0) - (Number(a.trading) || 0)
+        || String(a.username || "").localeCompare(String(b.username || "")));
 }
 
 async function loadLedger(actor, query = {}) {
@@ -423,18 +472,21 @@ async function loadCombinedLedger(actor, query = {}) {
         : [];
     const series = combineDayGroups(targets.map((target) => rowsForTarget(docs, target)));
     const tradeEnvs = targets.flatMap((item) => (item.accounts.length ? item.accounts : [item.env]));
-    const [staticPnL, attribution] = await Promise.all([
-        staticProfit(tradeEnvs, from, to),
+    const [staticByEnv, attribution] = await Promise.all([
+        staticProfitByEnv(tradeEnvs, from, to),
         loadAttribution({ envs: tradeEnvs, from, to, username: null }).catch((error) => {
             console.error("[loadCombinedLedger]", error?.code || error?.name || "attribution");
             return emptyAttribution({ from: ymd(from), to: ymd(today) });
         }),
     ]);
+    const staticPnL = staticSumForAccounts(staticByEnv, tradeEnvs);
     const rebuilt = summarizeFromDays(series, staticPnL);
+    const breakdown = buildUserBreakdown(targets, docs, staticByEnv);
     return {
         view: "all",
         users: users.map((item) => ({ username: item.username, active: item.active, mine: isOwnUser(actor, item) })),
         included: targets.map((item) => ({ username: item.username, env: item.env })),
+        breakdown,
         username: null,
         env: null,
         range: window.range,
@@ -660,4 +712,6 @@ module.exports = {
     loadCombinedLedger,
     loadAssignedIncome,
     refreshLedger,
+    buildUserBreakdown,
+    staticSumForAccounts,
 };

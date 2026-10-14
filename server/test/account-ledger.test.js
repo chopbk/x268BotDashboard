@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows, loadLedger } = require("../src/lib/account-ledger");
+const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows, loadLedger, buildUserBreakdown } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -115,6 +115,43 @@ test("all view sums each wallet and keeps one row when two users share an env", 
     assert.equal(merged.unrealized, 0);
     assert.equal(merged.cashIn, 10);
     assert.equal(merged.cashOut, -3);
+});
+
+test("buildUserBreakdown tách lãi lỗ từng ví khi xem tất cả", () => {
+    const docs = [
+        {
+            env: "A1",
+            day: new Date("2026-10-08T00:00:00.000Z"),
+            balance: 200,
+            profit: 8,
+            fee: -1,
+            funding: 0,
+            ref: 0,
+            stats: { wallet: { incomeByType: { REALIZED_PNL: 9, COMMISSION: -1 }, available: 150, unPnlNow: 2 } },
+        },
+        {
+            env: "B1",
+            day: new Date("2026-10-08T00:00:00.000Z"),
+            balance: 80,
+            profit: -3,
+            fee: -0.5,
+            funding: -0.2,
+            ref: 0,
+            stats: { wallet: { incomeByType: { REALIZED_PNL: -2.3, COMMISSION: -0.5, FUNDING_FEE: -0.2 }, available: 40, unPnlNow: -1 } },
+        },
+    ];
+    const staticByEnv = new Map([["A1", 5], ["B1", -1]]);
+    const rows = buildUserBreakdown([
+        { username: "alpha", env: "A1", accounts: ["A1"] },
+        { username: "beta", env: "B1", accounts: ["B1"] },
+    ], docs, staticByEnv);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].username, "alpha");
+    assert.equal(rows[0].trading, 8);
+    assert.equal(rows[0].staticProfit, 5);
+    assert.equal(rows[0].staticDiff, 3);
+    assert.equal(rows[1].username, "beta");
+    assert.ok(rows[1].trading < 0);
 });
 
 test("stored days separate trading pnl from cash flow", () => {

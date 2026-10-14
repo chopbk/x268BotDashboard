@@ -55,6 +55,7 @@ export default function AccountLedgerPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +171,11 @@ export default function AccountLedgerPage() {
               <option value="year">Năm này</option>
             </select>
           </label>
+          {username === ALL ? (
+            <button type="button" className={showBreakdown ? "active" : "ghost"} disabled={!data?.breakdown?.length} onClick={() => setShowBreakdown((open) => !open)}>
+              {showBreakdown ? "Ẩn breakdown" : "Breakdown"}
+            </button>
+          ) : null}
           <button type="button" disabled={busy || !data?.username} onClick={refresh}>{busy ? "Đang cập nhật…" : "Cập nhật hôm nay"}</button>
         </div>
       </header>
@@ -179,8 +185,58 @@ export default function AccountLedgerPage() {
       {(username === ALL ? data?.view === "all" && choices.length : data?.username && choices.some((item) => item.username === data.username)) ? (
         <>
           <p className="muted">{data.view === "all"
-            ? `Tổng ${(data.included || []).map((item) => `${item.username} (${item.env})`).join(", ") || "không có ví"}. Kỳ ${data.from} → ${data.to} UTC. Hai user trùng env chỉ tính một lần. Cập nhật sàn vẫn chọn từng user.`
+            ? `Tổng ${(data.included || []).map((item) => `${item.username} (${item.env})`).join(", ") || "không có ví"}. Kỳ ${data.from} → ${data.to} UTC. Hai user trùng env chỉ tính một lần. Bấm Breakdown để xem từng user. Cập nhật sàn vẫn chọn từng user.`
             : `User ${data.username} · ví ghi ở env ${data.env}. Kỳ ${data.from} → ${data.to} UTC. Số dư và income lấy futures_profits${live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.`}</p>
+          {username === ALL && showBreakdown ? (
+            <section className="ledger-breakdown">
+              <h2 className="summary-section-title">Breakdown theo user</h2>
+              <p className="muted">Mỗi dòng là một ví (env). Hai user chung env chỉ hiện một dòng. Bấm Xem để mở chi tiết user đó.</p>
+              {(data.breakdown || []).length ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Env</th>
+                        <th>Số dư</th>
+                        <th>uPnL</th>
+                        <th>Trading</th>
+                        <th>Phí</th>
+                        <th>Funding</th>
+                        <th>Nạp</th>
+                        <th>Rút</th>
+                        <th>Static</th>
+                        <th>Income − Static</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.breakdown.map((row) => (
+                        <tr key={`${row.username}-${row.env}`}>
+                          <td>{row.username}</td>
+                          <td>{row.env}</td>
+                          <td>{plain(row.balance)}</td>
+                          <td className={tone(row.unrealized)}>{money(row.unrealized)}</td>
+                          <td className={tone(row.trading)}>{money(row.trading)}</td>
+                          <td>{money(row.fee)}</td>
+                          <td>{money(row.funding)}</td>
+                          <td className={tone(row.cashIn)}>{money(row.cashIn)}</td>
+                          <td className={tone(row.cashOut)}>{money(row.cashOut)}</td>
+                          <td className={tone(row.staticProfit)}>{money(row.staticProfit)}</td>
+                          <td className={tone(row.staticDiff)}>{money(row.staticDiff)}</td>
+                          <td>
+                            <button type="button" className="ghost" onClick={() => { setUsername(row.username); setShowBreakdown(false); }}>
+                              Xem
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="muted">Không có user trong phạm vi đang xem.</p>}
+            </section>
+          ) : null}
           {username !== ALL && data?.username ? (
             <AccountRiskAi username={data.username} />
           ) : null}
