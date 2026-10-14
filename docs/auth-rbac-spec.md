@@ -407,6 +407,7 @@ Các invariant:
 | `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server. Đây là lịch sử chỉnh sửa web, collection `web_audit_logs` |
 | `GET /api/runtime-logs` | `requireAuth` | `logs.view`; log lỗi runtime của binance-bot trong `bot_runtime_logs`, giữ 30 ngày. Category `open`, `exchange`, `monitor`, `tpsl`, `listener`, `mqtt`, `signal`, `process`. Scope không phải `all` chỉ thấy log của bot user được gán và không thấy listener, MQTT, PM2 |
 | `GET /api/system-health` | `requireAuth` | `logs.view` scope `all`. Heartbeat `bot_heartbeats` (+ join `bot_profile` Rev/Drift): MongoDB, Redis, MQTT, Telegram V1/V2, Discord, trader, monitor, signal, DCA/MTF, poster/webhook, PM2. Cảnh báo listener/trader MQTT/monitor/position/snapshot/Redis/credential |
+| `POST /api/system-health/heartbeats/purge` | `requireAuth` | `processes.edit` — body `keys[]` (+ `stale`) xóa heartbeat UI báo down |
 | `DELETE /api/system-health/heartbeats/stale` | `requireAuth` | `processes.edit` — xóa heartbeat quá 90s (nodemon/PID cũ) |
 | `DELETE /api/system-health/heartbeats/:key` | `requireAuth` | `processes.edit` — xóa một dòng heartbeat |
 | `GET /api/admin/processes*` (đọc) | `requireAuth` | `processes.view` hoặc `processes.edit` hoặc `processes.restart` |

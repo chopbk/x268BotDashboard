@@ -56,8 +56,10 @@ export default function SystemHealthPage() {
   const [busyHb, setBusyHb] = useState(false);
   const selectedProcess = searchParams.get("process") || "";
 
-  const load = useCallback((signal) => {
-    return api("/api/system-health", { signal })
+  const load = useCallback((signal, { bust } = {}) => {
+    // bust: tránh api() dedupe trả GET đang pending (data trước khi xóa)
+    const path = bust ? `/api/system-health?_=${Date.now()}` : "/api/system-health";
+    return api(path, { signal })
       .then((result) => {
         setData(result);
         setError("");
@@ -69,20 +71,43 @@ export default function SystemHealthPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const staleCount = useMemo(
-    () => (data?.processes || []).filter((r) => r.status === "down").length,
+  const staleRows = useMemo(
+    () => (data?.processes || []).filter((r) => r.status === "down"),
     [data]
   );
+  const staleCount = staleRows.length;
 
   async function clearStaleHeartbeats() {
     if (!canProcessEdit || busyHb) return;
-    if (!window.confirm(`Xóa ${staleCount} heartbeat stale (>90s)? Process đang chạy sẽ ghi lại.`)) return;
+    const keys = staleRows.map((r) => r.key).filter(Boolean);
+    if (!keys.length) {
+      setError("Không có dòng stale để xóa");
+      return;
+    }
+    if (!window.confirm(`Xóa ${keys.length} heartbeat stale? Process đang chạy sẽ ghi lại.`)) return;
     setBusyHb(true);
     setError("");
     try {
-      const res = await api("/api/system-health/heartbeats/stale", { method: "DELETE" });
-      await load();
-      if (res.deletedCount === 0) setError("Không có heartbeat stale để xóa");
+      const res = await api("/api/system-health/heartbeats/purge", {
+        method: "POST",
+        body: { keys, stale: true },
+      });
+      // Optimistic: bỏ ngay khỏi UI
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              processes: (prev.processes || []).filter((p) => p.status !== "down"),
+              alerts: (prev.alerts || []).filter(
+                (a) => a.code !== "listener" && a.code !== "monitor"
+              ),
+            }
+          : prev
+      );
+      await load(undefined, { bust: true });
+      if (!res.deletedCount) {
+        setError("Server không xóa được bản ghi — kiểm tra quyền processes.edit / deploy API mới");
+      }
     } catch (err) {
       setError(err.message || "Xóa heartbeat thất bại");
     } finally {
@@ -96,8 +121,17 @@ export default function SystemHealthPage() {
     setBusyHb(true);
     setError("");
     try {
-      await api(`/api/system-health/heartbeats/${encodeURIComponent(row.key)}`, { method: "DELETE" });
-      await load();
+      const res = await api("/api/system-health/heartbeats/purge", {
+        method: "POST",
+        body: { keys: [row.key], stale: false },
+      });
+      setData((prev) =>
+        prev
+          ? { ...prev, processes: (prev.processes || []).filter((p) => p.key !== row.key) }
+          : prev
+      );
+      await load(undefined, { bust: true });
+      if (!res.deletedCount) setError(`Không tìm thấy key «${row.key}» trong Mongo`);
     } catch (err) {
       setError(err.message || "Xóa heartbeat thất bại");
     } finally {

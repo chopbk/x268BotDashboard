@@ -203,11 +203,37 @@ async function deleteHeartbeatByKey(key) {
     return { deletedCount: result.deletedCount || 0, key: k };
 }
 
+/**
+ * Xóa theo danh sách key (UI gửi) và/hoặc mọi bản quá STALE_MS.
+ * Ưu tiên keys từ client — tránh lệch đồng hồ / field `at` lạ.
+ */
+async function purgeHeartbeats({ keys = [], stale = false, now = new Date() } = {}) {
+    const wanted = [...new Set((keys || []).map((k) => String(k || "").trim()).filter(Boolean))];
+    let deletedCount = 0;
+    const deletedKeys = [];
+
+    if (wanted.length) {
+        const byKey = await ProcessHeartbeat.deleteMany({ key: { $in: wanted } });
+        deletedCount += byKey.deletedCount || 0;
+        deletedKeys.push(...wanted);
+    }
+    if (stale) {
+        const staleResult = await deleteStaleHeartbeats({ now });
+        deletedCount += staleResult.deletedCount || 0;
+    }
+    return {
+        deletedCount,
+        deletedKeys,
+        stale,
+    };
+}
+
 module.exports = {
     assessHealth,
     loadSystemHealth,
     currentSnapshots,
     deleteStaleHeartbeats,
     deleteHeartbeatByKey,
+    purgeHeartbeats,
     STALE_MS,
 };

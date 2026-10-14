@@ -6,6 +6,7 @@ const {
     loadSystemHealth,
     deleteStaleHeartbeats,
     deleteHeartbeatByKey,
+    purgeHeartbeats,
 } = require("../lib/system-health");
 
 const router = express.Router();
@@ -26,6 +27,20 @@ router.get("/", requireAuth, requirePermission(PERMISSIONS.LOGS_VIEW), requireAl
         res.json(await loadSystemHealth());
     } catch (error) {
         sendError(res, error, "GET /api/system-health");
+    }
+});
+
+/** UI gửi keys dòng down — chắc chắn hơn xóa chỉ theo cutoff thời gian. */
+router.post("/heartbeats/purge", requireAuth, requireProcessEdit, async (req, res) => {
+    try {
+        const keys = Array.isArray(req.body?.keys) ? req.body.keys : [];
+        const stale = req.body?.stale !== false;
+        if (!keys.length && !stale) {
+            return res.status(400).json({ error: "Cần keys[] hoặc stale:true" });
+        }
+        res.json(await purgeHeartbeats({ keys, stale: Boolean(stale) }));
+    } catch (error) {
+        sendError(res, error, "POST /api/system-health/heartbeats/purge");
     }
 });
 

@@ -123,4 +123,6 @@ test("down processes are listed so UI can offer delete-stale", () => {
     });
     assert.equal(health.processes.filter((p) => p.status === "down").length, 2);
     assert.equal(health.processes.filter((p) => p.status === "ok").length, 1);
+    const keys = health.processes.filter((p) => p.status === "down").map((p) => p.key);
+    assert.deepEqual(keys.sort(), ["dead:111", "dead:222"]);
 });
