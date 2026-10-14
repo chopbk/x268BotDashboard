@@ -8,6 +8,7 @@ Ngày: 2026-10-13. Phạm vi: web-bot Terminal + Lãi lỗ. Code tính số; AI 
 - AI nhận snapshot đã tính, trả JSON schema cố định; backend validate.
 - Chưa có hồ sơ rủi ro → vẫn phân tích, ghi `missingData: ["risk_profile"]` và “Chưa có ngân sách rủi ro cá nhân”.
 - Phase 1 **chỉ đọc** — không nút áp dụng TP/SL.
+- `marketContext` (Smart Money / OI / funding / taker / events / candidates) lấy từ snapshot collector dùng chung; AI chỉ diễn giải, không gọi sàn, không bịa trader/xác suất. Spec: [smart-money-spec](smart-money-spec.md). `promptVersion` ≥ `decision-v1.4`.
 
 ## UI
 

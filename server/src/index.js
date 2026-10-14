@@ -8,6 +8,7 @@ const { requireCsrf } = require("./middleware/csrf");
 const { createRateLimit, endpointKey, requestIp } = require("./middleware/rate-limit");
 const { createConcurrencyLimit, requestTimeout, sessionIdentity } = require("./middleware/request-guards");
 const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
+const { startSmartMoneyJob } = require("./lib/smart-money/scheduler");
 const { connectRateLimitStore, rateLimitStoreStatus, getRedisClient } = require("./lib/rate-limit-store");
 const { bindRedis } = require("./lib/position-live");
 const { startMarkPrices } = require("./lib/mark-prices");
@@ -34,6 +35,7 @@ async function main() {
         await startMarkPrices();
         await bootstrapAdmin();
         await startSummarySnapshotJob();
+        await startSmartMoneyJob();
         await initBotCommandBridge();
 
         const app = express();
@@ -114,6 +116,11 @@ async function main() {
         app.use("/api/account-statics", require("./routes/account-statics"));
         app.use("/api/account-ledger", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/account-ledger"));
         app.use("/api/terminal", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/terminal"));
+        app.use(
+            "/api/smart-money",
+            (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
+            require("./routes/smart-money")
+        );
 
         app.use((err, req, res, next) => {
             if (res.headersSent || res.writableEnded) {

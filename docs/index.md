@@ -21,6 +21,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Nâng trang Tổng quan (health, uPnL, triage) | [Dashboard overview spec](dashboard-overview-spec.md) |
 | Process env / restart trên tab Hệ thống | [Remote process env admin](remote-process-env-admin-spec.md) — Phase 1 trên `/system` (admin panel) |
 | Terminal Futures cho Bybit, Aster và OKX | [Multi-exchange Futures](multi-exchange-futures-spec.md) |
+| Smart Money / dòng tiền thị trường (collector dùng chung) | [Smart Money](smart-money-spec.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
 | Đăng ký, đăng nhập, quyền và scope | [Spec auth/RBAC](auth-rbac-spec.md) |
 | Cài Debian, Nginx, HTTPS, cập nhật server | [Deploy Debian](deploy-debian.md) |

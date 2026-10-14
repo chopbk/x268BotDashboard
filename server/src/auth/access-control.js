@@ -35,6 +35,8 @@ const PERMISSIONS = Object.freeze({
   PROCESSES_VIEW: "processes.view",
   PROCESSES_EDIT: "processes.edit",
   PROCESSES_RESTART: "processes.restart",
+  SMART_MONEY_VIEW: "smart_money.view",
+  SMART_MONEY_MANAGE: "smart_money.manage",
   USERS_MANAGE: "users.manage",
   SIGNALS_VIEW: "signals.view",
   SIGNALS_MANAGE: "signals.manage",
@@ -195,6 +197,18 @@ const DEFINITIONS = [
     "process",
     [SCOPES.ALL],
   ],
+  [
+    PERMISSIONS.SMART_MONEY_VIEW,
+    "Xem Smart Money / dòng tiền thị trường",
+    "smart_money",
+    [SCOPES.ALL],
+  ],
+  [
+    PERMISSIONS.SMART_MONEY_MANAGE,
+    "Quản lý collector / refresh Smart Money hệ thống",
+    "smart_money",
+    [SCOPES.ALL],
+  ],
 ].map(([key, label, group, allowedScopes]) =>
   Object.freeze({ key, label, group, allowedScopes }),
 );
@@ -220,6 +234,7 @@ const VIEWER_PERMISSIONS = [
   PERMISSIONS.STATISTICS_VIEW,
   PERMISSIONS.POSITIONS_VIEW,
   PERMISSIONS.ORDERS_VIEW,
+  PERMISSIONS.SMART_MONEY_VIEW,
 ];
 const OPERATOR_PERMISSIONS = [
   ...VIEWER_PERMISSIONS,
@@ -238,6 +253,7 @@ const PROCESS_PERMISSIONS = [
   PERMISSIONS.PROCESSES_EDIT,
   PERMISSIONS.PROCESSES_RESTART,
 ];
+const SMART_MONEY_MANAGE_PERMISSIONS = [PERMISSIONS.SMART_MONEY_MANAGE];
 const SELF_PROFILE_PERMISSIONS = [
   PERMISSIONS.USERS_EDIT,
   PERMISSIONS.USERS_RESET_PASSWORD,
@@ -253,7 +269,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.USERS_MANAGE,
   ]),
   ops: Object.freeze(
-    withSelfProfile([...OPERATOR_PERMISSIONS, ...PROCESS_PERMISSIONS]),
+    withSelfProfile([...OPERATOR_PERMISSIONS, ...PROCESS_PERMISSIONS, ...SMART_MONEY_MANAGE_PERMISSIONS]),
   ),
   supervisor: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)),
   auditor: Object.freeze(
@@ -286,34 +302,46 @@ const scopeMap = (permissions, scope) =>
   Object.freeze(
     Object.fromEntries(permissions.map((permission) => [permission, scope])),
   );
+/** Thị trường Smart Money là dữ liệu hệ thống — luôn scope all khi có quyền xem. */
+const withMarketScopes = (scopes) =>
+  Object.freeze({
+    ...scopes,
+    [PERMISSIONS.SMART_MONEY_VIEW]: SCOPES.ALL,
+  });
 const ROLE_SCOPES = Object.freeze({
   admin: Object.freeze({}),
   summary_viewer: Object.freeze({ [PERMISSIONS.SUMMARY_VIEW]: SCOPES.ALL }),
-  member: scopeMap(VIEWER_PERMISSIONS, SCOPES.OWN),
-  trader: scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN),
-  collaborator: Object.freeze({
-    ...scopeMap(VIEWER_PERMISSIONS, SCOPES.OWN_ASSIGNED),
-    ...scopeMap(
-      OPERATOR_PERMISSIONS.filter((p) => !VIEWER_PERMISSIONS.includes(p)),
-      SCOPES.OWN,
-    ),
-  }),
-  operator: scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN_ASSIGNED),
+  member: withMarketScopes(scopeMap(VIEWER_PERMISSIONS, SCOPES.OWN)),
+  trader: withMarketScopes(scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN)),
+  collaborator: withMarketScopes(
+    Object.freeze({
+      ...scopeMap(VIEWER_PERMISSIONS, SCOPES.OWN_ASSIGNED),
+      ...scopeMap(
+        OPERATOR_PERMISSIONS.filter((p) => !VIEWER_PERMISSIONS.includes(p)),
+        SCOPES.OWN,
+      ),
+    }),
+  ),
+  operator: withMarketScopes(scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN_ASSIGNED)),
   ops: Object.freeze({
     ...scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN_ASSIGNED),
     [PERMISSIONS.LOGS_VIEW]: SCOPES.ALL,
     ...scopeMap(PROCESS_PERMISSIONS, SCOPES.ALL),
+    [PERMISSIONS.SMART_MONEY_VIEW]: SCOPES.ALL,
+    [PERMISSIONS.SMART_MONEY_MANAGE]: SCOPES.ALL,
   }),
-  supervisor: Object.freeze({
-    ...scopeMap(VIEWER_PERMISSIONS, SCOPES.ALL),
-    ...scopeMap(
-      OPERATOR_PERMISSIONS.filter((p) => !VIEWER_PERMISSIONS.includes(p)),
-      SCOPES.OWN,
-    ),
-  }),
-  auditor: scopeMap([...VIEWER_PERMISSIONS, PERMISSIONS.LOGS_VIEW], SCOPES.ALL),
-  viewer: scopeMap(VIEWER_PERMISSIONS, SCOPES.ASSIGNED),
-  user: scopeMap(VIEWER_PERMISSIONS, SCOPES.ASSIGNED),
+  supervisor: withMarketScopes(
+    Object.freeze({
+      ...scopeMap(VIEWER_PERMISSIONS, SCOPES.ALL),
+      ...scopeMap(
+        OPERATOR_PERMISSIONS.filter((p) => !VIEWER_PERMISSIONS.includes(p)),
+        SCOPES.OWN,
+      ),
+    }),
+  ),
+  auditor: withMarketScopes(scopeMap([...VIEWER_PERMISSIONS, PERMISSIONS.LOGS_VIEW], SCOPES.ALL)),
+  viewer: withMarketScopes(scopeMap(VIEWER_PERMISSIONS, SCOPES.ASSIGNED)),
+  user: withMarketScopes(scopeMap(VIEWER_PERMISSIONS, SCOPES.ASSIGNED)),
   pending: Object.freeze({}),
 });
 const ROLES = Object.freeze(Object.keys(ROLE_PERMISSIONS));

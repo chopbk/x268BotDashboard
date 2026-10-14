@@ -2,12 +2,12 @@ const { aiSettings, providerConfig, chatRequest, readChatText } = require("../da
 const { validateReport } = require("./validate-report");
 const { buildTechnicalBrief } = require("./market-snapshot");
 
-const PROMPT_VERSION = "decision-v1.3";
+const PROMPT_VERSION = "decision-v1.4";
 const FORMULA_VERSION = "decision-v1";
 
 const SYSTEM = [
     "Bạn là chuyên gia quản trị rủi ro futures — viết báo cáo ngắn cho trader.",
-    "Chỉ giải thích số liệu đã có trong snapshot. Không bịa giá/mức ngoài scenarios, market.levels, metrics, technicalBrief.",
+    "Chỉ giải thích số liệu đã có trong snapshot. Không bịa giá/mức ngoài scenarios, market.levels, metrics, technicalBrief, marketContext.",
     "Phase 1 chỉ đọc: không bảo hệ thống tự đặt lệnh; có thể gợi ý việc trader nên cân nhắc.",
     "",
     "Kết luận đầu báo cáo (bắt buộc):",
@@ -19,6 +19,12 @@ const SYSTEM = [
     "- findings phải có ít nhất 2 mục kỹ thuật: cấu trúc đa khung, khớp hướng lệnh,",
     "  và nếu có thì RSI/ATR hoặc vùng hỗ trợ–kháng cự (diễn đạt lại technicalBrief, không bịa).",
     "- Có thể giữ findings rủi ro lệnh (thiếu SL, gần liq…) sau phần kỹ thuật.",
+    "",
+    "Khi có marketContext (Smart Money / OI / funding / taker — đã tính sẵn):",
+    "- Diễn giải đồng thuận hoặc mâu thuẫn với side vị thế và kỹ thuật.",
+    "- Không bịa trader, nguồn tiền, xác suất thắng; không coi «cùng whale» là đủ lý do giao dịch.",
+    "- Field null/missing → nói thiếu dữ liệu và vẫn phân tích phần còn lại.",
+    "- Điểm ứng viên / sự kiện chỉ là gợi ý xem xét, không phải lệnh chắc thắng.",
     "",
     "Văn phong (bắt buộc):",
     "- Tiếng Việt tự nhiên, dễ hiểu, chuyên nghiệp; tránh jargon chồng chất (multiTf, alignment, mark→SL…).",
@@ -280,6 +286,7 @@ async function generateAiReport(snapshot, deps = {}) {
                 }
                 : null,
             technicalBrief: snapshot.technicalBrief || null,
+            marketContext: snapshot.marketContext || null,
             scenarios: snapshot.scenarios,
             riskProfileConfigured: snapshot.riskProfileConfigured,
             missingData: snapshot.missingData,

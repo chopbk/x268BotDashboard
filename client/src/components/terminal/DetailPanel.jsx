@@ -13,6 +13,7 @@ import MutationStatus from "./MutationStatus.jsx";
 import SizeControls from "./SizeControls.jsx";
 import JournalPanel from "./JournalPanel.jsx";
 import DecisionPanel from "./DecisionPanel.jsx";
+import MoneyFlowPanel from "./MoneyFlowPanel.jsx";
 
 const PANEL_TABS = [
   { id: "overview", label: "Tổng quan" },
@@ -163,6 +164,8 @@ export default function DetailPanel({
               <button type="button" className="ghost" onClick={() => onPanelTab("monitor")}>Monitor & timeline</button>
               <button type="button" className="ghost" onClick={() => onPanelTab("trade")}>Giao dịch</button>
             </div>
+
+            <MoneyFlowPanel row={row} />
 
             <div className="term-overview-journal">
               <h3 className="term-overview-subhead">Journal</h3>

@@ -49,6 +49,12 @@ erDiagram
 | `bot_heartbeats` | Process bot | Trạng thái dịch vụ/process |
 | `web_summary_snapshots` | Job/refresh summary web | Payload tổng hợp theo range/version và lease |
 | `web_summary_cache` | Hàm cache system-summary | Cache riêng, tra call site trước khi kết luận route dùng nó |
+| `smart_money_history` | Collector Smart Money | Lịch sử snapshot theo symbol (unique bucketKey, TTL retention) |
+| `smart_money_events` | Detector | Sự kiện bất thường dedupe |
+| `smart_money_candidates` | Ranking code | Danh sách ứng viên version hóa |
+| `smart_money_collector_state` | Scheduler | Lease + metrics collector |
+| `smart_money_watchlists` | User web | Watchlist cá nhân theo userId |
+| Redis `wb:sm:*` | Collector | Snapshot mới nhất + cooldown host + meta |
 
 Tên collection phải lấy từ [models](../server/src/models), không suy từ tên class Mongoose. Web không tạo dữ liệu lịch sử signal/giao dịch chỉ bằng việc mở trang. Một số schema shared cho phép field ngoài khai báo; response vẫn phải dùng projection/serializer an toàn.
 
@@ -128,6 +134,15 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/terminal/decision/latest-account` | [terminal](../server/src/routes/terminal.js) |
 | GET/PUT | `/api/auth/me/risk-profile` | [auth](../server/src/routes/auth.js) |
 | POST | `/api/terminal/coach` | Wrapper → decision pipeline ([terminal](../server/src/routes/terminal.js)) |
+| GET | `/api/smart-money/status` | [smart-money](../server/src/routes/smart-money.js) |
+| GET | `/api/smart-money/symbols` | [smart-money](../server/src/routes/smart-money.js) |
+| GET | `/api/smart-money/symbols/:symbol` | [smart-money](../server/src/routes/smart-money.js) |
+| GET | `/api/smart-money/symbols/:symbol/history` | [smart-money](../server/src/routes/smart-money.js) |
+| GET | `/api/smart-money/events` | [smart-money](../server/src/routes/smart-money.js) |
+| GET | `/api/smart-money/candidates` | [smart-money](../server/src/routes/smart-money.js) |
+| GET/PUT | `/api/smart-money/watchlist` | [smart-money](../server/src/routes/smart-money.js) |
+| GET | `/api/smart-money/money-flow/:symbol` | [smart-money](../server/src/routes/smart-money.js) |
+| POST | `/api/smart-money/refresh` | [smart-money](../server/src/routes/smart-money.js) — `smart_money.manage` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders/cancel-batch` | [trading](../server/src/routes/trading.js) |

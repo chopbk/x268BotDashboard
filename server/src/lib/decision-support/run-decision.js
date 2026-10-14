@@ -9,6 +9,10 @@ const { computeAccountMetrics } = require("./account-metrics");
 const { buildPositionScenarios, buildAccountScenarios } = require("./scenarios");
 const { generateAiReport } = require("./ai-report");
 const { makeSnapshotId, saveReport, listReports, latestAccountReport } = require("./report-store");
+const { getLatestSnapshot } = require("../smart-money/store");
+const { toMarketContext } = require("../smart-money/money-flow");
+const { listEvents } = require("../smart-money/detector");
+const { getCandidates } = require("../smart-money/candidates");
 
 const lastJob = new Map();
 const QUOTA_MS = 20_000;
@@ -100,6 +104,29 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
 
     const technicalBrief = buildTechnicalBrief(market, { side, symbol });
 
+    let marketContext = { available: false, missing: ["smart_money_snapshot"] };
+    try {
+        const smSnap = await getLatestSnapshot(symbol);
+        const events = smSnap ? await listEvents({ symbol, limit: 5 }) : [];
+        const candDoc = await getCandidates().catch(() => null);
+        const candItems = (candDoc?.items || []).filter((i) => i.symbol === symbol).slice(0, 3);
+        marketContext = toMarketContext(smSnap, {
+            events: events.map((e) => ({
+                type: e.type,
+                direction: e.direction,
+                at: e.at,
+                zScore: e.zScore,
+                smallSample: e.smallSample,
+                message: e.message,
+            })),
+            candidates: candItems,
+        });
+        if (!marketContext.available) missingData.push("smart_money");
+    } catch (error) {
+        console.warn("[runPositionDecision] marketContext", error.message || error);
+        missingData.push("smart_money");
+    }
+
     const snapshot = {
         scope: "position",
         account,
@@ -108,6 +135,7 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
         metrics,
         market: market.error ? { error: market.error } : market,
         technicalBrief,
+        marketContext,
         scenarios,
         riskProfile: riskConfigured ? profile : null,
         riskProfileConfigured: riskConfigured,
@@ -174,6 +202,7 @@ async function runPositionDecision(actor, body = {}, deps = {}) {
                 note: market.note,
             },
             technical: technicalBrief.cards,
+            marketContext,
             scenarios,
             riskProfileConfigured: riskConfigured,
             missingData,
