@@ -32,6 +32,9 @@ const PERMISSIONS = Object.freeze({
   USERS_DISABLE: "users.disable",
   USERS_RESET_PASSWORD: "users.reset_password",
   LOGS_VIEW: "logs.view",
+  PROCESSES_VIEW: "processes.view",
+  PROCESSES_EDIT: "processes.edit",
+  PROCESSES_RESTART: "processes.restart",
   USERS_MANAGE: "users.manage",
   SIGNALS_VIEW: "signals.view",
   SIGNALS_MANAGE: "signals.manage",
@@ -174,6 +177,24 @@ const DEFINITIONS = [
     "log",
     [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
   ],
+  [
+    PERMISSIONS.PROCESSES_VIEW,
+    "Xem chi tiết process / profile env",
+    "process",
+    [SCOPES.ALL],
+  ],
+  [
+    PERMISSIONS.PROCESSES_EDIT,
+    "Sửa bot_profile env / rollback",
+    "process",
+    [SCOPES.ALL],
+  ],
+  [
+    PERMISSIONS.PROCESSES_RESTART,
+    "Restart / reload process PM2",
+    "process",
+    [SCOPES.ALL],
+  ],
 ].map(([key, label, group, allowedScopes]) =>
   Object.freeze({ key, label, group, allowedScopes }),
 );
@@ -212,6 +233,11 @@ const OPERATOR_PERMISSIONS = [
   PERMISSIONS.ORDERS_CANCEL,
   PERMISSIONS.LOGS_VIEW,
 ];
+const PROCESS_PERMISSIONS = [
+  PERMISSIONS.PROCESSES_VIEW,
+  PERMISSIONS.PROCESSES_EDIT,
+  PERMISSIONS.PROCESSES_RESTART,
+];
 const SELF_PROFILE_PERMISSIONS = [
   PERMISSIONS.USERS_EDIT,
   PERMISSIONS.USERS_RESET_PASSWORD,
@@ -226,6 +252,9 @@ const ROLE_PERMISSIONS = Object.freeze({
     ...Object.keys(PERMISSION_DEFINITIONS),
     PERMISSIONS.USERS_MANAGE,
   ]),
+  ops: Object.freeze(
+    withSelfProfile([...OPERATOR_PERMISSIONS, ...PROCESS_PERMISSIONS]),
+  ),
   supervisor: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)),
   auditor: Object.freeze(
     withSelfProfile([...VIEWER_PERMISSIONS, PERMISSIONS.LOGS_VIEW]),
@@ -247,6 +276,7 @@ const ROLE_LABELS = Object.freeze({
   collaborator: "Sửa của mình, xem user được gán",
   operator: "Sửa của mình và user được gán",
   supervisor: "Sửa của mình, xem tất cả",
+  ops: "Vận hành hệ thống (env/PM2)",
   auditor: "Kiểm toán - xem tất cả",
   admin: "Quản trị hệ thống",
   viewer: "Viewer (legacy)",
@@ -269,6 +299,11 @@ const ROLE_SCOPES = Object.freeze({
     ),
   }),
   operator: scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN_ASSIGNED),
+  ops: Object.freeze({
+    ...scopeMap(OPERATOR_PERMISSIONS, SCOPES.OWN_ASSIGNED),
+    [PERMISSIONS.LOGS_VIEW]: SCOPES.ALL,
+    ...scopeMap(PROCESS_PERMISSIONS, SCOPES.ALL),
+  }),
   supervisor: Object.freeze({
     ...scopeMap(VIEWER_PERMISSIONS, SCOPES.ALL),
     ...scopeMap(

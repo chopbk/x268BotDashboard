@@ -30,6 +30,7 @@ const GROUP_LABELS = {
   api: "API / credential",
   user: "Người dùng",
   log: "Log / hệ thống",
+  process: "Process env / PM2",
 };
 
 const GROUP_ORDER = [
@@ -43,6 +44,7 @@ const GROUP_ORDER = [
   "api",
   "user",
   "log",
+  "process",
 ];
 
 export default function AdminUsersPage() {

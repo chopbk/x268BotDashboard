@@ -1,20 +1,25 @@
 const express = require("express");
-const { requireAuth } = require("../middleware/auth");
+const { requireAuth, requirePermission } = require("../middleware/auth");
+const { PERMISSIONS, hasPermission } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 const processAdmin = require("../lib/process-admin");
 
 const router = express.Router();
 
-function requireAdmin(req, res, next) {
-    if (req.webUser?.role !== "admin") {
-        return res.status(403).json({ error: "Chỉ admin" });
+function requireProcessRead(req, res, next) {
+    if (
+        hasPermission(req.webUser, PERMISSIONS.PROCESSES_VIEW) ||
+        hasPermission(req.webUser, PERMISSIONS.PROCESSES_EDIT) ||
+        hasPermission(req.webUser, PERMISSIONS.PROCESSES_RESTART)
+    ) {
+        return next();
     }
-    next();
+    return res.status(403).json({ error: "Không có quyền xem process" });
 }
 
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth);
 
-router.get("/registry", async (req, res) => {
+router.get("/registry", requireProcessRead, async (req, res) => {
     try {
         const [registry, references] = await Promise.all([
             processAdmin.getRegistry(),
@@ -26,7 +31,7 @@ router.get("/registry", async (req, res) => {
     }
 });
 
-router.get("/commands/:id", async (req, res) => {
+router.get("/commands/:id", requireProcessRead, async (req, res) => {
     try {
         res.json(await processAdmin.getCommand(req.params.id));
     } catch (error) {
@@ -34,7 +39,7 @@ router.get("/commands/:id", async (req, res) => {
     }
 });
 
-router.get("/:env/revisions", async (req, res) => {
+router.get("/:env/revisions", requireProcessRead, async (req, res) => {
     try {
         res.json({ revisions: await processAdmin.listRevisions(req.params.env) });
     } catch (error) {
@@ -42,7 +47,7 @@ router.get("/:env/revisions", async (req, res) => {
     }
 });
 
-router.get("/:env/commands", async (req, res) => {
+router.get("/:env/commands", requireProcessRead, async (req, res) => {
     try {
         res.json({ commands: await processAdmin.listCommandsForEnv(req.params.env) });
     } catch (error) {
@@ -50,7 +55,7 @@ router.get("/:env/commands", async (req, res) => {
     }
 });
 
-router.get("/:env", async (req, res) => {
+router.get("/:env", requireProcessRead, async (req, res) => {
     try {
         res.json(await processAdmin.getProfileDetail(req.params.env));
     } catch (error) {
@@ -58,7 +63,7 @@ router.get("/:env", async (req, res) => {
     }
 });
 
-router.patch("/:env", async (req, res) => {
+router.patch("/:env", requirePermission(PERMISSIONS.PROCESSES_EDIT), async (req, res) => {
     try {
         const result = await processAdmin.patchProfile(req.params.env, req.body || {}, req.webUser);
         if (result.errors) {
@@ -76,7 +81,7 @@ router.patch("/:env", async (req, res) => {
     }
 });
 
-router.post("/:env/rollback", async (req, res) => {
+router.post("/:env/rollback", requirePermission(PERMISSIONS.PROCESSES_EDIT), async (req, res) => {
     try {
         res.json(await processAdmin.rollbackProfile(req.params.env, req.body || {}, req.webUser));
     } catch (error) {
@@ -87,7 +92,7 @@ router.post("/:env/rollback", async (req, res) => {
     }
 });
 
-router.post("/:env/commands", async (req, res) => {
+router.post("/:env/commands", requirePermission(PERMISSIONS.PROCESSES_RESTART), async (req, res) => {
     try {
         res.status(201).json(await processAdmin.createCommand(req.params.env, req.body || {}, req.webUser));
     } catch (error) {

@@ -94,20 +94,17 @@ web-bot implement thin service mirror contract binance-bot trên Mongo chung (**
 - `logs.view` + scope `all` — như hiện tại ([auth-rbac-spec](auth-rbac-spec.md) § system-health).
 - Response health **không** trả secret; có thể kèm `desiredRevision` / `drift` (metadata công khai vận hành).
 
-### Sửa env / restart (Phase 1)
-
-- Mutation API: chỉ **`role === admin`**.
-- UI: nút Sửa / Restart / Rollback chỉ hiện khi `user.role === "admin"` (Phase 1). User chỉ `logs.view` vẫn xem bảng, không thao tác.
-
-### Phase 2 — permission (cập nhật `access-control.js` + auth-rbac-spec cùng PR)
+### Sửa env / restart
 
 | Permission | Dùng cho |
 |---|---|
-| `processes.view` | (optional) tách xem profile detail giàu hơn health |
+| `processes.view` | Mở panel / đọc profile, revisions, commands |
 | `processes.edit` | PATCH / rollback |
-| `processes.restart` | POST command |
+| `processes.restart` | POST command restart/reload |
 
 Scope chỉ `all` (fleet process, không map `botUsernames`).  
+Role template **`ops`**: operator (bot được gán) + `logs.view=all` + ba quyền process.  
+Admin luôn có đủ. User chỉ `logs.view` vẫn xem bảng health, không thao tác env.  
 Ẩn nút ≠ bỏ check server.
 
 High-risk keys (`TRADER`, `MONITOR`, `LISTENER`, `RUN`, `MQTT`, `TELE`, `TELE_CLIENT`, `SERVER`, `MAX_VOLUME`): confirm gõ lại tên process/profile trước Save+Restart.
@@ -270,7 +267,7 @@ Thêm Mongoose model mirror schema bot. Không phá dữ liệu hiện có.
 1. ~~Sửa spec + feature-spec / index~~ — xong.
 2. ~~Server: join profile + models + `/api/admin/processes*` + unit test~~ — xong.
 3. ~~Client: cột + panel + poll trên `SystemHealthPage`~~ — xong.
-4. Phase 2: `processes.*` trong access-control + auth-rbac-spec (không chỉ `role === admin`).
+4. ~~Phase 2: `processes.*` + role `ops`~~ — xong.
 5. E2E staging: 1 listener + control agent.
 
 ---

@@ -55,6 +55,7 @@ Nguồn chuẩn duy nhất: `server/src/auth/access-control.js`.
 | `collaborator` | Sửa của mình, xem tài nguyên được gán | Admin cấp |
 | `operator` | Xem và sửa tài nguyên của mình hoặc được gán | Admin cấp |
 | `supervisor` | Xem toàn hệ thống, chỉ sửa tài nguyên của mình | Admin cấp |
+| `ops` | Vận hành bot được gán + xem Hệ thống + sửa env/restart PM2 | Admin cấp |
 | `auditor` | Xem chi tiết toàn hệ thống, không sửa | Admin cấp |
 | `admin` | Quản trị hệ thống và thấy mọi bot | Bootstrap hoặc admin khác cấp |
 | `user` | Legacy, quyền tương đương `viewer` | Không cấp mới; giữ đến khi có migration |
@@ -76,6 +77,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | API | `credentials.view`, `credentials.manage` |
 | User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
 | Log | `logs.view` |
+| Process env / PM2 | `processes.view`, `processes.edit`, `processes.restart` (scope chỉ `all`) |
 
 `config.*` bao trọn `Account_Config`: signal, trade config, symbol blacklist/whitelist và
 các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
@@ -404,7 +406,9 @@ Các invariant:
 | `GET /api/audit-logs` | `requireAuth` | `logs.view`; scope `all`, `assigned`, `own` được lọc tại query server. Đây là lịch sử chỉnh sửa web, collection `web_audit_logs` |
 | `GET /api/runtime-logs` | `requireAuth` | `logs.view`; log lỗi runtime của binance-bot trong `bot_runtime_logs`, giữ 30 ngày. Category `open`, `exchange`, `monitor`, `tpsl`, `listener`, `mqtt`, `signal`, `process`. Scope không phải `all` chỉ thấy log của bot user được gán và không thấy listener, MQTT, PM2 |
 | `GET /api/system-health` | `requireAuth` | `logs.view` scope `all`. Heartbeat `bot_heartbeats` (+ join `bot_profile` Rev/Drift): MongoDB, Redis, MQTT, Telegram V1/V2, Discord, trader, monitor, signal, DCA/MTF, poster/webhook, PM2. Cảnh báo listener/trader MQTT/monitor/position/snapshot/Redis/credential |
-| `GET/PATCH/POST /api/admin/processes*` | `requireAuth` + `role === admin` | Đọc/sửa `bot_profile`, revisions, queue `bot_control_commands`. Phase 1 chưa tách permission `processes.*` |
+| `GET /api/admin/processes*` (đọc) | `requireAuth` | `processes.view` hoặc `processes.edit` hoặc `processes.restart` |
+| `PATCH/POST …/rollback` | `requireAuth` | `processes.edit` — sửa `bot_profile` / rollback revision |
+| `POST …/commands` | `requireAuth` | `processes.restart` — queue `bot_control_commands` |
 
 Quy ước HTTP:
 

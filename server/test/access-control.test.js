@@ -48,6 +48,18 @@ test("admin always has the full template even if custom permissions are empty", 
     assert.deepEqual(permissions, permissionsForRole("admin"));
     assert.equal(permissions.includes(PERMISSIONS.USERS_MANAGE), true);
     assert.equal(permissions.includes(PERMISSIONS.CREDENTIALS_VIEW), true);
+    assert.equal(permissions.includes(PERMISSIONS.PROCESSES_EDIT), true);
+});
+
+test("ops role can view system logs and edit/restart processes with all scope", () => {
+    const user = { role: "ops" };
+    assert.equal(hasPermission(user, PERMISSIONS.PROCESSES_VIEW), true);
+    assert.equal(hasPermission(user, PERMISSIONS.PROCESSES_EDIT), true);
+    assert.equal(hasPermission(user, PERMISSIONS.PROCESSES_RESTART), true);
+    assert.equal(hasPermission(user, PERMISSIONS.BOTS_OPERATE), true);
+    assert.equal(scopeForPermission(user, PERMISSIONS.LOGS_VIEW), "all");
+    assert.equal(scopeForPermission(user, PERMISSIONS.PROCESSES_EDIT), "all");
+    assert.equal(scopeForPermission(user, PERMISSIONS.CONFIG_EDIT), "own_assigned");
 });
 
 test("unknown custom permissions fail closed", () => {

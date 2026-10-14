@@ -29,9 +29,18 @@ const ROLE_KEYS = new Set([
   "DCA_MTF_BOT", "SERVER", "TRADINGVIEW_WEBHOOK", "WEBHOOK", "SCHEDULE_SIGNAL", "DEBUG",
 ]);
 
+function hasPerm(user, key) {
+  return (user?.permissions || []).includes(key);
+}
+
 export default function SystemHealthPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const canProcessView =
+    hasPerm(user, "processes.view") ||
+    hasPerm(user, "processes.edit") ||
+    hasPerm(user, "processes.restart");
+  const canProcessEdit = hasPerm(user, "processes.edit");
+  const canProcessRestart = hasPerm(user, "processes.restart");
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -103,7 +112,9 @@ export default function SystemHealthPage() {
         <h1>Hệ thống</h1>
         <p className="muted">
           Heartbeat process bot, MongoDB, Redis và snapshot. Quá 90 giây không có nhịp là mất kết nối.
-          {isAdmin ? " Admin có thể mở process để sửa env / restart." : ""}
+          {canProcessView
+            ? " Có quyền process: mở dòng để xem profile; sửa env cần processes.edit; restart cần processes.restart."
+            : ""}
         </p>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
@@ -177,15 +188,15 @@ export default function SystemHealthPage() {
                   <th>Command</th>
                   <th>RAM</th>
                   <th>Heartbeat</th>
-                  {isAdmin ? <th></th> : null}
+                  {canProcessView ? <th></th> : null}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr
                     key={row.key}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => openProcess(row)}
+                    style={{ cursor: canProcessView ? "pointer" : undefined }}
+                    onClick={() => canProcessView && openProcess(row)}
                   >
                     <td>
                       {row.processName}
@@ -211,10 +222,10 @@ export default function SystemHealthPage() {
                     <td>{row.lastCommand ? `${row.lastCommand.kind}:${row.lastCommand.status}` : "—"}</td>
                     <td>{row.memoryMb == null ? "—" : `${row.memoryMb} MB`}</td>
                     <td className={row.status === "down" ? "negative" : ""}>{when(row.at)}</td>
-                    {isAdmin ? (
+                    {canProcessView ? (
                       <td onClick={(e) => e.stopPropagation()}>
                         <button type="button" className="ghost" onClick={() => openProcess(row)}>
-                          Sửa
+                          {canProcessEdit || canProcessRestart ? "Sửa" : "Xem"}
                         </button>
                       </td>
                     ) : null}
@@ -227,10 +238,11 @@ export default function SystemHealthPage() {
         </>
       ) : null}
 
-      {selectedRow ? (
+      {selectedRow && canProcessView ? (
         <ProcessAdminPanel
           row={selectedRow}
-          isAdmin={isAdmin}
+          canEdit={canProcessEdit}
+          canRestart={canProcessRestart}
           onClose={closeProcess}
           onChanged={() => load()}
         />
@@ -239,7 +251,7 @@ export default function SystemHealthPage() {
   );
 }
 
-function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
+function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
   const envKey = String(row.profileEnv || row.processName || "").toUpperCase();
   const [tab, setTab] = useState("overview");
   const [detail, setDetail] = useState(null);
@@ -288,7 +300,7 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
     const active = commands.find((c) =>
       ["queued", "claimed", "restarting", "waiting_heartbeat"].includes(c.status)
     );
-    if (!active || !isAdmin) return undefined;
+    if (!active || (!canEdit && !canRestart)) return undefined;
     const timer = setInterval(async () => {
       try {
         const cmd = await api(`/api/admin/processes/commands/${active.id}`);
@@ -302,7 +314,7 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
       }
     }, 2500);
     return () => clearInterval(timer);
-  }, [commands, isAdmin, loadDetail, onChanged]);
+  }, [commands, canEdit, canRestart, loadDetail, onChanged]);
 
   function setKey(key, value) {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -591,7 +603,7 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
                           {isRole ? (
                             <select
                               value={value === "true" ? "true" : "unset"}
-                              disabled={!isAdmin}
+                              disabled={!canEdit}
                               onChange={(e) => {
                                 if (e.target.value === "true") setKey(entry.key, "true");
                                 else clearKey(entry.key);
@@ -603,7 +615,7 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
                           ) : refOptions ? (
                             <select
                               value={value}
-                              disabled={!isAdmin}
+                              disabled={!canEdit}
                               onChange={(e) => {
                                 if (!e.target.value) clearKey(entry.key);
                                 else setKey(entry.key, e.target.value);
@@ -619,12 +631,12 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
                           ) : (
                             <input
                               value={value}
-                              disabled={!isAdmin}
+                              disabled={!canEdit}
                               onChange={(e) => setKey(entry.key, e.target.value)}
                               placeholder={entry.help || ""}
                             />
                           )}
-                          {isAdmin ? (
+                          {canEdit ? (
                             <button type="button" className="ghost" onClick={() => clearKey(entry.key)}>
                               Unset
                             </button>
@@ -639,38 +651,48 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
               ) : null
             )}
 
-            {isAdmin ? (
+            {canEdit || canRestart ? (
               <div className="card" style={{ display: "grid", gap: 8 }}>
                 <label>
-                  Reason (bắt buộc khi lưu)
+                  Reason (bắt buộc khi lưu / restart)
                   <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Vì sao đổi" />
                 </label>
-                <label>
-                  Confirm process name (high-risk)
-                  <input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={envKey} />
-                </label>
+                {canEdit ? (
+                  <label>
+                    Confirm process name (high-risk)
+                    <input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={envKey} />
+                  </label>
+                ) : null}
                 {preview?.diff?.length ? (
                   <pre className="muted" style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
                     {preview.diff.map((d) => `${d.key}: ${d.before ?? "∅"} → ${d.after ?? "∅"}`).join("\n")}
                   </pre>
                 ) : null}
                 <div className="modal-actions">
-                  <button type="button" className="ghost" disabled={busy} onClick={runPreview}>
-                    Preview
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => runSave({ restart: false })}>
-                    Lưu
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => runSave({ restart: true })}>
-                    Lưu + Restart
-                  </button>
-                  <button type="button" className="ghost" disabled={busy} onClick={runRestartOnly}>
-                    Restart
-                  </button>
+                  {canEdit ? (
+                    <>
+                      <button type="button" className="ghost" disabled={busy} onClick={runPreview}>
+                        Preview
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => runSave({ restart: false })}>
+                        Lưu
+                      </button>
+                      {canRestart ? (
+                        <button type="button" disabled={busy} onClick={() => runSave({ restart: true })}>
+                          Lưu + Restart
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {canRestart ? (
+                    <button type="button" className="ghost" disabled={busy} onClick={runRestartOnly}>
+                      Restart
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : (
-              <p className="muted">Chỉ admin mới sửa env / restart.</p>
+              <p className="muted">Chỉ xem. Cần processes.edit để sửa env, processes.restart để restart.</p>
             )}
           </div>
         ) : null}
@@ -690,7 +712,7 @@ function ProcessAdminPanel({ row, isAdmin, onClose, onChanged }) {
                 </pre>
               </article>
             ))}
-            {isAdmin ? (
+            {canEdit ? (
               <div className="card" style={{ display: "grid", gap: 8 }}>
                 <label>
                   Rollback về revision
