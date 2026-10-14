@@ -1,13 +1,18 @@
 const express = require("express");
-const { requireAuth, requirePermission } = require("../middleware/auth");
+const { requireAuth } = require("../middleware/auth");
 const { PERMISSIONS, hasPermission } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 const processAdmin = require("../lib/process-admin");
 
 const router = express.Router();
 
+function isAdminUser(user) {
+    return user?.role === "admin";
+}
+
 function requireProcessRead(req, res, next) {
     if (
+        isAdminUser(req.webUser) ||
         hasPermission(req.webUser, PERMISSIONS.PROCESSES_VIEW) ||
         hasPermission(req.webUser, PERMISSIONS.PROCESSES_EDIT) ||
         hasPermission(req.webUser, PERMISSIONS.PROCESSES_RESTART)
@@ -15,6 +20,20 @@ function requireProcessRead(req, res, next) {
         return next();
     }
     return res.status(403).json({ error: "Không có quyền xem process" });
+}
+
+function requireProcessEdit(req, res, next) {
+    if (isAdminUser(req.webUser) || hasPermission(req.webUser, PERMISSIONS.PROCESSES_EDIT)) {
+        return next();
+    }
+    return res.status(403).json({ error: "Không có quyền sửa process env" });
+}
+
+function requireProcessRestart(req, res, next) {
+    if (isAdminUser(req.webUser) || hasPermission(req.webUser, PERMISSIONS.PROCESSES_RESTART)) {
+        return next();
+    }
+    return res.status(403).json({ error: "Không có quyền restart process" });
 }
 
 router.use(requireAuth);
@@ -63,7 +82,7 @@ router.get("/:env", requireProcessRead, async (req, res) => {
     }
 });
 
-router.patch("/:env", requirePermission(PERMISSIONS.PROCESSES_EDIT), async (req, res) => {
+router.patch("/:env", requireProcessEdit, async (req, res) => {
     try {
         const result = await processAdmin.patchProfile(req.params.env, req.body || {}, req.webUser);
         if (result.errors) {
@@ -81,7 +100,7 @@ router.patch("/:env", requirePermission(PERMISSIONS.PROCESSES_EDIT), async (req,
     }
 });
 
-router.post("/:env/rollback", requirePermission(PERMISSIONS.PROCESSES_EDIT), async (req, res) => {
+router.post("/:env/rollback", requireProcessEdit, async (req, res) => {
     try {
         res.json(await processAdmin.rollbackProfile(req.params.env, req.body || {}, req.webUser));
     } catch (error) {
@@ -92,7 +111,7 @@ router.post("/:env/rollback", requirePermission(PERMISSIONS.PROCESSES_EDIT), asy
     }
 });
 
-router.post("/:env/commands", requirePermission(PERMISSIONS.PROCESSES_RESTART), async (req, res) => {
+router.post("/:env/commands", requireProcessRestart, async (req, res) => {
     try {
         res.status(201).json(await processAdmin.createCommand(req.params.env, req.body || {}, req.webUser));
     } catch (error) {

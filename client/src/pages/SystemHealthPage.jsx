@@ -35,12 +35,15 @@ function hasPerm(user, key) {
 
 export default function SystemHealthPage() {
   const { user } = useAuth();
+  // Admin luôn đủ quyền process (kể cả session/cache cũ thiếu processes.* trong mảng permissions).
+  const isAdmin = user?.role === "admin";
   const canProcessView =
+    isAdmin ||
     hasPerm(user, "processes.view") ||
     hasPerm(user, "processes.edit") ||
     hasPerm(user, "processes.restart");
-  const canProcessEdit = hasPerm(user, "processes.edit");
-  const canProcessRestart = hasPerm(user, "processes.restart");
+  const canProcessEdit = isAdmin || hasPerm(user, "processes.edit");
+  const canProcessRestart = isAdmin || hasPerm(user, "processes.restart");
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -113,8 +116,8 @@ export default function SystemHealthPage() {
         <p className="muted">
           Heartbeat process bot, MongoDB, Redis và snapshot. Quá 90 giây không có nhịp là mất kết nối.
           {canProcessView
-            ? " Có quyền process: mở dòng để xem profile; sửa env cần processes.edit; restart cần processes.restart."
-            : ""}
+            ? " Để sửa env / restart: bấm một dòng Process (hoặc nút Sửa) → tab Env → Preview / Lưu / Restart."
+            : " Chỉ xem health. Cần processes.edit / processes.restart (hoặc role ops/admin) để sửa env."}
         </p>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
@@ -253,7 +256,7 @@ export default function SystemHealthPage() {
 
 function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
   const envKey = String(row.profileEnv || row.processName || "").toUpperCase();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(canEdit || canRestart ? "env" : "overview");
   const [detail, setDetail] = useState(null);
   const [registry, setRegistry] = useState([]);
   const [references, setReferences] = useState({ mqtt: [], tele: [], teleClient: [] });
