@@ -18,8 +18,8 @@ const CANDIDATE_VERSION = "sm-candidate-v1";
 
 const config = Object.freeze({
     enabled: boolEnv("SMART_MONEY_ENABLED", true),
-    topN: intEnv("SMART_MONEY_TOP_N", 30),
-    maxSymbols: intEnv("SMART_MONEY_MAX_SYMBOLS", 50),
+    topN: intEnv("SMART_MONEY_TOP_N", 10),
+    maxSymbols: intEnv("SMART_MONEY_MAX_SYMBOLS", 30),
     stickyMs: intEnv("SMART_MONEY_STICKY_MS", 2 * 60 * 60 * 1000),
     universeRefreshMs: intEnv("SMART_MONEY_UNIVERSE_MS", 60 * 60 * 1000),
     retentionDays: intEnv("SMART_MONEY_RETENTION_DAYS", 90),

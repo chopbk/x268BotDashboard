@@ -48,7 +48,7 @@ Scheduler (lease Redis/Mongo)
 
 ## 4. Chọn symbol
 
-- Mặc định top N (30) crypto USDT perpetual theo `quoteVolume` 24h; chỉ `TRADING`; loại `TRADIFI_PERPETUAL` / non-crypto.
+- Mặc định top N (**10**) crypto USDT perpetual theo `quoteVolume` 24h; chỉ `TRADING`; loại `TRADIFI_PERPETUAL` / non-crypto.
 - Bổ sung: symbol đang có vị thế (từ Redis sổ chung, không gắn user) + watchlist hệ thống/user được phép.
 - Dedup theo symbol; `SMART_MONEY_MAX_SYMBOLS`.
 - Làm mới top volume mỗi 60 phút + thời gian giữ tối thiểu (sticky) tránh churn.
@@ -151,8 +151,8 @@ Mỗi symbol có object chuẩn hóa (rút gọn):
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `SMART_MONEY_ENABLED` | `true` | Bật scheduler |
-| `SMART_MONEY_TOP_N` | `30` | Top volume |
-| `SMART_MONEY_MAX_SYMBOLS` | `50` | Trần tổng |
+| `SMART_MONEY_TOP_N` | `10` | Top volume |
+| `SMART_MONEY_MAX_SYMBOLS` | `30` | Trần tổng (watchlist/vị thế bổ sung) |
 | `SMART_MONEY_STICKY_MS` | `7200000` | Giữ symbol rời top tối thiểu |
 | `SMART_MONEY_RETENTION_DAYS` | `90` | TTL raw history |
 | `SMART_MONEY_SM_GAP_MS` | `13000` | Gap request bapi |

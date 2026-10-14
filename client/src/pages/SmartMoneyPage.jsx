@@ -64,7 +64,7 @@ export default function SmartMoneyPage() {
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "market";
   const symbol = (params.get("symbol") || "").toUpperCase();
   const q = params.get("q") || "";
-  const top = params.get("top") || "30";
+  const top = params.get("top") || "10";
   const bias = params.get("bias") || "all";
   const freshness = params.get("freshness") || "";
   const anomaly = params.get("anomaly") === "1";
@@ -253,9 +253,9 @@ export default function SmartMoneyPage() {
           <label>
             Top
             <select value={top} onChange={(e) => patchParams({ top: e.target.value })}>
+              <option value="10">10</option>
               <option value="20">20</option>
               <option value="30">30</option>
-              <option value="50">50</option>
             </select>
           </label>
           <label>
