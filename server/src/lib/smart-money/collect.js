@@ -36,11 +36,11 @@ async function safe(name, fn, metrics) {
     }
 }
 
-function carryOi(previous) {
+function carryOi(previous, markStale = true) {
     if (previous?.openInterest?.status !== "ok") return null;
     return {
         ok: true,
-        _staleCarry: true,
+        _staleCarry: Boolean(markStale),
         data: {
             qty: previous.openInterest.qty,
             notional: previous.openInterest.notional,
@@ -53,17 +53,17 @@ function carryOi(previous) {
     };
 }
 
-function carryFunding(previous) {
+function carryFunding(previous, markStale = true) {
     if (previous?.funding?.status !== "ok") return null;
     const { status, ...rest } = previous.funding;
-    return { ok: true, _staleCarry: true, data: rest };
+    return { ok: true, _staleCarry: Boolean(markStale), data: rest };
 }
 
-function carryTop(previous) {
+function carryTop(previous, markStale = true) {
     if (previous?.topTrader?.status !== "ok") return null;
     return {
         ok: true,
-        _staleCarry: true,
+        _staleCarry: Boolean(markStale),
         data: {
             period: previous.topTrader.period,
             accountLsr: previous.topTrader.accountLsr,
@@ -81,11 +81,11 @@ function carryTop(previous) {
     };
 }
 
-function carrySmartMoney(previous) {
+function carrySmartMoney(previous, markStale = true) {
     if (previous?.smartMoney?.status !== "ok") return null;
     return {
         ok: true,
-        _staleCarry: true,
+        _staleCarry: Boolean(markStale),
         data: {
             cohortId: previous.smartMoney.cohortId,
             signalDay: previous.smartMoney.signalDay,
@@ -94,6 +94,15 @@ function carrySmartMoney(previous) {
             whales: previous.smartMoney.whales,
             longShortRatio: previous.smartMoney.longShortRatio,
         },
+    };
+}
+
+function carryPrice(previous) {
+    if (previous?.price?.status !== "ok" && previous?.price?.mark == null) return null;
+    return {
+        lastPrice: previous.price.mark ?? null,
+        priceChangePercent: previous.price.changePct24h ?? null,
+        quoteVolume: previous.price.quoteVolume24h ?? null,
     };
 }
 
@@ -112,22 +121,27 @@ async function collectSymbol(symbol, opts = {}) {
     let topTrader = null;
     let smartMoney = null;
 
+    // Chỉ fetch phần due; phần không gọi phải giữ snapshot cũ — tránh ghi đè SM=missing khi chỉ cập nhật OI.
     if (parts.has("oi")) oi = await safe("oi", () => fetchOpenInterest(sym), metrics);
+    else oi = carryOi(previous, false);
     if (parts.has("funding")) funding = await safe("funding", () => fetchFunding(sym), metrics);
+    else funding = carryFunding(previous, false);
     if (parts.has("top")) topTrader = await safe("top", () => fetchTopTraderBundle(sym, "1h"), metrics);
+    else topTrader = carryTop(previous, false);
     if (parts.has("smartMoney")) smartMoney = await safe("smartMoney", () => fetchSmartMoneyOverview(sym), metrics);
+    else smartMoney = carrySmartMoney(previous, false);
 
-    if (oi && !oi.ok) oi = carryOi(previous) || oi;
-    if (funding && !funding.ok) funding = carryFunding(previous) || funding;
-    if (topTrader && !topTrader.ok) topTrader = carryTop(previous) || topTrader;
-    if (smartMoney && !smartMoney.ok) smartMoney = carrySmartMoney(previous) || smartMoney;
+    if (oi && !oi.ok) oi = carryOi(previous, true) || oi;
+    if (funding && !funding.ok) funding = carryFunding(previous, true) || funding;
+    if (topTrader && !topTrader.ok) topTrader = carryTop(previous, true) || topTrader;
+    if (smartMoney && !smartMoney.ok) smartMoney = carrySmartMoney(previous, true) || smartMoney;
 
     const collectedAt = new Date().toISOString();
     const snapshot = buildSnapshot({
         symbol: sym,
         tracking: opts.tracking || previous?.tracking || { active: true, sources: [] },
         collectedAt,
-        price: opts.price || null,
+        price: opts.price || carryPrice(previous),
         oi,
         funding,
         topTrader,
