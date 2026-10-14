@@ -925,6 +925,42 @@ th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
 .ledger-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .ledger-tools label { width: 160px; }
 .ledger-tools .check { width: auto; align-items: center; }
+.process-env-toolbar { flex-wrap: wrap; gap: 8px; }
+.process-env-section { padding: 0; overflow: hidden; }
+.process-env-section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.process-env-section-toggle:hover { background: color-mix(in srgb, var(--surface) 80%, var(--text)); }
+.process-env-caret { width: 1rem; color: var(--muted); }
+.process-env-section-toggle strong { flex: 1; font-size: 0.95rem; }
+.process-env-section-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.process-env-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .process-env-row { grid-template-columns: 1fr; }
+}
+
 .health-alerts { margin: 0 0 16px; padding-left: 18px; color: var(--danger); }
 .health-ok strong { color: var(--ok); }
 .health-warn strong { color: var(--warn, #e0a106); }

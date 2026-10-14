@@ -29,6 +29,9 @@ const ROLE_KEYS = new Set([
   "DCA_MTF_BOT", "SERVER", "TRADINGVIEW_WEBHOOK", "WEBHOOK", "SCHEDULE_SIGNAL", "DEBUG",
 ]);
 
+/** Nhóm env mặc định mở khi vào tab Env (còn lại thu gọn). */
+const DEFAULT_OPEN_ENV_GROUPS = new Set(["Role", "Kết_nối"]);
+
 function hasPerm(user, key) {
   return (user?.permissions || []).includes(key);
 }
@@ -271,6 +274,7 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const [rollbackTo, setRollbackTo] = useState("");
+  const [openEnvGroups, setOpenEnvGroups] = useState(() => new Set(DEFAULT_OPEN_ENV_GROUPS));
 
   const loadDetail = useCallback(async () => {
     if (!envKey) return;
@@ -530,6 +534,36 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
     return groups;
   }, [registry]);
 
+  const groupNames = useMemo(
+    () => Object.entries(grouped).filter(([, entries]) => entries.length).map(([name]) => name),
+    [grouped]
+  );
+
+  function toggleEnvGroup(name) {
+    setOpenEnvGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function setAllEnvGroups(open) {
+    setOpenEnvGroups(open ? new Set(groupNames) : new Set());
+  }
+
+  function setDefaultEnvGroups() {
+    setOpenEnvGroups(new Set(DEFAULT_OPEN_ENV_GROUPS));
+  }
+
+  function filledCount(entries) {
+    return entries.filter((entry) => {
+      if (unset.has(entry.key)) return false;
+      const value = draft[entry.key];
+      return value != null && String(value) !== "";
+    }).length;
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card process-admin-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920, width: "96vw", maxHeight: "92vh", overflow: "auto" }}>
@@ -581,78 +615,107 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
 
         {detail && tab === "env" ? (
           <div style={{ display: "grid", gap: 16 }}>
-            {Object.entries(grouped).map(([name, entries]) =>
-              entries.length ? (
-                <fieldset key={name} className="card" style={{ border: "1px solid var(--border, #333)", padding: 12 }}>
-                  <legend>{name.replace("_", " ")}</legend>
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {entries.map((entry) => {
-                      const value = unset.has(entry.key) ? "" : draft[entry.key] ?? "";
-                      const isRole = entry.type === "role_flag" || ROLE_KEYS.has(entry.key);
-                      const refOptions =
-                        entry.ref === "mqtt-config"
-                          ? references.mqtt
-                          : entry.ref === "telegram-config"
-                            ? references.tele
-                            : entry.ref === "telegram-client"
-                              ? references.teleClient
-                              : null;
-                      return (
-                        <label key={entry.key} style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 8, alignItems: "center" }}>
-                          <span>
-                            {entry.key}
-                            {entry.risk === "high" ? " *" : ""}
-                          </span>
-                          {isRole ? (
-                            <select
-                              value={value === "true" ? "true" : "unset"}
-                              disabled={!canEdit}
-                              onChange={(e) => {
-                                if (e.target.value === "true") setKey(entry.key, "true");
-                                else clearKey(entry.key);
-                              }}
-                            >
-                              <option value="unset">unset (tắt)</option>
-                              <option value="true">true</option>
-                            </select>
-                          ) : refOptions ? (
-                            <select
-                              value={value}
-                              disabled={!canEdit}
-                              onChange={(e) => {
-                                if (!e.target.value) clearKey(entry.key);
-                                else setKey(entry.key, e.target.value);
-                              }}
-                            >
-                              <option value="">— unset —</option>
-                              {refOptions.map((opt) => (
-                                <option key={opt} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              value={value}
-                              disabled={!canEdit}
-                              onChange={(e) => setKey(entry.key, e.target.value)}
-                              placeholder={entry.help || ""}
-                            />
-                          )}
-                          {canEdit ? (
-                            <button type="button" className="ghost" onClick={() => clearKey(entry.key)}>
-                              Unset
-                            </button>
-                          ) : (
-                            <span />
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              ) : null
-            )}
+            <div className="btn-row process-env-toolbar">
+              <button type="button" className="ghost" onClick={() => setAllEnvGroups(true)}>
+                Mở tất cả
+              </button>
+              <button type="button" className="ghost" onClick={() => setAllEnvGroups(false)}>
+                Đóng tất cả
+              </button>
+              <button type="button" className="ghost" onClick={setDefaultEnvGroups}>
+                Chỉ Role + Kết nối
+              </button>
+            </div>
+
+            {Object.entries(grouped).map(([name, entries]) => {
+              if (!entries.length) return null;
+              const open = openEnvGroups.has(name);
+              const setCount = filledCount(entries);
+              const title = name.replace("_", " ");
+              return (
+                <section key={name} className={`card process-env-section${open ? " is-open" : ""}`}>
+                  <button
+                    type="button"
+                    className="process-env-section-toggle"
+                    aria-expanded={open}
+                    onClick={() => toggleEnvGroup(name)}
+                  >
+                    <span className="process-env-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+                    <strong>{title}</strong>
+                    <span className="muted">
+                      {setCount}/{entries.length} đang set
+                    </span>
+                  </button>
+                  {open ? (
+                    <div className="process-env-section-body">
+                      {entries.map((entry) => {
+                        const value = unset.has(entry.key) ? "" : draft[entry.key] ?? "";
+                        const isRole = entry.type === "role_flag" || ROLE_KEYS.has(entry.key);
+                        const refOptions =
+                          entry.ref === "mqtt-config"
+                            ? references.mqtt
+                            : entry.ref === "telegram-config"
+                              ? references.tele
+                              : entry.ref === "telegram-client"
+                                ? references.teleClient
+                                : null;
+                        return (
+                          <label key={entry.key} className="process-env-row">
+                            <span>
+                              {entry.key}
+                              {entry.risk === "high" ? " *" : ""}
+                            </span>
+                            {isRole ? (
+                              <select
+                                value={value === "true" ? "true" : "unset"}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  if (e.target.value === "true") setKey(entry.key, "true");
+                                  else clearKey(entry.key);
+                                }}
+                              >
+                                <option value="unset">unset (tắt)</option>
+                                <option value="true">true</option>
+                              </select>
+                            ) : refOptions ? (
+                              <select
+                                value={value}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  if (!e.target.value) clearKey(entry.key);
+                                  else setKey(entry.key, e.target.value);
+                                }}
+                              >
+                                <option value="">— unset —</option>
+                                {refOptions.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                value={value}
+                                disabled={!canEdit}
+                                onChange={(e) => setKey(entry.key, e.target.value)}
+                                placeholder={entry.help || ""}
+                              />
+                            )}
+                            {canEdit ? (
+                              <button type="button" className="ghost" onClick={() => clearKey(entry.key)}>
+                                Unset
+                              </button>
+                            ) : (
+                              <span />
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
 
             {canEdit || canRestart ? (
               <div className="card" style={{ display: "grid", gap: 8 }}>
