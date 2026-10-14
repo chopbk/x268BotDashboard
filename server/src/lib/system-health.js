@@ -183,4 +183,31 @@ async function loadSystemHealth() {
     return { checkedAt: now.toISOString(), staleMs: STALE_MS, ...health };
 }
 
-module.exports = { assessHealth, loadSystemHealth, currentSnapshots, STALE_MS };
+/** Xóa heartbeat không còn đập (> STALE_MS). Process đang chạy sẽ ghi lại trong ~30s. */
+async function deleteStaleHeartbeats({ now = new Date() } = {}) {
+    const cutoff = new Date(now.getTime() - STALE_MS);
+    const result = await ProcessHeartbeat.deleteMany({
+        $or: [{ at: { $lt: cutoff } }, { at: null }, { at: { $exists: false } }],
+    });
+    return { deletedCount: result.deletedCount || 0, cutoff: cutoff.toISOString() };
+}
+
+async function deleteHeartbeatByKey(key) {
+    const k = String(key || "").trim();
+    if (!k) {
+        const err = new Error("key bắt buộc");
+        err.status = 400;
+        throw err;
+    }
+    const result = await ProcessHeartbeat.deleteOne({ key: k });
+    return { deletedCount: result.deletedCount || 0, key: k };
+}
+
+module.exports = {
+    assessHealth,
+    loadSystemHealth,
+    currentSnapshots,
+    deleteStaleHeartbeats,
+    deleteHeartbeatByKey,
+    STALE_MS,
+};

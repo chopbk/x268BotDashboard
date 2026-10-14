@@ -92,6 +92,8 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/audit-logs` | [audit-logs](../server/src/routes/audit-logs.js) |
 | GET | `/api/runtime-logs` | [runtime-logs](../server/src/routes/runtime-logs.js) |
 | GET | `/api/system-health` | [system-health](../server/src/routes/system-health.js) — processes kèm `profileEnv`, `desiredRevision`, `actualRevision`, `drift`, `hostId`, `lastCommand` |
+| DELETE | `/api/system-health/heartbeats/stale` | Xóa `bot_heartbeats` quá 90s (`processes.edit`) |
+| DELETE | `/api/system-health/heartbeats/:key` | Xóa một heartbeat theo `key` (`processes.edit`) |
 | GET | `/api/admin/processes/registry` | [admin-processes](../server/src/routes/admin-processes.js) — admin only |
 | GET | `/api/admin/processes/:env` | [admin-processes](../server/src/routes/admin-processes.js) |
 | GET | `/api/admin/processes/:env/revisions` | [admin-processes](../server/src/routes/admin-processes.js) |

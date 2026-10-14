@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { assessHealth } = require("../src/lib/system-health");
+const { assessHealth, STALE_MS } = require("../src/lib/system-health");
 
 const now = new Date("2026-10-08T12:00:00.000Z");
 
@@ -98,4 +98,29 @@ test("old formula snapshots stay out of the alert list", () => {
         ],
     });
     assert.equal(due.alerts.filter((item) => item.code === "snapshot").length, 1);
+});
+
+test("STALE_MS is 90 seconds for heartbeat cleanup", () => {
+    assert.equal(STALE_MS, 90_000);
+});
+
+test("down processes are listed so UI can offer delete-stale", () => {
+    const health = assessHealth({
+        now,
+        heartbeats: [
+            beat({ key: "alive:local", processName: "alive" }),
+            beat({
+                key: "dead:111",
+                processName: "dead",
+                at: new Date(now.getTime() - STALE_MS - 1),
+            }),
+            beat({
+                key: "dead:222",
+                processName: "dead-old",
+                at: new Date(now.getTime() - 5 * 60 * 1000),
+            }),
+        ],
+    });
+    assert.equal(health.processes.filter((p) => p.status === "down").length, 2);
+    assert.equal(health.processes.filter((p) => p.status === "ok").length, 1);
 });

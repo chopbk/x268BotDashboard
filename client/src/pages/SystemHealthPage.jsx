@@ -53,6 +53,7 @@ export default function SystemHealthPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [busyHb, setBusyHb] = useState(false);
   const selectedProcess = searchParams.get("process") || "";
 
   const load = useCallback((signal) => {
@@ -67,6 +68,42 @@ export default function SystemHealthPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const staleCount = useMemo(
+    () => (data?.processes || []).filter((r) => r.status === "down").length,
+    [data]
+  );
+
+  async function clearStaleHeartbeats() {
+    if (!canProcessEdit || busyHb) return;
+    if (!window.confirm(`Xóa ${staleCount} heartbeat stale (>90s)? Process đang chạy sẽ ghi lại.`)) return;
+    setBusyHb(true);
+    setError("");
+    try {
+      const res = await api("/api/system-health/heartbeats/stale", { method: "DELETE" });
+      await load();
+      if (res.deletedCount === 0) setError("Không có heartbeat stale để xóa");
+    } catch (err) {
+      setError(err.message || "Xóa heartbeat thất bại");
+    } finally {
+      setBusyHb(false);
+    }
+  }
+
+  async function deleteHeartbeatRow(row) {
+    if (!canProcessEdit || busyHb || !row?.key) return;
+    if (!window.confirm(`Xóa heartbeat «${row.processName || row.key}»?`)) return;
+    setBusyHb(true);
+    setError("");
+    try {
+      await api(`/api/system-health/heartbeats/${encodeURIComponent(row.key)}`, { method: "DELETE" });
+      await load();
+    } catch (err) {
+      setError(err.message || "Xóa heartbeat thất bại");
+    } finally {
+      setBusyHb(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -175,6 +212,11 @@ export default function SystemHealthPage() {
                   {label}
                 </button>
               ))}
+              {canProcessEdit && staleCount > 0 ? (
+                <button type="button" className="ghost" disabled={busyHb} onClick={clearStaleHeartbeats}>
+                  Xóa {staleCount} stale
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -195,7 +237,7 @@ export default function SystemHealthPage() {
                   <th>Command</th>
                   <th>RAM</th>
                   <th>Heartbeat</th>
-                  {canProcessView ? <th></th> : null}
+                  {canProcessView || canProcessEdit ? <th></th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -229,11 +271,25 @@ export default function SystemHealthPage() {
                     <td>{row.lastCommand ? `${row.lastCommand.kind}:${row.lastCommand.status}` : "—"}</td>
                     <td>{row.memoryMb == null ? "—" : `${row.memoryMb} MB`}</td>
                     <td className={row.status === "down" ? "negative" : ""}>{when(row.at)}</td>
-                    {canProcessView ? (
+                    {canProcessView || canProcessEdit ? (
                       <td onClick={(e) => e.stopPropagation()}>
-                        <button type="button" className="ghost" onClick={() => openProcess(row)}>
-                          {canProcessEdit || canProcessRestart ? "Sửa" : "Xem"}
-                        </button>
+                        <div className="btn-row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                          {canProcessView ? (
+                            <button type="button" className="ghost" onClick={() => openProcess(row)}>
+                              {canProcessEdit || canProcessRestart ? "Sửa" : "Xem"}
+                            </button>
+                          ) : null}
+                          {canProcessEdit && row.status === "down" ? (
+                            <button
+                              type="button"
+                              className="ghost"
+                              disabled={busyHb}
+                              onClick={() => deleteHeartbeatRow(row)}
+                            >
+                              Xóa
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     ) : null}
                   </tr>
