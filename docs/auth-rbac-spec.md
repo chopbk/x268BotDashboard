@@ -78,7 +78,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
 | Log | `logs.view` |
 | Process env / PM2 | `processes.view`, `processes.edit`, `processes.restart` (scope chỉ `all`) |
-| Smart Money | `smart_money.view` (đọc thị trường; scope `all`), `smart_money.manage` (refresh/collector hệ thống; admin/ops) |
+| Smart Money | Đọc: cùng Terminal (`positions.view` \| `orders.view` \| `statistics.view`, hoặc `smart_money.view`). Quản lý collector: `smart_money.manage` (admin/ops) |
 
 `config.*` bao trọn `Account_Config`: signal, trade config, symbol blacklist/whitelist và
 các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
@@ -359,14 +359,14 @@ Các invariant:
 | `GET /api/terminal/decision/reports` | `requireAuth` | `positions.view`. Lịch sử report của chính actor |
 | `GET /api/terminal/decision/latest-account` | `requireAuth` | `positions.view`. Cache báo cáo account gần nhất (dashboard badge; không gọi AI) |
 | `POST /api/terminal/coach` | `requireAuth` | Wrapper tương thích → `decision/position` |
-| `GET /api/smart-money/status` | `requireAuth` | `smart_money.view`. Trạng thái collector / universe (không gọi sàn) |
-| `GET /api/smart-money/symbols` | `requireAuth` | `smart_money.view`. Danh sách snapshot; filter q/top/bias/freshness; không lộ nguồn vị thế user |
-| `GET /api/smart-money/symbols/:symbol` | `requireAuth` | `smart_money.view`. Chi tiết + events |
-| `GET /api/smart-money/symbols/:symbol/history` | `requireAuth` | `smart_money.view`. Lịch sử Mongo; validate limit |
-| `GET /api/smart-money/events` | `requireAuth` | `smart_money.view` |
-| `GET /api/smart-money/candidates` | `requireAuth` | `smart_money.view`. Ứng viên cần xem xét (code xếp hạng) |
-| `GET/PUT /api/smart-money/watchlist` | `requireAuth` | `smart_money.view`. Watchlist cá nhân actor |
-| `GET /api/smart-money/money-flow/:symbol` | `requireAuth` | `smart_money.view`. Khối Dòng tiền Terminal; optional side/notional từ client đã scope |
+| `GET /api/smart-money/status` | `requireAuth` | Đọc: `positions.view` \| `orders.view` \| `statistics.view` \| `smart_money.view`. Trạng thái collector / universe |
+| `GET /api/smart-money/symbols` | `requireAuth` | Cùng quyền đọc. Danh sách snapshot; không lộ nguồn vị thế user |
+| `GET /api/smart-money/symbols/:symbol` | `requireAuth` | Cùng quyền đọc. Chi tiết + events |
+| `GET /api/smart-money/symbols/:symbol/history` | `requireAuth` | Cùng quyền đọc. Lịch sử Mongo; validate limit |
+| `GET /api/smart-money/events` | `requireAuth` | Cùng quyền đọc |
+| `GET /api/smart-money/candidates` | `requireAuth` | Cùng quyền đọc. Ứng viên cần xem xét (code xếp hạng) |
+| `GET/PUT /api/smart-money/watchlist` | `requireAuth` | Cùng quyền đọc. Watchlist cá nhân actor |
+| `GET /api/smart-money/money-flow/:symbol` | `requireAuth` | Cùng quyền đọc. Khối Dòng tiền Terminal |
 | `POST /api/smart-money/refresh` | `requireAuth` | `smart_money.manage`. Enqueue job trong TTL/cooldown; rate-limit 4/10 phút |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |

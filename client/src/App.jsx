@@ -33,7 +33,6 @@ const SIGNALS_HISTORY = "signals.history";
 const STATISTICS_VIEW = "statistics.view";
 const POSITIONS_VIEW = "positions.view";
 const ORDERS_VIEW = "orders.view";
-const SMART_MONEY_VIEW = "smart_money.view";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -75,7 +74,13 @@ function Shell({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const showNumbers = hasPermission(user, STATISTICS_VIEW) || hasPermission(user, SUMMARY_VIEW) || hasPermission(user, BOTS_VIEW) || hasPermission(user, SMART_MONEY_VIEW);
+  const canTerminal =
+    hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW);
+  const showNumbers =
+    hasPermission(user, STATISTICS_VIEW) ||
+    hasPermission(user, SUMMARY_VIEW) ||
+    hasPermission(user, BOTS_VIEW) ||
+    canTerminal;
   const showOps = hasPermission(user, LOGS_VIEW);
 
   useEffect(() => {
@@ -103,9 +108,9 @@ function Shell({ children }) {
           {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/config-lab">Config</NavLink> : null}
           {hasPermission(user, CREDENTIALS_VIEW) ? <NavLink to="/user-apis">User API</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
-          {hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/terminal">Terminal</NavLink> : null}
+          {canTerminal ? <NavLink to="/terminal">Terminal</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
-          {hasPermission(user, SMART_MONEY_VIEW) ? <NavLink to="/smart-money">Smart Money</NavLink> : null}
+          {canTerminal ? <NavLink to="/smart-money">Smart Money</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Hiệu quả giao dịch</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
           {hasPermission(user, SUMMARY_VIEW) || hasPermission(user, BOTS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
@@ -187,11 +192,11 @@ function AppRoutes() {
       <Route
         path="/smart-money"
         element={
-          <Protected permission={SMART_MONEY_VIEW}>
+          <ProtectedAny permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW]}>
             <Shell>
               <SmartMoneyPage />
             </Shell>
-          </Protected>
+          </ProtectedAny>
         }
       />
       <Route

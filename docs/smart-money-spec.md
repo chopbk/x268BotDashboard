@@ -65,9 +65,11 @@ Bắt buộc: tôn trọng Retry-After; 418/429 → cooldown chung; không đổ
 
 | Permission | Ý nghĩa | Role mặc định |
 |---|---|---|
-| `smart_money.view` | Đọc snapshot/history/events/candidates/watchlist cá nhân | viewer template (`VIEWER_PERMISSIONS`) |
-| `smart_money.manage` | Enqueue refresh hệ thống, cấu hình watchlist hệ thống | admin (+ ops nếu cần) |
+| Đọc Smart Money | Cùng cửa vào Terminal: `positions.view` \| `orders.view` \| `statistics.view` (hoặc `smart_money.view`) | Ai vào được Terminal |
+| `smart_money.view` | Alias đọc thị trường (vẫn trong catalog / viewer template) | viewer template |
+| `smart_money.manage` | Enqueue refresh hệ thống | admin (+ ops) |
 
+- Menu `/smart-money` và API đọc dùng cùng điều kiện với Terminal.
 - Đọc thị trường ≠ quản lý collector.
 - So sánh với vị thế cá nhân qua `positions.view` + scope bot hiện có.
 - Không tin permission từ client.

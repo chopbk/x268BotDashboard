@@ -1,6 +1,6 @@
 const express = require("express");
 const { requireAuth, requirePermission } = require("../middleware/auth");
-const { PERMISSIONS } = require("../auth/access-control");
+const { PERMISSIONS, hasPermission } = require("../auth/access-control");
 const { createRateLimit } = require("../middleware/rate-limit");
 const {
     getStatusPayload,
@@ -18,6 +18,21 @@ const { requestRefresh } = require("../lib/smart-money/scheduler");
 
 const router = express.Router();
 
+/** Cùng cửa vào Terminal: ai xem Terminal được thì đọc Smart Money được. */
+const SMART_MONEY_READ_PERMISSIONS = [
+    PERMISSIONS.SMART_MONEY_VIEW,
+    PERMISSIONS.POSITIONS_VIEW,
+    PERMISSIONS.ORDERS_VIEW,
+    PERMISSIONS.STATISTICS_VIEW,
+];
+
+function requireSmartMoneyRead(req, res, next) {
+    if (SMART_MONEY_READ_PERMISSIONS.some((permission) => hasPermission(req.webUser, permission))) {
+        return next();
+    }
+    return res.status(403).json({ error: "Không có quyền" });
+}
+
 const refreshLimit = createRateLimit({
     prefix: "smart-money-refresh",
     windowMs: 10 * 60 * 1000,
@@ -25,7 +40,7 @@ const refreshLimit = createRateLimit({
     identify: (req) => req.webUser?.id || req.ip,
 });
 
-router.get("/status", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/status", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         res.json(await getStatusPayload());
     } catch (error) {
@@ -34,7 +49,7 @@ router.get("/status", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIE
     }
 });
 
-router.get("/symbols", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/symbols", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         res.json(await listSymbolsQuery(req.query || {}));
     } catch (error) {
@@ -43,7 +58,7 @@ router.get("/symbols", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VI
     }
 });
 
-router.get("/symbols/:symbol", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/symbols/:symbol", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         const body = await getSymbolDetail(req.params.symbol);
         if (body.error) return res.status(body.status || 400).json({ error: body.error });
@@ -54,23 +69,18 @@ router.get("/symbols/:symbol", requireAuth, requirePermission(PERMISSIONS.SMART_
     }
 });
 
-router.get(
-    "/symbols/:symbol/history",
-    requireAuth,
-    requirePermission(PERMISSIONS.SMART_MONEY_VIEW),
-    async (req, res) => {
-        try {
-            const body = await getSymbolHistory(req.params.symbol, req.query || {});
-            if (body.error) return res.status(body.status || 400).json({ error: body.error });
-            res.json(body);
-        } catch (error) {
-            console.error("[smartMoney:history]", error.message || error);
-            res.status(500).json({ error: "Không đọc được lịch sử" });
-        }
+router.get("/symbols/:symbol/history", requireAuth, requireSmartMoneyRead, async (req, res) => {
+    try {
+        const body = await getSymbolHistory(req.params.symbol, req.query || {});
+        if (body.error) return res.status(body.status || 400).json({ error: body.error });
+        res.json(body);
+    } catch (error) {
+        console.error("[smartMoney:history]", error.message || error);
+        res.status(500).json({ error: "Không đọc được lịch sử" });
     }
-);
+});
 
-router.get("/events", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/events", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         const symbol = req.query.symbol ? normalizeSymbol(req.query.symbol) : null;
         if (req.query.symbol && !symbol) return res.status(400).json({ error: "symbol_invalid" });
@@ -86,7 +96,7 @@ router.get("/events", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIE
     }
 });
 
-router.get("/candidates", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/candidates", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         const doc = await getCandidates();
         const bucket = req.query.bucket ? String(req.query.bucket) : null;
@@ -106,7 +116,7 @@ router.get("/candidates", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY
     }
 });
 
-router.get("/watchlist", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/watchlist", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         res.json(await getUserWatchlist(req.webUser.id));
     } catch (error) {
@@ -115,7 +125,7 @@ router.get("/watchlist", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_
     }
 });
 
-router.put("/watchlist", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.put("/watchlist", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
         res.json(await setUserWatchlist(req.webUser.id, symbols));
@@ -125,7 +135,7 @@ router.put("/watchlist", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_
     }
 });
 
-router.get("/money-flow/:symbol", requireAuth, requirePermission(PERMISSIONS.SMART_MONEY_VIEW), async (req, res) => {
+router.get("/money-flow/:symbol", requireAuth, requireSmartMoneyRead, async (req, res) => {
     try {
         const symbol = normalizeSymbol(req.params.symbol);
         if (!symbol) return res.status(400).json({ error: "symbol_invalid" });
