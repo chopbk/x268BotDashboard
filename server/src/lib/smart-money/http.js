@@ -170,20 +170,26 @@ async function smartMoneyFetch(host, pathWithQuery, opts = {}) {
     const local = getLocal(host);
     local.lastAt = Date.now();
 
-    // bapi và fapi public: dùng peer nếu có (VPS direct hay dính 418 bapi).
-    // usePeer:false chỉ khi caller cố ý (test).
+    // bapi: bắt buộc peer khi đã cấu hình — không fallback IP VPS (đó là gốc 418 dài).
+    // fapi: peer rồi mới direct như cũ.
     const preferPeer = opts.usePeer !== false;
+    const requirePeer = host === "bapi" && preferPeer && peerProxyCount() > 0;
 
     let res;
     try {
         if (preferPeer) {
-            res = await binancePublicFetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+            res = await binancePublicFetch(url, {
+                headers,
+                signal: AbortSignal.timeout(timeoutMs),
+                requirePeer,
+                peerAttempts: requirePeer ? Math.min(4, Math.max(1, peerProxyCount())) : 1,
+            });
         } else {
             res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
         }
     } catch (error) {
         const err = new Error(error.message || "network_error");
-        err.code = "NETWORK";
+        err.code = error.code === "PEER_REQUIRED" ? "PEER_REQUIRED" : "NETWORK";
         err.host = host;
         err.cause = error;
         throw err;

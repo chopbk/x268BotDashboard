@@ -77,6 +77,14 @@ async function fetchSmartMoneyOverview(symbol) {
                 data: null,
             };
         }
+        if (error.code === "PEER_REQUIRED") {
+            return {
+                ok: false,
+                reason: "peer_unavailable",
+                error: String(error.message || error),
+                data: null,
+            };
+        }
         return { ok: false, reason: "source_error", error: String(error.message || error), data: null };
     }
 }

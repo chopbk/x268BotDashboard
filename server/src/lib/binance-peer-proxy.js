@@ -238,25 +238,46 @@ function isProxyTunnelError(error) {
 }
 
 /**
- * Public GET: thử peer → fail thì direct. Có API key / non-GET → luôn direct.
+ * Public GET: thử peer → fail thì direct (trừ khi requirePeer).
+ * Có API key / non-GET → luôn direct.
+ * @param {string} url
+ * @param {{ method?: string, headers?: object, signal?: AbortSignal, requirePeer?: boolean, peerAttempts?: number }} [init]
  */
 async function binancePublicFetch(url, init = {}) {
     const method = String(init.method || "GET").toUpperCase();
     const headers = init.headers || {};
     const hasKey = Boolean(headers["X-MBX-APIKEY"] || headers["x-mbx-apikey"]);
-    const peer = method === "GET" && !hasKey ? nextPeerProxyUrl() : null;
+    const requirePeer = Boolean(init.requirePeer);
+    const attempts = Math.max(1, Math.min(Number(init.peerAttempts) || (requirePeer ? Math.max(1, list.length) : 1), 8));
 
-    if (peer) {
-        try {
-            return await fetchViaHttpProxy(url, peer, {
-                headers,
-                timeoutMs: 15000,
-                signal: init.signal,
-            });
-        } catch (error) {
-            if (!isProxyTunnelError(error)) throw error;
-            console.warn(`[binancePeerProxy] peer fail → direct: ${error.message || error}`);
+    if (method === "GET" && !hasKey && list.length) {
+        let lastError = null;
+        for (let i = 0; i < attempts; i += 1) {
+            const peer = nextPeerProxyUrl();
+            if (!peer) break;
+            try {
+                return await fetchViaHttpProxy(url, peer, {
+                    headers,
+                    timeoutMs: 15000,
+                    signal: init.signal,
+                });
+            } catch (error) {
+                lastError = error;
+                if (!isProxyTunnelError(error)) throw error;
+                console.warn(`[binancePeerProxy] peer fail (${i + 1}/${attempts}): ${error.message || error}`);
+            }
         }
+        if (requirePeer) {
+            const err = new Error(lastError?.message || "peer_proxy_required_failed");
+            err.code = "PEER_REQUIRED";
+            err.cause = lastError;
+            throw err;
+        }
+        console.warn(`[binancePeerProxy] all peers failed → direct: ${lastError?.message || lastError}`);
+    } else if (requirePeer) {
+        const err = new Error("peer_proxy_not_configured");
+        err.code = "PEER_REQUIRED";
+        throw err;
     }
     return fetch(url, init);
 }
