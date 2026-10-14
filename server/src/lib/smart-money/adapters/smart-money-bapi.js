@@ -48,8 +48,8 @@ function parseOverview(raw) {
 
 async function fetchSmartMoneyOverview(symbol) {
     try {
+        // Cùng URL 0xBennie; đi peer khi có (không force direct — VPS dễ 418).
         const { body } = await smartMoneyFetch("bapi", `${PATH}?symbol=${encodeURIComponent(symbol)}`, {
-            usePeer: false,
             timeoutMs: 10_000,
         });
         if (body?.code === "000000" && body?.data) {
@@ -67,7 +67,16 @@ async function fetchSmartMoneyOverview(symbol) {
         }
         return { ok: false, reason: "unsupported", data: null };
     } catch (error) {
-        if (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") throw error;
+        // Không ném COOLDOWN lên scheduler — OI/funding vẫn chạy; chỉ bỏ SM.
+        if (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") {
+            return {
+                ok: false,
+                reason: "cooldown",
+                error: String(error.message || error),
+                retryAfterMs: error.retryAfterMs || null,
+                data: null,
+            };
+        }
         return { ok: false, reason: "source_error", error: String(error.message || error), data: null };
     }
 }

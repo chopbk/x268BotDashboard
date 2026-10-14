@@ -6,6 +6,8 @@ const { getCandidates } = require("./candidates");
 const { getCollectorStatus } = require("./scheduler");
 const { buildMoneyFlow, toMarketContext } = require("./money-flow");
 const { loadAllTickers24h } = require("./adapters/tickers");
+const { getCooldownRemainingMs } = require("./http");
+const { peerProxyCount, peerProxySource } = require("../binance-peer-proxy");
 const SmartMoneyWatchlist = require("../../models/smart-money-watchlist");
 
 function clampLimit(value, max, fallback) {
@@ -34,6 +36,8 @@ async function getStatusPayload() {
     const withSnapshot = meta?.coverage?.withSnapshot ?? status?.state?.coverage?.withSnapshot ?? 0;
     const universeSize = universe.symbols?.length || meta?.coverage?.universeSize || 0;
     const warming = universeSize > 0 && withSnapshot < Math.min(universeSize, 5);
+    const bapiCooldownMs = await getCooldownRemainingMs("bapi");
+    const fapiCooldownMs = await getCooldownRemainingMs("fapi");
     return {
         ...status,
         universe: {
@@ -43,11 +47,23 @@ async function getStatusPayload() {
             withSnapshot,
         },
         warming,
+        cooldowns: {
+            bapiMs: bapiCooldownMs,
+            fapiMs: fapiCooldownMs,
+            peerProxies: peerProxyCount(),
+            peerSource: peerProxySource(),
+        },
         hints: [
-            "Smart Money (bapi) chỉ có snapshot hiện tại — không có API lịch sử quá khứ để backfill.",
-            "OI/funding/taker lấy từ Futures API; lịch sử dài chỉ tích lũy sau khi collector chạy.",
+            "Endpoint Smart Money giống 0xBennie (www.binance.com bapi overview) — không sai URL.",
+            bapiCooldownMs > 0
+                ? `bapi đang cooldown ~${Math.ceil(bapiCooldownMs / 60000)} phút (418/429). OI/funding vẫn chạy; SM tạm thiếu.`
+                : null,
+            peerProxyCount() === 0
+                ? "Chưa có peer proxy — bapi từ IP VPS dễ bị WAF hơn bản chạy local của 0xBennie."
+                : null,
+            "Smart Money chỉ có snapshot hiện tại — không backfill quá khứ.",
             warming
-                ? "Collector đang seed lần đầu — giá/OI xuất hiện trước, cột SM Long/Short sau vài phút."
+                ? "Collector đang seed — giá/OI trước, cột SM sau khi hết cooldown bapi."
                 : null,
         ].filter(Boolean),
         schemaNote: "Thiếu dữ liệu = null. signalDay không phải timestamp snapshot.",

@@ -22,6 +22,11 @@ Ngày: 2026-10-14. Phạm vi: web-bot. Bản đầu: thu thập → snapshot chu
 
 Ghi nhận: endpoint bapi Smart Money là web API nội bộ Binance, không có docs chính thức; có thể thay đổi hoặc bị chặn theo IP/geo.
 
+**Cùng URL với 0xBennie:** `www.binance.com/bapi/futures/v1/public/future/smart-money/signal/overview`.
+Khác biệt vận hành: VPS hay dính 418/Retry-After dài; header browser-like + peer proxy (khi có);
+cooldown bapi **không** dừng OI/funding; gap SM ≥15s. Xóa cooldown Redis (chỉ khi chắc WAF đã hết):
+`DEL wb:sm:cooldown:bapi`.
+
 ## 3. Kiến trúc
 
 ```

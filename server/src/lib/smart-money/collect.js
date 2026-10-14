@@ -19,10 +19,20 @@ async function safe(name, fn, metrics) {
             ok: false,
             ms: Date.now() - t0,
             code: error.code || null,
+            host: error.host || null,
             error: String(error.message || error).slice(0, 200),
         };
-        if (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") throw error;
-        return { ok: false, reason: "source_error", error: error.message };
+        // Chỉ fapi/futuresData cooldown mới bubble (cần giãn toàn cycle).
+        // bapi cooldown đã được adapter SM nuốt thành reason=cooldown.
+        if ((error.code === "COOLDOWN" || error.code === "RATE_LIMIT") && error.host !== "bapi") {
+            throw error;
+        }
+        return {
+            ok: false,
+            reason: error.code === "COOLDOWN" || error.code === "RATE_LIMIT" ? "cooldown" : "source_error",
+            error: error.message,
+            retryAfterMs: error.retryAfterMs || null,
+        };
     }
 }
 

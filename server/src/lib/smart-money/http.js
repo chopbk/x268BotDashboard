@@ -1,9 +1,10 @@
 /**
  * HTTP public Binance cho Smart Money — bucket theo host, cooldown Redis dùng chung.
- * Không đổi proxy để vượt 418/429; tôn trọng Retry-After.
+ * bapi cùng endpoint 0xBennie; header browser-like; đi peer proxy khi có (giống fapi public).
+ * Không rotate proxy giữa chừng để vượt WAF; tôn trọng Retry-After.
  */
 const { getRedisClient } = require("../rate-limit-store");
-const { binancePublicFetch } = require("../binance-peer-proxy");
+const { binancePublicFetch, peerProxyCount } = require("../binance-peer-proxy");
 const { config } = require("./config");
 
 const HOSTS = Object.freeze({
@@ -12,7 +13,18 @@ const HOSTS = Object.freeze({
     bapi: "https://www.binance.com",
 });
 
-/** @type {Map<string, { lastAt: number, gapMs: number, blockedUntil: number }>} */
+/** Header giống client web (0xBennie) — UA bot dễ dính 418 hơn. */
+const BAPI_HEADERS = Object.freeze({
+    accept: "application/json",
+    "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    clienttype: "web",
+    lang: "zh-CN",
+});
+
+/** @type {Map<string, { lastAt: number, gapMs: number, blockedUntil: number, lastLogAt: number }>} */
 const localBuckets = new Map();
 
 function sleep(ms) {
@@ -26,7 +38,12 @@ function bucketKey(host) {
 function getLocal(host) {
     let b = localBuckets.get(host);
     if (!b) {
-        b = { lastAt: 0, gapMs: host === "bapi" ? config.smartMoneyGapMs : config.fapiGapMs, blockedUntil: 0 };
+        b = {
+            lastAt: 0,
+            gapMs: host === "bapi" ? config.smartMoneyGapMs : config.fapiGapMs,
+            blockedUntil: 0,
+            lastLogAt: 0,
+        };
         localBuckets.set(host, b);
     }
     return b;
@@ -57,6 +74,34 @@ async function writeSharedCooldown(host, untilMs) {
     }
 }
 
+async function clearSharedCooldown(host) {
+    const local = getLocal(host);
+    local.blockedUntil = 0;
+    local.gapMs = host === "bapi" ? config.smartMoneyGapMs : config.fapiGapMs;
+    const client = getRedisClient();
+    if (!client?.isReady) return;
+    try {
+        await client.del(bucketKey(host));
+    } catch (error) {
+        console.warn("[smartMoneyHttp] cooldown clear", error.message || error);
+    }
+}
+
+async function getCooldownRemainingMs(host) {
+    const local = getLocal(host);
+    const sharedUntil = await readSharedCooldown(host);
+    const until = Math.max(local.blockedUntil, sharedUntil);
+    return Math.max(0, until - Date.now());
+}
+
+function logCooldownOnce(host, waitMs) {
+    const local = getLocal(host);
+    const now = Date.now();
+    if (now - local.lastLogAt < 60_000) return;
+    local.lastLogAt = now;
+    console.warn(`[smartMoneyHttp] ${host} cooldown còn ~${Math.round(waitMs / 1000)}s — bỏ qua bapi, fapi vẫn chạy`);
+}
+
 async function waitForBudget(host) {
     const local = getLocal(host);
     const sharedUntil = await readSharedCooldown(host);
@@ -64,14 +109,16 @@ async function waitForBudget(host) {
     const now = Date.now();
     if (blockedUntil > now) {
         const wait = blockedUntil - now;
-        if (wait > 5 * 60_000) {
-            console.warn(`[smartMoneyHttp] ${host} cooldown ${Math.round(wait / 1000)}s — skip wait, caller should abort`);
+        // Cooldown dài: không sleep, caller xử lý (skip nguồn đó).
+        if (wait > 15_000) {
+            logCooldownOnce(host, wait);
             const err = new Error(`cooldown_${host}`);
             err.code = "COOLDOWN";
+            err.host = host;
             err.retryAfterMs = wait;
             throw err;
         }
-        await sleep(Math.min(wait, 60_000));
+        await sleep(wait);
     }
     const gap = local.gapMs + (host === "bapi" ? Math.floor(Math.random() * (config.smartMoneyJitterMs + 1)) : 0);
     const waitGap = Math.max(0, gap - (Date.now() - local.lastAt));
@@ -92,9 +139,16 @@ async function markBlocked(host, status, retryAfterMs) {
         else if (status === 418 || status === 429) ttl = Math.max(5 * 60_000, local.gapMs * 4);
         else ttl = 60_000;
     }
+    // Trần 2h cho soft — vẫn gần Retry-After thực tế, tránh khóa vô hạn do header lệch.
+    if ((status === 418 || status === 429) && ttl > 2 * 60 * 60_000) {
+        ttl = 2 * 60 * 60_000;
+    }
     local.gapMs = Math.min(60_000, Math.max(local.gapMs * 2, host === "bapi" ? 15_000 : 1_200));
     await writeSharedCooldown(host, Date.now() + ttl);
-    console.warn(`[smartMoneyHttp] ${host} status=${status} cooldown=${Math.round(ttl / 1000)}s`);
+    console.warn(
+        `[smartMoneyHttp] ${host} status=${status} cooldown=${Math.round(ttl / 1000)}s` +
+            (peerProxyCount() ? ` peers=${peerProxyCount()}` : " peers=0(direct)")
+    );
 }
 
 /**
@@ -109,28 +163,28 @@ async function smartMoneyFetch(host, pathWithQuery, opts = {}) {
     const timeoutMs = opts.timeoutMs || 12_000;
     const headers = {
         accept: "application/json",
+        ...(host === "bapi" ? BAPI_HEADERS : {}),
         ...(opts.headers || {}),
     };
-    if (host === "bapi") {
-        headers["user-agent"] =
-            "Mozilla/5.0 (compatible; WebBotSmartMoney/1.0; +https://localhost)";
-        headers.clienttype = "web";
-        headers.lang = "en";
-    }
 
     const local = getLocal(host);
     local.lastAt = Date.now();
 
+    // bapi và fapi public: dùng peer nếu có (VPS direct hay dính 418 bapi).
+    // usePeer:false chỉ khi caller cố ý (test).
+    const preferPeer = opts.usePeer !== false;
+
     let res;
     try {
-        if (host === "bapi" || opts.usePeer === false) {
-            res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
-        } else {
+        if (preferPeer) {
             res = await binancePublicFetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+        } else {
+            res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
         }
     } catch (error) {
         const err = new Error(error.message || "network_error");
         err.code = "NETWORK";
+        err.host = host;
         err.cause = error;
         throw err;
     }
@@ -140,6 +194,7 @@ async function smartMoneyFetch(host, pathWithQuery, opts = {}) {
         const err = new Error(`http_${res.status}`);
         err.status = res.status;
         err.code = "RATE_LIMIT";
+        err.host = host;
         throw err;
     }
 
@@ -155,6 +210,7 @@ async function smartMoneyFetch(host, pathWithQuery, opts = {}) {
         const err = new Error(body?.msg || body?.message || `http_${res.status}`);
         err.status = res.status;
         err.code = "HTTP";
+        err.host = host;
         err.body = body;
         throw err;
     }
@@ -172,9 +228,12 @@ function resetHttpForTests() {
 
 module.exports = {
     HOSTS,
+    BAPI_HEADERS,
     smartMoneyFetch,
     waitForBudget,
     markBlocked,
+    clearSharedCooldown,
+    getCooldownRemainingMs,
     resetHttpForTests,
     readSharedCooldown,
 };

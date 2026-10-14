@@ -203,11 +203,17 @@ export default function SmartMoneyPage() {
         </div>
       </header>
 
+      {status?.cooldowns?.bapiMs > 0 ? (
+        <p className="form-error sm-banner">
+          Binance bapi đang cooldown ~{Math.ceil(status.cooldowns.bapiMs / 60000)} phút (418/429 WAF) — cột Smart
+          Money tạm thiếu; OI/funding/taker vẫn chạy. Cùng API 0xBennie; IP VPS dễ bị chặn hơn máy local. Peer proxy:{" "}
+          {status.cooldowns.peerProxies || 0}.
+        </p>
+      ) : null}
       {status?.warming || snapCount === 0 ? (
         <p className="muted sm-banner">
-          Đang seed lần đầu: giá/volume hiện ngay từ ticker; OI/funding/Smart Money lần lượt trong vài phút.
-          Binance Smart Money <strong>không có API lịch sử quá khứ</strong> — delta/ứng viên chỉ có sau khi collector
-          tích lũy. Bấm «Làm mới dữ liệu» nếu bảng còn trống sau khi restart server.
+          Đang seed: giá/volume từ ticker; OI/funding trước, SM sau khi hết cooldown. Smart Money{" "}
+          <strong>không có API lịch sử quá khứ</strong>. Bấm «Làm mới dữ liệu» sau restart nếu bảng trống.
         </p>
       ) : null}
       {(status?.hints || []).length ? (

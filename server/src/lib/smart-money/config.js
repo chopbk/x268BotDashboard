@@ -27,7 +27,7 @@ const config = Object.freeze({
     fundingIntervalMs: intEnv("SMART_MONEY_FUNDING_INTERVAL_MS", 10 * 60 * 1000),
     topTraderIntervalMs: intEnv("SMART_MONEY_TOP_TRADER_INTERVAL_MS", 15 * 60 * 1000),
     smartMoneyIntervalMs: intEnv("SMART_MONEY_SM_INTERVAL_MS", 45 * 60 * 1000),
-    smartMoneyGapMs: intEnv("SMART_MONEY_SM_GAP_MS", 13_000),
+    smartMoneyGapMs: intEnv("SMART_MONEY_SM_GAP_MS", 15_000),
     smartMoneyJitterMs: intEnv("SMART_MONEY_SM_JITTER_MS", 3_000),
     fapiGapMs: intEnv("SMART_MONEY_FAPI_GAP_MS", 400),
     schedulerTickMs: intEnv("SMART_MONEY_SCHEDULER_MS", 30_000),

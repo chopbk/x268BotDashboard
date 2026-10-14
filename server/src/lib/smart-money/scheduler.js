@@ -129,10 +129,12 @@ async function runCycle(options = {}) {
         const maxPerCycle = options.force || bootstrap
             ? Math.min(symbols.length, config.topN)
             : Math.min(8, symbols.length);
-        const smBudget = options.force ? symbols.length : bootstrap ? 5 : 3;
+        // SM nhạy WAF: bootstrap chỉ 1–2 symbol/cycle (0xBennie ≥12s gap + cron thưa).
+        const smBudget = options.force ? Math.min(5, symbols.length) : bootstrap ? 2 : 2;
 
         let processed = 0;
         let smDone = 0;
+        let skipSmartMoney = false;
         for (const symbol of symbols) {
             if (processed >= maxPerCycle) break;
             const tracking = trackingBySymbol.get(symbol) || { active: true, sources: [] };
@@ -141,6 +143,7 @@ async function runCycle(options = {}) {
             if (options.force || bootstrap || due(symbol, "funding", config.fundingIntervalMs, now)) parts.push("funding");
             if (options.force || bootstrap || due(symbol, "top", config.topTraderIntervalMs, now)) parts.push("top");
             if (
+                !skipSmartMoney &&
                 (options.force || bootstrap || due(symbol, "smartMoney", config.smartMoneyIntervalMs, now)) &&
                 smDone < smBudget
             ) {
@@ -151,19 +154,31 @@ async function runCycle(options = {}) {
             metrics.symbolsAttempted += 1;
             try {
                 const price = tickerMap.get(symbol) || null;
-                await collectSymbol(symbol, { price, tracking, parts });
+                const { snapshot, metrics: partMetrics } = await collectSymbol(symbol, { price, tracking, parts });
                 for (const p of parts) markDone(symbol, p, Date.now());
                 if (parts.includes("smartMoney")) smDone += 1;
+                if (partMetrics?.sources?.smartMoney?.reason === "cooldown") {
+                    skipSmartMoney = true;
+                    metrics.cooldownStops += 1;
+                }
                 metrics.symbolsOk += 1;
 
-                const latest = await getLatestSnapshot(symbol);
-                if (latest && !bootstrap) await detectForSymbol(symbol, latest);
+                if (snapshot && !bootstrap) await detectForSymbol(symbol, snapshot);
             } catch (error) {
                 metrics.errors += 1;
-                if (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") {
+                // Chỉ dừng cycle khi fapi bị block — bapi cooldown không nuốt OI/funding.
+                if (
+                    (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") &&
+                    error.host !== "bapi"
+                ) {
                     metrics.cooldownStops += 1;
-                    console.warn("[smartMoneyScheduler] cooldown stop", error.message || error);
+                    console.warn("[smartMoneyScheduler] fapi cooldown stop", error.message || error);
                     break;
+                }
+                if (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") {
+                    skipSmartMoney = true;
+                    metrics.cooldownStops += 1;
+                    continue;
                 }
                 console.warn("[smartMoneyScheduler]", symbol, error.message || error);
             }
