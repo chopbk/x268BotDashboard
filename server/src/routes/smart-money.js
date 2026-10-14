@@ -15,8 +15,11 @@ const {
     normalizeSymbol,
 } = require("../lib/smart-money/read-api");
 const { requestRefresh } = require("../lib/smart-money/scheduler");
+const { askOverview, askSymbol } = require("../lib/smart-money/ai-brief");
+const { sendError } = require("../lib/http");
 
 const router = express.Router();
+const lastAiAsk = new Map();
 
 /** Cùng cửa vào Terminal: ai xem Terminal được thì đọc Smart Money được. */
 const SMART_MONEY_READ_PERMISSIONS = [
@@ -152,6 +155,32 @@ router.get("/money-flow/:symbol", requireAuth, requireSmartMoneyRead, async (req
     } catch (error) {
         console.error("[smartMoney:moneyFlow]", error.message || error);
         res.status(500).json({ error: "Không đọc được dòng tiền" });
+    }
+});
+
+function aiUserLimit(req, res, next) {
+    const id = String(req.webUser?.id || req.ip || "");
+    const now = Date.now();
+    if (now - (lastAiAsk.get(id) || 0) < 15_000) {
+        return res.status(429).json({ error: "Đợi một chút rồi gửi lại cho AI" });
+    }
+    lastAiAsk.set(id, now);
+    return next();
+}
+
+router.post("/ai/overview", requireAuth, requireSmartMoneyRead, aiUserLimit, async (req, res) => {
+    try {
+        res.json(await askOverview(req.body || {}));
+    } catch (error) {
+        sendError(res, error, "POST /api/smart-money/ai/overview");
+    }
+});
+
+router.post("/ai/symbol", requireAuth, requireSmartMoneyRead, aiUserLimit, async (req, res) => {
+    try {
+        res.json(await askSymbol(req.body || {}));
+    } catch (error) {
+        sendError(res, error, "POST /api/smart-money/ai/symbol");
     }
 });
 

@@ -360,6 +360,8 @@ Các invariant:
 | `GET /api/terminal/decision/latest-account` | `requireAuth` | `positions.view`. Cache báo cáo account gần nhất (dashboard badge; không gọi AI) |
 | `POST /api/terminal/coach` | `requireAuth` | Wrapper tương thích → `decision/position` |
 | `GET /api/smart-money/status` | `requireAuth` | Đọc: `positions.view` \| `orders.view` \| `statistics.view` \| `smart_money.view`. Trạng thái collector / universe |
+| `POST /api/smart-money/ai/overview` | `requireAuth` | Cùng quyền đọc Smart Money. Gửi snapshot list + candidates cho AI (`AI_PROVIDER`). 1 lần / 15 giây / user. Không trả API key |
+| `POST /api/smart-money/ai/symbol` | `requireAuth` | Cùng quyền đọc. Body `symbol`. AI kết luận 1 symbol. Rate-limit chung với overview |
 | `GET /api/smart-money/symbols` | `requireAuth` | Cùng quyền đọc. Danh sách snapshot; không lộ nguồn vị thế user |
 | `GET /api/smart-money/symbols/:symbol` | `requireAuth` | Cùng quyền đọc. Chi tiết + events |
 | `GET /api/smart-money/symbols/:symbol/history` | `requireAuth` | Cùng quyền đọc. Lịch sử Mongo; validate limit |

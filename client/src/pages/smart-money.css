@@ -30,6 +30,15 @@
 .sm-event-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .term-money-alerts { margin: 0; padding-left: 1.1rem; }
 
+.sm-ai { padding: 12px 14px; display: grid; gap: 8px; }
+.sm-ai-compact { margin-bottom: 10px; padding: 10px; }
+.sm-ai-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sm-ai-head h2 { margin: 0; font-size: 1rem; }
+.sm-ai-headline { margin: 0; line-height: 1.35; }
+.sm-ai-summary { margin: 0; line-height: 1.45; white-space: pre-wrap; }
+.sm-ai-bullets, .sm-ai-risks { margin: 0; padding-left: 1.15rem; line-height: 1.4; }
+.sm-ai-risks { color: #b42318; }
+
 @media (max-width: 900px) {
   .sm-layout.has-detail { grid-template-columns: 1fr; }
   .sm-status { text-align: left; }

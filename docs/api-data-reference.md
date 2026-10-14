@@ -142,6 +142,8 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/smart-money/candidates` | [smart-money](../server/src/routes/smart-money.js) |
 | GET/PUT | `/api/smart-money/watchlist` | [smart-money](../server/src/routes/smart-money.js) |
 | GET | `/api/smart-money/money-flow/:symbol` | [smart-money](../server/src/routes/smart-money.js) |
+| POST | `/api/smart-money/ai/overview` | [smart-money](../server/src/routes/smart-money.js) — AI tổng quan (rate-limit) |
+| POST | `/api/smart-money/ai/symbol` | [smart-money](../server/src/routes/smart-money.js) — AI 1 symbol (rate-limit) |
 | POST | `/api/smart-money/refresh` | [smart-money](../server/src/routes/smart-money.js) — `smart_money.manage` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |

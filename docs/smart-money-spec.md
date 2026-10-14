@@ -93,8 +93,12 @@ Bắt buộc: tôn trọng Retry-After; 418/429 → cooldown chung; không đổ
 | GET/PUT | `/api/smart-money/watchlist` | `smart_money.view` (cá nhân) |
 | POST | `/api/smart-money/refresh` | `smart_money.manage` (dedup/rate-limit) |
 | GET | `/api/smart-money/money-flow/:symbol` | `smart_money.view` (+ optional position context cần `positions.view`) |
+| POST | `/api/smart-money/ai/overview` | Đọc Smart Money (= Terminal). AI kết luận tổng quan từ snapshot list + candidates. Rate-limit 1/15s/user. Không trả API key |
+| POST | `/api/smart-money/ai/symbol` | Cùng quyền. Body `{ symbol }`. AI kết luận 1 symbol từ snapshot/events. Rate-limit chung 1/15s/user |
 
 Validate/giới hạn mọi `symbol`/`range`/`limit`.
+
+**AI brief (`sm-ai-v1`):** chỉ diễn giải số liệu đã có; null ≠ 0; không bịa trader/xác suất; không tự đặt lệnh. UI: ô tổng quan trên tab Thị trường/Watchlist; ô chi tiết trong panel symbol.
 
 ## 8. Contract snapshot (schemaVersion `sm-v1`)
 

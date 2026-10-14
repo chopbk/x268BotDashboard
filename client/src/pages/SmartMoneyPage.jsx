@@ -77,6 +77,12 @@ export default function SmartMoneyPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [marketAi, setMarketAi] = useState(null);
+  const [marketAiBusy, setMarketAiBusy] = useState(false);
+  const [marketAiError, setMarketAiError] = useState("");
+  const [symbolAi, setSymbolAi] = useState(null);
+  const [symbolAiBusy, setSymbolAiBusy] = useState(false);
+  const [symbolAiError, setSymbolAiError] = useState("");
 
   const patchParams = useCallback(
     (patch, { replace = false } = {}) => {
@@ -136,9 +142,13 @@ export default function SmartMoneyPage() {
   useEffect(() => {
     if (!symbol) {
       setDetail(null);
+      setSymbolAi(null);
+      setSymbolAiError("");
       return undefined;
     }
     let cancelled = false;
+    setSymbolAi(null);
+    setSymbolAiError("");
     api(`/api/smart-money/symbols/${encodeURIComponent(symbol)}`)
       .then((body) => {
         if (!cancelled) setDetail(body);
@@ -150,6 +160,41 @@ export default function SmartMoneyPage() {
       cancelled = true;
     };
   }, [symbol]);
+
+  async function runMarketAi() {
+    setMarketAiBusy(true);
+    setMarketAiError("");
+    try {
+      const body = await api("/api/smart-money/ai/overview", {
+        method: "POST",
+        body: { top: Number(top) || 10 },
+        timeoutMs: 35_000,
+      });
+      setMarketAi(body);
+    } catch (err) {
+      setMarketAiError(err.message || "AI không soạn được tổng quan");
+    } finally {
+      setMarketAiBusy(false);
+    }
+  }
+
+  async function runSymbolAi() {
+    if (!symbol) return;
+    setSymbolAiBusy(true);
+    setSymbolAiError("");
+    try {
+      const body = await api("/api/smart-money/ai/symbol", {
+        method: "POST",
+        body: { symbol },
+        timeoutMs: 35_000,
+      });
+      setSymbolAi(body);
+    } catch (err) {
+      setSymbolAiError(err.message || "AI không soạn được kết luận symbol");
+    } finally {
+      setSymbolAiBusy(false);
+    }
+  }
 
   const rows = list?.rows || [];
   const watchRows = useMemo(() => {
@@ -284,6 +329,18 @@ export default function SmartMoneyPage() {
         </div>
       ) : null}
 
+      {tab === "market" || tab === "watchlist" ? (
+        <AiBriefPanel
+          title="Kết luận tổng quan thị trường (AI)"
+          brief={marketAi}
+          busy={marketAiBusy}
+          error={marketAiError}
+          onRun={() => runMarketAi()}
+          runLabel={marketAi ? "Chạy lại AI" : "Phân tích AI"}
+          emptyHint="Gọi AI để tóm tắt bias / OI / funding trên top symbol đang theo dõi. Không phải tín hiệu vào lệnh."
+        />
+      ) : null}
+
       <div className={`sm-layout ${symbol ? "has-detail" : ""}`}>
         <div className="sm-main">
           {tab === "notable" ? (
@@ -311,6 +368,16 @@ export default function SmartMoneyPage() {
                 Đóng
               </button>
             </header>
+            <AiBriefPanel
+              title={`Kết luận AI · ${symbol}`}
+              brief={symbolAi}
+              busy={symbolAiBusy}
+              error={symbolAiError}
+              onRun={() => runSymbolAi()}
+              runLabel={symbolAi ? "Chạy lại AI" : "Phân tích AI"}
+              emptyHint="AI diễn giải snapshot symbol này (SM / whale / OI / funding / taker)."
+              compact
+            />
             <SymbolDetail detail={detail} />
           </aside>
         ) : null}
@@ -395,6 +462,62 @@ function MarketTable({ rows, selected, watchlist, onOpen, onToggleWatch, emptyNo
         </tbody>
       </table>
     </div>
+  );
+}
+
+function stanceLabel(stance) {
+  if (stance === "risk_on" || stance === "long") return "Thiên Long / risk-on";
+  if (stance === "risk_off" || stance === "short") return "Thiên Short / risk-off";
+  if (stance === "both" || stance === "mixed") return "Hai chiều / lẫn";
+  return "Chưa rõ";
+}
+
+function AiBriefPanel({ title, brief, busy, error, onRun, runLabel, emptyHint, compact }) {
+  return (
+    <section className={`sm-ai card ${compact ? "sm-ai-compact" : ""}`}>
+      <header className="sm-ai-head">
+        <h2>{title}</h2>
+        <button type="button" className="ghost" disabled={busy} onClick={onRun}>
+          {busy ? "Đang hỏi AI…" : runLabel}
+        </button>
+      </header>
+      {error ? <p className="form-error">{error}</p> : null}
+      {!brief && !error ? <p className="muted sm-tiny">{emptyHint}</p> : null}
+      {brief ? (
+        <div className="sm-ai-body">
+          <p className="sm-ai-headline">
+            <strong>{brief.headline}</strong>
+            <span className="muted"> · {stanceLabel(brief.stance)}</span>
+          </p>
+          <p className="sm-ai-summary">{brief.summary}</p>
+          {(brief.bullets || []).length ? (
+            <ul className="sm-ai-bullets">
+              {brief.bullets.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          ) : null}
+          {(brief.watch || []).length ? (
+            <p className="sm-tiny">
+              <strong>Đáng xem:</strong> {brief.watch.join(", ")}
+            </p>
+          ) : null}
+          {(brief.risks || []).length ? (
+            <ul className="sm-ai-risks">
+              {brief.risks.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="muted sm-tiny">
+            {brief.provider || "AI"} · {when(brief.generatedAt)} · {brief.promptVersion || "sm-ai"}
+            {brief.coverage
+              ? ` · ${brief.coverage.withSmOk || 0}/${brief.coverage.symbols || 0} có SM`
+              : ""}
+          </p>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
