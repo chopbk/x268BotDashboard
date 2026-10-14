@@ -100,6 +100,8 @@ Validate/giới hạn mọi `symbol`/`range`/`limit`.
 
 **AI brief (`sm-ai-v1`):** chỉ diễn giải số liệu đã có; null ≠ 0; không bịa trader/xác suất; không tự đặt lệnh. UI: ô tổng quan trên tab Thị trường/Watchlist; ô chi tiết trong panel symbol.
 
+**Infographic / chart:** panel L/S kiểu Smart Signal + SVG time-series (long/short qty, whale entry vs mark) + mini bar trên bảng — nghiên cứu [smart-money-ui-research](smart-money-ui-research.md). Không thêm chart lib ở phase 1.
+
 ## 8. Contract snapshot (schemaVersion `sm-v1`)
 
 Mỗi symbol có object chuẩn hóa (rút gọn):

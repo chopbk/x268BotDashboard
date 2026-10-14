@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import SmOverviewPanel, { SmLsMiniBar } from "../components/smart-money/SmOverviewPanel";
+import SmHistoryCharts from "../components/smart-money/SmHistoryCharts";
 import "./smart-money.css";
 
 const TABS = [
@@ -83,6 +85,7 @@ export default function SmartMoneyPage() {
   const [symbolAi, setSymbolAi] = useState(null);
   const [symbolAiBusy, setSymbolAiBusy] = useState(false);
   const [symbolAiError, setSymbolAiError] = useState("");
+  const [historyPoints, setHistoryPoints] = useState(null);
 
   const patchParams = useCallback(
     (patch, { replace = false } = {}) => {
@@ -144,17 +147,26 @@ export default function SmartMoneyPage() {
       setDetail(null);
       setSymbolAi(null);
       setSymbolAiError("");
+      setHistoryPoints(null);
       return undefined;
     }
     let cancelled = false;
     setSymbolAi(null);
     setSymbolAiError("");
+    setHistoryPoints(null);
     api(`/api/smart-money/symbols/${encodeURIComponent(symbol)}`)
       .then((body) => {
         if (!cancelled) setDetail(body);
       })
       .catch((err) => {
         if (!cancelled) setDetail({ error: err.message });
+      });
+    api(`/api/smart-money/symbols/${encodeURIComponent(symbol)}/history?limit=120`)
+      .then((body) => {
+        if (!cancelled) setHistoryPoints(body.points || []);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryPoints([]);
       });
     return () => {
       cancelled = true;
@@ -378,7 +390,7 @@ export default function SmartMoneyPage() {
               emptyHint="AI diễn giải snapshot symbol này (SM / whale / OI / funding / taker)."
               compact
             />
-            <SymbolDetail detail={detail} />
+            <SymbolDetail detail={detail} historyPoints={historyPoints} />
           </aside>
         ) : null}
       </div>
@@ -404,6 +416,7 @@ function MarketTable({ rows, selected, watchlist, onOpen, onToggleWatch, emptyNo
               OI Δ
             </th>
             <th title="Smart Money quantity Long / Short (nhóm được theo dõi)">SM L/S</th>
+            <th title="Tỷ trọng notional Long vs Short">L|S</th>
             <th className="num" title="Delta quantity whale Long (chỉ khi cùng cohort)">
               Whale ΔL
             </th>
@@ -433,6 +446,9 @@ function MarketTable({ rows, selected, watchlist, onOpen, onToggleWatch, emptyNo
               <td className={`num ${tone(r.openInterest?.deltaPct)}`}>{fmtSigned(r.openInterest?.deltaPct, 2, "%")}</td>
               <td className="num">
                 {fmt(r.smartMoney?.tradersLongQty, 2)} / {fmt(r.smartMoney?.tradersShortQty, 2)}
+              </td>
+              <td>
+                <SmLsMiniBar longQty={r.smartMoney?.tradersLongQty} shortQty={r.smartMoney?.tradersShortQty} />
               </td>
               <td className={`num ${tone(r.smartMoney?.whalesLongDelta)}`}>
                 {r.smartMoney?.comparable === false || r.smartMoney?.cohortReset
@@ -567,7 +583,7 @@ function CandidatesPanel({ candidates, onOpen }) {
   );
 }
 
-function SymbolDetail({ detail }) {
+function SymbolDetail({ detail, historyPoints }) {
   if (!detail) return <p className="muted">Đang tải chi tiết…</p>;
   if (detail.error) return <p className="form-error">{detail.error}</p>;
   if (detail.warming && !detail.snapshot) {
@@ -589,6 +605,15 @@ function SymbolDetail({ detail }) {
       <p className="muted sm-tiny">
         collectedAt {when(snap.collectedAt)} · cohort {sm.cohortId || "—"} · quality {snap.quality?.overall}
       </p>
+
+      <SmOverviewPanel snapshot={snap} />
+
+      <h3>Biểu đồ theo thời gian</h3>
+      {historyPoints == null ? (
+        <p className="muted sm-tiny">Đang tải lịch sử…</p>
+      ) : (
+        <SmHistoryCharts points={historyPoints} />
+      )}
 
       <h3>Trader được theo dõi</h3>
       <SideTable side={traders} mark={snap.price?.mark} dist={snap.derived?.distanceToTraderEntryPct} />

@@ -9,7 +9,7 @@
 .sm-filters input, .sm-filters select { min-width: 110px; }
 .sm-check { display: flex !important; align-items: center; gap: 6px; padding-bottom: 6px; }
 .sm-layout { display: grid; gap: 12px; }
-.sm-layout.has-detail { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.sm-layout.has-detail { grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); }
 .sm-table-wrap { overflow: auto; max-height: calc(100vh - 260px); }
 .sm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sm-table th, .sm-table td { padding: 6px 8px; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); white-space: nowrap; }
@@ -39,12 +39,80 @@
 .sm-ai-bullets, .sm-ai-risks { margin: 0; padding-left: 1.15rem; line-height: 1.4; }
 .sm-ai-risks { color: #b42318; }
 
+/* Infographic panel (Binance Smart Signal–style) */
+.sm-panel {
+  background: #151a21;
+  border: 1px solid #2b3139;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #eaecef;
+  display: grid;
+  gap: 10px;
+}
+.sm-panel-empty { padding: 12px; }
+.sm-panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sm-panel-title { font-size: 1.05rem; }
+.sm-panel-muted { color: #848e9c; font-size: 12px; font-weight: 400; }
+.sm-panel-kpis { display: flex; gap: 16px; flex-wrap: wrap; }
+.sm-panel-kpi { font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.sm-panel-split { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: #2b3139; }
+.sm-panel-split-long { background: #2ebd85; }
+.sm-panel-split-short { flex: 1; background: #f6465d; }
+.sm-panel-side { border-radius: 10px; padding: 10px 12px; }
+.sm-panel-side-long { border: 1px solid #2ebd8533; background: #2ebd8514; }
+.sm-panel-side-short { border: 1px solid #f6465d33; background: #f6465d14; }
+.sm-panel-side-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.sm-panel-side-long .sm-panel-side-head { color: #2ebd85; }
+.sm-panel-side-short .sm-panel-side-head { color: #f6465d; }
+.sm-panel-side-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: #b7bdc6;
+}
+.sm-panel-side-grid strong {
+  display: block;
+  color: #eaecef;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.sm-panel-side-grid .pos { color: #2ebd85; }
+.sm-panel-side-grid .neg { color: #f6465d; }
+.sm-panel-state.pos { color: #2ebd85; }
+.sm-panel-state.neg { color: #f6465d; }
+.sm-panel-profit-track { margin-top: 8px; height: 6px; border-radius: 99px; background: #2b3139; overflow: hidden; }
+.sm-panel-profit-fill.long { height: 100%; background: #2ebd85; border-radius: 99px; }
+.sm-panel-profit-fill.short { height: 100%; background: #f6465d; border-radius: 99px; }
+.sm-panel-foot-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 12px;
+  color: #b7bdc6;
+}
+.sm-panel-foot-stats b { color: #eaecef; font-weight: 500; }
+.sm-panel-foot-stats .pos { color: #2ebd85; }
+.sm-panel-foot-stats .neg { color: #f6465d; }
+.sm-panel-disclaimer { margin: 0; font-size: 11px; }
+
+.sm-mini-ls { display: flex; height: 6px; width: 56px; border-radius: 99px; overflow: hidden; background: #2b3139; }
+.sm-mini-ls-long { background: #2ebd85; }
+.sm-mini-ls-short { flex: 1; background: #f6465d; }
+
+.sm-chart { background: #0b0e11; border: 1px solid #2b3139; border-radius: 10px; padding: 8px 6px 4px; }
+.sm-chart-svg { width: 100%; height: auto; display: block; }
+.sm-chart-meta { font-size: 11px; padding: 0 4px 4px; }
+.sm-chart-empty { font-size: 12px; padding: 8px 0; }
+
 @media (max-width: 900px) {
   .sm-layout.has-detail { grid-template-columns: 1fr; }
   .sm-status { text-align: left; }
   .sm-table th:nth-child(n+4), .sm-table td:nth-child(n+4) { display: none; }
   .sm-table th:nth-child(1), .sm-table td:nth-child(1),
-  .sm-table th:nth-child(9), .sm-table td:nth-child(9),
+  .sm-table th:nth-child(5), .sm-table td:nth-child(5),
+  .sm-table th:nth-child(6), .sm-table td:nth-child(6),
   .sm-table th:nth-child(10), .sm-table td:nth-child(10),
-  .sm-table th:nth-child(11), .sm-table td:nth-child(11) { display: table-cell; }
+  .sm-table th:nth-child(11), .sm-table td:nth-child(11),
+  .sm-table th:nth-child(12), .sm-table td:nth-child(12) { display: table-cell; }
 }
