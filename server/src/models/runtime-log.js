@@ -8,6 +8,7 @@ const RuntimeLogSchema = new mongoose.Schema(
         role: String,
         processName: String,
         pmId: String,
+        host: String,
         usernames: [String],
         env: String,
         symbol: String,

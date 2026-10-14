@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { assessHealth, STALE_MS } = require("../src/lib/system-health");
+const { assessHealth, formatCredentialAlert, STALE_MS } = require("../src/lib/system-health");
 
 const now = new Date("2026-10-08T12:00:00.000Z");
 
@@ -102,6 +102,22 @@ test("old formula snapshots stay out of the alert list", () => {
 
 test("STALE_MS is 90 seconds for heartbeat cleanup", () => {
     assert.equal(STALE_MS, 90_000);
+});
+
+test("formatCredentialAlert includes process and RUN", () => {
+    const text = formatCredentialAlert({
+        processName: "trader-sgp",
+        pmId: "2",
+        host: "45.32.252.50",
+        env: "TRADER_PROD",
+        usernames: ["alice", "bob"],
+        role: "TRADER",
+        message: '{"code":-2015,"msg":"Invalid API-key, IP, or permissions for action, request ip: 139.180.133.147"}',
+    });
+    assert.match(text, /trader-sgp#2/);
+    assert.match(text, /host=45\.32\.252\.50/);
+    assert.match(text, /RUN=alice,bob/);
+    assert.match(text, /-2015/);
 });
 
 test("down processes are listed so UI can offer delete-stale", () => {

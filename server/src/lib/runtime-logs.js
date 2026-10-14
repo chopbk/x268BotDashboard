@@ -52,6 +52,7 @@ function toRuntimeLog(row) {
         role: row.role || "",
         processName: row.processName || "",
         pmId: row.pmId || "",
+        host: row.host || "",
         usernames: row.usernames || [],
         env: row.env || "",
         symbol: row.symbol || "",

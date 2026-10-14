@@ -25,6 +25,23 @@ function service(id, label, status, detail, at) {
     return { id, label, status, detail, at: at || null };
 }
 
+/** Ghép process / RUN / host vào cảnh báo credential — message thô không đủ để biết server nào. */
+function formatCredentialAlert(row) {
+    const parts = [];
+    const proc = [row.processName, row.pmId != null && row.pmId !== "" ? `#${row.pmId}` : ""]
+        .filter(Boolean)
+        .join("");
+    if (proc) parts.push(proc);
+    if (row.host) parts.push(`host=${row.host}`);
+    if (row.env) parts.push(`env=${row.env}`);
+    const users = Array.isArray(row.usernames) ? row.usernames.filter(Boolean) : [];
+    if (users.length) parts.push(`RUN=${users.join(",")}`);
+    if (row.role) parts.push(row.role);
+    const where = parts.length ? `[${parts.join(" · ")}] ` : "";
+    const msg = String(row.message || "").slice(0, 200);
+    return `Credential: ${where}${msg}`;
+}
+
 function currentSnapshots(rows) {
     const byRange = new Map();
     for (const row of rows || []) {
@@ -89,7 +106,11 @@ function assessHealth(input = {}) {
         alerts.push({ level: "warn", code: "position", message: `${unmonitored} position không được monitor` });
     }
     for (const row of input.credentials || []) {
-        alerts.push({ level: "warn", code: "credential", message: `Credential: ${String(row.message || "").slice(0, 180)}` });
+        alerts.push({
+            level: "warn",
+            code: "credential",
+            message: formatCredentialAlert(row),
+        });
     }
 
     const listeners = processes.filter((row) => row.flags?.listener);
@@ -162,7 +183,7 @@ async function loadSystemHealth() {
         MonitorPosition.countDocuments({ closed: { $ne: true }, type: "NOTPSL", isPaper: { $ne: true } }),
         SummarySnapshot.find({}).select("range status staleAt lastError generatedAt").lean(),
         RuntimeLog.find({ category: "exchange", at: { $gte: new Date(now.getTime() - CREDENTIAL_MS) } })
-            .select("message at")
+            .select("message at processName pmId host env usernames role source")
             .sort({ at: -1 })
             .limit(8)
             .lean(),
@@ -235,5 +256,6 @@ module.exports = {
     deleteStaleHeartbeats,
     deleteHeartbeatByKey,
     purgeHeartbeats,
+    formatCredentialAlert,
     STALE_MS,
 };
