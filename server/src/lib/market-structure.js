@@ -2,6 +2,7 @@
  * Phân tích kỹ thuật tối thiểu từ klines public Binance Futures.
  * Không cần API key. Cache ngắn để tránh spam.
  */
+const { binancePublicFetch } = require("./binance-peer-proxy");
 
 const HOST = "https://fapi.binance.com";
 const cache = new Map();
@@ -116,7 +117,7 @@ async function fetchKlines(symbol, interval, limit, fetchImpl) {
 async function analyzeMarketStructure(symbol, opts = {}) {
     const sym = String(symbol || "").trim().toUpperCase();
     if (!sym || sym.length < 4) return null;
-    const fetchImpl = opts.fetchImpl || fetch;
+    const fetchImpl = opts.fetchImpl || binancePublicFetch;
     const side = String(opts.side || "").toUpperCase();
     const entry = num(opts.entry);
     const mark = num(opts.mark);

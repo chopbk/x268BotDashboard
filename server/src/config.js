@@ -21,6 +21,9 @@ const config = {
     csrfCookieName: "wb_csrf",
     jwtExpiresIn: "12h",
     cookieMaxAgeMs: 12 * 60 * 60 * 1000,
+    /** Peer tinyproxy — public GET Binance; signed vẫn direct. Trống = hydrate từ peer_proxy_config. */
+    binancePeerProxies: process.env.BINANCE_PEER_PROXIES || "",
+    binancePeerProxySelfIp: process.env.BINANCE_PEER_PROXY_SELF_IP || "",
 };
 
 module.exports = config;

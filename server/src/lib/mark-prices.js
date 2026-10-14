@@ -1,3 +1,5 @@
+const { binancePublicFetch } = require("./binance-peer-proxy");
+
 const MARK_URL = "wss://fstream.binance.com/market/ws/!markPrice@arr@1s";
 const PREMIUM_URL = "https://fapi.binance.com/fapi/v1/premiumIndex";
 
@@ -26,7 +28,7 @@ function ingestMarkPrices(payload, store = marks) {
 }
 
 async function seedMarkPrices(deps = {}) {
-    const load = deps.fetch || fetch;
+    const load = deps.fetch || binancePublicFetch;
     try {
         const response = await load(deps.premiumUrl || PREMIUM_URL, { signal: AbortSignal.timeout(8000) });
         if (!response.ok) throw new Error(`premiumIndex ${response.status}`);

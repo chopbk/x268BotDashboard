@@ -10,6 +10,7 @@ const {
     parseKlines,
     roundPrice,
 } = require("../market-structure");
+const { binancePublicFetch } = require("../binance-peer-proxy");
 
 const HOST = "https://fapi.binance.com";
 const cache = new Map();
@@ -122,7 +123,7 @@ const INTERVAL_MS = { "15m": 15 * 60_000, "1h": 60 * 60_000, "4h": 4 * 60 * 60_0
 async function buildMarketSnapshot(symbol, opts = {}) {
     const sym = String(symbol || "").trim().toUpperCase();
     if (!sym) return { error: "Thiếu symbol" };
-    const fetchImpl = opts.fetchImpl || fetch;
+    const fetchImpl = opts.fetchImpl || binancePublicFetch;
     const side = String(opts.side || "").toUpperCase();
 
     const tasks = [

@@ -25,6 +25,10 @@ async function main() {
         }
 
         await connect(config.mongodb);
+        const { hydrateFromMongo, peerProxyCount, peerProxySource } = require("./lib/binance-peer-proxy");
+        const PeerProxyConfig = require("./models/peer-proxy-config");
+        await hydrateFromMongo(PeerProxyConfig);
+        console.log(`[main] binance peer proxy: ${peerProxyCount()} (${peerProxySource()})`);
         await connectRateLimitStore(config.redisUrl);
         bindRedis(getRedisClient());
         await startMarkPrices();

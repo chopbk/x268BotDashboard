@@ -6,6 +6,7 @@ const ProcessHeartbeat = require("../models/process-heartbeat");
 const BotProfile = require("../models/bot-profile");
 const processAdmin = require("./process-admin");
 const { httpError } = require("./http");
+const { setPeerList, urlsFromConfigDoc } = require("./binance-peer-proxy");
 
 const CONFIG_KEY = "default";
 const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
@@ -169,6 +170,13 @@ async function saveConfig(body, actor) {
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
     ).select("+authPass");
+
+    // Web server cũng dùng pool này cho public GET (trừ khi đã set BINANCE_PEER_PROXIES env).
+    if (!String(process.env.BINANCE_PEER_PROXIES || "").trim()) {
+        const selfIp = String(process.env.BINANCE_PEER_PROXY_SELF_IP || "").trim();
+        const plain = doc.toObject();
+        setPeerList(urlsFromConfigDoc(plain, selfIp), { selfIp, label: "peer_proxy_config" });
+    }
 
     return publicConfig(doc.toObject());
 }

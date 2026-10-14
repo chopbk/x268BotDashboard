@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { httpError } = require("./http");
+const { binancePublicFetch } = require("./binance-peer-proxy");
 
 const HOST = "https://fapi.binance.com";
 const QUOTE = new Set(["USDT", "BUSD", "USDC", "FDUSD", "BFUSD"]);
@@ -62,8 +63,10 @@ async function requestJson(url, headers, fetchImpl, method = "GET") {
     }
 }
 
-function createBinanceFutures({ apiKey, apiSecret, fetchImpl = fetch }) {
+function createBinanceFutures({ apiKey, apiSecret, fetchImpl = fetch, publicFetchImpl } = {}) {
     if (!apiKey || !apiSecret) throw httpError(400, "User chưa có API key");
+    // Public GET: peer proxy; signed: luôn direct (IP whitelist API key).
+    const publicFetch = publicFetchImpl || binancePublicFetch;
 
     async function signedGet(path, params = {}) {
         const query = signQuery(apiSecret, params);
@@ -71,7 +74,7 @@ function createBinanceFutures({ apiKey, apiSecret, fetchImpl = fetch }) {
     }
 
     async function publicGet(path) {
-        return requestJson(`${HOST}${path}`, {}, fetchImpl);
+        return requestJson(`${HOST}${path}`, {}, publicFetch);
     }
 
     async function signed(method, path, params = {}) {
