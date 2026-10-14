@@ -1,5 +1,5 @@
 const express = require("express");
-const { requireAuth, requirePermission } = require("../middleware/auth");
+const { requireAuth } = require("../middleware/auth");
 const { PERMISSIONS, hasPermission } = require("../auth/access-control");
 const { createRateLimit } = require("../middleware/rate-limit");
 const {
@@ -155,25 +155,26 @@ router.get("/money-flow/:symbol", requireAuth, requireSmartMoneyRead, async (req
     }
 });
 
-router.post(
-    "/refresh",
-    requireAuth,
-    requirePermission(PERMISSIONS.SMART_MONEY_MANAGE),
-    refreshLimit,
-    async (req, res) => {
-        try {
-            const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
-            const result = await requestRefresh({ symbols, actorId: req.webUser.id });
-            res.json({
-                ok: true,
-                ...result,
-                note: "Refresh chỉ enqueue trong TTL/cooldown — không bypass limiter.",
-            });
-        } catch (error) {
-            console.error("[smartMoney:refresh]", error.message || error);
-            res.status(500).json({ error: "Không enqueue được refresh" });
-        }
+router.post("/refresh", requireAuth, requireSmartMoneyRead, refreshLimit, async (req, res) => {
+    try {
+        const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
+        const canManage = hasPermission(req.webUser, PERMISSIONS.SMART_MONEY_MANAGE);
+        // User Terminal: bootstrap/seed tối đa 10 symbol hoặc seed universe.
+        // Manage: force đầy đủ hơn.
+        const result = await requestRefresh({
+            symbols: canManage ? symbols : symbols.slice(0, 5),
+            actorId: req.webUser.id,
+            bootstrap: !canManage || symbols.length === 0,
+        });
+        res.json({
+            ok: true,
+            ...result,
+            note: "Refresh tôn trọng cooldown HTTP — không bypass limiter; không backfill lịch sử Smart Money quá khứ.",
+        });
+    } catch (error) {
+        console.error("[smartMoney:refresh]", error.message || error);
+        res.status(500).json({ error: "Không enqueue được refresh" });
     }
-);
+});
 
 module.exports = router;

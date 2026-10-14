@@ -367,7 +367,7 @@ Các invariant:
 | `GET /api/smart-money/candidates` | `requireAuth` | Cùng quyền đọc. Ứng viên cần xem xét (code xếp hạng) |
 | `GET/PUT /api/smart-money/watchlist` | `requireAuth` | Cùng quyền đọc. Watchlist cá nhân actor |
 | `GET /api/smart-money/money-flow/:symbol` | `requireAuth` | Cùng quyền đọc. Khối Dòng tiền Terminal |
-| `POST /api/smart-money/refresh` | `requireAuth` | `smart_money.manage`. Enqueue job trong TTL/cooldown; rate-limit 4/10 phút |
+| `POST /api/smart-money/refresh` | `requireAuth` | Cùng quyền đọc Terminal. Enqueue bootstrap/seed trong TTL/cooldown; rate-limit 4/10 phút. Không backfill lịch sử Smart Money quá khứ |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
 | `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |

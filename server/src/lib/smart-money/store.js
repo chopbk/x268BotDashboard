@@ -43,8 +43,13 @@ async function getLatestSnapshot(symbol) {
         }
     }
     if (memoryLatest.has(sym)) return memoryLatest.get(sym);
-    const row = await SmartMoneyHistory.findOne({ symbol: sym }).sort({ collectedAt: -1 }).lean();
-    return row?.snapshot || null;
+    try {
+        const row = await SmartMoneyHistory.findOne({ symbol: sym }).sort({ collectedAt: -1 }).lean();
+        return row?.snapshot || null;
+    } catch (error) {
+        console.warn("[smartMoneyStore] mongo get", error.message || error);
+        return null;
+    }
 }
 
 async function listLatestSnapshots(symbols) {
@@ -80,7 +85,8 @@ async function appendHistory(snapshot) {
         );
     } catch (error) {
         if (error?.code === 11000) return; // trùng — bỏ qua
-        throw error;
+        // Snapshot Redis/memory đã lưu — không để Mongo lỗi làm mất chu kỳ collect.
+        console.warn("[smartMoneyStore] history write", error.message || error);
     }
 }
 

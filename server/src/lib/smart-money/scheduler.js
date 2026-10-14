@@ -75,7 +75,7 @@ function markDone(symbol, part, now) {
 }
 
 async function runCycle(options = {}) {
-    if (!config.enabled && !options.force) return { skipped: true, reason: "disabled" };
+    if (!config.enabled && !options.force && !options.bootstrap) return { skipped: true, reason: "disabled" };
     if (running) return { skipped: true, reason: "local_busy" };
     running = true;
     const now = Date.now();
@@ -91,30 +91,60 @@ async function runCycle(options = {}) {
         symbolsOk: 0,
         errors: 0,
         cooldownStops: 0,
+        bootstrap: false,
         instanceId: INSTANCE_ID,
     };
 
     try {
-        const universe = await buildUniverse({ force: Boolean(options.refreshUniverse) });
-        const tickers = await loadAllTickers24h();
+        const universe = await buildUniverse({ force: Boolean(options.refreshUniverse || options.bootstrap) });
+        const tickers = await loadAllTickers24h(Boolean(options.bootstrap));
         const tickerMap = new Map(tickers.map((t) => [t.symbol, t]));
         const trackingBySymbol = new Map((universe.meta.rows || []).map((r) => [r.symbol, r]));
 
-        // Không backfill dồn: mỗi cycle chỉ xử lý một phần symbol đến hạn.
         const symbols = universe.symbols || [];
-        const maxPerCycle = options.force ? symbols.length : Math.min(8, symbols.length);
+        // Lần đầu chưa có snapshot → bootstrap nhanh (giá + OI/funding/top); không backfill dồn lịch sử SM.
+        let bootstrap = Boolean(options.bootstrap || options.force);
+        if (!bootstrap && symbols.length) {
+            const sample = await listLatestSnapshots(symbols.slice(0, 5));
+            bootstrap = sample.length === 0;
+        }
+        metrics.bootstrap = bootstrap;
+
+        // Seed giá ngay để UI không trống trong lúc chờ OI/SM.
+        if (bootstrap) {
+            for (const symbol of symbols) {
+                const tracking = trackingBySymbol.get(symbol) || { active: true, sources: [] };
+                const price = tickerMap.get(symbol) || null;
+                if (!price) continue;
+                const existing = await getLatestSnapshot(symbol);
+                if (existing?.price?.mark != null) continue;
+                try {
+                    await collectSymbol(symbol, { price, tracking, parts: [] });
+                } catch (error) {
+                    console.warn("[smartMoneyScheduler] price-seed", symbol, error.message || error);
+                }
+            }
+        }
+
+        const maxPerCycle = options.force || bootstrap
+            ? Math.min(symbols.length, config.topN)
+            : Math.min(8, symbols.length);
+        const smBudget = options.force ? symbols.length : bootstrap ? 5 : 3;
 
         let processed = 0;
+        let smDone = 0;
         for (const symbol of symbols) {
             if (processed >= maxPerCycle) break;
             const tracking = trackingBySymbol.get(symbol) || { active: true, sources: [] };
             const parts = [];
-            if (options.force || due(symbol, "oi", config.oiIntervalMs, now)) parts.push("oi");
-            if (options.force || due(symbol, "funding", config.fundingIntervalMs, now)) parts.push("funding");
-            if (options.force || due(symbol, "top", config.topTraderIntervalMs, now)) parts.push("top");
-            // Smart Money chậm hơn — chỉ vài symbol / cycle
-            if (options.force || due(symbol, "smartMoney", config.smartMoneyIntervalMs, now)) {
-                if (options.force || processed < 3) parts.push("smartMoney");
+            if (options.force || bootstrap || due(symbol, "oi", config.oiIntervalMs, now)) parts.push("oi");
+            if (options.force || bootstrap || due(symbol, "funding", config.fundingIntervalMs, now)) parts.push("funding");
+            if (options.force || bootstrap || due(symbol, "top", config.topTraderIntervalMs, now)) parts.push("top");
+            if (
+                (options.force || bootstrap || due(symbol, "smartMoney", config.smartMoneyIntervalMs, now)) &&
+                smDone < smBudget
+            ) {
+                parts.push("smartMoney");
             }
             if (!parts.length) continue;
 
@@ -123,10 +153,11 @@ async function runCycle(options = {}) {
                 const price = tickerMap.get(symbol) || null;
                 await collectSymbol(symbol, { price, tracking, parts });
                 for (const p of parts) markDone(symbol, p, Date.now());
+                if (parts.includes("smartMoney")) smDone += 1;
                 metrics.symbolsOk += 1;
 
                 const latest = await getLatestSnapshot(symbol);
-                if (latest) await detectForSymbol(symbol, latest);
+                if (latest && !bootstrap) await detectForSymbol(symbol, latest);
             } catch (error) {
                 metrics.errors += 1;
                 if (error.code === "COOLDOWN" || error.code === "RATE_LIMIT") {
@@ -185,10 +216,12 @@ async function startSmartMoneyJob() {
         return null;
     }
     console.log("[smartMoneyScheduler] start", INSTANCE_ID);
-    // Delay khởi động để tránh stampede khi nhiều instance restart
+    // Bootstrap sớm để có giá/OI; jitter nhỏ tránh stampede multi-instance.
     setTimeout(() => {
-        runCycle().catch((e) => console.error("[smartMoneyScheduler:init]", e.message || e));
-    }, 15_000 + Math.floor(Math.random() * 10_000));
+        runCycle({ bootstrap: true, refreshUniverse: true }).catch((e) =>
+            console.error("[smartMoneyScheduler:bootstrap]", e.message || e)
+        );
+    }, 2_000 + Math.floor(Math.random() * 3_000));
     timer = setInterval(() => {
         runCycle().catch((e) => console.error("[smartMoneyScheduler]", e.message || e));
     }, config.schedulerTickMs);
@@ -219,16 +252,22 @@ async function getCollectorStatus() {
     };
 }
 
-/** Refresh hợp lệ — không bypass TTL; chỉ đánh dấu due sớm hơn một bậc. */
-async function requestRefresh({ symbols = [], actorId = null } = {}) {
+/**
+ * Refresh hợp lệ — không bypass HTTP cooldown.
+ * Không có symbol → bootstrap universe + seed; có symbol → force các part đến hạn sớm.
+ */
+async function requestRefresh({ symbols = [], actorId = null, bootstrap = false } = {}) {
     const list = (symbols.length ? symbols : []).map((s) => String(s).toUpperCase()).slice(0, 10);
     for (const sym of list) {
-        // Đưa due sớm bằng cách lùi lastPartAt, vẫn tôn trọng gap HTTP.
         for (const part of ["oi", "funding", "top", "smartMoney"]) {
             lastPartAt.set(partKey(sym, part), Date.now() - config.oiIntervalMs);
         }
     }
-    const result = await runCycle({ force: list.length > 0, refreshUniverse: list.length === 0 });
+    const result = await runCycle({
+        force: list.length > 0,
+        bootstrap: bootstrap || list.length === 0,
+        refreshUniverse: list.length === 0 || bootstrap,
+    });
     return { ...result, requestedBy: actorId || null, symbols: list };
 }
 

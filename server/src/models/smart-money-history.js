@@ -10,7 +10,7 @@ const smartMoneyHistorySchema = new mongoose.Schema(
         signalDay: { type: Number, default: null },
         qualityOverall: { type: String, default: null },
         snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
-        _expireAt: { type: Date, default: null, index: true },
+        _expireAt: { type: Date, default: null },
     },
     { collection: "smart_money_history", timestamps: false }
 );

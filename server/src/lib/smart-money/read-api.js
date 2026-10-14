@@ -1,10 +1,11 @@
 const { config } = require("./config");
 const { buildUniverse, getUniverseCached, getSystemWatchlist } = require("./symbol-universe");
-const { getLatestSnapshot, listLatestSnapshots, getHistory, listKnownSymbols } = require("./store");
+const { getLatestSnapshot, listLatestSnapshots, getHistory, listKnownSymbols, getCollectorMeta } = require("./store");
 const { listEvents } = require("./detector");
 const { getCandidates } = require("./candidates");
 const { getCollectorStatus } = require("./scheduler");
 const { buildMoneyFlow, toMarketContext } = require("./money-flow");
+const { loadAllTickers24h } = require("./adapters/tickers");
 const SmartMoneyWatchlist = require("../../models/smart-money-watchlist");
 
 function clampLimit(value, max, fallback) {
@@ -21,14 +22,34 @@ function normalizeSymbol(raw) {
 
 async function getStatusPayload() {
     const status = await getCollectorStatus();
-    const universe = getUniverseCached();
+    let universe = getUniverseCached();
+    if (!universe.symbols?.length) {
+        try {
+            universe = await buildUniverse();
+        } catch (error) {
+            console.warn("[smartMoney:status] universe", error.message || error);
+        }
+    }
+    const meta = await getCollectorMeta();
+    const withSnapshot = meta?.coverage?.withSnapshot ?? status?.state?.coverage?.withSnapshot ?? 0;
+    const universeSize = universe.symbols?.length || meta?.coverage?.universeSize || 0;
+    const warming = universeSize > 0 && withSnapshot < Math.min(universeSize, 5);
     return {
         ...status,
         universe: {
-            size: universe.symbols?.length || 0,
+            size: universeSize,
             refreshedAt: universe.meta?.refreshedAt || null,
             topCount: universe.meta?.topCount ?? null,
+            withSnapshot,
         },
+        warming,
+        hints: [
+            "Smart Money (bapi) chỉ có snapshot hiện tại — không có API lịch sử quá khứ để backfill.",
+            "OI/funding/taker lấy từ Futures API; lịch sử dài chỉ tích lũy sau khi collector chạy.",
+            warming
+                ? "Collector đang seed lần đầu — giá/OI xuất hiện trước, cột SM Long/Short sau vài phút."
+                : null,
+        ].filter(Boolean),
         schemaNote: "Thiếu dữ liệu = null. signalDay không phải timestamp snapshot.",
     };
 }
@@ -45,21 +66,47 @@ async function listSymbolsQuery(query = {}) {
     const top = clampLimit(query.top, config.maxSymbols, config.topN);
     symbols = symbols.slice(0, top);
 
+    // Giá 24h từ ticker ngay cả khi snapshot collector chưa kịp ghi.
+    let tickerMap = new Map();
+    try {
+        const tickers = await loadAllTickers24h();
+        tickerMap = new Map(tickers.map((t) => [t.symbol, t]));
+        if (!symbols.length && tickers.length) {
+            symbols = tickers
+                .filter((t) => t.quoteVolume != null)
+                .sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0))
+                .slice(0, top)
+                .map((t) => t.symbol);
+        }
+    } catch (error) {
+        console.warn("[smartMoney:list] tickers", error.message || error);
+    }
+
     const snaps = await listLatestSnapshots(symbols);
     const bySym = new Map(snaps.map((s) => [s.symbol, s]));
     const trackingMap = new Map((universe.meta?.rows || []).map((r) => [r.symbol, r]));
 
     let rows = symbols.map((symbol) => {
         const snap = bySym.get(symbol) || null;
+        const ticker = tickerMap.get(symbol);
+        const priceFromTicker = ticker
+            ? {
+                  mark: ticker.lastPrice,
+                  changePct24h: ticker.priceChangePercent,
+                  quoteVolume24h: ticker.quoteVolume,
+                  status: "ok",
+                  source: "ticker",
+              }
+            : null;
         const tracking = trackingMap.get(symbol) || snap?.tracking || { active: false, sources: [] };
         return {
             symbol,
             tracking: {
-                active: Boolean(tracking.active !== false && trackingMap.has(symbol)),
-                sources: tracking.sources || [],
-                label: trackingMap.has(symbol) ? null : "Không còn theo dõi",
+                active: Boolean(tracking.active !== false && (trackingMap.has(symbol) || ticker)),
+                sources: tracking.sources || (ticker ? ["top_volume"] : []),
+                label: trackingMap.has(symbol) || ticker ? null : "Không còn theo dõi",
             },
-            price: snap?.price || null,
+            price: snap?.price?.mark != null ? snap.price : priceFromTicker,
             openInterest: snap?.openInterest
                 ? { deltaPct: snap.openInterest.deltaPct, qty: snap.openInterest.qty, status: snap.openInterest.status }
                 : null,

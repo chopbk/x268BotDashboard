@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { useAuth } from "../auth";
 import "./smart-money.css";
 
 const TABS = [
@@ -17,10 +16,6 @@ const BIAS_OPTS = [
   { id: "both", label: "Hai chiều" },
   { id: "unclear", label: "Chưa rõ" },
 ];
-
-function can(user, permission) {
-  return (user?.permissions || []).includes(permission);
-}
 
 function fmt(value, digits = 2) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
@@ -65,7 +60,6 @@ function when(iso) {
 }
 
 export default function SmartMoneyPage() {
-  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "market";
   const symbol = (params.get("symbol") || "").toUpperCase();
@@ -82,7 +76,7 @@ export default function SmartMoneyPage() {
   const [watchlist, setWatchlist] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const canManage = can(user, "smart_money.manage");
+  const [refreshing, setRefreshing] = useState(false);
 
   const patchParams = useCallback(
     (patch, { replace = false } = {}) => {
@@ -170,12 +164,20 @@ export default function SmartMoneyPage() {
   }
 
   async function requestRefresh() {
-    if (!canManage) return;
-    await api("/api/smart-money/refresh", { method: "POST", body: { symbols: symbol ? [symbol] : [] } });
-    await loadList();
-    const st = await api("/api/smart-money/status");
-    setStatus(st);
+    setRefreshing(true);
+    setError("");
+    try {
+      await api("/api/smart-money/refresh", { method: "POST", body: { symbols: symbol ? [symbol] : [] } });
+      await loadList();
+      const st = await api("/api/smart-money/status");
+      setStatus(st);
+    } finally {
+      setRefreshing(false);
+    }
   }
+
+  const snapCount = status?.universe?.withSnapshot ?? 0;
+  const universeSize = status?.universe?.size ?? list?.count ?? 0;
 
   return (
     <div className="sm-page">
@@ -185,16 +187,36 @@ export default function SmartMoneyPage() {
           <p className="muted">Theo dõi vị thế tổng hợp, dòng giao dịch và biến động thị trường.</p>
         </div>
         <div className="sm-status muted">
-          <div>Độ phủ: {status?.universe?.size ?? "—"} symbol</div>
+          <div>
+            Độ phủ: {snapCount}/{universeSize || "—"} snapshot
+          </div>
           <div>Collector: {status?.state?.status || (status?.enabled ? "idle/warm-up" : "tắt")}</div>
           <div>Cập nhật: {when(status?.state?.lastSuccessAt || status?.universe?.refreshedAt)}</div>
-          {canManage ? (
-            <button type="button" className="ghost" onClick={() => requestRefresh().catch((e) => setError(e.message))}>
-              Làm mới (job)
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="ghost"
+            disabled={refreshing}
+            onClick={() => requestRefresh().catch((e) => setError(e.message))}
+          >
+            {refreshing ? "Đang seed…" : "Làm mới dữ liệu"}
+          </button>
         </div>
       </header>
+
+      {status?.warming || snapCount === 0 ? (
+        <p className="muted sm-banner">
+          Đang seed lần đầu: giá/volume hiện ngay từ ticker; OI/funding/Smart Money lần lượt trong vài phút.
+          Binance Smart Money <strong>không có API lịch sử quá khứ</strong> — delta/ứng viên chỉ có sau khi collector
+          tích lũy. Bấm «Làm mới dữ liệu» nếu bảng còn trống sau khi restart server.
+        </p>
+      ) : null}
+      {(status?.hints || []).length ? (
+        <ul className="muted sm-hints">
+          {status.hints.map((h) => (
+            <li key={h}>{h}</li>
+          ))}
+        </ul>
+      ) : null}
 
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
