@@ -19,6 +19,32 @@ const emptyForm = {
   disabled: false,
 };
 
+const GROUP_LABELS = {
+  summary: "Tổng kết",
+  bot: "Bot",
+  config: "Config",
+  signal: "Signal / hiệu suất",
+  statistic: "Thống kê",
+  position: "Position",
+  order: "Order",
+  api: "API / credential",
+  user: "Người dùng",
+  log: "Log / hệ thống",
+};
+
+const GROUP_ORDER = [
+  "summary",
+  "bot",
+  "config",
+  "signal",
+  "statistic",
+  "position",
+  "order",
+  "api",
+  "user",
+  "log",
+];
+
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
   const permissions = currentUser?.permissions || [];
@@ -149,6 +175,30 @@ export default function AdminUsersPage() {
     () => form.customPermissions ?? rolePermissions[form.role] ?? [],
     [form.customPermissions, form.role, rolePermissions]
   );
+  const permissionGroups = useMemo(() => {
+    const buckets = new Map();
+    for (const permission of permissionOptions) {
+      const group = permission.group || "other";
+      if (!buckets.has(group)) buckets.set(group, []);
+      buckets.get(group).push(permission);
+    }
+    const ordered = GROUP_ORDER.filter((key) => buckets.has(key)).map((key) => ({
+      key,
+      label: GROUP_LABELS[key] || key,
+      items: buckets.get(key),
+    }));
+    for (const [key, items] of buckets) {
+      if (GROUP_ORDER.includes(key)) continue;
+      ordered.push({ key, label: GROUP_LABELS[key] || key, items });
+    }
+    return ordered;
+  }, [permissionOptions]);
+  const roleOptions = useMemo(() => {
+    const roles = Object.keys(rolePermissions);
+    // Spec: pending chỉ hiện khi đang sửa tài khoản pending.
+    if (form.role === "pending") return roles;
+    return roles.filter((role) => role !== "pending");
+  }, [rolePermissions, form.role]);
   const canEditProfile = editingId ? canActOn("users.edit", editingId) : canCreateUser;
   const canEditPermissions = editingId ? canActOn("users.permissions", editingId) : can("users.permissions");
   const canDisableUser = editingId ? canActOn("users.disable", editingId) : false;
@@ -375,34 +425,45 @@ export default function AdminUsersPage() {
             }
             disabled={!canEditPermissions}
           >
-            {Object.keys(rolePermissions).map((role) => (
+            {roleOptions.map((role) => (
               <option key={role} value={role}>{roleLabels[role] || role}</option>
             ))}
           </select>
         </label>
         {canEditPermissions ? <fieldset className="permission-picker">
-          <legend>Phân quyền chi tiết</legend>
-          {permissionOptions.map((permission) => {
-            const enabled = selectedPermissions.includes(permission.key);
-            const scopes = permission.allowedScopes || [];
-            const fallback = roleScopes[form.role]?.[permission.key] || (scopes.includes("assigned") ? "assigned" : scopes.includes("own") ? "own" : "all");
-            return (
-              <div className="permission-row" key={permission.key}>
-                <label className="check">
-                  <input type="checkbox" checked={enabled} disabled={form.role === "admin" || form.role === "pending"} onChange={() => togglePermission(permission.key)} />
-                  <span>{permission.label}<small>{permission.key}</small></span>
-                </label>
-                {enabled && scopes.length > 1 && form.role !== "admin" ? (
-                  <select aria-label={`Phạm vi ${permission.label}`} value={form.permissionScopes[permission.key] || fallback} onChange={(event) => setPermissionScope(permission.key, event.target.value)}>
-                    {scopes.includes("all") ? <option value="all">Tất cả</option> : null}
-                    {scopes.includes("assigned") ? <option value="assigned">Bot được gán</option> : null}
-                    {scopes.includes("own") ? <option value="own">Chính mình</option> : null}
-                    {scopes.includes("own_assigned") ? <option value="own_assigned">Của mình + được gán</option> : null}
-                  </select>
-                ) : null}
+          <legend>
+            Phân quyền chi tiết
+            <small className="muted"> {selectedPermissions.filter((key) => permissionOptions.some((item) => item.key === key)).length}/{permissionOptions.length}</small>
+          </legend>
+          {permissionGroups.map((group) => (
+            <div className="permission-group" key={group.key}>
+              <h3>{group.label}</h3>
+              <div className="permission-group-list">
+                {group.items.map((permission) => {
+                  const enabled = selectedPermissions.includes(permission.key);
+                  const scopes = permission.allowedScopes || [];
+                  const showScope = enabled && scopes.length > 1 && form.role !== "admin";
+                  const fallback = roleScopes[form.role]?.[permission.key] || (scopes.includes("assigned") ? "assigned" : scopes.includes("own") ? "own" : "all");
+                  return (
+                    <div className={`permission-row${showScope ? " has-scope" : ""}`} key={permission.key}>
+                      <label className="check">
+                        <input type="checkbox" checked={enabled} disabled={form.role === "admin" || form.role === "pending"} onChange={() => togglePermission(permission.key)} />
+                        <span>{permission.label}<small>{permission.key}</small></span>
+                      </label>
+                      {showScope ? (
+                        <select aria-label={`Phạm vi ${permission.label}`} value={form.permissionScopes[permission.key] || fallback} onChange={(event) => setPermissionScope(permission.key, event.target.value)}>
+                          {scopes.includes("all") ? <option value="all">Tất cả</option> : null}
+                          {scopes.includes("assigned") ? <option value="assigned">Bot được gán</option> : null}
+                          {scopes.includes("own") ? <option value="own">Chính mình</option> : null}
+                          {scopes.includes("own_assigned") ? <option value="own_assigned">Của mình + được gán</option> : null}
+                        </select>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
           {form.role === "admin" ? <small className="muted">Admin luôn có toàn bộ quyền.</small> : null}
           {form.role === "pending" ? <small className="muted">Pending luôn có 0 quyền.</small> : null}
           {form.customPermissions !== null && form.role !== "admin" && form.role !== "pending" ? (

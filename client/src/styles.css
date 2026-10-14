@@ -821,30 +821,72 @@ th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
 }
 
 .admin-form > .bot-picker,
-.admin-form > .permission-picker,
 .admin-form > .chips,
 .admin-form > p.muted {
   grid-column: span 2;
 }
 
-.permission-picker {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+.admin-form > .permission-picker {
+  grid-column: 1 / -1;
 }
 
-.permission-picker legend { color: var(--muted); padding: 0 6px; }
+.permission-picker {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 12px 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
 
-.permission-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; align-items: center; }
+.permission-picker legend {
+  color: var(--muted);
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.permission-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.permission-group h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.permission-group-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px 12px;
+}
+
+.permission-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.permission-row.has-scope {
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 140px);
+}
+
 .permission-row > select { min-width: 0; padding: 7px 8px; }
 
 .permission-picker > button,
 .permission-picker > small {
-  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 .audit-head {
@@ -957,7 +999,9 @@ td.negative { color: var(--danger); }
   .admin-form > .bot-picker,
   .admin-form > .permission-picker,
   .admin-form > .chips,
-  .admin-form > p.muted { grid-column: 1; }
+  .admin-form > p.muted { grid-column: 1 / -1; }
+  .permission-group-list { grid-template-columns: 1fr; }
+  .permission-row.has-scope { grid-template-columns: 1fr; }
   .user-list-head { align-items: stretch; flex-direction: column; }
   .user-search { width: 100%; }
   .audit-head { align-items: stretch; flex-direction: column; }
