@@ -140,6 +140,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/signal-config` | [signal-setup](../server/src/routes/signal-setup.js) |
 | GET | `/api/provider-scorecard` | [provider-scorecard](../server/src/routes/provider-scorecard.js) |
 | GET | `/api/account-statics` | [account-statics](../server/src/routes/account-statics.js) |
+| POST | `/api/account-statics/ai-suggest` | [account-statics](../server/src/routes/account-statics.js) + [account-statics-ai](../server/src/lib/account-statics-ai.js) |
 | GET | `/api/account-statics/:id` | [account-statics](../server/src/routes/account-statics.js) |
 | GET | `/api/account-ledger` | [account-ledger](../server/src/routes/account-ledger.js) |
 | POST | `/api/account-ledger/:username/refresh` | [account-ledger](../server/src/routes/account-ledger.js) |

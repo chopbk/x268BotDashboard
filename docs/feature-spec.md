@@ -14,7 +14,7 @@
 | Signal `/signal-search` | SignalSearchPage và panel | Tab lịch sử / tìm / scorecard / thống kê / cấu hình; từng API có quyền riêng |
 | Terminal `/terminal` | TerminalPage | Workspace giao dịch (R1): vị thế, lệnh, lịch sử, panel chi tiết. Menu Position đã gỡ; `/positions` redirect sang `/terminal`. Gate: `positions.view` \| `orders.view` \| `statistics.view`. Spec: [terminal-workspace-spec](terminal-workspace-spec.md) |
 | Hiệu quả giao dịch `/signals?view=performance` | TradePerformancePage | Analytics PnL; KPI/biểu đồ/nhóm/panel. `closed` = có closeTime hoặc isClosed (bot thường không ghi isClosed) |
-| Account Static `/signals?view=statics` | AccountStaticLegacyPage | UI cũ để so sánh; lọc openTime mặc định 3 ngày. Deep-link cũ giữ `view=statics` |
+| Account Static `/signals?view=statics` | AccountStaticLegacyPage | UI so sánh signal/config; preset thời gian (Hôm nay / 1–90 ngày); soft-refresh bảng khi đổi signal; popup xem config; ô AI gợi ý lọc (`POST /api/account-statics/ai-suggest`). openTime mặc định 3 ngày |
 | Lãi lỗ `/ledger` | AccountLedgerPage | Ví/income/dòng tiền theo user, refresh từ sàn; `statistics.view` |
 | Tổng kết `/summary` | SummaryPage | Tổng hợp phạm vi được xem; quyền vào trang là một trong summary/bots/statistics view |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
