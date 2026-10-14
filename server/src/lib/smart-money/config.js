@@ -12,14 +12,37 @@ function boolEnv(name, fallback = true) {
     return !/^(0|false|no|off)$/i.test(String(raw).trim());
 }
 
+/** CSV symbol cố định — nếu set thì bỏ top-volume, chỉ theo dõi danh sách này. */
+function symbolsEnv(name) {
+    const raw = String(process.env[name] || "").trim();
+    if (!raw) return Object.freeze([]);
+    const out = [];
+    const seen = new Set();
+    for (const part of raw.split(",")) {
+        const sym = String(part || "")
+            .trim()
+            .toUpperCase();
+        if (!/^[A-Z0-9]{4,25}$/.test(sym) || seen.has(sym)) continue;
+        seen.add(sym);
+        out.push(sym);
+    }
+    return Object.freeze(out);
+}
+
 const SCHEMA_VERSION = "sm-v1";
 const FORMULA_VERSION = "sm-formula-v1";
 const CANDIDATE_VERSION = "sm-candidate-v1";
 
+const forceSymbols = symbolsEnv("SMART_MONEY_SYMBOLS");
+
 const config = Object.freeze({
     enabled: boolEnv("SMART_MONEY_ENABLED", true),
-    topN: intEnv("SMART_MONEY_TOP_N", 10),
-    maxSymbols: intEnv("SMART_MONEY_MAX_SYMBOLS", 30),
+    /** Khi có giá trị: universe = đúng list này (vd BTCUSDT,ETHUSDT). */
+    forceSymbols,
+    topN: forceSymbols.length ? forceSymbols.length : intEnv("SMART_MONEY_TOP_N", 10),
+    maxSymbols: forceSymbols.length
+        ? Math.max(forceSymbols.length, intEnv("SMART_MONEY_MAX_SYMBOLS", 30))
+        : intEnv("SMART_MONEY_MAX_SYMBOLS", 30),
     stickyMs: intEnv("SMART_MONEY_STICKY_MS", 2 * 60 * 60 * 1000),
     universeRefreshMs: intEnv("SMART_MONEY_UNIVERSE_MS", 60 * 60 * 1000),
     retentionDays: intEnv("SMART_MONEY_RETENTION_DAYS", 90),

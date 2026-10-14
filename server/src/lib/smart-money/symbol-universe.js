@@ -61,6 +61,31 @@ async function buildUniverse(opts = {}) {
         return universe;
     }
 
+    // Env SMART_MONEY_SYMBOLS=BTCUSDT,ETHUSDT → chỉ theo dõi đúng list (xem UI nhanh, giảm tải).
+    if (config.forceSymbols?.length) {
+        const forced = config.forceSymbols.map((symbol) => ({
+            symbol,
+            sources: ["force_env"],
+            active: true,
+        }));
+        universe = {
+            at: now,
+            symbols: forced.map((m) => m.symbol),
+            meta: {
+                topN: config.topN,
+                maxSymbols: config.maxSymbols,
+                topCount: forced.length,
+                stickyCount: 0,
+                watchlistCount: 0,
+                openBookCount: 0,
+                forceSymbols: true,
+                refreshedAt: new Date(now).toISOString(),
+                rows: forced,
+            },
+        };
+        return universe;
+    }
+
     const info = await loadExchangeInfo(opts.force);
     const tickers = await loadAllTickers24h(opts.force);
     const eligible = tickers

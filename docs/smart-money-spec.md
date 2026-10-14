@@ -48,6 +48,7 @@ Scheduler (lease Redis/Mongo)
 
 ## 4. Chọn symbol
 
+- Env `SMART_MONEY_SYMBOLS=BTCUSDT,ETHUSDT` (CSV): khóa universe đúng list đó — bỏ top-volume/sticky/open-book (dùng khi xem UI / giảm tải).
 - Mặc định top N (**10**) crypto USDT perpetual theo `quoteVolume` 24h; chỉ `TRADING`; loại `TRADIFI_PERPETUAL` / non-crypto.
 - Bổ sung: symbol đang có vị thế (từ Redis sổ chung, không gắn user) + watchlist hệ thống/user được phép.
 - Dedup theo symbol; `SMART_MONEY_MAX_SYMBOLS`.
