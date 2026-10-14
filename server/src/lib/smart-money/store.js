@@ -1,5 +1,9 @@
+/**
+ * Snapshot Smart Money: Mongo = nguồn bền (latest + history); Redis = cache nóng.
+ */
 const { getRedisClient } = require("../rate-limit-store");
 const SmartMoneyHistory = require("../../models/smart-money-history");
+const SmartMoneySnapshot = require("../../models/smart-money-snapshot");
 const { config, SCHEMA_VERSION } = require("./config");
 
 const memoryLatest = new Map();
@@ -18,9 +22,7 @@ function historyBucketKey(symbol, collectedAt) {
     return `${SCHEMA_VERSION}|${String(symbol).toUpperCase()}|${t}`;
 }
 
-async function saveLatestSnapshot(snapshot) {
-    const symbol = String(snapshot.symbol).toUpperCase();
-    memoryLatest.set(symbol, snapshot);
+async function cacheRedis(symbol, snapshot) {
     const client = getRedisClient();
     if (!client?.isReady) return;
     try {
@@ -30,33 +32,151 @@ async function saveLatestSnapshot(snapshot) {
     }
 }
 
-async function getLatestSnapshot(symbol) {
-    const sym = String(symbol || "").toUpperCase();
-    if (!sym) return null;
+async function readRedis(symbol) {
     const client = getRedisClient();
-    if (client?.isReady) {
-        try {
-            const raw = await client.get(snapKey(sym));
-            if (raw) return JSON.parse(raw);
-        } catch (error) {
-            console.warn("[smartMoneyStore] redis get", error.message || error);
-        }
-    }
-    if (memoryLatest.has(sym)) return memoryLatest.get(sym);
+    if (!client?.isReady) return null;
     try {
-        const row = await SmartMoneyHistory.findOne({ symbol: sym }).sort({ collectedAt: -1 }).lean();
-        return row?.snapshot || null;
+        const raw = await client.get(snapKey(symbol));
+        return raw ? JSON.parse(raw) : null;
     } catch (error) {
-        console.warn("[smartMoneyStore] mongo get", error.message || error);
+        console.warn("[smartMoneyStore] redis get", error.message || error);
         return null;
     }
 }
 
+async function saveLatestToMongo(snapshot) {
+    const symbol = String(snapshot.symbol).toUpperCase();
+    const collectedAt = new Date(snapshot.collectedAt);
+    await SmartMoneySnapshot.updateOne(
+        { symbol },
+        {
+            $set: {
+                symbol,
+                collectedAt,
+                schemaVersion: snapshot.schemaVersion || SCHEMA_VERSION,
+                qualityOverall: snapshot.quality?.overall || null,
+                cohortId: snapshot.smartMoney?.cohortId || null,
+                signalDay: snapshot.smartMoney?.signalDay || null,
+                snapshot,
+                updatedAt: new Date(),
+            },
+        },
+        { upsert: true }
+    );
+}
+
+async function readLatestFromMongo(symbol) {
+    const row = await SmartMoneySnapshot.findOne({ symbol }).lean();
+    if (row?.snapshot) return row.snapshot;
+    // Backfill nhẹ từ history nếu chưa có doc latest (lần đầu sau nâng cấp).
+    const hist = await SmartMoneyHistory.findOne({ symbol }).sort({ collectedAt: -1 }).lean();
+    if (!hist?.snapshot) return null;
+    try {
+        await saveLatestToMongo(hist.snapshot);
+    } catch (error) {
+        console.warn("[smartMoneyStore] backfill latest", error.message || error);
+    }
+    return hist.snapshot;
+}
+
+/**
+ * Lưu snapshot mới nhất: Mongo trước (nguồn thật), rồi memory + Redis cache.
+ */
+async function saveLatestSnapshot(snapshot) {
+    const symbol = String(snapshot.symbol).toUpperCase();
+    memoryLatest.set(symbol, snapshot);
+    try {
+        await saveLatestToMongo(snapshot);
+    } catch (error) {
+        console.error("[smartMoneyStore] mongo latest write", error.message || error);
+        // Vẫn cố cache Redis để UI không trống trong chu kỳ này.
+    }
+    await cacheRedis(symbol, snapshot);
+}
+
+function snapshotRicher(candidate, baseline) {
+    if (!candidate) return false;
+    if (!baseline) return true;
+    const cSm = candidate.smartMoney?.status === "ok";
+    const bSm = baseline.smartMoney?.status === "ok";
+    if (cSm && !bSm) return true;
+    if (!cSm && bSm) return false;
+    const cOi = candidate.openInterest?.status === "ok";
+    const bOi = baseline.openInterest?.status === "ok";
+    if (cOi && !bOi) return true;
+    const ct = new Date(candidate.collectedAt || 0).getTime();
+    const bt = new Date(baseline.collectedAt || 0).getTime();
+    return ct > bt;
+}
+
+async function getLatestSnapshot(symbol) {
+    const sym = String(symbol || "").toUpperCase();
+    if (!sym) return null;
+
+    const cached = await readRedis(sym);
+    // Cache Redis incomplete (SM missing…) → ưu tiên Mongo latest nếu giàu hơn.
+    if (cached && cached.smartMoney?.status === "ok" && cached.openInterest?.status === "ok") {
+        return cached;
+    }
+
+    if (memoryLatest.has(sym)) {
+        const mem = memoryLatest.get(sym);
+        if (snapshotRicher(mem, cached)) {
+            await cacheRedis(sym, mem);
+            return mem;
+        }
+    }
+
+    try {
+        const fromMongo = await readLatestFromMongo(sym);
+        if (snapshotRicher(fromMongo, cached)) {
+            memoryLatest.set(sym, fromMongo);
+            await cacheRedis(sym, fromMongo);
+            return fromMongo;
+        }
+    } catch (error) {
+        console.warn("[smartMoneyStore] mongo get", error.message || error);
+    }
+    if (cached) return cached;
+    return null;
+}
+
 async function listLatestSnapshots(symbols) {
     const out = [];
+    const missing = [];
     for (const s of symbols) {
-        const snap = await getLatestSnapshot(s);
-        if (snap) out.push(snap);
+        const sym = String(s).toUpperCase();
+        const cached = await readRedis(sym);
+        if (cached) {
+            out.push(cached);
+            continue;
+        }
+        if (memoryLatest.has(sym)) {
+            out.push(memoryLatest.get(sym));
+            continue;
+        }
+        missing.push(sym);
+    }
+    if (missing.length) {
+        try {
+            const rows = await SmartMoneySnapshot.find({ symbol: { $in: missing } }).lean();
+            const bySym = new Map(rows.map((r) => [r.symbol, r.snapshot]));
+            for (const sym of missing) {
+                let snap = bySym.get(sym) || null;
+                if (!snap) snap = await readLatestFromMongo(sym);
+                if (snap) {
+                    memoryLatest.set(sym, snap);
+                    await cacheRedis(sym, snap);
+                    out.push(snap);
+                }
+            }
+        } catch (error) {
+            console.warn("[smartMoneyStore] list mongo", error.message || error);
+            for (const sym of missing) {
+                const snap = await getLatestSnapshot(sym);
+                if (snap) out.push(snap);
+            }
+        }
     }
     return out;
 }
@@ -84,8 +204,7 @@ async function appendHistory(snapshot) {
             { upsert: true }
         );
     } catch (error) {
-        if (error?.code === 11000) return; // trùng — bỏ qua
-        // Snapshot Redis/memory đã lưu — không để Mongo lỗi làm mất chu kỳ collect.
+        if (error?.code === 11000) return;
         console.warn("[smartMoneyStore] history write", error.message || error);
     }
 }
@@ -103,9 +222,19 @@ async function getHistory(symbol, { from, to, limit = 100 } = {}) {
 }
 
 async function listKnownSymbols(limit = 200) {
-    const client = getRedisClient();
     const symbols = new Set(memoryLatest.keys());
-    if (client?.isReady) {
+    try {
+        const rows = await SmartMoneySnapshot.find({})
+            .sort({ updatedAt: -1 })
+            .limit(limit)
+            .select({ symbol: 1 })
+            .lean();
+        for (const r of rows) symbols.add(r.symbol);
+    } catch (error) {
+        console.warn("[smartMoneyStore] listKnownSymbols mongo", error.message || error);
+    }
+    const client = getRedisClient();
+    if (client?.isReady && symbols.size < limit) {
         try {
             const keys = await client.keys("wb:sm:snap:*");
             for (const k of keys) symbols.add(k.replace("wb:sm:snap:", ""));
@@ -114,13 +243,17 @@ async function listKnownSymbols(limit = 200) {
         }
     }
     if (symbols.size < limit) {
-        const rows = await SmartMoneyHistory.aggregate([
-            { $sort: { collectedAt: -1 } },
-            { $group: { _id: "$symbol", last: { $first: "$collectedAt" } } },
-            { $sort: { last: -1 } },
-            { $limit: limit },
-        ]);
-        for (const r of rows) symbols.add(r._id);
+        try {
+            const rows = await SmartMoneyHistory.aggregate([
+                { $sort: { collectedAt: -1 } },
+                { $group: { _id: "$symbol", last: { $first: "$collectedAt" } } },
+                { $sort: { last: -1 } },
+                { $limit: limit },
+            ]);
+            for (const r of rows) symbols.add(r._id);
+        } catch {
+            // ignore
+        }
     }
     return [...symbols].slice(0, limit);
 }

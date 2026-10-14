@@ -33,18 +33,18 @@ cooldown bapi **không** dừng OI/funding; gap SM ≥15s. Xóa cooldown Redis (
 Scheduler (lease Redis/Mongo)
   → adapters độc lập (SM / OI / funding / top-trader / taker / ticker)
   → normalize (null-safe, cohort, quality)
-  → Redis snapshot mới nhất (wb:sm:*)
-  → Mongo lịch sử (unique key)
+  → Mongo latest (smart_money_snapshots, 1 doc/symbol) + Mongo history
+  → Redis cache nóng (wb:sm:snap:*) — miss thì đọc Mongo rồi đổ lại cache
   → detector + candidates (code)
   → REST /api/smart-money/*
   → UI /smart-money | Terminal Dòng tiền | AI marketContext
 ```
 
 - Một collector trong process web-bot; job có distributed lease.
-- Không Mongo/SQLite/R2 song song cho cùng dữ liệu.
+- **Mongo là nguồn bền** cho snapshot mới nhất và lịch sử; Redis chỉ cache / cooldown / lease.
 - Browser không gọi Binance.
 - Limiter/cooldown chia sẻ Redis; bucket theo host (`fapi` ≠ `bapi` ≠ `futures/data`).
-- Retention raw mặc định 90 ngày (cấu hình được).
+- Retention history mặc định 90 ngày (cấu hình được).
 
 ## 4. Chọn symbol
 

@@ -49,6 +49,7 @@ erDiagram
 | `bot_heartbeats` | Process bot | Trạng thái dịch vụ/process |
 | `web_summary_snapshots` | Job/refresh summary web | Payload tổng hợp theo range/version và lease |
 | `web_summary_cache` | Hàm cache system-summary | Cache riêng, tra call site trước khi kết luận route dùng nó |
+| `smart_money_snapshots` | Collector Smart Money | Snapshot **mới nhất** 1 doc/symbol (nguồn bền; Redis chỉ cache) |
 | `smart_money_history` | Collector Smart Money | Lịch sử snapshot theo symbol (unique bucketKey, TTL retention) |
 | `smart_money_events` | Detector | Sự kiện bất thường dedupe |
 | `smart_money_candidates` | Ranking code | Danh sách ứng viên version hóa |
