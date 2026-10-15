@@ -119,7 +119,12 @@ function migrateExchangeBook(raw, { accountExchange = null } = {}) {
         return { ok: false, reason: "invalid_shape", book: null };
     }
 
-    const accountEx = normalizeExchangeId(accountExchange || "");
+    // Không gọi normalizeExchangeId("") — hàm đó mặc định "binance" và sẽ làm
+    // mọi sổ bybit/okex/aster bị exchange_mismatch khi caller chưa resolve UserApi.
+    const accountEx =
+        accountExchange != null && String(accountExchange).trim() !== ""
+            ? normalizeExchangeId(accountExchange)
+            : null;
     let exchange = raw.exchange ? normalizeExchangeId(raw.exchange) : null;
     let stale = false;
     let needsReconcile = false;

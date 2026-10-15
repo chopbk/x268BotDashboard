@@ -84,6 +84,17 @@ async function readExchangeBook(account) {
     }
 }
 
+const staleBookWarnAt = new Map();
+
+function warnStaleBook(account, reason) {
+    const key = `${account}:${reason}`;
+    const now = Date.now();
+    const prev = staleBookWarnAt.get(key) || 0;
+    if (now - prev < 60_000) return;
+    staleBookWarnAt.set(key, now);
+    console.warn("[positionLive]", account, "stale book:", reason);
+}
+
 async function migrateBook(book, account) {
     if (!book || book.source !== "exchange" || !Array.isArray(book.positions)) return null;
     const { migrateExchangeBook } = require("./exchanges");
@@ -94,9 +105,7 @@ async function migrateBook(book, account) {
     }
     const result = migrateExchangeBook(book, { accountExchange });
     if (!result.ok) {
-        if (result.needsReconcile) {
-            console.warn("[positionLive]", account, "stale book:", result.reason);
-        }
+        if (result.needsReconcile) warnStaleBook(account, result.reason);
         return null;
     }
     return result.book;
@@ -153,9 +162,13 @@ async function reconcileViaMqtt(account, current) {
     if (result.status !== "succeeded") {
         throw new Error(result.error || "MQTT refresh failed");
     }
-    // binance-bot đã ghi vào Redis, đọc lại
+    // binance-bot đã ghi vào Redis, đọc lại. Nếu sổ vẫn không migrate được
+    // (thiếu exchange trên account non-Binance) → ném lỗi để fallback adapter REST.
     const refreshed = await readExchangeBook(account);
-    return refreshed || current;
+    if (!refreshed) {
+        throw new Error("MQTT refresh wrote unreadable / stale exchange book");
+    }
+    return refreshed;
 }
 
 async function loadFromBinance(account, current, { details = false } = {}) {

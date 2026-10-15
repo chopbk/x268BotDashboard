@@ -228,7 +228,24 @@ test("legacy Binance Redis snapshot still migrates; non-Binance missing exchange
 
     const bad = migrateExchangeBook({ ...legacy, exchange: undefined }, { accountExchange: "bybit" });
     assert.equal(bad.ok, false);
+    assert.equal(bad.reason, "missing_exchange");
     assert.equal(bad.needsReconcile, true);
+
+    // Caller chưa resolve UserApi (accountExchange null) không được ép thành binance
+    // rồi mismatch với sổ bybit/okex đã có exchange.
+    const bybitBook = migrateExchangeBook(
+        { ...legacy, exchange: "bybit", positions: [{ symbol: "BTCUSDT", positionAmt: "1", positionSide: "LONG", exchange: "bybit" }] },
+        { accountExchange: null }
+    );
+    assert.equal(bybitBook.ok, true);
+    assert.equal(bybitBook.book.exchange, "bybit");
+
+    const mismatch = migrateExchangeBook(
+        { ...legacy, exchange: "bybit" },
+        { accountExchange: "binance" }
+    );
+    assert.equal(mismatch.ok, false);
+    assert.equal(mismatch.reason, "exchange_mismatch");
 });
 
 test("same symbol on different exchanges do not merge", () => {
