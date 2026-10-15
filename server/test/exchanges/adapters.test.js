@@ -226,10 +226,12 @@ test("legacy Binance Redis snapshot still migrates; non-Binance missing exchange
     assert.equal(ok.book.conditionalOrders.length, 1);
     assert.equal(ok.book.algoOrders.length, 1);
 
-    const bad = migrateExchangeBook({ ...legacy, exchange: undefined }, { accountExchange: "bybit" });
-    assert.equal(bad.ok, false);
-    assert.equal(bad.reason, "missing_exchange");
-    assert.equal(bad.needsReconcile, true);
+    // Non-Binance thiếu exchange: stamp từ UserApi (MQTT bot thường không ghi exchange).
+    const healed = migrateExchangeBook({ ...legacy, exchange: undefined }, { accountExchange: "bybit" });
+    assert.equal(healed.ok, true);
+    assert.equal(healed.book.exchange, "bybit");
+    assert.equal(healed.healedExchange, true);
+    assert.equal(healed.needsReconcile, true);
 
     // Caller chưa resolve UserApi (accountExchange null) không được ép thành binance
     // rồi mismatch với sổ bybit/okex đã có exchange.

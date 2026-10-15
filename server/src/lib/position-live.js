@@ -108,6 +108,15 @@ async function migrateBook(book, account) {
         if (result.needsReconcile) warnStaleBook(account, result.reason);
         return null;
     }
+    // Persist stamp exchange (từ UserApi) để lần sau khỏi resolve Mongo + hết spam missing_exchange.
+    // MQTT bot có thể ghi đè lại không có exchange — heal lại trên read.
+    if (result.healedExchange && reader?.isReady && result.book?.exchange) {
+        const verKey = EXCHANGE_KEY + account + ":ver";
+        reader
+            .get(verKey)
+            .then((ver) => saveExchangeBook(account, result.book, Number(ver) || 0))
+            .catch((error) => console.error("[positionLive] heal exchange", account, error.message));
+    }
     return result.book;
 }
 

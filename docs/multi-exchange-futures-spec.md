@@ -13,7 +13,7 @@ Ví dụ: account `DEMO_1` có `exchange: "okex"`, instrument `BTC-USDT-SWAP`, l
 - Adapter factory: `server/src/lib/exchanges/` (`registry`, `factory`, `*-adapter`, `normalizers`, `rate-limiters`, `errors`).
 - `direct-trading.js` / `position-feed.js` / `position-live.js` đi qua `getExchangeAdapter(account)` — không `switch(exchange)` ở route.
 - **Phase 1 đã bật:** Binance full mutation + history; Bybit / Aster / OKX `snapshot: true`, mọi mutation capability `false`.
-- Redis `wb:ex:<account>`: migration read hỗ trợ `algoOrders` → `conditionalOrders`; thiếu `exchange` chỉ mặc định binance khi account là binance/unknown; non-Binance thiếu exchange → reconcile.
+- Redis `wb:ex:<account>`: migration read hỗ trợ `algoOrders` → `conditionalOrders`; thiếu `exchange` mặc định binance khi account binance/unknown; non-Binance thiếu exchange → stamp từ UserApi (MQTT bot thường không ghi field này) rồi dùng sổ, không discard.
 - Identity merge: `account|exchange|instrumentId|side|mode|positionIdx`. Monitor không resolve được exchange → `unknown`, không merge với sàn thật.
 - UI Terminal: badge exchange, filter sàn, hiển thị contracts / instrumentId.
 - `binance-bot` wrapper không thay thế adapter web; không bật mutation Bybit/Aster/OKX chỉ vì bot có wrapper.

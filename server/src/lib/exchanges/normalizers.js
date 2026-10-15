@@ -110,8 +110,9 @@ function canonicalizeOrder(input = {}, kind = "regular") {
 /**
  * Migration read cho Redis wb:ex snapshot.
  * - algoOrders cũ → conditionalOrders
- * - thiếu exchange: chỉ mặc định binance khi accountExchange === binance
- * - non-binance thiếu exchange → invalid (caller phải reconcile)
+ * - thiếu exchange: mặc định binance khi accountExchange binance/unknown/null
+ * - non-binance thiếu exchange: stamp từ UserApi (binance-bot MQTT thường không ghi exchange)
+ * - exchange trên sổ ≠ UserApi → invalid
  */
 function migrateExchangeBook(raw, { accountExchange = null } = {}) {
     if (!raw || typeof raw !== "object") return { ok: false, reason: "empty", book: null };
@@ -128,14 +129,17 @@ function migrateExchangeBook(raw, { accountExchange = null } = {}) {
     let exchange = raw.exchange ? normalizeExchangeId(raw.exchange) : null;
     let stale = false;
     let needsReconcile = false;
+    let healedExchange = false;
 
     if (!exchange) {
-        // Legacy snapshots chỉ mặc định Binance khi account là binance hoặc chưa resolve.
-        // Non-Binance (bybit/aster/okex) thiếu exchange → stale, phải reconcile.
+        // 1 account = 1 exchange: stamp từ UserApi thay vì bỏ sổ (MQTT bot thường không ghi exchange).
         if (accountEx && accountEx !== "binance" && accountEx !== "unknown") {
-            return { ok: false, reason: "missing_exchange", book: null, needsReconcile: true };
+            exchange = accountEx;
+            healedExchange = true;
+            needsReconcile = true;
+        } else {
+            exchange = "binance";
         }
-        exchange = "binance";
     } else if (accountEx && accountEx !== "unknown" && exchange !== accountEx) {
         return { ok: false, reason: "exchange_mismatch", book: null, needsReconcile: true };
     }
@@ -165,8 +169,9 @@ function migrateExchangeBook(raw, { accountExchange = null } = {}) {
         complete: raw.complete !== false,
         stale: Boolean(raw.stale) || stale,
         needsReconcile,
+        healedExchange,
     };
-    return { ok: true, book, needsReconcile };
+    return { ok: true, book, needsReconcile, healedExchange };
 }
 
 function buildSnapshotEnvelope({
