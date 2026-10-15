@@ -244,6 +244,7 @@ async function askOverview(body = {}, deps = {}) {
         "Schema JSON: headline (≤12 từ), stance (risk_on|risk_off|mixed|unclear),",
         "summary (2–4 câu), bullets[3–5 câu ngắn], watch[symbol đáng xem], risks[0–3].",
         "Ưu tiên mâu thuẫn bias/whale, OI bất thường, funding cực đoan, thiếu dữ liệu SM.",
+        "oiDeltaPct null = thiếu dữ liệu; oiDeltaPct = 0 nghĩa là OI gần như không đổi — không gọi là thiếu.",
     ].join(" ");
     const user = JSON.stringify({
         task: "smart_money_market_overview",

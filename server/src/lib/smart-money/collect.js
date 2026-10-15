@@ -38,18 +38,12 @@ async function safe(name, fn, metrics) {
 
 function carryOi(previous, markStale = true) {
     if (previous?.openInterest?.status !== "ok") return null;
+    // Giữ nguyên block OI (kể cả delta) — không đặt prevQty=qty (làm deltaPct=0 giả).
     return {
         ok: true,
         _staleCarry: Boolean(markStale),
-        data: {
-            qty: previous.openInterest.qty,
-            notional: previous.openInterest.notional,
-            prevQty: previous.openInterest.qty,
-            prevNotional: previous.openInterest.notional,
-            periodStart: previous.openInterest.periodStart,
-            periodEnd: previous.openInterest.periodEnd,
-            sourceUpdatedAt: previous.openInterest.sourceUpdatedAt,
-        },
+        _reuseBlock: previous.openInterest,
+        data: null,
     };
 }
 

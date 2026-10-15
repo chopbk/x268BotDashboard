@@ -87,7 +87,9 @@ function buildSnapshot({
         periodEnd: null,
         status: "missing",
     };
-    if (oi?.ok && oi.data) {
+    if (oi?._reuseBlock && oi._reuseBlock.status === "ok") {
+        oiBlock = { ...oi._reuseBlock };
+    } else if (oi?.ok && oi.data) {
         oiBlock = {
             qty: oi.data.qty,
             notional: oi.data.notional,
