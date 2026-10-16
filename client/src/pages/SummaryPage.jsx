@@ -98,6 +98,7 @@ export default function SummaryPage() {
   function setQuery(patch) {
     const next = new URLSearchParams(params);
     Object.entries(patch).forEach(([key, value]) => next.set(key, value));
+    if (!next.get("tab")) next.set("tab", "summary");
     setParams(next);
   }
 
@@ -173,8 +174,8 @@ export default function SummaryPage() {
     <section>
       <header className="page-head summary-head">
         <div>
-          <h1>Tổng kết hệ thống</h1>
-          <p className="muted">{audience === "mine" ? "Đang xem user bot bạn sở hữu hoặc được gán." : "Đang xem user bot mà quyền Bot hoặc Account Static của bạn cho phép. Bot private chỉ hiện khi bạn sở hữu hoặc được gán."} Cột profit, balance và ROI lấy futures_profits. Volume, số lệnh và win rate vẫn là lệnh đóng Account Static. Hôm nay tính theo ngày UTC.</p>
+          <h1>Thống kê tổng hợp</h1>
+          <p className="muted">{audience === "mine" ? "Đang xem user bot bạn sở hữu hoặc được gán." : "Đang xem user bot mà quyền Bot hoặc Account Static của bạn cho phép. Bot private chỉ hiện khi bạn sở hữu hoặc được gán."} Số liệu hiện tại (config đang bật, monitor mở) không cắt theo kỳ thời gian. Số liệu trong kỳ (lệnh, profit, volume, xếp hạng) theo closeTime UTC. Cột profit/balance/ROI bảng user lấy futures_profits.</p>
         </div>
         <div className="ledger-tools">
           <label>Phạm vi<select value={audience} onChange={(event) => setQuery({ audience: event.target.value })}><option value="mine">User của tôi</option><option value="system">Toàn hệ thống</option></select></label>

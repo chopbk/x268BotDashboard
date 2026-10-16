@@ -247,7 +247,7 @@ Vẫn **`GET /api/dashboard`** — mở rộng response; không tách endpoint t
 | attention blocked | `logs.view` |
 | `ai` | như hiện tại; không chứa secret |
 
-Admin cũng chỉ thấy bot sở hữu/được gán trên dashboard (giữ invariant hiện tại). Muốn xem hệ thống rộng → `/system`, `/summary`.
+Admin cũng chỉ thấy bot sở hữu/được gán trên dashboard (giữ invariant hiện tại). Muốn xem hệ thống rộng → `/system`, `/?tab=summary`.
 
 ### Hiệu năng
 
@@ -258,7 +258,7 @@ Admin cũng chỉ thấy bot sở hữu/được gán trên dashboard (giữ inv
 
 ### `POST /api/dashboard/attention`
 
-Facts gồm thêm `attribution` / `attributionIssues` (Max DD, profit factor, signal lỗ, slippage trên tối đa 3 bot của mình, 14 ngày UTC) với href `/ledger`. Rate limit 15s/user giữ nguyên.
+Facts gồm thêm `attribution` / `attributionIssues` (Max DD, profit factor, signal lỗ, slippage trên tối đa 3 bot của mình, 14 ngày UTC) với href `/reports?tab=ledger`. Rate limit 15s/user giữ nguyên.
 
 ---
 

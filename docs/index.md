@@ -7,7 +7,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Cần làm gì | Đọc |
 |---|---|
 | Hiểu project và ranh giới với bot giao dịch | [Kiến trúc](architecture.md) |
-| Biết màn hình làm gì, dữ liệu từ đâu | [Đặc tả tính năng](feature-spec.md) (tab Hiệu quả giao dịch = `/signals`) |
+| Biết màn hình làm gì, dữ liệu từ đâu | [Đặc tả tính năng](feature-spec.md) (Báo cáo = `/reports`; Tổng quan gộp Thống kê) |
 | Lần theo một thao tác từ UI đến database | [Luồng xử lý](flows.md) |
 | Tra endpoint, model, collection và thuật ngữ | [API và dữ liệu](api-data-reference.md) |
 | Cầu runtime web → binance-bot (MQTT gửi, ACK Mongo outbox, allowlist) | [Command bridge](bot-command-bridge.md) |

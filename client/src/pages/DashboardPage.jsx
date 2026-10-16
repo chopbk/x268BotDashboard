@@ -235,8 +235,8 @@ export default function DashboardPage() {
           {riskBadge.account ? ` · ${riskBadge.account}` : ""}
           {riskBadge.summary ? ` — ${riskBadge.summary}` : ""}
           {" · "}
-          <Link to={riskBadge.account ? `/ledger?username=${encodeURIComponent(riskBadge.account)}` : "/ledger"}>
-            Mở Lãi lỗ / AI rủi ro
+          <Link to={riskBadge.account ? `/reports?tab=ledger&username=${encodeURIComponent(riskBadge.account)}` : "/reports?tab=ledger"}>
+            Mở Ví & dòng tiền / AI rủi ro
           </Link>
         </p>
       ) : null}
@@ -276,7 +276,7 @@ export default function DashboardPage() {
                   {closedToday.trades} lệnh
                   {closedToday.winRate != null ? ` · thắng ${closedToday.winRate}%` : ""}
                   {" · "}
-                  <Link to="/signals">Account Static</Link>
+                  <Link to="/reports?tab=performance">Báo cáo</Link>
                 </small>
               ) : null}
             </article>
@@ -284,7 +284,7 @@ export default function DashboardPage() {
               <span className="muted">Lãi lỗ ví hôm nay</span>
               <strong>{money(data.incomeToday)}</strong>
               {compare ? <small className={tone(compare.incomeDelta)}>{deltaText(compare.incomeDelta)}</small> : null}
-              <small className="muted"><Link to="/ledger">Mở Lãi lỗ</Link></small>
+              <small className="muted"><Link to="/reports?tab=ledger">Ví & dòng tiền</Link></small>
             </article>
             {openRisk !== undefined && openRisk !== null ? (
               <article className={`card summary-stat ${tone(openRisk.unrealized)}`}>
@@ -312,7 +312,7 @@ export default function DashboardPage() {
             <section className="card dash-block">
               <div className="dash-health-head">
                 <h2>7 ngày UTC</h2>
-                <Link className="ghost link-btn" to="/summary">Tổng kết</Link>
+                <Link className="ghost link-btn" to="/?tab=summary">Thống kê tổng hợp</Link>
               </div>
               <div className="dash-series">
                 <div>
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                         <td className="dash-row-actions">
                           <Link className="ghost link-btn" to={`/config-lab?user=${encodeURIComponent(row.username)}`}>Config</Link>
                           <Link className="ghost link-btn" to={`/terminal?account=${encodeURIComponent(row.username)}`}>Terminal</Link>
-                          <Link className="ghost link-btn" to={`/ledger?username=${encodeURIComponent(row.username)}`}>Lãi lỗ</Link>
+                          <Link className="ghost link-btn" to={`/reports?tab=ledger&username=${encodeURIComponent(row.username)}`}>Ví</Link>
                         </td>
                       </tr>
                     ))}

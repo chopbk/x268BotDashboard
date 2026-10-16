@@ -388,7 +388,7 @@ function attentionFromAttribution(attribution, username) {
     const items = [];
     if (!attribution?.account?.metrics || !username) return items;
     const m = attribution.account.metrics;
-    const href = `/ledger?username=${encodeURIComponent(username)}`;
+    const href = `/reports?tab=ledger&username=${encodeURIComponent(username)}`;
     if (m.maxDrawdown != null && m.maxDrawdown >= 50 && (m.peakEquity || 0) > 0) {
         items.push({
             type: "drawdown",

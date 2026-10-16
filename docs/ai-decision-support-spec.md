@@ -14,7 +14,7 @@ Ngày: 2026-10-13. Phạm vi: web-bot Terminal + Lãi lỗ. Code tính số; AI 
 
 - Terminal **Tổng quan**: nút AI mở popup quyết định (không phải báo cáo dài). Bố cục: kết luận + KPI + bảng so sánh phương án trước; bối cảnh TF dạng bảng; bằng chứng mặc định thu gọn; cảnh báo `warn`/`critical` hiện trên. Modal ~1000px desktop, 2 cột khi đủ chỗ.
 - Một nút **Phân tích** (AI); quy tắc thuần là lựa chọn phụ. Hồ sơ rủi ro qua nút ⚙. Mở lại hiện báo cáo gần nhất + banner khi fingerprint vị thế/SL-TP đổi.
-- `/ledger` khối **AI đánh giá rủi ro**.
+- `/reports?tab=ledger` (Ví & dòng tiền) khối **AI đánh giá rủi ro**.
 - Dashboard: link/badge khi báo cáo account gần nhất `riskLevel` ∈ attention|high.
 
 ## Hồ sơ rủi ro

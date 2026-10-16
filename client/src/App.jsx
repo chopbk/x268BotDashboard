@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from "./auth";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
-import DashboardPage from "./pages/DashboardPage";
+import OverviewPage from "./pages/OverviewPage";
 import AccountConfigPage from "./pages/AccountConfigPage";
 import ConfigLabPage from "./pages/ConfigLabPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
@@ -13,11 +13,10 @@ import UserApisPage from "./pages/UserApisPage";
 import UserApiDetailPage from "./pages/UserApiDetailPage";
 import PendingPage from "./pages/PendingPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
-import SummaryPage from "./pages/SummaryPage";
 import SignalHistoryPage from "./pages/SignalHistoryPage";
 import SignalSearchPage from "./pages/SignalSearchPage";
 import ProfilePage from "./pages/ProfilePage";
-import AccountLedgerPage from "./pages/AccountLedgerPage";
+import ReportsPage from "./pages/ReportsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import TerminalPage from "./pages/TerminalPage";
 import SmartMoneyPage from "./pages/SmartMoneyPage";
@@ -64,6 +63,22 @@ function RedirectPositionsToTerminal() {
   return <Navigate to={`/terminal${location.search || ""}`} replace />;
 }
 
+/** `/summary` → `/?tab=summary`, giữ query. */
+function RedirectSummaryToOverview() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("tab", "summary");
+  return <Navigate to={`/?${params}`} replace />;
+}
+
+/** `/ledger` → `/reports?tab=ledger`, giữ query. */
+function RedirectLedgerToReports() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("tab", "ledger");
+  return <Navigate to={`/reports?${params}`} replace />;
+}
+
 function ProtectedAny({ children, permissions }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="screen muted">Đang tải…</div>;
@@ -79,6 +94,8 @@ function Shell({ children }) {
   const canTerminal =
     hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW);
   const canMarket = canTerminal || hasPermission(user, MARKET_VIEW);
+  const canOverview =
+    hasPermission(user, BOTS_VIEW) || hasPermission(user, SUMMARY_VIEW) || hasPermission(user, STATISTICS_VIEW);
   const showNumbers =
     hasPermission(user, STATISTICS_VIEW) ||
     hasPermission(user, SUMMARY_VIEW) ||
@@ -105,7 +122,7 @@ function Shell({ children }) {
       <aside className={menuOpen ? "sidenav open" : "sidenav"}>
         <NavLink to="/" className="brand-link">Web Bot</NavLink>
         <nav>
-          {hasPermission(user, BOTS_VIEW) ? <NavLink to="/" end>Tổng quan</NavLink> : null}
+          {canOverview ? <NavLink to="/" end>Tổng quan</NavLink> : null}
           {hasPermission(user, BOTS_VIEW) || hasPermission(user, CREDENTIALS_VIEW) ? <p className="nav-label">Bot</p> : null}
           {hasPermission(user, BOTS_VIEW) ? <NavLink to="/bots">Danh sách</NavLink> : null}
           {hasPermission(user, CONFIG_VIEW) ? <NavLink to="/config-lab">Config</NavLink> : null}
@@ -115,9 +132,7 @@ function Shell({ children }) {
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
           {canMarket ? <NavLink to="/market">Thị trường</NavLink> : null}
           {canTerminal ? <NavLink to="/smart-money">Smart Money</NavLink> : null}
-          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Hiệu quả giao dịch</NavLink> : null}
-          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
-          {hasPermission(user, SUMMARY_VIEW) || hasPermission(user, BOTS_VIEW) || hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/summary">Tổng kết</NavLink> : null}
+          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/reports">Báo cáo</NavLink> : null}
           {showOps ? <p className="nav-label">Vận hành</p> : null}
           {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
           {hasPermission(user, LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all" ? <NavLink to="/system">Hệ thống</NavLink> : null}
@@ -168,9 +183,7 @@ function AppRoutes() {
         path="/summary"
         element={
           <ProtectedAny permissions={[SUMMARY_VIEW, BOTS_VIEW, STATISTICS_VIEW]}>
-            <Shell>
-              <SummaryPage />
-            </Shell>
+            <RedirectSummaryToOverview />
           </ProtectedAny>
         }
       />
@@ -227,8 +240,16 @@ function AppRoutes() {
         path="/ledger"
         element={
           <Protected permission={STATISTICS_VIEW}>
+            <RedirectLedgerToReports />
+          </Protected>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <Protected permission={STATISTICS_VIEW}>
             <Shell>
-              <AccountLedgerPage />
+              <ReportsPage />
             </Shell>
           </Protected>
         }
@@ -315,8 +336,9 @@ function AppRoutes() {
 
 function AccessHome() {
   const { user } = useAuth();
-  if (hasPermission(user, BOTS_VIEW)) return <DashboardPage />;
-  if (hasPermission(user, SUMMARY_VIEW)) return <Navigate to="/summary" replace />;
+  const canOverview =
+    hasPermission(user, BOTS_VIEW) || hasPermission(user, SUMMARY_VIEW) || hasPermission(user, STATISTICS_VIEW);
+  if (canOverview) return <OverviewPage />;
   return <PendingPage />;
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth";
@@ -348,6 +348,8 @@ function TradePanel({ row, onClose, configHref, historyHref, ledgerHref, trigger
 
 export default function TradePerformancePage() {
   const { user } = useAuth();
+  const location = useLocation();
+  const onReports = location.pathname.startsWith("/reports");
   const signalAllowed = can(user, "signals.history");
   const staticAllowed = can(user, "statistics.view");
   const configAllowed = can(user, "config.view");
@@ -399,7 +401,12 @@ export default function TradePerformancePage() {
     const next = new URLSearchParams(params);
     Object.entries(values).forEach(([key, value]) => (value ? next.set(key, String(value)) : next.delete(key)));
     if (!Object.hasOwn(values, "page") && !Object.hasOwn(values, "trade") && !Object.hasOwn(values, "listDay")) next.set("page", "1");
-    next.set("view", "performance");
+    if (onReports) {
+      next.set("tab", "performance");
+      next.delete("view");
+    } else {
+      next.set("view", "performance");
+    }
     next.set("analytics", "1");
     setParams(next, { replace });
   }
@@ -438,7 +445,10 @@ export default function TradePerformancePage() {
       if (current && inOthers && !inMine) setAudience("others");
       else if (!current || (!inMine && !inOthers)) {
         update({ username: mine[0]?.username || "", env: "", book: "live", range: range || "7", time: "close", closed: "closed", analytics: "1" }, { replace: true });
-      } else if (!params.get("analytics") || params.get("view") !== "performance") {
+      } else if (
+        !params.get("analytics")
+        || (onReports ? params.get("tab") !== "performance" : params.get("view") !== "performance")
+      ) {
         update({
           book: params.get("book") || "live",
           range: params.get("range") || (params.get("from") ? "custom" : "7"),
@@ -595,8 +605,11 @@ export default function TradePerformancePage() {
           <header className="page-head perf-head">
             <div className="perf-head-row">
               <div>
-                <h1>Hiệu quả giao dịch</h1>
-                <p className="muted">Phân tích kết quả theo signal, cấu hình và từng lệnh.</p>
+                <h1>Hiệu quả lệnh</h1>
+                <p className="muted">
+                  Phân tích kết quả theo signal, cấu hình và từng lệnh.
+                  Theo {timeField === "open" ? "thời gian mở lệnh" : "thời gian đóng lệnh"} (UTC). Nguồn Account Static · profit đã lưu (đã gồm phí/funding theo cách bot ghi).
+                </p>
               </div>
               <div className="perf-head-actions">
                 <span className="muted">{data?.generatedAt ? `Cập nhật ${fmtTime(data.generatedAt)}` : "—"}{refreshing ? " · đang cập nhật" : ""}</span>
@@ -789,7 +802,7 @@ export default function TradePerformancePage() {
                       onClose={() => update({ trade: "" })}
                       configHref={configAllowed && detail?.env ? configTo(detail.env) : ""}
                       historyHref={signalAllowed && detail ? historyTo(detail.signal, detail.env) : ""}
-                      ledgerHref={staticAllowed && username ? `/ledger?username=${encodeURIComponent(username)}` : ""}
+                      ledgerHref={staticAllowed && username ? `/reports?tab=ledger&username=${encodeURIComponent(username)}` : ""}
                     />
                   ) : null}
                 </div>
@@ -808,7 +821,7 @@ export default function TradePerformancePage() {
 
           {username && staticAllowed ? (
             <p className="muted perf-ledger-link">
-              <Link to={`/ledger?username=${encodeURIComponent(username)}`}>Xem hiệu quả vốn tài khoản</Link>
+              <Link to={`/reports?tab=ledger&username=${encodeURIComponent(username)}`}>Xem hiệu quả vốn tài khoản</Link>
               {" · "}
               {configAllowed ? <Link to={`/config-lab?user=${encodeURIComponent(username)}`}>Mở Config · {username}</Link> : null}
             </p>

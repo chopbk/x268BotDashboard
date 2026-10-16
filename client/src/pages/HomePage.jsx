@@ -895,7 +895,7 @@ export default function HomePage() {
                   </p>
                 ) : <p className="muted">Chưa có income của user này trong ngày UTC.</p>}
                 <p>
-                  <Link className="link-btn" to={`/ledger?username=${encodeURIComponent(peek.username)}`}>Mở lãi lỗ</Link>
+                  <Link className="link-btn" to={`/reports?tab=ledger&username=${encodeURIComponent(peek.username)}`}>Ví & dòng tiền</Link>
                 </p>
               </>
             ) : null}
@@ -909,7 +909,7 @@ export default function HomePage() {
                       <tbody>
                         {peekData.rows.map((row) => (
                           <tr key={row.username}>
-                            <td><Link to={`/ledger?username=${encodeURIComponent(row.username)}`}>{row.username}</Link></td>
+                            <td><Link to={`/reports?tab=ledger&username=${encodeURIComponent(row.username)}`}>{row.username}</Link></td>
                             <td>{row.env}</td>
                             <td className={tone(row.profit)}>{money(row.profit)}</td>
                             <td className={tone(row.fee)}>{money(row.fee)}</td>

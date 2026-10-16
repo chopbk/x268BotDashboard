@@ -46,16 +46,42 @@ function points(series, key, width, height, minValue, maxValue) {
 }
 
 export default function AccountLedgerPage() {
-  const [searchParams] = useSearchParams();
-  const [days, setDays] = useState("14");
-  const [username, setUsername] = useState(() => searchParams.get("username") || "");
-  const [showOthers, setShowOthers] = useState(false);
-  const [showInactive, setShowInactive] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const days = searchParams.get("days") || "14";
+  const username = searchParams.get("username") || "";
+  const showOthers = searchParams.get("others") === "1";
+  const showInactive = searchParams.get("inactive") === "1";
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+
+  function patchParams(values) {
+    const next = new URLSearchParams(searchParams);
+    if (!next.get("tab")) next.set("tab", "ledger");
+    Object.entries(values).forEach(([key, value]) => {
+      if (value === "" || value == null || value === false) next.delete(key);
+      else next.set(key, String(value === true ? "1" : value));
+    });
+    setSearchParams(next, { replace: true });
+  }
+
+  function setUsername(value) {
+    patchParams({ username: value || "", others: showOthers || undefined, inactive: showInactive || undefined });
+  }
+
+  function setDays(value) {
+    patchParams({ days: value || "14" });
+  }
+
+  function setShowOthers(checked) {
+    patchParams({ others: checked || undefined });
+  }
+
+  function setShowInactive(checked) {
+    patchParams({ inactive: checked || undefined });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -73,12 +99,12 @@ export default function AccountLedgerPage() {
         setData(result);
         setError("");
         const requested = (result.users || []).find((item) => item.username === (username || result.username));
-        if (requested && !requested.mine) setShowOthers(true);
-        if (requested && requested.active === false) setShowInactive(true);
+        if (requested && !requested.mine && !showOthers) patchParams({ others: true });
+        if (requested && requested.active === false && !showInactive) patchParams({ inactive: true });
         if (!username) {
           const choices = filterUsers(result.users, showOthers, showInactive);
           const preferred = choices.find((item) => item.username === result.username) || choices[0];
-          if (preferred) setUsername(preferred.username);
+          if (preferred) patchParams({ username: preferred.username });
         }
       })
       .catch((err) => {
@@ -99,7 +125,7 @@ export default function AccountLedgerPage() {
     if (!data || username === ALL) return;
     const next = filterUsers(data.users, showOthers, showInactive);
     if (next.some((item) => item.username === username)) return;
-    setUsername(next[0]?.username || "");
+    patchParams({ username: next[0]?.username || "" });
   }, [data, showInactive, showOthers, username]);
 
   async function refresh() {
@@ -136,8 +162,12 @@ export default function AccountLedgerPage() {
     <section>
       <header className="page-head summary-head">
         <div>
-          <h1>Lãi lỗ tài khoản</h1>
-          <p className="muted">Số dư, income và hiệu suất lấy từ database. Cập nhật chỉ gọi API sàn cho ngày UTC hôm nay, với user bạn được xem.</p>
+          <h1>Ví & dòng tiền</h1>
+          <p className="muted">
+            Số dư, income và hiệu suất lấy từ database · theo thời gian phát sinh (ngày UTC).
+            Trading PnL và phí/funding lấy từ income sàn — không cộng lại nếu đã nằm trong income.
+            Nạp/rút/chuyển không phải lợi nhuận. Cập nhật chỉ gọi API sàn cho ngày UTC hôm nay.
+          </p>
         </div>
         <div className="ledger-tools">
           <label>
@@ -253,7 +283,13 @@ export default function AccountLedgerPage() {
             <article className="card summary-stat"><small>Số dư DB · futures_profits</small><strong>{plain(compare.dbBalance)}</strong></article>
             <article className="card summary-stat"><small>Số dư sàn · bản cập nhật hôm nay</small><strong>{plain(compare.exchangeBalance)}</strong></article>
             <article className={`card summary-stat ${tone(compare.diff)}`}><small>Lệch sàn so với DB trước cập nhật</small><strong>{money(compare.diff)}</strong></article>
-            <article className={`card summary-stat ${tone(totals.staticDiff)}`}><small>Income sàn − profit Account Static</small><strong>{money(totals.staticDiff)}</strong></article>
+            <article
+              className={`card summary-stat ${tone(totals.staticDiff)}`}
+              title="Đối chiếu hai nguồn cùng kỳ UTC: tổng income sàn (trading+phí+funding…) trừ profit lệnh Account Static. Không tự kết luận lỗi khi chưa đủ bằng chứng (khác thời điểm ghi, lệnh mở, thiếu closeTime…)."
+            >
+              <small>Chênh lệch income − Static</small>
+              <strong>{money(totals.staticDiff)}</strong>
+            </article>
           </div>
 
           <h2 className="summary-section-title">Đường số dư</h2>
@@ -279,7 +315,13 @@ export default function AccountLedgerPage() {
             <article className={`card summary-stat ${tone(totals.cashIn)}`}><small>Nạp / chuyển vào</small><strong>{money(totals.cashIn)}</strong></article>
             <article className={`card summary-stat ${tone(totals.cashOut)}`}><small>Rút / chuyển ra</small><strong>{money(totals.cashOut)}</strong></article>
             <article className="card summary-stat"><small>Quy đổi</small><strong>{money(totals.conversion)}</strong></article>
-            <article className={`card summary-stat ${tone(totals.staticProfit)}`}><small>Profit lệnh · Account Static, cùng kỳ UTC</small><strong>{money(totals.staticProfit)}</strong></article>
+            <article
+              className={`card summary-stat ${tone(totals.staticProfit)}`}
+              title="Static = profit lệnh đã đóng trong Account Static (DB bot), cùng kỳ ngày UTC với income — khác công thức income sàn."
+            >
+              <small>Profit lệnh · Static (Account Static)</small>
+              <strong>{money(totals.staticProfit)}</strong>
+            </article>
           </div>
 
           <h2 className="summary-section-title">Income theo ngày</h2>

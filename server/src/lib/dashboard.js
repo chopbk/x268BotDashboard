@@ -634,7 +634,7 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
                 type: "account",
                 username: bot.username,
                 title: `${bot.username} ví hôm nay ${moneyText(profit)}.${whyText}`,
-                href: `/ledger?username=${encodeURIComponent(bot.username)}`,
+                href: `/reports?tab=ledger&username=${encodeURIComponent(bot.username)}`,
                 profit,
                 env: ledgerEnv(bot),
                 signals: why.map((row) => ({ env: row.env, signal: row.signal, count: row.count, profit: row.profit })),
@@ -851,7 +851,7 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
             kind: "close",
             at: row.closeTime ? new Date(row.closeTime).toISOString() : null,
             title: `${bot.username}/${env} đóng ${symbol || "?"} ${signal || ""} ${moneyText(profit)}`.replace(/\s+/g, " ").trim(),
-            href: `/signals?user=${encodeURIComponent(bot.username)}`,
+            href: `/reports?tab=performance&username=${encodeURIComponent(bot.username)}`,
             profit,
         });
     }
@@ -904,7 +904,7 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
                 profitFactor: m.profitFactor,
                 expectancy: m.expectancy,
                 avgHoldLabel: m.avgHoldLabel,
-                href: `/ledger?username=${encodeURIComponent(pack.bot.username)}`,
+                href: `/reports?tab=ledger&username=${encodeURIComponent(pack.bot.username)}`,
             });
             attributionIssues = attributionIssues.concat(attentionFromAttribution(pack.attr, pack.bot.username));
         }
