@@ -23,6 +23,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Terminal Futures cho Bybit, Aster và OKX | [Multi-exchange Futures](multi-exchange-futures-spec.md) |
 | Smart Money / dòng tiền thị trường (collector dùng chung) | [Smart Money](smart-money-spec.md), [UI infographic](smart-money-ui-research.md) |
 | Trang Thị trường: scoring top 50 đa khung (market-v1) | [Market scoring spec](market-scoring-spec.md), [Formula market-v1](market-formula-v1.md) |
+| Đề xuất gộp menu Thị trường + Smart Money (P0, chưa triển khai) | [Market hub spec](market-hub-spec.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
 | Đăng ký, đăng nhập, quyền và scope | [Spec auth/RBAC](auth-rbac-spec.md) |
 | Cài Debian, Nginx, HTTPS, cập nhật server | [Deploy Debian](deploy-debian.md) |
