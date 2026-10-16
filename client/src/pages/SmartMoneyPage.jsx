@@ -3,10 +3,11 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import SmOverviewPanel, { SmLsMiniBar } from "../components/smart-money/SmOverviewPanel";
 import SmHistoryCharts from "../components/smart-money/SmHistoryCharts";
+import { resolveFlowTabFromParams } from "../lib/market-hub";
 import "./smart-money.css";
 
-const TABS = [
-  { id: "market", label: "Thị trường" },
+const FLOW_SUBTABS = [
+  { id: "overview", label: "Tổng quan" },
   { id: "notable", label: "Đáng chú ý" },
   { id: "watchlist", label: "Watchlist" },
 ];
@@ -61,9 +62,13 @@ function when(iso) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("vi-VN");
 }
 
-export default function SmartMoneyPage() {
+export default function SmartMoneyPage({
+  embedded = false,
+  canTechnical = false,
+  canTerminal = true,
+} = {}) {
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "market";
+  const flowTab = resolveFlowTabFromParams(params);
   const symbol = (params.get("symbol") || "").toUpperCase();
   const q = params.get("q") || "";
   const top = params.get("top") || "10";
@@ -111,8 +116,7 @@ export default function SmartMoneyPage() {
     if (bias && bias !== "all") qs.set("bias", bias);
     if (freshness) qs.set("freshness", freshness);
     if (anomaly) qs.set("anomaly", "1");
-    const body = await api(`/api/smart-money/symbols?${qs}`);
-    setList(body);
+    return api(`/api/smart-money/symbols?${qs}`);
   }, [q, top, bias, freshness, anomaly]);
 
   useEffect(() => {
@@ -125,9 +129,10 @@ export default function SmartMoneyPage() {
       api("/api/smart-money/candidates"),
       api("/api/smart-money/watchlist"),
     ])
-      .then(([st, , cand, wl]) => {
+      .then(([st, listBody, cand, wl]) => {
         if (cancelled) return;
         setStatus(st);
+        setList(listBody);
         setCandidates(cand);
         setWatchlist(wl.symbols || []);
       })
@@ -225,7 +230,8 @@ export default function SmartMoneyPage() {
     setError("");
     try {
       await api("/api/smart-money/refresh", { method: "POST", body: { symbols: symbol ? [symbol] : [] } });
-      await loadList();
+      const listBody = await loadList();
+      setList(listBody);
       const st = await api("/api/smart-money/status");
       setStatus(st);
     } finally {
@@ -236,11 +242,13 @@ export default function SmartMoneyPage() {
   const snapCount = status?.universe?.withSnapshot ?? 0;
   const universeSize = status?.universe?.size ?? list?.count ?? 0;
 
+  const TitleTag = embedded ? "h2" : "h1";
+
   return (
     <div className="sm-page">
       <header className="sm-header">
         <div>
-          <h1>Smart Money</h1>
+          <TitleTag>{embedded ? "Dòng tiền" : "Smart Money"}</TitleTag>
           <p className="muted">Theo dõi vị thế tổng hợp, dòng giao dịch và biến động thị trường.</p>
         </div>
         <div className="sm-status muted">
@@ -284,20 +292,22 @@ export default function SmartMoneyPage() {
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
 
-      <nav className="history-tabs sm-tabs">
-        {TABS.map((t) => (
+      <nav className="history-tabs sm-tabs" role="tablist" aria-label="Tab phụ Dòng tiền">
+        {FLOW_SUBTABS.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={tab === t.id ? "active" : ""}
-            onClick={() => patchParams({ tab: t.id })}
+            role="tab"
+            aria-selected={flowTab === t.id}
+            className={flowTab === t.id ? "active" : ""}
+            onClick={() => patchParams({ flowTab: t.id })}
           >
             {t.label}
           </button>
         ))}
       </nav>
 
-      {tab === "market" || tab === "watchlist" ? (
+      {flowTab === "overview" || flowTab === "watchlist" ? (
         <div className="sm-filters">
           <label>
             Symbol
@@ -341,9 +351,9 @@ export default function SmartMoneyPage() {
         </div>
       ) : null}
 
-      {tab === "market" || tab === "watchlist" ? (
+      {flowTab === "overview" || flowTab === "watchlist" ? (
         <AiBriefPanel
-          title="Kết luận tổng quan thị trường (AI)"
+          title="Kết luận tổng quan dòng tiền (AI)"
           brief={marketAi}
           busy={marketAiBusy}
           error={marketAiError}
@@ -355,18 +365,21 @@ export default function SmartMoneyPage() {
 
       <div className={`sm-layout ${symbol ? "has-detail" : ""}`}>
         <div className="sm-main">
-          {tab === "notable" ? (
-            <CandidatesPanel candidates={candidates} onOpen={(sym) => patchParams({ tab: "market", symbol: sym })} />
+          {flowTab === "notable" ? (
+            <CandidatesPanel
+              candidates={candidates}
+              onOpen={(sym) => patchParams({ flowTab: "overview", symbol: sym })}
+            />
           ) : (
             <MarketTable
-              rows={tab === "watchlist" ? watchRows : rows}
+              rows={flowTab === "watchlist" ? watchRows : rows}
               selected={symbol}
               watchlist={watchlist}
               onOpen={(sym) => patchParams({ symbol: sym })}
               onToggleWatch={(sym) => toggleWatch(sym).catch((e) => setError(e.message))}
               emptyNote={
-                tab === "watchlist"
-                  ? "Watchlist trống — thêm từ bảng Thị trường."
+                flowTab === "watchlist"
+                  ? "Watchlist trống — thêm từ bảng Tổng quan."
                   : "Chưa có snapshot — collector đang warm-up."
               }
             />
@@ -390,7 +403,12 @@ export default function SmartMoneyPage() {
               emptyHint="AI diễn giải snapshot symbol này (SM / whale / OI / funding / taker)."
               compact
             />
-            <SymbolDetail detail={detail} historyPoints={historyPoints} />
+            <SymbolDetail
+              detail={detail}
+              historyPoints={historyPoints}
+              canTechnical={canTechnical}
+              canTerminal={canTerminal}
+            />
           </aside>
         ) : null}
       </div>
@@ -583,7 +601,7 @@ function CandidatesPanel({ candidates, onOpen }) {
   );
 }
 
-function SymbolDetail({ detail, historyPoints }) {
+function SymbolDetail({ detail, historyPoints, canTechnical = false, canTerminal = true }) {
   if (!detail) return <p className="muted">Đang tải chi tiết…</p>;
   if (detail.error) return <p className="form-error">{detail.error}</p>;
   if (detail.warming && !detail.snapshot) {
@@ -598,6 +616,14 @@ function SymbolDetail({ detail, historyPoints }) {
   return (
     <div className="stack sm-detail-body">
       {detail.tracking?.label ? <p className="muted">{detail.tracking.label}</p> : null}
+      <p className="mkt-detail-links" style={{ margin: "0 0 8px" }}>
+        {canTechnical ? (
+          <Link to={`/market?tab=technical&symbol=${encodeURIComponent(snap.symbol)}`}>Xem kỹ thuật</Link>
+        ) : null}
+        {canTerminal ? (
+          <Link to={`/terminal?symbol=${encodeURIComponent(snap.symbol)}`}>Terminal</Link>
+        ) : null}
+      </p>
       <p>
         <strong>Kết luận:</strong> nhóm {biasLabel(snap.derived?.bias)}; whale {biasLabel(snap.derived?.whaleBias)}.
         {snap.derived?.deltas?.cohortReset ? " Cohort đã đổi — không so delta." : ""}
@@ -661,10 +687,6 @@ function SymbolDetail({ detail, historyPoints }) {
         <p className="muted">Chưa có sự kiện (hoặc đang warm-up).</p>
       )}
 
-      <p className="muted sm-tiny">
-        Phân tích kỹ thuật: dùng pipeline Terminal/AI hiện có —{" "}
-        <Link to={`/terminal?symbol=${encodeURIComponent(snap.symbol)}`}>mở Terminal</Link>.
-      </p>
     </div>
   );
 }

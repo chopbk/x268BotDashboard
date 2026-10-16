@@ -19,8 +19,8 @@ import ProfilePage from "./pages/ProfilePage";
 import ReportsPage from "./pages/ReportsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import TerminalPage from "./pages/TerminalPage";
-import SmartMoneyPage from "./pages/SmartMoneyPage";
-import MarketPage from "./pages/MarketPage";
+import MarketHubPage from "./pages/MarketHubPage";
+import { buildSmartMoneyRedirectPath } from "./lib/market-hub";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -34,6 +34,7 @@ const STATISTICS_VIEW = "statistics.view";
 const POSITIONS_VIEW = "positions.view";
 const ORDERS_VIEW = "orders.view";
 const MARKET_VIEW = "market.view";
+const SMART_MONEY_VIEW = "smart_money.view";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -79,6 +80,12 @@ function RedirectLedgerToReports() {
   return <Navigate to={`/reports?${params}`} replace />;
 }
 
+/** Bookmark `/smart-money` → hub Dòng tiền (trước khi mount trang cũ). */
+function RedirectSmartMoneyToMarketHub() {
+  const location = useLocation();
+  return <Navigate to={buildSmartMoneyRedirectPath(location.search, location.hash)} replace />;
+}
+
 function ProtectedAny({ children, permissions }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="screen muted">Đang tải…</div>;
@@ -93,14 +100,17 @@ function Shell({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const canTerminal =
     hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW);
-  const canMarket = canTerminal || hasPermission(user, MARKET_VIEW);
+  const canTechnical = canTerminal || hasPermission(user, MARKET_VIEW);
+  const canFlow = canTerminal || hasPermission(user, SMART_MONEY_VIEW);
+  const canMarketHub = canTechnical || canFlow;
   const canOverview =
     hasPermission(user, BOTS_VIEW) || hasPermission(user, SUMMARY_VIEW) || hasPermission(user, STATISTICS_VIEW);
   const showNumbers =
     hasPermission(user, STATISTICS_VIEW) ||
     hasPermission(user, SUMMARY_VIEW) ||
     hasPermission(user, BOTS_VIEW) ||
-    canTerminal;
+    canTerminal ||
+    canMarketHub;
   const showOps = hasPermission(user, LOGS_VIEW);
 
   useEffect(() => {
@@ -130,8 +140,7 @@ function Shell({ children }) {
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
           {canTerminal ? <NavLink to="/terminal">Terminal</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
-          {canMarket ? <NavLink to="/market">Thị trường</NavLink> : null}
-          {canTerminal ? <NavLink to="/smart-money">Smart Money</NavLink> : null}
+          {canMarketHub ? <NavLink to="/market">Thị trường</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/reports">Báo cáo</NavLink> : null}
           {showOps ? <p className="nav-label">Vận hành</p> : null}
           {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
@@ -209,9 +218,11 @@ function AppRoutes() {
       <Route
         path="/market"
         element={
-          <ProtectedAny permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW, MARKET_VIEW]}>
+          <ProtectedAny
+            permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW, MARKET_VIEW, SMART_MONEY_VIEW]}
+          >
             <Shell>
-              <MarketPage />
+              <MarketHubPage />
             </Shell>
           </ProtectedAny>
         }
@@ -219,10 +230,10 @@ function AppRoutes() {
       <Route
         path="/smart-money"
         element={
-          <ProtectedAny permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW]}>
-            <Shell>
-              <SmartMoneyPage />
-            </Shell>
+          <ProtectedAny
+            permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW, MARKET_VIEW, SMART_MONEY_VIEW]}
+          >
+            <RedirectSmartMoneyToMarketHub />
           </ProtectedAny>
         }
       />

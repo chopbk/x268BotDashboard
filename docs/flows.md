@@ -108,19 +108,18 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 [DashboardPage](../client/src/pages/DashboardPage.jsx) → GET `/api/dashboard` (cache memory theo actor; `?refresh=1` tính lại; client sessionStorage 60s) → [dashboard](../server/src/lib/dashboard.js): bot scope + series 7 ngày profit/income + compare hôm qua + heartbeat + uPnL Redis + activity + attention (severity, lọc noise). POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) → [dashboard-brief](../server/src/lib/dashboard-brief.js). Timeout 12 giây; rate limit 15 giây/user.
 
-## 7. Thị trường scoring (market-v1)
+## 7. Thị trường hub (P0) + scoring
 
 ```
-Scheduler (lease Mongo)
- → universe top 50 (exchangeInfo + ticker24h, dùng chung adapter Smart Money)
- → klines qua smartMoneyFetch limiter
- → chỉ nến đóng → indicators → score Long/Short từng TF
- → composite theo style → Mongo latest/history + Redis cache
- → GET /api/market/* (chỉ đọc cache)
- → MarketPage ma trận / breakdown / lịch sử
+Menu /market
+ → MarketHubPage (tab=technical|flow)
+ → chỉ mount domain active
+    ├─ technical → MarketPage → GET /api/market/*
+    └─ flow → SmartMoneyPage (flowTab) → GET /api/smart-money/*
+ /smart-money?* → replace → /market?tab=flow&flowTab=…
 ```
 
-Chi tiết symbol gắn snapshot Smart Money (flow) nhưng **không cộng** vào technical score. `buildMarketSnapshot` (Terminal/AI) gắn `marketScores` từ cache nếu có. Tham số: [market-formula-v1](market-formula-v1.md).
+Collector (không đổi vì P0 UI): market scoring top 50 klines; Smart Money SM/OI/funding. Hai thang điểm không cộng. Spec: [market-hub-spec](market-hub-spec.md), [market-formula-v1](market-formula-v1.md).
 
 ## 8. Deploy
 

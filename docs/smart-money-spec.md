@@ -37,7 +37,7 @@ Scheduler (lease Redis/Mongo)
   → Redis cache nóng (wb:sm:snap:*) — miss thì đọc Mongo rồi đổ lại cache
   → detector + candidates (code)
   → REST /api/smart-money/*
-  → UI /smart-money | Terminal Dòng tiền | AI marketContext
+  → UI /market?tab=flow (redirect từ /smart-money) | Terminal Dòng tiền | AI marketContext
 ```
 
 - Một collector trong process web-bot; job có distributed lease.
@@ -75,7 +75,7 @@ Bắt buộc: tôn trọng Retry-After; 418/429 → cooldown chung; không đổ
 | `smart_money.view` | Alias đọc thị trường (vẫn trong catalog / viewer template) | viewer template |
 | `smart_money.manage` | Enqueue refresh hệ thống | admin (+ ops) |
 
-- Menu `/smart-money` và API đọc dùng cùng điều kiện với Terminal.
+- UI Dòng tiền trong hub `/market?tab=flow` (bookmark `/smart-money` redirect). API đọc: Terminal hoặc `smart_money.view` — khớp gate hub.
 - Đọc thị trường ≠ quản lý collector.
 - So sánh với vị thế cá nhân qua `positions.view` + scope bot hiện có.
 - Không tin permission từ client.

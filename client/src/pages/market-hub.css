@@ -1,0 +1,54 @@
+.mkt-hub { display: flex; flex-direction: column; gap: 12px; }
+.mkt-hub-header h1 { margin: 0 0 4px; font-size: 1.4rem; letter-spacing: -0.02em; }
+.mkt-hub-sub { margin: 0; font-size: 13px; line-height: 1.4; max-width: 48rem; }
+
+.mkt-hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  padding-bottom: 0;
+}
+.mkt-hub-tabs button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.mkt-hub-tabs button:hover { opacity: 0.9; }
+.mkt-hub-tabs button.active {
+  opacity: 1;
+  border-bottom-color: currentColor;
+}
+.mkt-hub-tabs button:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 40%, transparent);
+  outline-offset: 2px;
+}
+
+.mkt-hub-notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #b54708 40%, transparent);
+  font-size: 13px;
+  background: color-mix(in srgb, #b54708 10%, transparent);
+}
+
+.mkt-hub-body { min-width: 0; }
+
+.mkt-hub .mkt-page > .mkt-header h1,
+.mkt-hub .mkt-page > .mkt-header h2,
+.mkt-hub .sm-page > .sm-header h1,
+.mkt-hub .sm-page > .sm-header h2 {
+  font-size: 1.1rem;
+}
+
+@media (max-width: 960px) {
+  .mkt-hub-tabs button { padding: 10px 12px; }
+}

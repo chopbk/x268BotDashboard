@@ -1,7 +1,7 @@
 # Hub Thị trường — gộp điều hướng Kỹ thuật và Dòng tiền
 
-Ngày: 2026-10-16. Trạng thái: **spec đề xuất, chưa triển khai**.
-Phạm vi: `web-bot`, P0 giao diện và điều hướng. Tài liệu này không tuyên bố runtime đã thay đổi.
+Ngày: 2026-10-16. Trạng thái: **P0 đã triển khai** (hub UI + redirect; API/collector không đổi).
+Phạm vi: `web-bot`, P0 giao diện và điều hướng.
 
 ## 1. Quyết định sản phẩm
 
@@ -191,7 +191,18 @@ Thứ tự: route/query/gate → nhúng nội dung → link và lifecycle → ki
 | A14 | Mobile và bàn phím | Chọn được hai cấp tab, bảng/panel không tràn trang, đóng panel và focus hoạt động |
 | A15 | So sánh payload và cấu hình collector | Không đổi score, API contract, universe, cadence, Mongo hoặc env |
 
-Khi triển khai: regression tự động cho mapping legacy URL, normalization và ma trận quyền allow/deny; dùng hạ tầng test sẵn có, không thêm dependency. Chạy `npm --prefix server test` và `npm --prefix client run build`. Kiểm tra UI/network cho A7–A14; ghi rõ case chưa tự động hóa hoặc chưa kiểm tra thực tế. Việc viết spec hiện tại chỉ cần kiểm tra liên kết, consistency và diff; không được báo các acceptance test đã pass khi chưa có code.
+Khi triển khai: regression tự động cho mapping legacy URL, normalization và ma trận quyền allow/deny (`server/test/market-hub-url.test.js`); dùng hạ tầng test sẵn có, không thêm dependency. Chạy `npm --prefix server test` và `npm --prefix client run build`. Kiểm tra UI/network cho A7–A14; ghi rõ case chưa tự động hóa hoặc chưa kiểm tra thực tế.
+
+### Kết quả kiểm tra triển khai (2026-10-16)
+
+| ID | Cách kiểm | Kết quả |
+|---|---|---|
+| A1–A5 | Unit `market-hub-url.test.js` + đối chiếu `App.jsx` / `MarketHubPage` | Pass unit; UI login đa role chưa chạy browser |
+| A6 | Code: `replace` normalize + `Navigate replace` redirect; Back/Forward dùng `setParams` không replace khi đổi tab | Logic đúng theo code; chưa ghi nhận thủ công history |
+| A7–A8 | Parity: nhúng nguyên `MarketPage` / `SmartMoneyPage` | Giữ panel/filter/AI; chưa regression UI tay |
+| A9 | `cancelled` + unmount clear interval; chỉ mount tab active | Code path pass; chưa network throttle UI |
+| A10–A14 | Chưa browser/mobile | **Chưa kiểm chứng thực tế** |
+| A15 | Diff: không đụng `server/src/lib/market/*`, `smart-money` collector/routes | Pass theo diff phạm vi commit |
 
 ## 10. Các bước sau P0
 

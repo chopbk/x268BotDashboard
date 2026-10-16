@@ -64,7 +64,11 @@ function compositeLabel(c) {
   return "—";
 }
 
-export default function MarketPage() {
+export default function MarketPage({
+  embedded = false,
+  canFlow = false,
+  canTerminal = true,
+} = {}) {
   const [params, setParams] = useSearchParams();
   const symbol = (params.get("symbol") || "").toUpperCase();
   const style = STYLES.some((s) => s.id === params.get("style")) ? params.get("style") : "intraday";
@@ -114,8 +118,7 @@ export default function MarketPage() {
     if (fresh) qs.set("fresh", "1");
     if (sort) qs.set("sort", sort);
     if (dir) qs.set("dir", dir);
-    const body = await api(`/api/market/symbols?${qs}`);
-    setList(body);
+    return api(`/api/market/symbols?${qs}`);
   }, [style, q, side, regime, minScore, consensus, fresh, sort, dir]);
 
   const activeSort = list?.sort || sort || "composite";
@@ -151,8 +154,10 @@ export default function MarketPage() {
     setLoading(true);
     setError("");
     Promise.all([api("/api/market/overview"), loadList()])
-      .then(([ov]) => {
-        if (!cancelled) setOverview(ov);
+      .then(([ov, listBody]) => {
+        if (cancelled) return;
+        setOverview(ov);
+        setList(listBody);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message || "Lỗi tải Thị trường");
@@ -169,12 +174,20 @@ export default function MarketPage() {
   useEffect(() => {
     const progress = overview?.progress;
     if (!progress || progress.complete) return undefined;
+    let cancelled = false;
     const id = setInterval(() => {
       Promise.all([api("/api/market/overview"), loadList()])
-        .then(([ov]) => setOverview(ov))
+        .then(([ov, listBody]) => {
+          if (cancelled) return;
+          setOverview(ov);
+          setList(listBody);
+        })
         .catch(() => {});
     }, 12_000);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [overview?.progress?.complete, overview?.progress?.scored, loadList]);
 
   useEffect(() => {
@@ -227,7 +240,9 @@ export default function MarketPage() {
     setError("");
     try {
       await api("/api/market/refresh", { method: "POST", body: {} });
-      await Promise.all([api("/api/market/overview").then(setOverview), loadList()]);
+      const [ov, listBody] = await Promise.all([api("/api/market/overview"), loadList()]);
+      setOverview(ov);
+      setList(listBody);
     } catch (err) {
       setError(err.message || "Refresh thất bại (cần market.manage)");
     } finally {
@@ -239,14 +254,18 @@ export default function MarketPage() {
   const coverage = overview?.coverage || {};
   const progress = overview?.progress || {};
 
+  const TitleTag = embedded ? "h2" : "h1";
+
   return (
     <div className="mkt-page">
       <header className="mkt-header">
         <div>
-          <h1>Thị trường · Top 50 Futures theo volume24h</h1>
+          <TitleTag>
+            {embedded ? "Kỹ thuật · Top 50 Futures theo volume24h" : "Thị trường · Top 50 Futures theo volume24h"}
+          </TitleTag>
           <p className="mkt-sub">
             Scoring Long/Short độc lập trên 5m–1d (chỉ nến đóng). Điểm là mức đáp ứng quy tắc market-v1,
-            không phải xác suất thắng. Flow Smart Money giữ riêng.
+            không phải xác suất thắng. Dòng tiền Smart Money giữ thang điểm riêng.
           </p>
         </div>
         <div className="mkt-meta">
@@ -453,8 +472,14 @@ export default function MarketPage() {
                   {detail.snapshot?.formulaVersion}
                 </p>
                 <div className="mkt-detail-links">
-                  <Link to={`/smart-money?symbol=${symbol}`}>Smart Money</Link>
-                  <Link to={`/terminal?symbol=${symbol}`}>Terminal</Link>
+                  {canFlow ? (
+                    <Link to={`/market?tab=flow&flowTab=overview&symbol=${encodeURIComponent(symbol)}`}>
+                      Xem dòng tiền
+                    </Link>
+                  ) : null}
+                  {canTerminal ? (
+                    <Link to={`/terminal?symbol=${encodeURIComponent(symbol)}`}>Terminal</Link>
+                  ) : null}
                 </div>
 
                 <div className="mkt-matrix">
