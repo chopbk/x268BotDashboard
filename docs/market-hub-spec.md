@@ -1,7 +1,7 @@
 # Hub Thị trường — gộp điều hướng Kỹ thuật và Dòng tiền
 
 Ngày: 2026-10-16. Trạng thái: **P0 đã triển khai** (hub UI + redirect; API/collector không đổi).
-Phạm vi: `web-bot`, P0 giao diện và điều hướng.
+Phạm vi: `web-bot`, P0 giao diện và điều hướng. **Yêu cầu mở rộng R1 (chưa triển khai): nút dòng tiền cạnh symbol, Top 10/25/50 và collector SM top 50 — xem mục 11.** Các giới hạn không đổi collector/URL Top ở mục 1–10 chỉ áp dụng bản P0; mục 11 là contract ưu tiên cho R1.
 
 ## 1. Quyết định sản phẩm
 
@@ -211,3 +211,64 @@ Khi triển khai: regression tự động cho mapping legacy URL, normalization 
 - **P2 — universe chia tầng:** nghiên cứu shared universe và SM deep-collect giới hạn; thay đổi collector/limiter/env phải tách khỏi UI.
 
 P0 hoàn thành khi điều hướng thống nhất và tính năng cũ vẫn truy cập được theo đúng quyền. Không cần hoàn thành P1/P2 để bàn giao P0.
+
+
+## 11. R1 — truy cập dòng tiền từng dòng và Smart Money top 50
+
+Trạng thái: **yêu cầu đã chốt, chưa triển khai**. R1 mở rộng P0 hiện có; không làm lại hub, không bao gồm panel chung hay cộng điểm kỹ thuật với flow.
+
+### 11.1 Nút cạnh symbol trong bảng Kỹ thuật
+
+- Mỗi dòng có nút/link **Xem dòng tiền** ngay cạnh tên symbol trong cùng ô; không bắt người dùng mở panel kỹ thuật trước. Mobile có thể dùng icon với tooltip và accessible label `Xem dòng tiền BTCUSDT`.
+- Bấm chuyển đến `/market?tab=flow&flowTab=overview&symbol=<SYMBOL>&top=<N>`, giữ query khác theo contract hub. Mở ngay panel dòng tiền đúng symbol, kể cả symbol ngoài N dòng đang hiển thị.
+- Chặn bubbling để không đồng thời kích hoạt click dòng/ô timeframe. Bấm tên/dòng và timeframe vẫn giữ hành vi kỹ thuật cũ. Back quay lại đúng bảng/filter trước đó.
+- Chỉ hiện nút khi `canFlow`; không có snapshot vẫn bấm được và thấy trạng thái thiếu dữ liệu/warming. Không tự gọi refresh, AI hoặc thêm watchlist.
+
+### 11.2 Bộ chọn hiển thị chung
+
+- Cả Kỹ thuật và Dòng tiền có lựa chọn **Top 10 / Top 25 / Top 50**, mặc định **Top 10** khi không có query. Dùng nhãn phụ/tooltip “Số dòng tối đa hiển thị” để phân biệt với universe collector.
+- `top=10|25|50` là query chung, giữ khi chuyển tab. Xóa `top` về mặc định 10; reload/Back/Forward phải khôi phục đúng lựa chọn. Đổi lựa chọn dùng history push và giữ symbol/panel, filter, sort.
+- Legacy `top=20` chuẩn hóa thành 25; `top=30` thành 50. Giá trị khác ngoài bộ hợp lệ về 10; chuẩn hóa bằng replace. Mapping này thay ví dụ giữ `top=20` ở mục 4.2 khi triển khai R1.
+- Ý nghĩa: lọc dữ liệu trong universe khả dụng → sort hiện hành → lấy tối đa N dòng. Không cắt N trước filter; mặc định Dòng tiền ưu tiên thứ tự volume rank của universe, Kỹ thuật giữ sort hiện có. Vì vậy Top N là giới hạn hiển thị, không nhất thiết N coin volume cao nhất sau khi đổi sort/filter.
+- Kỹ thuật truyền `limit=N` vào endpoint symbols hiện có; Dòng tiền truyền `top=N`. Server validate/cap đầu vào, không chỉ dựa select client. Không đổi mặc định endpoint cho caller cũ chỉ để đổi mặc định UI; UI luôn truyền N rõ ràng.
+- Watchlist: lọc membership của actor và các filter trên tập snapshot khả dụng trước khi lấy N; không lọc watchlist sau khi đã cắt bảng Tổng quan xuống N. Không tự collect mọi watchlist cá nhân ngoài universe.
+- Đáng chú ý: giữ xếp hạng candidate hiện có, áp dụng N trên tổng danh sách đã xếp hạng trước khi chia nhóm; không lấy N cho từng nhóm. Không đổi công thức/điểm candidate.
+- Khi ít hơn N kết quả, hiển thị đúng số có và empty state theo filter; không bổ sung coin ngoài phạm vi để đủ N. Hiển thị số dòng thực tế và mức N đã chọn.
+- AI tổng quan giữ hành vi nhận `top=N` khi người dùng bấm; rà validation/clamp phía AI để lựa chọn 25/50 không bị cắt ngầm về trần cũ. Không thay prompt/công thức hay tự gọi AI khi đổi N.
+
+### 11.3 Collector Smart Money theo dõi top 50 thực sự
+
+Chuỗi cần sửa: config → universe → scheduler/collect/adapters → store → read-api/status → bảng/panel/AI. Chỉ thêm option 50 hoặc render 50 hàng ticker chưa đáp ứng yêu cầu.
+
+- Chế độ top-volume mặc định đổi `SMART_MONEY_TOP_N` từ 10 thành **50**, `SMART_MONEY_MAX_SYMBOLS` từ 30 thành **60**. Top 50 giữ ưu tiên; 10 slot còn lại dành cho sticky/watchlist hệ thống/open-book theo logic hiện có. Không bắt buộc dùng chung module universe với Market.
+- Giữ phạm vi crypto USDT perpetual hợp lệ theo metadata, thứ tự quote volume 24h và chu kỳ refresh universe hiện có. Có ít hơn 50 symbol hợp lệ thì báo số thực tế, không lấy Spot/TradFi để bù.
+- Giữ `SMART_MONEY_SYMBOLS` là explicit override. Nếu deployment đặt topN/maxSymbols thấp hơn mục tiêu hoặc force list, status/UI phải thể hiện coverage/cấu hình thực tế, không báo đã theo dõi 50. Không đọc/sửa `.env` thật; cập nhật mẫu env và hướng dẫn người vận hành đặt 50/60 khi còn override cũ.
+- Chọn Top 10 trên UI không hạ collector xuống 10; Top 50 không tạo burst gọi sàn. Tất cả 50 symbol được lên lịch thu thập OI/funding/taker/top-trader/SM theo nguồn hiện có, không chỉ seed giá.
+- Giữ interval từng nguồn, gap/jitter, quota mỗi chu kỳ, lease, shared limiter, backoff 418/429 và cooldown. Rà vòng lặp scheduler để symbol cuối danh sách không bị đói lịch khi top đầu liên tục đến hạn; dùng tiến độ luân phiên/tình trạng đến hạn trong scheduler hiện có nếu cần, không tạo collector thứ hai.
+- Cooldown BAPI không chặn OI/funding; lỗi một symbol không làm mất cơ hội của phần đuôi. Chỉ đánh dấu dữ liệu thành công/đủ theo kết quả nguồn thực tế, không coi attempt lỗi là snapshot mới đầy đủ.
+- Thu thập tăng dần: bảng được seed giá trước; flow chưa có hiện warming/thiếu dữ liệu với timestamp/chất lượng từng nguồn. Không cam kết mọi snapshot cùng thời điểm hoặc đủ ngay khi mở trang.
+- Status/coverage phải phân biệt số symbol đang theo dõi, có snapshot và có SM khả dụng; tận dụng field hiện có, bổ sung additive nếu thiếu. Không dùng tổng số ticker làm số SM đã sẵn sàng.
+- Kiểm tra lịch giả lập với 50 symbol, nhiều nguồn cùng đến hạn và một số lỗi/cooldown. Khi không lỗi/cooldown, mọi symbol phải được phục vụ trong vòng duyệt hữu hạn; không hạ gap hoặc tăng concurrency để làm test pass. Ghi nhận số cycle/thời gian ước tính theo scheduler thực tế, không hứa SLA từ phép tính 50 × gap.
+
+### 11.4 Phạm vi file và tương thích
+
+Ngoài page/hub/query helper/CSS/test hiện có, được sửa `smart-money/config.js`, `symbol-universe.js`, `scheduler.js`, `read-api.js` và validator AI liên quan để đáp ứng R1; đọc caller/store/adapter trước khi sửa. Market read-api chỉ điều chỉnh phạm vi cần cho limit/filter nếu thiếu. Endpoint giữ nguyên đường dẫn; response cũ giữ tương thích, field mới chỉ bổ sung.
+
+Giữ công thức score, permission, isolation watchlist theo actor, schema/history/TTL và hành vi giao dịch. Không thêm dependency, không gộp collector. Cập nhật spec Smart Money, docs API/feature/flow và mẫu cấu hình khi triển khai; đánh dấu rõ phần thực sự đã kiểm tra.
+
+### 11.5 Tiêu chí nghiệm thu bổ sung
+
+| ID | Kết quả bắt buộc |
+|---|---|
+| R1-1 | Nút cạnh symbol mở đúng tab/panel flow bằng chuột/bàn phím; không kích hoạt click dòng; Back đúng |
+| R1-2 | Nút ẩn khi thiếu quyền flow; symbol thiếu snapshot vẫn có trạng thái rõ, không POST ngầm |
+| R1-3 | Hai tab mặc định 10, chọn được 10/25/50; URL/legacy mapping/Back/Forward đúng, giữ panel |
+| R1-4 | Filter/sort trước limit; Watchlist lọc membership trước limit; candidates giới hạn tổng N, AI nhận N đúng |
+| R1-5 | Config mặc định top50/max60; force list và env override được tôn trọng, UI thể hiện coverage thật |
+| R1-6 | Universe đủ top50 hợp lệ nếu có, không bị cap30; các slot phụ không đẩy top50 ra ngoài |
+| R1-7 | Scheduler giả lập phục vụ đủ 50, không starvation; quota/gap/lease/cooldown không bị bỏ qua |
+| R1-8 | 418/429/lỗi một phần: giữ dữ liệu và chất lượng đúng, không request storm; BAPI lỗi không chặn nguồn độc lập |
+| R1-9 | Top10/25/50 chỉ đổi read query, không đổi universe/collector; coverage SM không bị nhầm với ticker |
+| R1-10 | Server tests và client build đạt; ghi riêng kiểm tra browser/network và thử tải collector chưa thực hiện |
+
+A15 là kết quả lịch sử P0, không còn là yêu cầu “không đổi universe/env” của R1. Các tiêu chí P0 khác tiếp tục áp dụng trừ phần URL Top được thay thế rõ ở trên.
