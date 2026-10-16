@@ -4,10 +4,29 @@ import { api } from "../api";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth";
 import { ownsBot } from "../access";
+import { useEscape } from "../navigation";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 const ALL_USERS = "__all__";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const LOW_SAMPLE = 20;
+
+function threshold(value, max) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const number = Number(text);
+  if (!Number.isFinite(number)) return null;
+  if (max == null) return number;
+  return Math.min(Math.max(0, number), max);
+}
+
+function keepGroup(row, rules) {
+  if (rules.minWin != null && (Number(row.winRate) || 0) < rules.minWin) return false;
+  if (rules.minTrades != null && (Number(row.count) || 0) < rules.minTrades) return false;
+  if (rules.minPnl != null && (Number(row.profit) || 0) < rules.minPnl) return false;
+  if (rules.gain && !(Number(row.profit) > 0)) return false;
+  return true;
+}
 const RANGE_PRESETS = [
   { id: "today", label: "Hôm nay" },
   { id: "7", label: "7 ngày" },
@@ -204,15 +223,16 @@ function PnlChart({ series, selectedDay, onSelectDay, timeField }) {
   );
 }
 
-function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, sortKey, onSort }) {
+function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek, sortKey, onSort, book }) {
   const sorted = sortGroups(rows, sortKey);
   const maxAbs = Math.max(1, ...sorted.map((row) => Math.abs(Number(row.profit) || 0)));
   const heads = [
-    ["count", "Số lệnh"],
-    ["profit", "PnL"],
+    ["count", "Lệnh"],
     ["winRate", "Win rate"],
-    ["profitFactor", "Profit factor"],
+    ["profit", "PnL"],
     ["avgProfit", "PnL TB"],
+    ["volume", "Volume"],
+    ["profitFactor", "PF"],
   ];
   return (
     <div className="table-wrap perf-table">
@@ -225,36 +245,53 @@ function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, sortKe
                 <button type="button" className={sortKey === key ? "th-sort active" : "th-sort"} onClick={() => onSort(key)}>{label}</button>
               </th>
             ))}
+            <th className="num">Thắng/Thua</th>
+            {onPeek ? <th></th> : null}
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 ? <tr><td colSpan={6}>Không có nhóm trong bộ lọc hiện tại.</td></tr> : null}
+          {sorted.length === 0 ? <tr><td colSpan={onPeek ? 9 : 8}>Không có nhóm đạt bộ lọc kết quả.</td></tr> : null}
           {sorted.map((row) => {
             const name = row[nameKey];
             const pnl = row.profit;
             const width = `${Math.max(4, (Math.abs(Number(pnl) || 0) / maxAbs) * 100)}%`;
             const avg = row.valid ? (Number(row.profit) || 0) / row.valid : null;
             const owner = row.username || username;
+            const lowSample = row.lowSample || (Number(row.count) || 0) < LOW_SAMPLE;
             return (
               <tr key={`${nameKey}-${name}-${owner || ""}`} className={active === name ? "trade-row active" : "trade-row"}>
                 <td>
                   <button type="button" className="perf-linkish" onClick={() => onPick(name, row)}>
                     {nameKey === "env" && owner ? `${owner} / ${name}` : name}
                   </button>
-                  {row.lowSample ? (
-                    <span className="perf-badge" title="Ngưỡng dưới 20 lệnh chỉ hỗ trợ đọc số liệu, không bảo đảm độ tin cậy thống kê.">Ít dữ liệu</span>
+                  {owner && nameKey !== "username" && nameKey !== "env" ? (
+                    <small className="muted"> · {owner}</small>
                   ) : null}
+                  {lowSample ? (
+                    <span className="perf-badge" title={`Dưới ${LOW_SAMPLE} lệnh — chỉ đọc số liệu, không khẳng định tốt chỉ vì win rate cao.`}>Ít mẫu</span>
+                  ) : null}
+                  {book === "paper" ? <span className="perf-badge">Paper</span> : null}
                 </td>
-                <td className="num">{row.wins}/{row.count}</td>
+                <td className="num">{row.count ?? "—"}</td>
+                <td className="num">
+                  {row.winRate == null ? "—" : `${fmt(row.winRate, 1)}%`}
+                  <small className="muted"> · {row.count ?? 0} lệnh</small>
+                </td>
                 <td className="num">
                   <div className="perf-barcell">
                     <span className={tone(pnl)}>{money(pnl)}</span>
                     <span className={`perf-inlinebar ${tone(pnl)}`} style={{ width }} />
                   </div>
                 </td>
-                <td className="num">{row.winRate == null ? "—" : `${fmt(row.winRate, 1)}%`}</td>
-                <td className="num">{row.profitFactorLabel || (row.profitFactor == null ? "—" : fmt(row.profitFactor, 2))}</td>
                 <td className="num">{money(avg)}</td>
+                <td className="num">{row.volume == null ? "—" : money(row.volume)}</td>
+                <td className="num">{row.profitFactorLabel || (row.profitFactor == null ? "—" : fmt(row.profitFactor, 2))}</td>
+                <td className="num">{row.wins ?? 0}/{row.losses ?? 0}</td>
+                {onPeek ? (
+                  <td>
+                    <button type="button" className="ghost" onClick={(event) => { event.stopPropagation(); onPeek(name, row); }}>Xem</button>
+                  </td>
+                ) : null}
               </tr>
             );
           })}
@@ -365,9 +402,13 @@ export default function TradePerformancePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [signalDraft, setSignalDraft] = useState("");
   const [tick, setTick] = useState(0);
+  const [peek, setPeek] = useState(null);
+  const [peekConfig, setPeekConfig] = useState(null);
+  const [peekLoading, setPeekLoading] = useState(false);
+  const [peekError, setPeekError] = useState("");
   const rowTriggerRef = useRef(null);
   const requestIdRef = useRef(0);
   const hasLoadedRef = useRef(false);
@@ -378,8 +419,9 @@ export default function TradePerformancePage() {
   const q = params.get("q") || "";
   const side = params.get("side") || "";
   const signal = params.get("signal") || "";
+  const status = params.get("status") || "";
   const profit = params.get("profit") || "";
-  const book = params.get("book") || "live";
+  const book = params.get("book") === "paper" ? "paper" : "live";
   const copy = params.get("copy") || "";
   const closed = params.get("closed") || "closed";
   const timeField = params.get("time") === "open" ? "open" : "close";
@@ -390,7 +432,12 @@ export default function TradePerformancePage() {
   const trade = params.get("trade") || "";
   const tradeUser = params.get("tradeUser") || "";
   const scopeParam = params.get("scope") || "";
+  const minWinText = params.get("minWin") || "";
+  const minTradesText = params.get("minTrades") || "";
+  const minPnlText = params.get("minPnl") || "";
+  const gain = params.get("gain") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
+  useEscape(Boolean(peek), () => setPeek(null));
   const debouncedQ = useDebouncedValue(q);
   const debouncedSignal = useDebouncedValue(signalDraft);
 
@@ -411,7 +458,10 @@ export default function TradePerformancePage() {
 
   function update(values, { replace = false } = {}) {
     const next = new URLSearchParams(params);
-    Object.entries(values).forEach(([key, value]) => (value ? next.set(key, String(value)) : next.delete(key)));
+    Object.entries(values).forEach(([key, value]) => {
+      if (value === "" || value == null || value === false) next.delete(key);
+      else next.set(key, String(value));
+    });
     if (!Object.hasOwn(values, "page") && !Object.hasOwn(values, "trade") && !Object.hasOwn(values, "listDay")) next.set("page", "1");
     if (onReports) {
       next.set("tab", "performance");
@@ -429,6 +479,7 @@ export default function TradePerformancePage() {
       q: "",
       side: "",
       signal: "",
+      status: "",
       profit: "",
       book: "live",
       copy: "",
@@ -440,9 +491,21 @@ export default function TradePerformancePage() {
       listDay: "",
       trade: "",
       tradeUser: "",
+      minWin: "",
+      minTrades: "",
+      minPnl: "",
+      gain: "",
       page: "1",
     });
     setSignalDraft("");
+  }
+
+  function openConfigPeek(targetEnv, rowUser) {
+    const owner = rowUser || (!allUsers ? username : "");
+    if (!owner || !targetEnv || !configAllowed) return;
+    setPeek({ username: owner, env: targetEnv });
+    setPeekConfig(null);
+    setPeekError("");
   }
 
   useEffect(() => {
@@ -512,10 +575,10 @@ export default function TradePerformancePage() {
       limit: "50",
       analytics: "1",
       book: book === "paper" ? "paper" : "live",
-      closed: closed || "closed",
       time: timeField,
       range: range === "custom" ? "custom" : range,
     });
+    if (closed && closed !== "all") query.set("closed", closed);
     if (allUsers) query.set("scope", scopeParam || audienceScope);
     if (range === "custom") {
       if (from) query.set("from", from);
@@ -525,6 +588,7 @@ export default function TradePerformancePage() {
     if (debouncedQ) query.set("q", debouncedQ);
     if (side) query.set("side", side);
     if (signal) query.set("signal", signal);
+    if (status) query.set("status", status);
     if (profit) query.set("profit", profit);
     if (copy) query.set("copy", copy);
     if (listDay) query.set("listDay", listDay);
@@ -541,7 +605,29 @@ export default function TradePerformancePage() {
       setRefreshing(false);
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [username, allUsers, audienceScope, scopeParam, env, debouncedQ, side, signal, profit, book, copy, closed, timeField, range, from, to, page, listDay, tick]);
+  }, [username, allUsers, audienceScope, scopeParam, env, debouncedQ, side, signal, status, profit, book, copy, closed, timeField, range, from, to, page, listDay, tick]);
+
+  useEffect(() => {
+    if (!peek?.username || !peek?.env || !configAllowed) return undefined;
+    let cancelled = false;
+    const controller = new AbortController();
+    setPeekLoading(true);
+    setPeekError("");
+    api(`/api/bots/${encodeURIComponent(peek.username)}/configs/${encodeURIComponent(peek.env)}`, { signal: controller.signal })
+      .then((result) => {
+        if (!cancelled) setPeekConfig(result.config || null);
+      })
+      .catch((err) => {
+        if (!cancelled && err.name !== "AbortError") {
+          setPeekConfig(null);
+          setPeekError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPeekLoading(false);
+      });
+    return () => { cancelled = true; controller.abort(); };
+  }, [peek, configAllowed]);
 
   useEffect(() => {
     const detailUser = tradeUser || (!allUsers ? username : "");
@@ -580,6 +666,13 @@ export default function TradePerformancePage() {
     return `/config-lab/${encodeURIComponent(owner)}/${encodeURIComponent(rowEnv)}`;
   }
 
+  const groupRules = useMemo(() => ({
+    minWin: threshold(minWinText, 100),
+    minTrades: threshold(minTradesText),
+    minPnl: threshold(minPnlText),
+    gain: gain === "1",
+  }), [minWinText, minTradesText, minPnlText, gain]);
+
   const chips = [
     username ? {
       key: "user",
@@ -588,32 +681,46 @@ export default function TradePerformancePage() {
         : `User ${username}`,
       clear: null,
     } : null,
+    { key: "book", label: book === "paper" ? "Paper" : "Live", clear: null },
     env ? { key: "env", label: `Config ${env}`, clear: { env: "" } } : null,
     signal ? { key: "signal", label: `Signal ${signal}`, clear: { signal: "" } } : null,
     q ? { key: "q", label: `Symbol ${q}`, clear: { q: "" } } : null,
     side ? { key: "side", label: side, clear: { side: "" } } : null,
+    status ? { key: "status", label: `Status ${status}`, clear: { status: "" } } : null,
     copy === "copy" ? { key: "copy", label: "Copy", clear: { copy: "" } } : null,
     copy === "manual" ? { key: "manual", label: "Không Copy", clear: { copy: "" } } : null,
     profit === "win" ? { key: "profit", label: "Thắng", clear: { profit: "" } } : null,
     profit === "loss" ? { key: "profit", label: "Thua", clear: { profit: "" } } : null,
     profit === "flat" ? { key: "profit", label: "Hòa vốn", clear: { profit: "" } } : null,
-    book === "paper" ? { key: "book", label: "Paper", clear: { book: "live" } } : { key: "book", label: "Live", clear: null },
     timeField === "open" ? { key: "time", label: "Theo ngày mở", clear: { time: "close" } } : { key: "time", label: "Theo ngày đóng", clear: null },
     listDay ? { key: "listDay", label: `Đang xem lệnh đóng ngày ${listDay}`, clear: { listDay: "" } } : null,
+    groupRules.minWin != null ? { key: "minWin", label: `WR nhóm ≥ ${groupRules.minWin}%`, clear: { minWin: "" } } : null,
+    groupRules.minTrades != null ? { key: "minTrades", label: `≥ ${groupRules.minTrades} lệnh/nhóm`, clear: { minTrades: "" } } : null,
+    groupRules.minPnl != null ? { key: "minPnl", label: `PnL nhóm ≥ ${groupRules.minPnl}`, clear: { minPnl: "" } } : null,
+    groupRules.gain ? { key: "gain", label: "Chỉ nhóm đang lãi", clear: { gain: "" } } : null,
   ].filter(Boolean);
 
   const stats = data?.stats;
-  const groupRows = groupTab === "user" ? (stats?.byUser || [])
-    : groupTab === "config" ? (stats?.byConfig || [])
-      : groupTab === "symbol" ? (stats?.bySymbol || [])
-        : groupTab === "side" ? (stats?.bySide || [])
-          : (stats?.bySignal || []);
+  const { rawGroupRows, groupRows } = useMemo(() => {
+    const raw = groupTab === "user" ? (stats?.byUser || [])
+      : groupTab === "config" ? (stats?.byConfig || [])
+        : groupTab === "symbol" ? (stats?.bySymbol || [])
+          : groupTab === "side" ? (stats?.bySide || [])
+            : (stats?.bySignal || []);
+    return { rawGroupRows: raw, groupRows: raw.filter((row) => keepGroup(row, groupRules)) };
+  }, [groupTab, stats, groupRules]);
   const groupNameKey = groupTab === "user" ? "username"
     : groupTab === "config" ? "env"
       : groupTab === "symbol" ? "symbol"
         : groupTab === "side" ? "side"
           : "signal";
   const formulas = data?.formulas || {};
+  const resultFilterNote = [
+    groupRules.minWin != null ? `WR ≥ ${groupRules.minWin}%` : "",
+    groupRules.minTrades != null ? `≥ ${groupRules.minTrades} lệnh` : "",
+    groupRules.minPnl != null ? `PnL ≥ ${groupRules.minPnl}` : "",
+    groupRules.gain ? "đang lãi" : "",
+  ].filter(Boolean).join(", ");
 
   const extrasCard = stats ? (
     <aside className="card perf-extras" aria-label="Chỉ số bổ sung">
@@ -650,8 +757,12 @@ export default function TradePerformancePage() {
               <div>
                 <h1>Hiệu quả lệnh</h1>
                 <p className="muted">
-                  Phân tích kết quả theo signal, cấu hình và từng lệnh.
-                  Theo {timeField === "open" ? "thời gian mở lệnh" : "thời gian đóng lệnh"} (UTC). Nguồn Account Static · profit đã lưu (đã gồm phí/funding theo cách bot ghi).
+                  Phân tích kết quả theo signal, cấu hình và từng lệnh · sổ <strong>{book === "paper" ? "Paper" : "Live"}</strong> theo cờ <code>isPaper</code>.
+                  Theo {timeField === "open" ? "thời gian mở lệnh" : "thời gian đóng lệnh"} (UTC).
+                  PnL = field profit bot đã lưu trên Account Static
+                  {book === "paper"
+                    ? " · Paper: profit/cost mô phỏng theo bot; phí sàn / funding / nạp-rút: Chưa tính (không coi là 0)."
+                    : " · Live: phí/funding theo cách bot ghi vào profit (xem chi tiết lệnh)."}
                 </p>
               </div>
               <div className="perf-head-actions">
@@ -680,7 +791,8 @@ export default function TradePerformancePage() {
               <button type="button" className="ghost" onClick={clearFilters}>Xóa lọc</button>
             </div>
             <p className="muted perf-range-note">
-              {data?.rangeLabel || "Kỳ theo UTC"}. Live và Paper không trộn trong một tổng kết.
+              {data?.rangeLabel || "Kỳ theo UTC"}. Không trộn Live và Paper trong KPI hoặc xếp hạng.
+              Bộ lọc kết quả nhóm (WR/số lệnh/PnL) chỉ thu hẹp bảng phân tích — không đổi KPI tổng phía trên.
               {stats?.excludedMissingClose ? ` ${stats.excludedMissingClose} bản ghi thiếu closeTime đã bị loại khi lọc ngày đóng.` : ""}
             </p>
           </header>
@@ -762,7 +874,7 @@ export default function TradePerformancePage() {
               <section className="card perf-groups">
                 <div className="perf-tabs" role="tablist" aria-label="Nhóm phân tích">
                   {[
-                    allUsers ? ["user", "User"] : null,
+                    allUsers ? ["user", "Tài khoản"] : null,
                     ["signal", "Signal"],
                     ["config", "Config"],
                     ["symbol", "Symbol"],
@@ -771,14 +883,23 @@ export default function TradePerformancePage() {
                     <button key={id} type="button" role="tab" aria-selected={groupTab === id} className={groupTab === id ? "active" : ""} onClick={() => setGroupTab(id)}>{label}</button>
                   ))}
                 </div>
+                <p className="muted">
+                  {groupRows.length}/{rawGroupRows.length} nhóm
+                  {resultFilterNote ? ` · lọc kết quả: ${resultFilterNote}` : " · chưa lọc kết quả nhóm"}.
+                  Bấm một nhóm để lọc danh sách lệnh (giữ sổ {book === "paper" ? "Paper" : "Live"} và kỳ hiện tại).
+                </p>
                 <GroupTable
                   rows={groupRows.map((row) => ({ ...row, avgProfit: row.valid ? (Number(row.profit) || 0) / row.valid : null }))}
                   nameKey={groupNameKey}
-                  nameLabel={groupTab === "user" ? "User" : groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
+                  nameLabel={groupTab === "user" ? "Tài khoản" : groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
                   username={allUsers ? "" : username}
+                  book={book}
                   active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : groupTab === "user" ? "" : q}
-                  sortKey={groupSort === "avgProfit" ? "avgProfit" : groupSort}
+                  sortKey={groupSort === "avgProfit" || groupSort === "volume" ? groupSort : groupSort}
                   onSort={setGroupSort}
+                  onPeek={groupTab === "config" && configAllowed
+                    ? (value, row) => openConfigPeek(value, row?.username)
+                    : null}
                   onPick={(value) => {
                     if (groupTab === "user") update({ username: value, scope: "", env: "", trade: "", tradeUser: "" });
                     else if (groupTab === "signal") update({ signal: signal === value ? "" : value });
@@ -861,8 +982,8 @@ export default function TradePerformancePage() {
                       onClose={() => update({ trade: "", tradeUser: "" })}
                       configHref={configAllowed && detail?.env ? configTo(detail.env, tradeUser || detail.username) : ""}
                       historyHref={signalAllowed && detail ? historyTo(detail.signal, detail.env, tradeUser || detail.username) : ""}
-                      ledgerHref={staticAllowed && (tradeUser || (!allUsers && username))
-                        ? `/reports?tab=ledger&username=${encodeURIComponent(tradeUser || username)}`
+                      ledgerHref={staticAllowed && book !== "paper" && (tradeUser || (!allUsers && username))
+                        ? `/reports?tab=ledger&book=live&username=${encodeURIComponent(tradeUser || username)}`
                         : ""}
                     />
                   ) : null}
@@ -882,9 +1003,15 @@ export default function TradePerformancePage() {
 
           {username && staticAllowed ? (
             <p className="muted perf-ledger-link">
-              <Link to={allUsers ? "/reports?tab=ledger&username=__all__" : `/reports?tab=ledger&username=${encodeURIComponent(username)}`}>
-                {allUsers ? "Xem Ví & dòng tiền (Tất cả)" : "Xem hiệu quả vốn tài khoản"}
-              </Link>
+              {book === "paper" ? (
+                <Link to={`/reports?tab=ledger&book=paper${allUsers ? "&username=__all__" : username ? `&username=${encodeURIComponent(username)}` : ""}`}>
+                  Ví & dòng tiền (Paper chưa hỗ trợ)
+                </Link>
+              ) : (
+                <Link to={allUsers ? "/reports?tab=ledger&book=live&username=__all__" : `/reports?tab=ledger&book=live&username=${encodeURIComponent(username)}`}>
+                  {allUsers ? "Xem Ví & dòng tiền (Tất cả)" : "Xem hiệu quả vốn tài khoản"}
+                </Link>
+              )}
               {!allUsers && configAllowed ? (
                 <>
                   {" · "}
@@ -896,14 +1023,21 @@ export default function TradePerformancePage() {
         </div>
 
         <aside className="perf-side">
-          <div className="card perf-filters" aria-label="Bộ lọc">
+          <div className="card perf-filters" aria-label="Bộ lọc dữ liệu">
             <div className="perf-filters-head">
-              <strong>Bộ lọc</strong>
+              <strong>Bộ lọc dữ liệu</strong>
               <button type="button" className="ghost" onClick={() => setFiltersOpen((value) => !value)}>
                 {filtersOpen ? "Thu gọn" : "Mở rộng"}
               </button>
             </div>
+            <p className="muted" style={{ margin: "0 0 8px", fontSize: "0.78rem" }}>Chọn lệnh trước khi tính KPI/thống kê. Sổ theo cờ isPaper.</p>
             <div className="perf-filters-main">
+              <label>Chế độ sổ
+                <select value={book} onChange={(e) => update({ book: e.target.value, listDay: "", trade: "", tradeUser: "" })}>
+                  <option value="live">Live</option>
+                  <option value="paper">Paper</option>
+                </select>
+              </label>
               <label>Phạm vi
                 <select value={audience} onChange={(e) => {
                   const next = e.target.value;
@@ -920,7 +1054,7 @@ export default function TradePerformancePage() {
                   <option value="others">Người khác</option>
                 </select>
               </label>
-              <label>User
+              <label>User / tài khoản
                 <select
                   value={username}
                   onChange={(e) => {
@@ -945,12 +1079,6 @@ export default function TradePerformancePage() {
                 <select value={env} onChange={(e) => update({ env: e.target.value })}>
                   <option value="">Tất cả config</option>
                   {configOptions.map((item) => <option key={`${item.label}-${item.env}`} value={item.env}>{item.label}</option>)}
-                </select>
-              </label>
-              <label>Sổ
-                <select value={book === "paper" ? "paper" : "live"} onChange={(e) => update({ book: e.target.value })}>
-                  <option value="live">Live</option>
-                  <option value="paper">Paper</option>
                 </select>
               </label>
               <label className="perf-filter-span">Kỳ (UTC)
@@ -999,6 +1127,16 @@ export default function TradePerformancePage() {
                     <option value="SHORT">SHORT</option>
                   </select>
                 </label>
+                <label>Status
+                  <select value={status} onChange={(e) => update({ status: e.target.value })}>
+                    <option value="">Tất cả</option>
+                    <option value="WIN">WIN</option>
+                    <option value="LOSS">LOSS</option>
+                    {(stats?.byStatus || []).filter((item) => item.status && item.status !== "WIN" && item.status !== "LOSS").map((item) => (
+                      <option key={item.status} value={item.status}>{item.status}</option>
+                    ))}
+                  </select>
+                </label>
                 <label>Copy
                   <select value={copy} onChange={(e) => update({ copy: e.target.value })}>
                     <option value="">Tất cả</option>
@@ -1006,7 +1144,7 @@ export default function TradePerformancePage() {
                     <option value="manual">Không Copy</option>
                   </select>
                 </label>
-                <label>Kết quả
+                <label>Kết quả lệnh
                   <select value={profit} onChange={(e) => update({ profit: e.target.value })}>
                     <option value="">Tất cả</option>
                     <option value="win">Thắng</option>
@@ -1020,10 +1158,10 @@ export default function TradePerformancePage() {
                     <option value="open">Theo ngày mở</option>
                   </select>
                 </label>
-                <label>Trạng thái lệnh
-                  <select value={closed} onChange={(e) => update({ closed: e.target.value })}>
+                <label>Đóng lệnh
+                  <select value={closed === "all" ? "all" : closed || "closed"} onChange={(e) => update({ closed: e.target.value })}>
                     <option value="closed">Đã đóng</option>
-                    <option value="">Tất cả</option>
+                    <option value="all">Tất cả</option>
                     <option value="open">Đang mở</option>
                   </select>
                 </label>
@@ -1031,9 +1169,58 @@ export default function TradePerformancePage() {
             ) : null}
             {!listedBots.length ? <p className="muted">{audience === "mine" ? "Bạn chưa có user bot đang active." : "Không có user active của người khác."}</p> : null}
           </div>
+
+          <div className="card perf-filters" aria-label="Bộ lọc kết quả nhóm">
+            <div className="perf-filters-head">
+              <strong>Bộ lọc kết quả nhóm</strong>
+            </div>
+            <p className="muted" style={{ margin: "0 0 8px", fontSize: "0.78rem" }}>
+              Lọc sau khi đã tính thống kê. Không đổi KPI tổng của tập lệnh.
+            </p>
+            <div className="perf-filters-main">
+              <label>Win rate từ %
+                <input type="number" min="0" max="100" step="1" value={minWinText} placeholder="60" onChange={(e) => update({ minWin: e.target.value })} />
+              </label>
+              <label>Số lệnh từ
+                <input type="number" min="1" step="1" value={minTradesText} placeholder="10" onChange={(e) => update({ minTrades: e.target.value })} />
+              </label>
+              <label>PnL từ
+                <input type="number" step="1" value={minPnlText} placeholder="0" onChange={(e) => update({ minPnl: e.target.value })} />
+              </label>
+              <label>Nhóm lãi
+                <select value={gain} onChange={(e) => update({ gain: e.target.value })}>
+                  <option value="">Tất cả</option>
+                  <option value="1">Chỉ đang lãi</option>
+                </select>
+              </label>
+            </div>
+          </div>
           {extrasCard}
         </aside>
       </div>
+
+      {peek ? (
+        <div className="modal-backdrop" onClick={() => setPeek(null)}>
+          <div className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className="page-head">
+              <div>
+                <h2>Config {peek.username}/{peek.env}</h2>
+                <p className="muted">Chỉ xem/copy cấu hình — không áp dụng hay bật giao dịch live.</p>
+              </div>
+              <button type="button" className="ghost" onClick={() => setPeek(null)}>Đóng</button>
+            </header>
+            {peekLoading ? <p className="muted">Đang tải…</p> : null}
+            {peekError ? <p className="form-error">{peekError}</p> : null}
+            {peekConfig ? (
+              <pre className="dash-data" style={{ maxHeight: 360, overflow: "auto" }}>{JSON.stringify(peekConfig, null, 2)}</pre>
+            ) : null}
+            <div className="row-actions">
+              {configAllowed ? <Link className="trail-link" to={configTo(peek.env, peek.username)}>Mở Config Lab</Link> : null}
+              <button type="button" className="ghost" onClick={() => setPeek(null)}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -29,6 +29,10 @@ export default function ReportsPage() {
     if (username && username !== "__all__") next.set("username", username);
     const env = params.get("env");
     if (env) next.set("env", env);
+    const book = params.get("book");
+    if (book === "paper" || book === "live") next.set("book", book);
+    const signal = params.get("signal");
+    if (signal) next.set("signal", signal);
     const from = params.get("from");
     const to = params.get("to");
     if (from) next.set("from", from);

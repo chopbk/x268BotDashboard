@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import AccountRiskAi from "../components/AccountRiskAi";
 import LedgerAttribution from "../components/LedgerAttribution";
@@ -51,6 +51,7 @@ export default function AccountLedgerPage() {
   const username = searchParams.get("username") || "";
   const showOthers = searchParams.get("others") === "1";
   const showInactive = searchParams.get("inactive") === "1";
+  const book = searchParams.get("book") === "paper" ? "paper" : "live";
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -84,6 +85,12 @@ export default function AccountLedgerPage() {
   }
 
   useEffect(() => {
+    if (book === "paper") {
+      setLoading(false);
+      setData(null);
+      setError("");
+      return undefined;
+    }
     let cancelled = false;
     const controller = new AbortController();
     const params = new URLSearchParams({ days });
@@ -117,7 +124,7 @@ export default function AccountLedgerPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [days, username, username === ALL ? showOthers : false, username === ALL ? showInactive : false]);
+  }, [book, days, username, username === ALL ? showOthers : false, username === ALL ? showInactive : false]);
 
   const choices = filterUsers(data?.users, showOthers, showInactive);
 
@@ -157,6 +164,29 @@ export default function AccountLedgerPage() {
   const flowValues = cashSeries.flatMap((row) => [row.cash, row.trading]);
   const flowMin = flowValues.length ? Math.min(...flowValues) : 0;
   const flowMax = flowValues.length ? Math.max(...flowValues) : 0;
+
+  if (book === "paper") {
+    const back = new URLSearchParams(searchParams);
+    back.set("tab", "performance");
+    back.set("book", "paper");
+    return (
+      <section>
+        <header className="page-head summary-head">
+          <div>
+            <h1>Ví & dòng tiền</h1>
+            <p className="muted">Số dư và income hiện lấy từ futures_profits (live). Chưa có ledger Paper.</p>
+          </div>
+        </header>
+        <div className="card empty">
+          <p>Tab này chưa hỗ trợ sổ Paper. Không hiển thị số liệu ví live dưới bộ lọc Paper.</p>
+          <div className="row-actions" style={{ marginTop: 12 }}>
+            <button type="button" onClick={() => patchParams({ book: "live" })}>Chuyển sang Live</button>
+            <Link className="ghost link-btn" to={`/reports?${back}`}>Quay lại Hiệu quả lệnh (Paper)</Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section>
