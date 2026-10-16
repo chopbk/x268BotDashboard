@@ -11,8 +11,17 @@ const {
     getCollectorMeta,
 } = require("./store");
 const { getLatestSnapshot: getSmartMoneySnapshot } = require("../smart-money/store");
+const { buildPriceSeed, hasScoredFrames, estimateEtaSeconds } = require("./price-seed");
 
 const SYMBOL_RE = /^[A-Z0-9]{4,25}$/;
+
+function formatEta(seconds) {
+    const s = Math.max(0, Number(seconds) || 0);
+    if (s <= 0) return "xong";
+    if (s < 60) return `~${s}s`;
+    const m = Math.ceil(s / 60);
+    return m <= 1 ? "~1 phút" : `~${m} phút`;
+}
 
 function normalizeSymbol(raw) {
     const sym = String(raw || "").trim().toUpperCase();
@@ -44,12 +53,15 @@ function rowFromSnapshot(snap, styleId) {
     const composite = snap.composites?.[style] || snap.composites?.intraday;
     const cells = {};
     for (const tf of TIMEFRAMES) cells[tf] = cellSummary(snap.timeframes?.[tf]);
+    const pending = snap.qualityOverall === "pending" || snap.phase === "price" || !hasScoredFrames(snap);
     return {
         symbol: snap.symbol,
         price: snap.price,
         volumeRank: snap.volumeRank,
         inTop: snap.inTop !== false,
         qualityOverall: snap.qualityOverall,
+        phase: snap.phase || (pending ? "price" : "scored"),
+        pending,
         calculatedAt: snap.calculatedAt,
         formulaVersion: snap.formulaVersion,
         cells,
@@ -74,8 +86,17 @@ async function getStatusPayload() {
         : await buildMarketUniverse();
     const meta = await getCollectorMeta();
     const snaps = await listLatestSnapshots(universe.symbols || []);
+    const total = universe.symbols.length || config.topN;
     const ready = snaps.filter((s) => s.qualityOverall === "ready").length;
     const warming = snaps.filter((s) => s.qualityOverall === "warming").length;
+    const pending = snaps.filter((s) => s.qualityOverall === "pending" || s.phase === "price").length;
+    const scored = snaps.filter((s) => hasScoredFrames(s)).length;
+    const priced = snaps.filter((s) => s.price?.last != null).length;
+    const remaining = Math.max(0, total - scored);
+    const etaSeconds =
+        meta?.etaSeconds != null
+            ? meta.etaSeconds
+            : estimateEtaSeconds({ remainingSymbols: remaining, bootstrap: remaining > 0 });
     const style = config.defaultStyle;
     let leanLong = 0;
     let leanShort = 0;
@@ -85,6 +106,7 @@ async function getStatusPayload() {
     let ranging = 0;
     let transitional = 0;
     for (const s of snaps) {
+        if (!hasScoredFrames(s)) continue;
         const c = s.composites?.[style];
         if (c?.lean === "lean_long") leanLong += 1;
         if (c?.lean === "lean_short") leanShort += 1;
@@ -109,9 +131,24 @@ async function getStatusPayload() {
         coverage: {
             ready,
             warming,
-            total: universe.symbols.length,
-            scored: snaps.length,
-            label: `${ready}/${universe.symbols.length}`,
+            pending,
+            priced,
+            scored,
+            total,
+            label: `${scored}/${total} đã chấm · ${priced}/${total} có giá`,
+        },
+        progress: {
+            priced,
+            scored,
+            ready,
+            pending,
+            total,
+            remaining,
+            etaSeconds,
+            etaLabel: formatEta(etaSeconds),
+            complete: remaining === 0 && total > 0,
+            bootstrapHint:
+                "Giá/%/volume hiện ngay từ ticker. Điểm từng khung bổ sung dần (~3–6 phút lần đầu, 50×5 klines).",
         },
         breadth: { leanLong, leanShort, conflict, eligible, trending, ranging, transitional },
         collector: meta,
@@ -124,7 +161,27 @@ async function listSymbolsQuery(query = {}) {
     const universe = getMarketUniverse().symbols.length
         ? getMarketUniverse()
         : await buildMarketUniverse();
-    let snaps = await listLatestSnapshots(universe.symbols || []);
+    const snapList = await listLatestSnapshots(universe.symbols || []);
+    const snapMap = new Map(snapList.map((s) => [s.symbol, s]));
+
+    // Ghép universe + snapshot: thiếu score vẫn hiện giá từ ticker/seed.
+    let snaps = (universe.meta?.rows || universe.symbols.map((symbol) => ({ symbol }))).map((meta) => {
+        const existing = snapMap.get(meta.symbol);
+        if (existing) return existing;
+        return buildPriceSeed({
+            symbol: meta.symbol,
+            ticker: {
+                lastPrice: meta.lastPrice,
+                priceChangePercent: meta.priceChangePercent,
+                quoteVolume: meta.quoteVolume,
+            },
+            meta,
+            universeVersion: universe.version,
+        });
+    });
+
+    const scoredCount = snaps.filter((s) => hasScoredFrames(s)).length;
+    const mostlyPending = scoredCount < Math.max(5, snaps.length * 0.3);
 
     const q = String(query.q || "").trim().toUpperCase();
     if (q) snaps = snaps.filter((s) => s.symbol.includes(q));
@@ -135,7 +192,7 @@ async function listSymbolsQuery(query = {}) {
     } else if (side === "short" || side === "lean_short") {
         snaps = snaps.filter((s) => s.composites?.[style]?.lean === "lean_short");
     } else if (side === "wait") {
-        snaps = snaps.filter((s) => (s.composites?.[style]?.lean || "wait") === "wait");
+        snaps = snaps.filter((s) => hasScoredFrames(s) && (s.composites?.[style]?.lean || "wait") === "wait");
     }
 
     const regime = String(query.regime || "").toLowerCase();
@@ -165,7 +222,9 @@ async function listSymbolsQuery(query = {}) {
         snaps = snaps.filter((s) => s.inTop !== false);
     }
 
-    const sort = String(query.sort || "composite");
+    // Khi chưa chấm nhiều: mặc định xếp theo volume để bảng có ý nghĩa ngay.
+    const sortRaw = String(query.sort || "");
+    const sort = sortRaw || (mostlyPending ? "volume" : "composite");
     const dir = String(query.dir || "desc") === "asc" ? 1 : -1;
     snaps.sort((a, b) => {
         const ca = a.composites?.[style];
@@ -192,10 +251,13 @@ async function listSymbolsQuery(query = {}) {
     const rows = snaps.slice(0, limit).map((s) => rowFromSnapshot(s, style));
     return {
         style,
+        sort,
         count: rows.length,
-        totalScored: snaps.length,
+        totalScored: scoredCount,
+        totalRows: snaps.length,
         universeVersion: universe.version,
         formulaVersion: FORMULA_VERSION,
+        progressive: mostlyPending,
         rows,
     };
 }

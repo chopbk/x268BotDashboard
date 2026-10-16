@@ -10,6 +10,13 @@ Ngày: 2026-10-16. Version: **`market-v1`**.
 - Thiếu input bắt buộc (không đủ nến đóng tối thiểu) → `score = null`, `quality = warming|missing`; breakdown phần có dữ liệu vẫn trả.
 - Thiếu dữ liệu **không** thành số 0 và **không** giảm mẫu số khi tính breadth.
 
+## 1b. Hiển thị dần (progressive)
+
+- **Ngay (~vài giây):** ticker24h → giá, %24h, volume24h, rank top 50 (`phase=price`, `quality=pending`).
+- **Dần (~3–6 phút lần đầu):** mỗi symbol 5 khung klines qua limiter fapi (~400ms/gap, concurrency 2) → score. UI poll ~12s, ô khung hiện `…` rồi L/S.
+- Ước lượng: 50×5 = 250 request; tối ưu ~1–2 phút fetch thuần; thực tế thường **3–6 phút** vì batch/tick và chia sẻ limiter với Smart Money.
+- Sau warm-up: chỉ rescore khung có nến đóng mới — gần như realtime theo chu kỳ nến.
+
 ## 2. Nến và warm-up
 
 | Tham số | Giá trị | Lý do |

@@ -38,6 +38,7 @@ function biasClass(bias) {
 
 function cellLabel(cell) {
   if (!cell || cell.quality === "missing") return { text: "—", cls: "mkt-wait" };
+  if (cell.quality === "pending") return { text: "…", cls: "mkt-warm" };
   if (cell.quality === "warming") return { text: "Warm", cls: "mkt-warm" };
   if (cell.bias === "long" && cell.lead != null) return { text: `L${fmt(cell.lead, 0)}`, cls: "mkt-long" };
   if (cell.bias === "short" && cell.lead != null) return { text: `S${fmt(cell.lead, 0)}`, cls: "mkt-short" };
@@ -134,6 +135,18 @@ export default function MarketPage() {
     };
   }, [loadList]);
 
+  // Poll nhẹ khi còn symbol chưa chấm — bảng cập nhật dần, không phải chờ hết.
+  useEffect(() => {
+    const progress = overview?.progress;
+    if (!progress || progress.complete) return undefined;
+    const id = setInterval(() => {
+      Promise.all([api("/api/market/overview"), loadList()])
+        .then(([ov]) => setOverview(ov))
+        .catch(() => {});
+    }, 12_000);
+    return () => clearInterval(id);
+  }, [overview?.progress?.complete, overview?.progress?.scored, loadList]);
+
   useEffect(() => {
     if (!symbol) {
       setDetail(null);
@@ -194,6 +207,7 @@ export default function MarketPage() {
 
   const breadth = overview?.breadth || {};
   const coverage = overview?.coverage || {};
+  const progress = overview?.progress || {};
 
   return (
     <div className="mkt-page">
@@ -214,6 +228,26 @@ export default function MarketPage() {
           </button>
         </div>
       </header>
+
+      {progress.total ? (
+        <div className={`mkt-banner ${progress.complete ? "" : "mkt-progress"}`}>
+          {progress.complete ? (
+            <>Đã chấm đủ {progress.scored}/{progress.total} symbol.</>
+          ) : (
+            <>
+              <strong>Đang tính dần:</strong> giá/%/volume hiện trước · điểm{" "}
+              <strong>{progress.scored ?? 0}/{progress.total}</strong>
+              {progress.etaLabel ? <> · còn khoảng <strong>{progress.etaLabel}</strong></> : null}
+              <div className="mkt-progress-bar" aria-hidden="true">
+                <span style={{ width: `${Math.min(100, Math.round(((progress.scored || 0) / progress.total) * 100))}%` }} />
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {progress.bootstrapHint || "Ô khung hiện “…” cho đến khi nến đủ và score xong."}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
 
       <div className="mkt-summary">
         <span className="mkt-pill mkt-long">Thiên Long <strong>{breadth.leanLong ?? "—"}</strong></span>
@@ -290,10 +324,10 @@ export default function MarketPage() {
       <div className={`mkt-layout ${symbol ? "has-detail" : ""}`}>
         <div className="mkt-table-wrap panel">
           {loading && !list ? (
-            <div className="mkt-empty mkt-skel">Đang tải ma trận…</div>
+            <div className="mkt-empty mkt-skel">Đang tải giá top 50…</div>
           ) : !list?.rows?.length ? (
             <div className="mkt-empty">
-              Chưa có điểm — collector đang warm-up (cần ~250 nến đóng / khung) hoặc chưa chạy.
+              Chưa có universe — collector chưa chạy hoặc không lấy được ticker.
             </div>
           ) : (
             <table className="mkt-table">
@@ -354,10 +388,14 @@ export default function MarketPage() {
                         {compositeLabel(row.composite)}
                       </td>
                       <td>
-                        <span className={`mkt-status ${row.composite?.status || ""}`}>
-                          {statusLabel(row.composite?.status)}
-                        </span>
-                        {row.qualityOverall && row.qualityOverall !== "ready" ? (
+                        {row.pending ? (
+                          <span className="mkt-status mkt-warm">Đang tính…</span>
+                        ) : (
+                          <span className={`mkt-status ${row.composite?.status || ""}`}>
+                            {statusLabel(row.composite?.status)}
+                          </span>
+                        )}
+                        {row.qualityOverall && row.qualityOverall !== "ready" && !row.pending ? (
                           <div className="muted" style={{ fontSize: 11 }}>{row.qualityOverall}</div>
                         ) : null}
                       </td>

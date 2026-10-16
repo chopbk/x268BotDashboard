@@ -15,6 +15,12 @@ const {
     appendHistory,
     saveCollectorMeta,
 } = require("./store");
+const {
+    buildPriceSeed,
+    hasScoredFrames,
+    applyTickerPrice,
+    estimateEtaSeconds,
+} = require("./price-seed");
 
 const INSTANCE_ID = `${os.hostname()}:${process.pid}:${crypto.randomBytes(4).toString("hex")}`;
 const STATE_ID = "market-main";
@@ -123,10 +129,48 @@ async function runCycle(options = {}) {
         }
         metrics.bootstrap = bootstrap;
 
+        // 1) Seed / cập nhật giá ngay — UI hiện bảng trước khi nến scoring xong.
+        let seeded = 0;
+        let priced = 0;
+        for (const symbol of symbols) {
+            const meta = rowMeta.get(symbol) || {};
+            const ticker = tickerMap.get(symbol) || meta;
+            const prev = await getLatestSnapshot(symbol);
+            if (!prev || prev.phase === "price" || prev.qualityOverall === "pending") {
+                const seed = applyTickerPrice(
+                    prev?.phase === "price" ? prev : buildPriceSeed({
+                        symbol,
+                        ticker,
+                        meta,
+                        universeVersion: universe.version,
+                        now,
+                    }),
+                    ticker,
+                    meta
+                );
+                seed.universeVersion = universe.version;
+                seed.calculatedAt = new Date(now).toISOString();
+                if (!hasScoredFrames(seed)) {
+                    seed.qualityOverall = "pending";
+                    seed.phase = "price";
+                }
+                await saveLatestSnapshot(seed);
+                if (!prev) seeded += 1;
+                priced += 1;
+            } else if (ticker.lastPrice != null || ticker.quoteVolume != null) {
+                const refreshed = applyTickerPrice(prev, ticker, meta);
+                refreshed.universeVersion = universe.version;
+                await saveLatestSnapshot(refreshed);
+                priced += 1;
+            }
+        }
+        metrics.priceSeeded = seeded;
+        metrics.priced = priced;
+
         const due = [];
         for (const symbol of symbols) {
             const prev = await getLatestSnapshot(symbol);
-            if (bootstrap || options.force || needsRescore(symbol, prev, now)) {
+            if (bootstrap || options.force || !hasScoredFrames(prev) || needsRescore(symbol, prev, now)) {
                 due.push({ symbol, prev });
             }
         }
@@ -135,6 +179,7 @@ async function runCycle(options = {}) {
         const batch = bootstrap ? due.slice(0, 8) : due.slice(0, 20);
         metrics.queued = due.length;
         metrics.batch = batch.length;
+        metrics.etaSeconds = estimateEtaSeconds({ remainingSymbols: due.length, bootstrap });
 
         await mapPool(batch, config.fetchConcurrency, async ({ symbol, prev }) => {
             metrics.symbolsAttempted += 1;
@@ -144,14 +189,17 @@ async function runCycle(options = {}) {
                 const snapshot = await scoreSymbol(symbol, {
                     ticker,
                     universeVersion: universe.version,
-                    prev,
-                    force: bootstrap || options.force,
+                    prev: hasScoredFrames(prev) ? prev : null,
+                    force: bootstrap || options.force || !hasScoredFrames(prev),
                     volumeRank: meta.volumeRank,
                     inTop: meta.inTop !== false,
                     now,
                 });
+                snapshot.phase = "scored";
                 await saveLatestSnapshot(snapshot);
-                await appendHistory(snapshot);
+                if (snapshot.qualityOverall === "ready" || snapshot.qualityOverall === "stale") {
+                    await appendHistory(snapshot);
+                }
                 markScored(snapshot);
                 metrics.symbolsOk += 1;
             } catch (error) {
@@ -160,8 +208,19 @@ async function runCycle(options = {}) {
             }
         });
 
-        const coverageReady = (await listLatestSnapshots(symbols)).filter((s) => s.qualityOverall === "ready").length;
-        metrics.coverage = { ready: coverageReady, total: symbols.length };
+        const allSnaps = await listLatestSnapshots(symbols);
+        const coverageReady = allSnaps.filter((s) => s.qualityOverall === "ready").length;
+        const coverageScored = allSnaps.filter((s) => hasScoredFrames(s)).length;
+        const coveragePending = allSnaps.filter((s) => s.qualityOverall === "pending").length;
+        const stillDue = Math.max(0, symbols.length - coverageScored);
+        metrics.coverage = {
+            ready: coverageReady,
+            scored: coverageScored,
+            pending: coveragePending,
+            priced: allSnaps.filter((s) => s.price?.last != null).length,
+            total: symbols.length,
+        };
+        metrics.etaSeconds = estimateEtaSeconds({ remainingSymbols: stillDue, bootstrap: stillDue > 0 });
         metrics.finishedAt = new Date().toISOString();
         metrics.universeVersion = universe.version;
         await saveCollectorMeta(metrics);
