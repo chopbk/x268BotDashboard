@@ -79,6 +79,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | Log | `logs.view` |
 | Process env / PM2 | `processes.view`, `processes.edit`, `processes.restart` (scope chỉ `all`) |
 | Smart Money | Đọc: cùng Terminal (`positions.view` \| `orders.view` \| `statistics.view`, hoặc `smart_money.view`). Quản lý collector: `smart_money.manage` (admin/ops) |
+| Thị trường (scoring) | Đọc: cùng Terminal hoặc `market.view`. Quản lý collector: `market.manage` (admin/ops). Role viewer+ có `market.view` trong template |
 
 `config.*` bao trọn `Account_Config`: signal, trade config, symbol blacklist/whitelist và
 các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
@@ -370,6 +371,12 @@ Các invariant:
 | `GET/PUT /api/smart-money/watchlist` | `requireAuth` | Cùng quyền đọc. Watchlist cá nhân actor |
 | `GET /api/smart-money/money-flow/:symbol` | `requireAuth` | Cùng quyền đọc. Khối Dòng tiền Terminal |
 | `POST /api/smart-money/refresh` | `requireAuth` | Cùng quyền đọc Terminal. Enqueue bootstrap/seed trong TTL/cooldown; rate-limit 4/10 phút. Không backfill lịch sử Smart Money quá khứ |
+| `GET /api/market/overview` | `requireAuth` | Đọc: `positions.view` \| `orders.view` \| `statistics.view` \| `market.view`. Tổng quan universe/coverage/breadth |
+| `GET /api/market/symbols` | `requireAuth` | Cùng quyền đọc Thị trường. Ma trận điểm; chỉ đọc cache/Mongo |
+| `GET /api/market/symbols/:symbol` | `requireAuth` | Cùng quyền đọc. Chi tiết + breakdown; gắn flow Smart Money nếu có |
+| `GET /api/market/symbols/:symbol/scores` | `requireAuth` | Cùng quyền đọc. Lịch sử điểm |
+| `GET /api/market/events` | `requireAuth` | Cùng quyền đọc. Sự kiện lean/delta/regime (web only) |
+| `POST /api/market/refresh` | `requireAuth` | `market.manage`. Bootstrap/refresh collector; rate-limit 3/10 phút |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
 | `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |

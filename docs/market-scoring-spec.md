@@ -1,6 +1,6 @@
 # Thị trường — Multi-timeframe scoring top 50
 
-Ngày: 2026-10-16. Trạng thái: **spec đề xuất, chưa phải mô tả tính năng đã triển khai**.
+Ngày: 2026-10-16. Trạng thái: **đã triển khai bản đầu (market-v1)** — ma trận 50×5, breakdown, lịch sử, API đọc cache; entry/SL/TP chưa làm. Tham số chốt: [market-formula-v1.md](market-formula-v1.md).
 
 ## 1. Mục tiêu và nguồn tham khảo
 

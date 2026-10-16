@@ -56,6 +56,11 @@ erDiagram
 | `smart_money_collector_state` | Scheduler | Lease + metrics collector |
 | `smart_money_watchlists` | User web | Watchlist cá nhân theo userId |
 | Redis `wb:sm:*` | Collector | Snapshot mới nhất + cooldown host + meta |
+| `market_score_latest` | Collector Thị trường | Snapshot scoring mới nhất 1 doc/symbol |
+| `market_score_history` | Collector Thị trường | Lịch sử điểm (unique bucketKey, TTL) |
+| `market_events` | Detector điểm | Sự kiện lean/delta/regime (web only) |
+| `market_collector_state` | Scheduler Thị trường | Lease + metrics |
+| Redis `wb:mkt:*` | Collector Thị trường | Snapshot/candle cache + meta |
 
 Tên collection phải lấy từ [models](../server/src/models), không suy từ tên class Mongoose. Web không tạo dữ liệu lịch sử signal/giao dịch chỉ bằng việc mở trang. Một số schema shared cho phép field ngoài khai báo; response vẫn phải dùng projection/serializer an toàn.
 
@@ -146,6 +151,12 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/smart-money/ai/overview` | [smart-money](../server/src/routes/smart-money.js) — AI tổng quan (rate-limit) |
 | POST | `/api/smart-money/ai/symbol` | [smart-money](../server/src/routes/smart-money.js) — AI 1 symbol (rate-limit) |
 | POST | `/api/smart-money/refresh` | [smart-money](../server/src/routes/smart-money.js) — `smart_money.manage` |
+| GET | `/api/market/overview` | [market](../server/src/routes/market.js) |
+| GET | `/api/market/symbols` | [market](../server/src/routes/market.js) |
+| GET | `/api/market/symbols/:symbol` | [market](../server/src/routes/market.js) |
+| GET | `/api/market/symbols/:symbol/scores` | [market](../server/src/routes/market.js) |
+| GET | `/api/market/events` | [market](../server/src/routes/market.js) |
+| POST | `/api/market/refresh` | [market](../server/src/routes/market.js) — `market.manage` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders/cancel-batch` | [trading](../server/src/routes/trading.js) |

@@ -225,6 +225,35 @@ async function buildMarketSnapshot(symbol, opts = {}) {
                 : null,
     };
 
+    // Gắn scoring Thị trường nếu đã có trong cache (không fetch thêm / không cộng vào flow).
+    let marketScores = null;
+    try {
+        const { getLatestSnapshot } = require("../market/store");
+        const scored = await getLatestSnapshot(sym);
+        if (scored) {
+            marketScores = {
+                formulaVersion: scored.formulaVersion,
+                calculatedAt: scored.calculatedAt,
+                qualityOverall: scored.qualityOverall,
+                composites: scored.composites,
+                timeframes: Object.fromEntries(
+                    Object.entries(scored.timeframes || {}).map(([tf, frame]) => [
+                        tf,
+                        {
+                            longScore: frame.longScore,
+                            shortScore: frame.shortScore,
+                            bias: frame.bias,
+                            regime: frame.regime,
+                            quality: frame.quality?.overall,
+                        },
+                    ])
+                ),
+            };
+        }
+    } catch (error) {
+        console.warn("[buildMarketSnapshot] market scores", error.message || error);
+    }
+
     return {
         symbol: sym,
         asOf: new Date().toISOString(),
@@ -238,7 +267,8 @@ async function buildMarketSnapshot(symbol, opts = {}) {
         atr14,
         levels: levels.filter((l) => l.price != null).slice(0, 10),
         candidateLevels,
-        note: "Chỉ báo trên nến đã đóng khi có thể; formingCandle=true nghĩa là nến cuối chưa đóng.",
+        marketScores,
+        note: "Chỉ báo trên nến đã đóng khi có thể; formingCandle=true nghĩa là nến cuối chưa đóng. marketScores từ collector Thị trường dùng chung (nếu có).",
     };
 }
 

@@ -108,7 +108,21 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 [DashboardPage](../client/src/pages/DashboardPage.jsx) → GET `/api/dashboard` (cache memory theo actor; `?refresh=1` tính lại; client sessionStorage 60s) → [dashboard](../server/src/lib/dashboard.js): bot scope + series 7 ngày profit/income + compare hôm qua + heartbeat + uPnL Redis + activity + attention (severity, lọc noise). POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) → [dashboard-brief](../server/src/lib/dashboard-brief.js). Timeout 12 giây; rate limit 15 giây/user.
 
-## 7. Deploy
+## 7. Thị trường scoring (market-v1)
+
+```
+Scheduler (lease Mongo)
+ → universe top 50 (exchangeInfo + ticker24h, dùng chung adapter Smart Money)
+ → klines qua smartMoneyFetch limiter
+ → chỉ nến đóng → indicators → score Long/Short từng TF
+ → composite theo style → Mongo latest/history + Redis cache
+ → GET /api/market/* (chỉ đọc cache)
+ → MarketPage ma trận / breakdown / lịch sử
+```
+
+Chi tiết symbol gắn snapshot Smart Money (flow) nhưng **không cộng** vào technical score. `buildMarketSnapshot` (Terminal/AI) gắn `marketScores` từ cache nếu có. Tham số: [market-formula-v1](market-formula-v1.md).
+
+## 8. Deploy
 
 `npm run update` → kiểm tra checkout/upstream → git pull fast-forward → chạy deploy vừa pull → npm ci server/client → test server → build client → restart riêng PM2 web-bot → health loopback → copy asset, thay index.html cuối → pm2 save.
 

@@ -21,6 +21,7 @@ import AccountLedgerPage from "./pages/AccountLedgerPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import TerminalPage from "./pages/TerminalPage";
 import SmartMoneyPage from "./pages/SmartMoneyPage";
+import MarketPage from "./pages/MarketPage";
 
 const USERS_MANAGE = "users.view";
 const BOTS_VIEW = "bots.view";
@@ -33,6 +34,7 @@ const SIGNALS_HISTORY = "signals.history";
 const STATISTICS_VIEW = "statistics.view";
 const POSITIONS_VIEW = "positions.view";
 const ORDERS_VIEW = "orders.view";
+const MARKET_VIEW = "market.view";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -76,6 +78,7 @@ function Shell({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const canTerminal =
     hasPermission(user, POSITIONS_VIEW) || hasPermission(user, ORDERS_VIEW) || hasPermission(user, STATISTICS_VIEW);
+  const canMarket = canTerminal || hasPermission(user, MARKET_VIEW);
   const showNumbers =
     hasPermission(user, STATISTICS_VIEW) ||
     hasPermission(user, SUMMARY_VIEW) ||
@@ -110,6 +113,7 @@ function Shell({ children }) {
           {hasPermission(user, CONFIG_VIEW) || hasPermission(user, SIGNALS_HISTORY) ? <NavLink to="/signal-search">Signal</NavLink> : null}
           {canTerminal ? <NavLink to="/terminal">Terminal</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
+          {canMarket ? <NavLink to="/market">Thị trường</NavLink> : null}
           {canTerminal ? <NavLink to="/smart-money">Smart Money</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/signals">Hiệu quả giao dịch</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/ledger">Lãi lỗ</NavLink> : null}
@@ -185,6 +189,16 @@ function AppRoutes() {
           <ProtectedAny permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW]}>
             <Shell>
               <TerminalPage />
+            </Shell>
+          </ProtectedAny>
+        }
+      />
+      <Route
+        path="/market"
+        element={
+          <ProtectedAny permissions={[POSITIONS_VIEW, ORDERS_VIEW, STATISTICS_VIEW, MARKET_VIEW]}>
+            <Shell>
+              <MarketPage />
             </Shell>
           </ProtectedAny>
         }

@@ -37,6 +37,8 @@ const PERMISSIONS = Object.freeze({
   PROCESSES_RESTART: "processes.restart",
   SMART_MONEY_VIEW: "smart_money.view",
   SMART_MONEY_MANAGE: "smart_money.manage",
+  MARKET_VIEW: "market.view",
+  MARKET_MANAGE: "market.manage",
   USERS_MANAGE: "users.manage",
   SIGNALS_VIEW: "signals.view",
   SIGNALS_MANAGE: "signals.manage",
@@ -209,6 +211,18 @@ const DEFINITIONS = [
     "smart_money",
     [SCOPES.ALL],
   ],
+  [
+    PERMISSIONS.MARKET_VIEW,
+    "Xem trang Thị trường / scoring đa khung",
+    "market",
+    [SCOPES.ALL],
+  ],
+  [
+    PERMISSIONS.MARKET_MANAGE,
+    "Quản lý collector / refresh scoring Thị trường",
+    "market",
+    [SCOPES.ALL],
+  ],
 ].map(([key, label, group, allowedScopes]) =>
   Object.freeze({ key, label, group, allowedScopes }),
 );
@@ -235,6 +249,7 @@ const VIEWER_PERMISSIONS = [
   PERMISSIONS.POSITIONS_VIEW,
   PERMISSIONS.ORDERS_VIEW,
   PERMISSIONS.SMART_MONEY_VIEW,
+  PERMISSIONS.MARKET_VIEW,
 ];
 const OPERATOR_PERMISSIONS = [
   ...VIEWER_PERMISSIONS,
@@ -254,6 +269,7 @@ const PROCESS_PERMISSIONS = [
   PERMISSIONS.PROCESSES_RESTART,
 ];
 const SMART_MONEY_MANAGE_PERMISSIONS = [PERMISSIONS.SMART_MONEY_MANAGE];
+const MARKET_MANAGE_PERMISSIONS = [PERMISSIONS.MARKET_MANAGE];
 const SELF_PROFILE_PERMISSIONS = [
   PERMISSIONS.USERS_EDIT,
   PERMISSIONS.USERS_RESET_PASSWORD,
@@ -269,7 +285,12 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.USERS_MANAGE,
   ]),
   ops: Object.freeze(
-    withSelfProfile([...OPERATOR_PERMISSIONS, ...PROCESS_PERMISSIONS, ...SMART_MONEY_MANAGE_PERMISSIONS]),
+    withSelfProfile([
+      ...OPERATOR_PERMISSIONS,
+      ...PROCESS_PERMISSIONS,
+      ...SMART_MONEY_MANAGE_PERMISSIONS,
+      ...MARKET_MANAGE_PERMISSIONS,
+    ]),
   ),
   supervisor: Object.freeze(withSelfProfile(OPERATOR_PERMISSIONS)),
   auditor: Object.freeze(
@@ -302,11 +323,12 @@ const scopeMap = (permissions, scope) =>
   Object.freeze(
     Object.fromEntries(permissions.map((permission) => [permission, scope])),
   );
-/** Thị trường Smart Money là dữ liệu hệ thống — luôn scope all khi có quyền xem. */
+/** Smart Money / Thị trường scoring là dữ liệu hệ thống — luôn scope all khi có quyền xem. */
 const withMarketScopes = (scopes) =>
   Object.freeze({
     ...scopes,
     [PERMISSIONS.SMART_MONEY_VIEW]: SCOPES.ALL,
+    [PERMISSIONS.MARKET_VIEW]: SCOPES.ALL,
   });
 const ROLE_SCOPES = Object.freeze({
   admin: Object.freeze({}),
@@ -329,6 +351,8 @@ const ROLE_SCOPES = Object.freeze({
     ...scopeMap(PROCESS_PERMISSIONS, SCOPES.ALL),
     [PERMISSIONS.SMART_MONEY_VIEW]: SCOPES.ALL,
     [PERMISSIONS.SMART_MONEY_MANAGE]: SCOPES.ALL,
+    [PERMISSIONS.MARKET_VIEW]: SCOPES.ALL,
+    [PERMISSIONS.MARKET_MANAGE]: SCOPES.ALL,
   }),
   supervisor: withMarketScopes(
     Object.freeze({

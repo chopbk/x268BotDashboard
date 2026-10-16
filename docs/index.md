@@ -22,7 +22,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Process env / restart trên tab Hệ thống | [Remote process env admin](remote-process-env-admin-spec.md) — Phase 1 trên `/system` (admin panel) |
 | Terminal Futures cho Bybit, Aster và OKX | [Multi-exchange Futures](multi-exchange-futures-spec.md) |
 | Smart Money / dòng tiền thị trường (collector dùng chung) | [Smart Money](smart-money-spec.md), [UI infographic](smart-money-ui-research.md) |
-| Đề xuất trang Thị trường: scoring top 50 đa khung (chưa triển khai) | [Market scoring spec](market-scoring-spec.md) |
+| Trang Thị trường: scoring top 50 đa khung (market-v1) | [Market scoring spec](market-scoring-spec.md), [Formula market-v1](market-formula-v1.md) |
 | Sửa code, kiểm tra và chẩn đoán lỗi | [Hướng dẫn phát triển](development.md) |
 | Đăng ký, đăng nhập, quyền và scope | [Spec auth/RBAC](auth-rbac-spec.md) |
 | Cài Debian, Nginx, HTTPS, cập nhật server | [Deploy Debian](deploy-debian.md) |
