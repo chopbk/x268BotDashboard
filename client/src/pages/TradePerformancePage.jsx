@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { ownsBot } from "../access";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
+const ALL_USERS = "__all__";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RANGE_PRESETS = [
   { id: "today", label: "Hôm nay" },
@@ -233,11 +234,12 @@ function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, sortKe
             const pnl = row.profit;
             const width = `${Math.max(4, (Math.abs(Number(pnl) || 0) / maxAbs) * 100)}%`;
             const avg = row.valid ? (Number(row.profit) || 0) / row.valid : null;
+            const owner = row.username || username;
             return (
-              <tr key={`${nameKey}-${name}`} className={active === name ? "trade-row active" : "trade-row"}>
+              <tr key={`${nameKey}-${name}-${owner || ""}`} className={active === name ? "trade-row active" : "trade-row"}>
                 <td>
-                  <button type="button" className="perf-linkish" onClick={() => onPick(name)}>
-                    {nameKey === "env" && username ? `${username} / ${name}` : name}
+                  <button type="button" className="perf-linkish" onClick={() => onPick(name, row)}>
+                    {nameKey === "env" && owner ? `${owner} / ${name}` : name}
                   </button>
                   {row.lowSample ? (
                     <span className="perf-badge" title="Ngưỡng dưới 20 lệnh chỉ hỗ trợ đọc số liệu, không bảo đảm độ tin cậy thống kê.">Ít dữ liệu</span>
@@ -371,6 +373,7 @@ export default function TradePerformancePage() {
   const hasLoadedRef = useRef(false);
 
   const username = params.get("username") || "";
+  const allUsers = username === ALL_USERS;
   const env = params.get("env") || "";
   const q = params.get("q") || "";
   const side = params.get("side") || "";
@@ -385,6 +388,8 @@ export default function TradePerformancePage() {
   const to = params.get("to") || "";
   const listDay = params.get("listDay") || "";
   const trade = params.get("trade") || "";
+  const tradeUser = params.get("tradeUser") || "";
+  const scopeParam = params.get("scope") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const debouncedQ = useDebouncedValue(q);
   const debouncedSignal = useDebouncedValue(signalDraft);
@@ -395,7 +400,14 @@ export default function TradePerformancePage() {
     [bots, user]
   );
   const listedBots = audience === "others" ? otherBots : mineBots;
-  const selectedBot = useMemo(() => bots.find((bot) => bot.username === username), [bots, username]);
+  const selectedBot = useMemo(() => (allUsers ? null : bots.find((bot) => bot.username === username)), [bots, username, allUsers]);
+  const configOptions = useMemo(() => {
+    if (!allUsers) {
+      return (selectedBot?.accounts || []).map((name) => ({ env: name, label: username ? `${username} / ${name}` : name }));
+    }
+    return listedBots.flatMap((bot) => (bot.accounts || []).map((name) => ({ env: name, label: `${bot.username} / ${name}` })));
+  }, [allUsers, listedBots, selectedBot, username]);
+  const audienceScope = audience === "others" ? "others" : "mine";
 
   function update(values, { replace = false } = {}) {
     const next = new URLSearchParams(params);
@@ -427,6 +439,7 @@ export default function TradePerformancePage() {
       to: "",
       listDay: "",
       trade: "",
+      tradeUser: "",
       page: "1",
     });
     setSignalDraft("");
@@ -440,20 +453,33 @@ export default function TradePerformancePage() {
       const mine = nextBots.filter((bot) => ownsBot(user, bot));
       const others = nextBots.filter((bot) => !ownsBot(user, bot) && (user?.role === "admin" || (bot.visibility || "public") !== "private"));
       const current = username;
+      const isAll = current === ALL_USERS;
       const inMine = mine.some((bot) => bot.username === current);
       const inOthers = others.some((bot) => bot.username === current);
-      if (current && inOthers && !inMine) setAudience("others");
-      else if (!current || (!inMine && !inOthers)) {
-        update({ username: mine[0]?.username || "", env: "", book: "live", range: range || "7", time: "close", closed: "closed", analytics: "1" }, { replace: true });
+      if (isAll && scopeParam === "others") setAudience("others");
+      else if (current && inOthers && !inMine) setAudience("others");
+      else if (!current || (!isAll && !inMine && !inOthers)) {
+        update({
+          username: mine[0]?.username || ALL_USERS,
+          scope: mine.length ? "" : "mine",
+          env: "",
+          book: "live",
+          range: range || "7",
+          time: "close",
+          closed: "closed",
+          analytics: "1",
+        }, { replace: true });
       } else if (
         !params.get("analytics")
         || (onReports ? params.get("tab") !== "performance" : params.get("view") !== "performance")
+        || (isAll && !scopeParam)
       ) {
         update({
           book: params.get("book") || "live",
           range: params.get("range") || (params.get("from") ? "custom" : "7"),
           time: params.get("time") || "close",
           closed: params.get("closed") || "closed",
+          scope: isAll ? (scopeParam || audienceScope) : "",
           analytics: "1",
         }, { replace: true });
       }
@@ -490,6 +516,7 @@ export default function TradePerformancePage() {
       time: timeField,
       range: range === "custom" ? "custom" : range,
     });
+    if (allUsers) query.set("scope", scopeParam || audienceScope);
     if (range === "custom") {
       if (from) query.set("from", from);
       if (to) query.set("to", to);
@@ -514,16 +541,17 @@ export default function TradePerformancePage() {
       setRefreshing(false);
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [username, env, debouncedQ, side, signal, profit, book, copy, closed, timeField, range, from, to, page, listDay, tick]);
+  }, [username, allUsers, audienceScope, scopeParam, env, debouncedQ, side, signal, profit, book, copy, closed, timeField, range, from, to, page, listDay, tick]);
 
   useEffect(() => {
-    if (!trade || !username) {
+    const detailUser = tradeUser || (!allUsers ? username : "");
+    if (!trade || !detailUser) {
       setDetail(null);
       return undefined;
     }
     let cancelled = false;
     const controller = new AbortController();
-    api(`/api/account-statics/${encodeURIComponent(trade)}?username=${encodeURIComponent(username)}`, { signal: controller.signal }).then((row) => {
+    api(`/api/account-statics/${encodeURIComponent(trade)}?username=${encodeURIComponent(detailUser)}`, { signal: controller.signal }).then((row) => {
       if (!cancelled) setDetail(row);
     }).catch((err) => {
       if (!cancelled) {
@@ -532,10 +560,12 @@ export default function TradePerformancePage() {
       }
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [trade, username]);
+  }, [trade, tradeUser, username, allUsers]);
 
-  function historyTo(rowSignal, rowEnv) {
-    const query = new URLSearchParams({ tab: "history", fromUser: username });
+  function historyTo(rowSignal, rowEnv, rowUser) {
+    const owner = rowUser || tradeUser || (!allUsers ? username : "");
+    const query = new URLSearchParams({ tab: "history" });
+    if (owner) query.set("fromUser", owner);
     const targetEnv = rowEnv || env;
     if (targetEnv) query.set("fromEnv", targetEnv);
     if (rowSignal) query.set("signal", rowSignal);
@@ -544,13 +574,21 @@ export default function TradePerformancePage() {
     return `/signal-search?${query}`;
   }
 
-  function configTo(rowEnv) {
-    return `/config-lab/${encodeURIComponent(username)}/${encodeURIComponent(rowEnv)}`;
+  function configTo(rowEnv, rowUser) {
+    const owner = rowUser || tradeUser || (!allUsers ? username : "");
+    if (!owner || !rowEnv) return "";
+    return `/config-lab/${encodeURIComponent(owner)}/${encodeURIComponent(rowEnv)}`;
   }
 
   const chips = [
-    username ? { key: "user", label: `User ${username}`, clear: null } : null,
-    env ? { key: "env", label: `Config ${username}/${env}`, clear: { env: "" } } : null,
+    username ? {
+      key: "user",
+      label: allUsers
+        ? `Tất cả user · ${audience === "others" ? "người khác" : "của tôi"} (${(data?.usernames || listedBots.map((bot) => bot.username)).length})`
+        : `User ${username}`,
+      clear: null,
+    } : null,
+    env ? { key: "env", label: `Config ${env}`, clear: { env: "" } } : null,
     signal ? { key: "signal", label: `Signal ${signal}`, clear: { signal: "" } } : null,
     q ? { key: "q", label: `Symbol ${q}`, clear: { q: "" } } : null,
     side ? { key: "side", label: side, clear: { side: "" } } : null,
@@ -565,11 +603,16 @@ export default function TradePerformancePage() {
   ].filter(Boolean);
 
   const stats = data?.stats;
-  const groupRows = groupTab === "config" ? (stats?.byConfig || [])
-    : groupTab === "symbol" ? (stats?.bySymbol || [])
-      : groupTab === "side" ? (stats?.bySide || [])
-        : (stats?.bySignal || []);
-  const groupNameKey = groupTab === "config" ? "env" : groupTab === "symbol" ? "symbol" : groupTab === "side" ? "side" : "signal";
+  const groupRows = groupTab === "user" ? (stats?.byUser || [])
+    : groupTab === "config" ? (stats?.byConfig || [])
+      : groupTab === "symbol" ? (stats?.bySymbol || [])
+        : groupTab === "side" ? (stats?.bySide || [])
+          : (stats?.bySignal || []);
+  const groupNameKey = groupTab === "user" ? "username"
+    : groupTab === "config" ? "env"
+      : groupTab === "symbol" ? "symbol"
+        : groupTab === "side" ? "side"
+          : "signal";
   const formulas = data?.formulas || {};
 
   const extrasCard = stats ? (
@@ -620,6 +663,11 @@ export default function TradePerformancePage() {
                 >
                   Làm mới
                 </button>
+                {allUsers ? (
+                  <span className="muted" title="Gộp lệnh của mọi user trong phạm vi đang chọn; không đổi công thức từng user.">
+                    Đang xem tổng hợp nhiều user
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="perf-chips perf-chips-inline">
@@ -714,24 +762,26 @@ export default function TradePerformancePage() {
               <section className="card perf-groups">
                 <div className="perf-tabs" role="tablist" aria-label="Nhóm phân tích">
                   {[
+                    allUsers ? ["user", "User"] : null,
                     ["signal", "Signal"],
                     ["config", "Config"],
                     ["symbol", "Symbol"],
                     ["side", "Long/Short"],
-                  ].map(([id, label]) => (
+                  ].filter(Boolean).map(([id, label]) => (
                     <button key={id} type="button" role="tab" aria-selected={groupTab === id} className={groupTab === id ? "active" : ""} onClick={() => setGroupTab(id)}>{label}</button>
                   ))}
                 </div>
                 <GroupTable
                   rows={groupRows.map((row) => ({ ...row, avgProfit: row.valid ? (Number(row.profit) || 0) / row.valid : null }))}
                   nameKey={groupNameKey}
-                  nameLabel={groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
-                  username={username}
-                  active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : q}
+                  nameLabel={groupTab === "user" ? "User" : groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
+                  username={allUsers ? "" : username}
+                  active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : groupTab === "user" ? "" : q}
                   sortKey={groupSort === "avgProfit" ? "avgProfit" : groupSort}
                   onSort={setGroupSort}
                   onPick={(value) => {
-                    if (groupTab === "signal") update({ signal: signal === value ? "" : value });
+                    if (groupTab === "user") update({ username: value, scope: "", env: "", trade: "", tradeUser: "" });
+                    else if (groupTab === "signal") update({ signal: signal === value ? "" : value });
                     else if (groupTab === "config") update({ env: env === value ? "" : value });
                     else if (groupTab === "side") update({ side: side === value ? "" : value });
                     else update({ q: q === value ? "" : value });
@@ -763,19 +813,27 @@ export default function TradePerformancePage() {
                       </thead>
                       <tbody>
                         {(data?.rows || []).length === 0 ? <tr><td colSpan={6}>{listDay ? "Không có lệnh đóng trong ngày đã chọn." : "Không có lệnh."}</td></tr> : null}
-                        {(data?.rows || []).map((row) => (
+                        {(data?.rows || []).map((row) => {
+                          const owner = row.username || (!allUsers ? username : "");
+                          return (
                           <tr
                             key={row.id}
                             className={trade === row.id ? "trade-row active" : "trade-row"}
                             tabIndex={0}
                             onClick={(event) => {
                               rowTriggerRef.current = event.currentTarget;
-                              update({ trade: trade === row.id ? "" : row.id });
+                              update({
+                                trade: trade === row.id ? "" : row.id,
+                                tradeUser: trade === row.id ? "" : owner,
+                              });
                             }}
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
                                 rowTriggerRef.current = event.currentTarget;
-                                update({ trade: trade === row.id ? "" : row.id });
+                                update({
+                                  trade: trade === row.id ? "" : row.id,
+                                  tradeUser: trade === row.id ? "" : owner,
+                                });
                               }
                             }}
                           >
@@ -784,14 +842,15 @@ export default function TradePerformancePage() {
                             <td>
                               <div className="perf-stack">
                                 <span>{row.signal || "—"}</span>
-                                <span className="muted">{username}/{row.env}</span>
+                                <span className="muted">{owner || "?"}/{row.env}</span>
                               </div>
                             </td>
                             <td>{row.side}</td>
                             <td className={`num ${tone(row.profit)}`}>{money(row.profit)}</td>
                             <td className="num">{holdLabel(row.holdMs)}</td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -799,10 +858,12 @@ export default function TradePerformancePage() {
                     <TradePanel
                       row={detail}
                       triggerRef={rowTriggerRef}
-                      onClose={() => update({ trade: "" })}
-                      configHref={configAllowed && detail?.env ? configTo(detail.env) : ""}
-                      historyHref={signalAllowed && detail ? historyTo(detail.signal, detail.env) : ""}
-                      ledgerHref={staticAllowed && username ? `/reports?tab=ledger&username=${encodeURIComponent(username)}` : ""}
+                      onClose={() => update({ trade: "", tradeUser: "" })}
+                      configHref={configAllowed && detail?.env ? configTo(detail.env, tradeUser || detail.username) : ""}
+                      historyHref={signalAllowed && detail ? historyTo(detail.signal, detail.env, tradeUser || detail.username) : ""}
+                      ledgerHref={staticAllowed && (tradeUser || (!allUsers && username))
+                        ? `/reports?tab=ledger&username=${encodeURIComponent(tradeUser || username)}`
+                        : ""}
                     />
                   ) : null}
                 </div>
@@ -821,9 +882,15 @@ export default function TradePerformancePage() {
 
           {username && staticAllowed ? (
             <p className="muted perf-ledger-link">
-              <Link to={`/reports?tab=ledger&username=${encodeURIComponent(username)}`}>Xem hiệu quả vốn tài khoản</Link>
-              {" · "}
-              {configAllowed ? <Link to={`/config-lab?user=${encodeURIComponent(username)}`}>Mở Config · {username}</Link> : null}
+              <Link to={allUsers ? "/reports?tab=ledger&username=__all__" : `/reports?tab=ledger&username=${encodeURIComponent(username)}`}>
+                {allUsers ? "Xem Ví & dòng tiền (Tất cả)" : "Xem hiệu quả vốn tài khoản"}
+              </Link>
+              {!allUsers && configAllowed ? (
+                <>
+                  {" · "}
+                  <Link to={`/config-lab?user=${encodeURIComponent(username)}`}>Mở Config · {username}</Link>
+                </>
+              ) : null}
             </p>
           ) : null}
         </div>
@@ -842,7 +909,11 @@ export default function TradePerformancePage() {
                   const next = e.target.value;
                   const list = next === "others" ? otherBots : mineBots;
                   setAudience(next);
-                  update({ username: list[0]?.username || "", env: "" });
+                  if (allUsers) {
+                    update({ username: ALL_USERS, scope: next === "others" ? "others" : "mine", env: "", trade: "", tradeUser: "" });
+                  } else {
+                    update({ username: list[0]?.username || ALL_USERS, scope: "", env: "", trade: "", tradeUser: "" });
+                  }
                 }}
                 >
                   <option value="mine">Của tôi</option>
@@ -850,15 +921,30 @@ export default function TradePerformancePage() {
                 </select>
               </label>
               <label>User
-                <select value={username} onChange={(e) => update({ username: e.target.value, env: "" })}>
+                <select
+                  value={username}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    update({
+                      username: next,
+                      scope: next === ALL_USERS ? audienceScope : "",
+                      env: "",
+                      trade: "",
+                      tradeUser: "",
+                    });
+                    if (next === ALL_USERS) setGroupTab("user");
+                    else if (groupTab === "user") setGroupTab("signal");
+                  }}
+                >
+                  <option value={ALL_USERS}>Tất cả</option>
                   {listedBots.map((bot) => <option key={bot.username} value={bot.username}>{bot.username}</option>)}
-                  {username && !listedBots.some((bot) => bot.username === username) ? <option value={username}>{username}</option> : null}
+                  {username && username !== ALL_USERS && !listedBots.some((bot) => bot.username === username) ? <option value={username}>{username}</option> : null}
                 </select>
               </label>
               <label>Config
                 <select value={env} onChange={(e) => update({ env: e.target.value })}>
                   <option value="">Tất cả config</option>
-                  {(selectedBot?.accounts || []).map((name) => <option key={name} value={name}>{username ? `${username} / ${name}` : name}</option>)}
+                  {configOptions.map((item) => <option key={`${item.label}-${item.env}`} value={item.env}>{item.label}</option>)}
                 </select>
               </label>
               <label>Sổ

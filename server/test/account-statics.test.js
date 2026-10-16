@@ -360,3 +360,72 @@ test("Account Static detail uses Futures_symbols tick size and omits market info
         FuturesSymbol.find = originals.symbols;
     }
 });
+
+test("Account Static analytics aggregates every user in scope when username=__all__", async () => {
+    const originals = {
+        find: UserAccount.find,
+        rows: AccountStatic.find,
+        count: AccountStatic.countDocuments,
+        aggregate: AccountStatic.aggregate,
+        configs: AccountConfig.find,
+    };
+    let rowFilter;
+    UserAccount.find = () => query([
+        { username: "alpha", accounts: ["a1"], ownerUserId: "u1", visibility: "public", active: true },
+        { username: "beta", accounts: ["b1"], ownerUserId: "u1", visibility: "public", active: true },
+        { username: "gamma", accounts: ["g1"], ownerUserId: "other", visibility: "public", active: true },
+    ]);
+    AccountConfig.find = () => query([]);
+    AccountStatic.find = (filter) => {
+        rowFilter = filter;
+        return query([{
+            _id: "s1",
+            env: "a1",
+            typeSignal: "SIGNAL_A",
+            symbol: "BTCUSDT",
+            side: "LONG",
+            status: "WIN",
+            profit: 5,
+            openTime: new Date(),
+            closeTime: new Date(),
+        }]);
+    };
+    AccountStatic.countDocuments = async () => 1;
+    AccountStatic.aggregate = async (pipeline) => {
+        if (pipeline[1]?.$facet) {
+            return [{
+                bySignal: [{ _id: "SIGNAL_A", ...totalsRow({ profit: 5 }) }],
+                byConfig: [{ _id: "a1", ...totalsRow({ profit: 3 }) }, { _id: "b1", ...totalsRow({ profit: 2 }) }],
+                byEnv: [{ _id: "a1", ...totalsRow({ profit: 3 }) }, { _id: "b1", ...totalsRow({ profit: 2 }) }],
+                byConfigSignal: [],
+                bySymbol: [],
+                bySide: [],
+                byStatus: [],
+            }];
+        }
+        if (pipeline.some((stage) => stage.$group?._id?.$dateToString)) {
+            return [{ _id: "2026-10-01", count: 1, profit: 5 }];
+        }
+        return [totalsRow({ profit: 5, valid: 1, wins: 1 })];
+    };
+    try {
+        const result = await listAccountStatics(
+            { id: "u1", role: "member", botUsernames: ["alpha", "beta"] },
+            { username: "__all__", scope: "mine", analytics: "1", range: "7" }
+        );
+        const flat = flattenMatch(rowFilter);
+        assert.deepEqual([...flat.env.$in].sort(), ["a1", "b1"]);
+        assert.equal(result.username, "__all__");
+        assert.deepEqual(result.usernames, ["alpha", "beta"]);
+        assert.equal(result.rows[0].username, "alpha");
+        assert.equal(result.stats.byUser.length, 2);
+        assert.equal(result.stats.byUser.find((row) => row.username === "alpha")?.profit, 3);
+        assert.equal(result.stats.byUser.find((row) => row.username === "beta")?.profit, 2);
+    } finally {
+        UserAccount.find = originals.find;
+        AccountStatic.find = originals.rows;
+        AccountStatic.countDocuments = originals.count;
+        AccountStatic.aggregate = originals.aggregate;
+        AccountConfig.find = originals.configs;
+    }
+});

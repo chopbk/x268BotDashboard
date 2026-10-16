@@ -246,9 +246,8 @@ function presentGroup(row, nameKey, username) {
     if (wins > 0 && losses > 0) profitFactor = round3(grossWin / Math.abs(grossLoss));
     else if (wins > 0 && losses === 0) profitFactorLabel = "Không có lệnh lỗ";
     else if (valid === 0) profitFactorLabel = null;
-    return {
+    const out = {
         [nameKey]: row?._id || "UNKNOWN",
-        username: username || undefined,
         count,
         valid,
         missingProfit: row?.missingProfit || 0,
@@ -281,6 +280,9 @@ function presentGroup(row, nameKey, username) {
         avgWinRoe: null,
         avgLossRoe: null,
     };
+    // Không ghi đè khi nameKey đã là username (nhóm theo user).
+    if (username && nameKey !== "username") out.username = username;
+    return out;
 }
 
 function byProfit(rows) {
@@ -536,13 +538,119 @@ function formatRangeLabel(range, timeField) {
     return `${from} → ${to} UTC · theo ${axis}`;
 }
 
-async function listAccountStatics(actor, input = {}) {
+function resolveEnvUsername(envUser, env) {
+    const key = String(env || "").trim();
+    if (!key) return null;
+    return envUser.get(key) || envUser.get(key.toUpperCase()) || envUser.get(key.toLowerCase()) || null;
+}
+
+function rollupByUser(envRows, envUser) {
+    const buckets = new Map();
+    for (const row of envRows || []) {
+        const name = resolveEnvUsername(envUser, row?._id) || "UNKNOWN";
+        let bucket = buckets.get(name);
+        if (!bucket) {
+            bucket = {
+                _id: name,
+                count: 0,
+                valid: 0,
+                missingProfit: 0,
+                profit: 0,
+                grossWin: 0,
+                grossLoss: 0,
+                cost: 0,
+                volume: 0,
+                wins: 0,
+                losses: 0,
+                flats: 0,
+                maxProfit: null,
+                minProfit: null,
+                holdSum: 0,
+                holdCount: 0,
+                longCount: 0,
+                shortCount: 0,
+                longProfit: 0,
+                shortProfit: 0,
+            };
+            buckets.set(name, bucket);
+        }
+        bucket.count += row.count || 0;
+        bucket.valid += row.valid || 0;
+        bucket.missingProfit += row.missingProfit || 0;
+        bucket.profit += row.profit || 0;
+        bucket.grossWin += row.grossWin || 0;
+        bucket.grossLoss += row.grossLoss || 0;
+        bucket.cost += row.cost || 0;
+        bucket.volume += row.volume || 0;
+        bucket.wins += row.wins || 0;
+        bucket.losses += row.losses || 0;
+        bucket.flats += row.flats || 0;
+        bucket.holdSum += row.holdSum || 0;
+        bucket.holdCount += row.holdCount || 0;
+        bucket.longCount += row.longCount || 0;
+        bucket.shortCount += row.shortCount || 0;
+        bucket.longProfit += row.longProfit || 0;
+        bucket.shortProfit += row.shortProfit || 0;
+        if (row.maxProfit != null) {
+            bucket.maxProfit = bucket.maxProfit == null ? row.maxProfit : Math.max(bucket.maxProfit, row.maxProfit);
+        }
+        if (row.minProfit != null) {
+            bucket.minProfit = bucket.minProfit == null ? row.minProfit : Math.min(bucket.minProfit, row.minProfit);
+        }
+    }
+    return byProfit([...buckets.values()].map((row) => presentGroup(row, "username")));
+}
+
+async function resolveListAudience(actor, input = {}) {
     const username = String(input.username || "").trim();
     const env = String(input.env || "").trim();
+    const envUser = new Map();
+    if (username === "__all__") {
+        const { usersForAudience, isOwnUser } = require("./account-ledger");
+        const scope = input.scope === "all" || input.scope === "others" ? input.scope : "mine";
+        let users = await usersForAudience(actor, scope === "mine" ? "mine" : "all");
+        if (scope === "others") {
+            users = users.filter((row) => !isOwnUser(actor, row));
+        }
+        for (const user of users) {
+            for (const account of user.accounts || []) {
+                const name = String(account || "").trim();
+                if (name && !envUser.has(name)) envUser.set(name, user.username);
+            }
+        }
+        const envs = env ? (envUser.has(env) ? [env] : []) : [...envUser.keys()];
+        if (env && !envs.length) throw httpError(404, "Config không thuộc phạm vi đang xem");
+        return {
+            username: "__all__",
+            scope,
+            usernames: users.map((row) => row.username),
+            envs,
+            envUser,
+            single: false,
+        };
+    }
     if (!username) throw httpError(400, "Thiếu user bot");
     const bot = await requireBot(actor, username, PERMISSIONS.STATISTICS_VIEW);
     const envs = env ? [env] : (bot.accounts || []);
     if (env && !(bot.accounts || []).includes(env)) throw httpError(404, "Config không thuộc user bot này");
+    for (const account of bot.accounts || []) {
+        const name = String(account || "").trim();
+        if (name) envUser.set(name, username);
+    }
+    return {
+        username,
+        scope: null,
+        usernames: [username],
+        envs,
+        envUser,
+        single: true,
+    };
+}
+
+async function listAccountStatics(actor, input = {}) {
+    const audience = await resolveListAudience(actor, input);
+    const { username, envs, envUser, usernames, scope, single } = audience;
+    const env = String(input.env || "").trim();
     const page = Math.max(1, Number.parseInt(input.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(input.limit, 10) || 50));
     const timeField = resolveTimeField(input);
@@ -552,6 +660,68 @@ async function listAccountStatics(actor, input = {}) {
         : openTimeRange(input);
     const book = await resolveBook(input, envs);
     const closedDefault = useAnalyticsDefaults && !String(input.closed || "").trim() ? "closed" : input.closed;
+    const emptyPayload = () => ({
+        rows: [],
+        stats: {
+            total: 0,
+            valid: 0,
+            missingProfit: 0,
+            excludedMissingClose: 0,
+            wins: 0,
+            losses: 0,
+            flats: 0,
+            winRate: null,
+            profit: null,
+            avgProfit: null,
+            cost: 0,
+            avgRoi: null,
+            pnlOverCost: null,
+            volume: 0,
+            longProfit: 0,
+            shortProfit: 0,
+            maxProfit: null,
+            minProfit: null,
+            avgWin: null,
+            avgLoss: null,
+            profitFactor: null,
+            profitFactorLabel: null,
+            avgHoldMs: null,
+            longestLosingStreak: 0,
+            streakTruncated: false,
+            lowSample: true,
+            bySignal: [],
+            byConfigSignal: [],
+            byEnv: [],
+            byConfig: [],
+            byUser: [],
+            bySymbol: [],
+            bySide: [],
+            byStatus: [],
+            roi: null,
+        },
+        series: fillSeries(range.from, range.to || new Date(), []),
+        insights: [],
+        formulas: {},
+        page,
+        limit,
+        total: 0,
+        listTotal: 0,
+        username,
+        scope,
+        usernames,
+        env: env || null,
+        envs,
+        book,
+        timeField,
+        rangePreset: range.preset || null,
+        from: range.from,
+        to: range.to,
+        listDay: null,
+        rangeLabel: formatRangeLabel(range, timeField),
+        generatedAt: new Date().toISOString(),
+    });
+    if (!envs.length) return emptyPayload();
+
     const { filter } = staticScope({ ...input, book, closed: closedDefault }, envs, range, timeField);
 
     let excludedMissingClose = 0;
@@ -625,12 +795,14 @@ async function listAccountStatics(actor, input = {}) {
     else if (wins > 0 && losses === 0 && valid > 0) profitFactorLabel = "Không có lệnh lỗ";
 
     const facet = breakdown[0] || {};
-    const bySignal = byProfit((facet.bySignal || []).map((row) => presentGroup(row, "signal", username)));
-    const byConfig = byProfit((facet.byConfig || []).map((row) => presentGroup(row, "env", username)));
-    const bySymbol = byProfit((facet.bySymbol || []).map((row) => presentGroup(row, "symbol", username)));
-    const bySide = (facet.bySide || []).map((row) => presentGroup(row, "side", username));
-    const byEnv = byProfit((facet.byEnv || []).map((row) => presentGroup(row, "env", username)));
-    const byConfigSignal = byConfigThenProfit((facet.byConfigSignal || []).map((row) => presentConfigSignal(row, username)));
+    const labelUser = single ? username : null;
+    const bySignal = byProfit((facet.bySignal || []).map((row) => presentGroup(row, "signal", labelUser)));
+    const byConfig = byProfit((facet.byConfig || []).map((row) => presentGroup(row, "env", resolveEnvUsername(envUser, row?._id) || labelUser)));
+    const bySymbol = byProfit((facet.bySymbol || []).map((row) => presentGroup(row, "symbol", labelUser)));
+    const bySide = (facet.bySide || []).map((row) => presentGroup(row, "side", labelUser));
+    const byEnv = byProfit((facet.byEnv || []).map((row) => presentGroup(row, "env", resolveEnvUsername(envUser, row?._id) || labelUser)));
+    const byUser = single ? [] : rollupByUser(facet.byEnv || [], envUser);
+    const byConfigSignal = byConfigThenProfit((facet.byConfigSignal || []).map((row) => presentConfigSignal(row, resolveEnvUsername(envUser, row?._id?.env) || labelUser)));
 
     const stats = {
         total: sum.count || 0,
@@ -663,6 +835,7 @@ async function listAccountStatics(actor, input = {}) {
         byConfigSignal,
         byEnv,
         byConfig,
+        byUser,
         bySymbol,
         bySide,
         byStatus: (facet.byStatus || []).map((row) => ({ status: row._id || "UNKNOWN", count: row.count, profit: round3(row.profit || 0) })),
@@ -677,10 +850,21 @@ async function listAccountStatics(actor, input = {}) {
     );
 
     const rangeLabel = formatRangeLabel(range, timeField);
-    const insights = buildInsights({ stats, bySignal, byConfig, bySide, rangeLabel, username });
+    const insights = buildInsights({
+        stats,
+        bySignal,
+        byConfig,
+        bySide,
+        rangeLabel,
+        username: single ? username : (usernames.length ? `${usernames.length} user` : ""),
+    });
 
     return {
-        rows: rows.map(toStatic),
+        rows: rows.map((row) => {
+            const item = toStatic(row);
+            item.username = resolveEnvUsername(envUser, row.env) || (single ? username : null);
+            return item;
+        }),
         stats,
         series,
         insights,
@@ -700,6 +884,8 @@ async function listAccountStatics(actor, input = {}) {
         total,
         listTotal: total,
         username,
+        scope,
+        usernames,
         env: env || null,
         envs,
         book,
