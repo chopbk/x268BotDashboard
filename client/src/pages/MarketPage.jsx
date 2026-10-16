@@ -75,7 +75,8 @@ export default function MarketPage() {
   const minScore = params.get("minScore") || "";
   const consensus = params.get("consensus") === "1";
   const fresh = params.get("fresh") === "1";
-  const sort = params.get("sort") || "composite";
+  const sort = params.get("sort") || "";
+  const dir = params.get("dir") === "asc" ? "asc" : "desc";
 
   const [overview, setOverview] = useState(null);
   const [list, setList] = useState(null);
@@ -112,9 +113,38 @@ export default function MarketPage() {
     if (consensus) qs.set("consensus", "1");
     if (fresh) qs.set("fresh", "1");
     if (sort) qs.set("sort", sort);
+    if (dir) qs.set("dir", dir);
     const body = await api(`/api/market/symbols?${qs}`);
     setList(body);
-  }, [style, q, side, regime, minScore, consensus, fresh, sort]);
+  }, [style, q, side, regime, minScore, consensus, fresh, sort, dir]);
+
+  const activeSort = list?.sort || sort || "composite";
+  const activeDir = list?.dir || dir;
+
+  const onSortColumn = useCallback(
+    (key) => {
+      if (activeSort === key) {
+        patchParams({ sort: key, dir: activeDir === "asc" ? "desc" : "asc" });
+      } else {
+        // Symbol mặc định A→Z; số liệu mặc định cao→thấp.
+        patchParams({ sort: key, dir: key === "symbol" ? "asc" : "desc" });
+      }
+    },
+    [activeSort, activeDir, patchParams]
+  );
+
+  function SortTh({ col, children, className = "" }) {
+    const active = activeSort === col;
+    const mark = !active ? "" : activeDir === "asc" ? " ↑" : " ↓";
+    return (
+      <th className={className} aria-sort={active ? (activeDir === "asc" ? "ascending" : "descending") : "none"}>
+        <button type="button" className={active ? "th-sort active" : "th-sort"} onClick={() => onSortColumn(col)}>
+          {children}
+          {mark}
+        </button>
+      </th>
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -298,16 +328,6 @@ export default function MarketPage() {
             onChange={(e) => patchParams({ minScore: e.target.value || null }, { replace: true })}
           />
         </label>
-        <label>
-          Sort
-          <select value={sort} onChange={(e) => patchParams({ sort: e.target.value })}>
-            <option value="composite">Tổng hợp</option>
-            <option value="volume">Volume24h</option>
-            {TIMEFRAMES.map((tf) => (
-              <option key={tf} value={tf}>{tf}</option>
-            ))}
-          </select>
-        </label>
         <label className="mkt-check">
           <input type="checkbox" checked={consensus} onChange={(e) => patchParams({ consensus: e.target.checked || null })} />
           Ứng viên đủ ĐK
@@ -333,17 +353,21 @@ export default function MarketPage() {
             <table className="mkt-table">
               <thead>
                 <tr>
-                  <th>Symbol</th>
-                  <th className="num">Giá</th>
-                  <th className="num mkt-col-hide-mobile">%24h</th>
-                  <th className="num">Vol24h</th>
+                  <SortTh col="symbol">Symbol</SortTh>
+                  <SortTh col="price" className="num">Giá</SortTh>
+                  <SortTh col="change" className="num mkt-col-hide-mobile">%24h</SortTh>
+                  <SortTh col="volume" className="num">Vol24h</SortTh>
                   {TIMEFRAMES.map((tf) => (
-                    <th key={tf} className={`num ${tf !== mobileTf && tf !== "1h" && tf !== "4h" ? "mkt-col-hide-mobile" : ""}`}>
+                    <SortTh
+                      key={tf}
+                      col={tf}
+                      className={`num ${tf !== mobileTf && tf !== "1h" && tf !== "4h" ? "mkt-col-hide-mobile" : ""}`}
+                    >
                       {tf}
-                    </th>
+                    </SortTh>
                   ))}
-                  <th className="num">Tổng hợp</th>
-                  <th>Trạng thái</th>
+                  <SortTh col="composite" className="num">Tổng hợp</SortTh>
+                  <SortTh col="status">Trạng thái</SortTh>
                 </tr>
               </thead>
               <tbody>

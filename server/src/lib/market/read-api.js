@@ -224,27 +224,51 @@ async function listSymbolsQuery(query = {}) {
 
     // Khi chưa chấm nhiều: mặc định xếp theo volume để bảng có ý nghĩa ngay.
     const sortRaw = String(query.sort || "");
-    const sort = sortRaw || (mostlyPending ? "volume" : "composite");
-    const dir = String(query.dir || "desc") === "asc" ? 1 : -1;
+    const allowedSort = new Set([
+        "symbol",
+        "price",
+        "change",
+        "volume",
+        "composite",
+        "status",
+        ...TIMEFRAMES,
+    ]);
+    const sort = allowedSort.has(sortRaw) ? sortRaw : mostlyPending ? "volume" : "composite";
+    const dirKey = String(query.dir || "desc") === "asc" ? "asc" : "desc";
+    const dir = dirKey === "asc" ? 1 : -1;
+    const statusRank = (s) => {
+        const st = s.composites?.[style]?.status;
+        if (st === "lean_long") return 3;
+        if (st === "lean_short") return 2;
+        if (st === "conflict") return 1;
+        if (st === "incomplete" || s.qualityOverall === "pending") return -1;
+        return 0;
+    };
     snaps.sort((a, b) => {
         const ca = a.composites?.[style];
         const cb = b.composites?.[style];
-        let va = 0;
-        let vb = 0;
-        if (sort === "volume") {
-            va = a.price?.volume24h ?? 0;
-            vb = b.price?.volume24h ?? 0;
+        let cmp = 0;
+        if (sort === "symbol") {
+            cmp = String(a.symbol).localeCompare(String(b.symbol));
+        } else if (sort === "price") {
+            cmp = (a.price?.last ?? -1) - (b.price?.last ?? -1);
+        } else if (sort === "change") {
+            cmp = (a.price?.changePct24h ?? -999) - (b.price?.changePct24h ?? -999);
+        } else if (sort === "volume") {
+            cmp = (a.price?.volume24h ?? 0) - (b.price?.volume24h ?? 0);
+        } else if (sort === "status") {
+            cmp = statusRank(a) - statusRank(b);
         } else if (TIMEFRAMES.includes(sort)) {
             const cellA = cellSummary(a.timeframes?.[sort]);
             const cellB = cellSummary(b.timeframes?.[sort]);
-            va = cellA.lead ?? -1;
-            vb = cellB.lead ?? -1;
+            cmp = (cellA.lead ?? -1) - (cellB.lead ?? -1);
         } else {
-            va = Math.max(ca?.compositeLong ?? -1, ca?.compositeShort ?? -1);
-            vb = Math.max(cb?.compositeLong ?? -1, cb?.compositeShort ?? -1);
+            cmp =
+                Math.max(ca?.compositeLong ?? -1, ca?.compositeShort ?? -1) -
+                Math.max(cb?.compositeLong ?? -1, cb?.compositeShort ?? -1);
         }
-        if (va === vb) return (a.volumeRank ?? 999) - (b.volumeRank ?? 999);
-        return va > vb ? -dir : dir;
+        if (cmp === 0) return (a.volumeRank ?? 999) - (b.volumeRank ?? 999);
+        return cmp * dir;
     });
 
     const limit = Math.min(config.listLimitMax, Math.max(1, Number(query.limit) || config.topN));
@@ -252,6 +276,7 @@ async function listSymbolsQuery(query = {}) {
     return {
         style,
         sort,
+        dir: dirKey,
         count: rows.length,
         totalScored: scoredCount,
         totalRows: snaps.length,

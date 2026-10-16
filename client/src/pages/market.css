@@ -45,6 +45,19 @@
   letter-spacing: 0.04em;
   opacity: 0.85;
 }
+.mkt-table thead th .th-sort {
+  font-size: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+.mkt-table thead th.num .th-sort {
+  display: inline-flex;
+  width: 100%;
+  justify-content: flex-end;
+  text-align: right;
+}
 .mkt-table th.num, .mkt-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .mkt-table tbody tr { cursor: pointer; }
 .mkt-table tbody tr:hover, .mkt-table tbody tr.selected {
