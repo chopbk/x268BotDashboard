@@ -105,6 +105,7 @@ test("all view sums each wallet and keeps one row when two users share an env", 
     ];
     assert.deepEqual(audienceUsers(users, actor, {}).map((item) => item.username), ["B1", "B2", "B3"]);
     assert.deepEqual(walletTargets(audienceUsers(users, actor, {})).map((item) => item.env), ["B1", "B2"]);
+    assert.deepEqual(walletTargets(audienceUsers(users, actor, {})).map((item) => item.username), ["B1", "B2"]);
     const merged = mergeDayRows([
         { ymd: "2026-10-08", balance: 100, profit: 5, fee: -1, funding: 0, rebate: 0, trading: 4, cashIn: 10, cashOut: 0, transferIn: 0, transferOut: 0, conversion: 0, unrealized: 1, available: 40, margin: 10, exchangeBalance: 100, dbBalanceBefore: 90, incomeByType: {}, cashEntries: [] },
         { ymd: "2026-10-08", balance: 50, profit: -2, fee: -0.5, funding: 0, rebate: 0, trading: -2.5, cashIn: 0, cashOut: -3, transferIn: 0, transferOut: 0, conversion: 0, unrealized: -1, available: 20, margin: 5, exchangeBalance: 50, dbBalanceBefore: 40, incomeByType: {}, cashEntries: [] },
@@ -115,6 +116,18 @@ test("all view sums each wallet and keeps one row when two users share an env", 
     assert.equal(merged.unrealized, 0);
     assert.equal(merged.cashIn, 10);
     assert.equal(merged.cashOut, -3);
+});
+
+test("walletTargets ưu tiên user trùng tên env khi nhiều bot trỏ cùng ví", () => {
+    const targets = walletTargets([
+        { username: "R2", accounts: ["B3"], active: true, ownerUserId: "vx" },
+        { username: "B3", accounts: ["B3", "B3X"], active: true, ownerUserId: "vx" },
+        { username: "B2", accounts: ["B2"], active: true, ownerUserId: "vx" },
+    ]);
+    assert.deepEqual(targets.map((item) => `${item.username}/${item.env}`), ["B2/B2", "B3/B3"]);
+    const b3 = targets.find((item) => item.env === "B3");
+    assert.equal(b3.username, "B3");
+    assert.deepEqual(b3.aliases, ["R2"]);
 });
 
 test("buildUserBreakdown tách lãi lỗ từng ví khi xem tất cả", () => {

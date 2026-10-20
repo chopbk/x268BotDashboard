@@ -56,7 +56,8 @@ export default function AccountLedgerPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(true);
+  const [showStaticCompare, setShowStaticCompare] = useState(false);
 
   function patchParams(values) {
     const next = new URLSearchParams(searchParams);
@@ -233,7 +234,7 @@ export default function AccountLedgerPage() {
           </label>
           {username === ALL ? (
             <button type="button" className={showBreakdown ? "active" : "ghost"} disabled={!data?.breakdown?.length} onClick={() => setShowBreakdown((open) => !open)}>
-              {showBreakdown ? "Ẩn breakdown" : "Breakdown"}
+              {showBreakdown ? "Ẩn từng ví" : "Từng ví"}
             </button>
           ) : null}
           <button type="button" disabled={busy || !data?.username} onClick={refresh}>{busy ? "Đang cập nhật…" : "Cập nhật hôm nay"}</button>
@@ -245,47 +246,69 @@ export default function AccountLedgerPage() {
       {(username === ALL ? data?.view === "all" && choices.length : data?.username && choices.some((item) => item.username === data.username)) ? (
         <>
           <p className="muted">{data.view === "all"
-            ? `Tổng ${(data.included || []).map((item) => `${item.username} (${item.env})`).join(", ") || "không có ví"}. Kỳ ${data.from} → ${data.to} UTC. Hai user trùng env chỉ tính một lần. Bấm Breakdown để xem từng user. Cập nhật sàn vẫn chọn từng user.`
-            : `User ${data.username} · ví ghi ở env ${data.env}. Kỳ ${data.from} → ${data.to} UTC. Số dư và income lấy futures_profits${live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static cùng các ngày này, không cùng cách tính với income.`}</p>
+            ? `Tổng hợp ví futures_profits · kỳ ${data.from} → ${data.to} UTC. Cột Trading/Phí/Funding/Nạp/Rút giống nguồn lệnh /i (income sàn), không phải Account Static. Hai user chung một ví chỉ một dòng (ưu tiên user trùng tên env).`
+            : `User ${data.username} · ví ghi ở env ${data.env}. Kỳ ${data.from} → ${data.to} UTC. Số dư và income lấy futures_profits${live.asOf ? `, mốc sàn ${new Date(live.asOf).toLocaleString("vi-VN")}` : ", chưa có mốc cập nhật sàn"}. Profit lệnh DB là Account Static — chỉ đối chiếu phụ, không phải số /i.`}</p>
           {username === ALL && showBreakdown ? (
             <section className="ledger-breakdown">
-              <h2 className="summary-section-title">Breakdown theo user</h2>
-              <p className="muted">Mỗi dòng là một ví (env). Hai user chung env chỉ hiện một dòng. Bấm Xem để mở chi tiết user đó.</p>
+              <div className="ledger-breakdown-head">
+                <h2 className="summary-section-title">Từng ví (giống /i theo env)</h2>
+                <button type="button" className="ghost" onClick={() => setShowStaticCompare((open) => !open)}>
+                  {showStaticCompare ? "Ẩn đối chiếu Static" : "Đối chiếu Static"}
+                </button>
+              </div>
+              <p className="muted">
+                Số dư / uPnL / Trading / phí / funding / nạp / rút từ futures_profits (income sàn).
+                Bấm Xem để mở đường số dư và dòng tiền chi tiết của đúng ví đó.
+              </p>
               {(data.breakdown || []).length ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
+                        <th>Ví (env)</th>
                         <th>User</th>
-                        <th>Env</th>
                         <th>Số dư</th>
+                        <th>Khả dụng</th>
                         <th>uPnL</th>
                         <th>Trading</th>
                         <th>Phí</th>
                         <th>Funding</th>
                         <th>Nạp</th>
                         <th>Rút</th>
-                        <th>Static</th>
-                        <th>Income − Static</th>
+                        <th>Chuyển vào</th>
+                        <th>Chuyển ra</th>
+                        {showStaticCompare ? <th>Static</th> : null}
+                        {showStaticCompare ? <th>Income − Static</th> : null}
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.breakdown.map((row) => (
                         <tr key={`${row.username}-${row.env}`}>
-                          <td>{row.username}</td>
-                          <td>{row.env}</td>
+                          <td>
+                            <strong>{row.env}</strong>
+                            {String(row.username || "").toUpperCase() !== String(row.env || "").toUpperCase() ? (
+                              <div className="muted" style={{ fontSize: "0.75rem" }}>user {row.username}</div>
+                            ) : null}
+                          </td>
+                          <td>
+                            {row.username}
+                            {row.aliases?.length ? <div className="muted" style={{ fontSize: "0.75rem" }}>+{row.aliases.join(", ")}</div> : null}
+                          </td>
                           <td>{plain(row.balance)}</td>
+                          <td>{plain(row.available)}</td>
                           <td className={tone(row.unrealized)}>{money(row.unrealized)}</td>
                           <td className={tone(row.trading)}>{money(row.trading)}</td>
                           <td>{money(row.fee)}</td>
                           <td>{money(row.funding)}</td>
                           <td className={tone(row.cashIn)}>{money(row.cashIn)}</td>
                           <td className={tone(row.cashOut)}>{money(row.cashOut)}</td>
-                          <td className={tone(row.staticProfit)}>{money(row.staticProfit)}</td>
-                          <td className={tone(row.staticDiff)}>{money(row.staticDiff)}</td>
+                          <td className={tone(row.transferIn)}>{money(row.transferIn)}</td>
+                          <td className={tone(row.transferOut)}>{money(row.transferOut)}</td>
+                          {showStaticCompare ? <td className={tone(row.staticProfit)}>{money(row.staticProfit)}</td> : null}
+                          {showStaticCompare ? <td className={tone(row.staticDiff)}>{money(row.staticDiff)}</td> : null}
                           <td>
-                            <button type="button" className="ghost" onClick={() => { setUsername(row.username); setShowBreakdown(false); }}>
+                            <button type="button" className="ghost" onClick={() => { setUsername(row.username); setShowBreakdown(true); }}>
                               Xem
                             </button>
                           </td>
@@ -294,15 +317,15 @@ export default function AccountLedgerPage() {
                     </tbody>
                   </table>
                 </div>
-              ) : <p className="muted">Không có user trong phạm vi đang xem.</p>}
+              ) : <p className="muted">Không có ví trong phạm vi đang xem.</p>}
             </section>
           ) : null}
           {username !== ALL && data?.username ? (
             <AccountRiskAi username={data.username} />
           ) : null}
 
-          {data?.attribution ? (
-            <LedgerAttribution attribution={data.attribution} username={data.username || (username !== ALL ? username : "")} />
+          {username !== ALL && data?.attribution ? (
+            <LedgerAttribution attribution={data.attribution} username={data.username} />
           ) : null}
 
           <div className="stats-grid summary-grid">

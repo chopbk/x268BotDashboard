@@ -189,17 +189,38 @@ function combineDayGroups(groups) {
     return [...byDay.keys()].sort().map((key) => mergeDayRows(byDay.get(key)));
 }
 
+function pickWalletOwner(env, candidates) {
+    const key = String(env || "").toUpperCase();
+    const list = candidates || [];
+    if (!list.length) return null;
+    return list.find((user) => String(user.username || "").toUpperCase() === key)
+        || list.find((user) => (user.accounts || []).some((account) => String(account).toUpperCase() === String(user.username || "").toUpperCase()))
+        || list[0];
+}
+
 function walletTargets(users) {
-    const seen = new Set();
-    const targets = [];
+    const byEnv = new Map();
     for (const user of users || []) {
         const env = ledgerEnv(user);
         const key = String(env || "").toUpperCase();
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        targets.push({ username: user.username, env, accounts: user.accounts || [] });
+        if (!key) continue;
+        const list = byEnv.get(key) || [];
+        list.push(user);
+        byEnv.set(key, list);
     }
-    return targets;
+    return [...byEnv.entries()]
+        .map(([env, list]) => {
+            const preferred = pickWalletOwner(env, list);
+            if (!preferred) return null;
+            return {
+                username: preferred.username,
+                env,
+                accounts: preferred.accounts || [],
+                aliases: list.map((user) => user.username).filter((name) => name !== preferred.username),
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => String(a.username || "").localeCompare(String(b.username || "")));
 }
 
 function audienceUsers(users, actor, options = {}) {
@@ -368,6 +389,7 @@ function buildUserBreakdown(targets, docs, staticByEnv = new Map()) {
         return {
             username: target.username,
             env: target.env,
+            aliases: target.aliases || [],
             days: days.length,
             balance: last?.balance ?? null,
             available: summary.live?.available ?? last?.available ?? null,
@@ -378,6 +400,8 @@ function buildUserBreakdown(targets, docs, staticByEnv = new Map()) {
             rebate: summary.totals.rebate,
             cashIn: summary.totals.cashIn,
             cashOut: summary.totals.cashOut,
+            transferIn: summary.totals.transferIn,
+            transferOut: summary.totals.transferOut,
             conversion: summary.totals.conversion,
             staticProfit: summary.totals.staticProfit,
             staticDiff: summary.totals.staticDiff,
@@ -714,4 +738,5 @@ module.exports = {
     refreshLedger,
     buildUserBreakdown,
     staticSumForAccounts,
+    pickWalletOwner,
 };
