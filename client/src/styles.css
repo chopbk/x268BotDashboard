@@ -1478,9 +1478,32 @@ button.linkish:hover { background: none; }
 
 .orders-tab { padding: 0; min-width: 0; }
 .orders-table { font-size: 0.88rem; }
+.orders-table-compact { font-size: 0.78rem; }
+.orders-table-compact th,
+.orders-table-compact td {
+  padding: 3px 6px;
+  line-height: 1.25;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.orders-table-compact .order-kind { padding: 0 4px; font-size: 0.68rem; }
+.orders-table-compact .order-status { padding: 0 4px; font-size: 0.72rem; }
+.orders-table-compact .order-monitor {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.orders-table-compact .orders-actions { width: 1%; }
+.orders-table-compact .order-cancel-btn,
+.orders-table-compact .pos-case-actions .ghost {
+  padding: 2px 6px;
+  font-size: 0.74rem;
+}
 .orders-table tr.clickable { cursor: pointer; }
 .orders-table tr.clickable:hover { background: var(--hover); }
-.orders-check { width: 36px; text-align: center; }
+.orders-check { width: 28px; text-align: center; }
 .order-cancel-btn { color: var(--danger); }
 .order-symbol { display: inline-flex; align-items: center; gap: 4px; }
 .order-kind { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: var(--line); }
@@ -1491,6 +1514,30 @@ button.linkish:hover { background: none; }
 .order-long { border-left: 3px solid var(--ok); }
 .order-short { border-left: 3px solid var(--danger); }
 .order-status { font-size: 0.82rem; padding: 2px 6px; border-radius: 4px; }
+.pos-case-orders-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.pos-case-orders-head h2,
+.pos-case-orders-head h3 { margin: 0; flex: 1 1 auto; }
+.pos-case-orders-popup-card {
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pos-case-orders-popup-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  max-height: none;
+}
+.pos-case-orders .orders-table-compact th,
+.pos-case-orders .orders-table-compact td { padding: 3px 5px; }
 .order-status-filled { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .order-status-canceled, .order-status-expired { background: color-mix(in srgb, var(--muted) 15%, transparent); color: var(--muted); }
 .order-status-open, .order-status-new, .order-status-partially_filled { background: #25262d; color: #c8c8d4; }

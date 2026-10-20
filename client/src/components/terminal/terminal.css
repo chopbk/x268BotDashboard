@@ -848,6 +848,15 @@ main:has(.term-screen) {
   overflow: auto;
   max-width: 100%;
 }
+.term-panel-body .term-case-content .orders-table-compact th,
+.term-panel-body .term-case-content .orders-table-compact td {
+  padding: 2px 5px;
+  font-size: 12px;
+}
+.term-tab-body .orders-table-compact th,
+.term-tab-body .orders-table-compact td {
+  padding: 2px 5px;
+}
 .term-case-content > header {
   display: flex;
   flex-wrap: wrap;

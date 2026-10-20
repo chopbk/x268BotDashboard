@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
@@ -58,6 +59,7 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
   const [reconciling, setReconciling] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [editing, setEditing] = useState(null);
+  const [ordersPopup, setOrdersPopup] = useState(false);
   const [draft, setDraft] = useState({
     type: "LIMIT",
     side: defaultCloseSide(row?.side),
@@ -155,10 +157,14 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
       setError("Thiếu quyền orders.cancel");
       return;
     }
-    const id = String(order.id);
+    const id = String(order.algoId || order.id || "").trim();
+    if (!id || id === "0") {
+      setError("Thiếu orderId/algoId hợp lệ — Reconcile rồi thử lại");
+      return;
+    }
     setBusyId(id);
     try {
-      await api("/api/trading/orders/cancel", {
+      const result = await api("/api/trading/orders/cancel", {
         method: "POST",
         body: {
           username: row.account,
@@ -167,7 +173,11 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
           orderId: id,
         },
       });
+      if (result?.command?.status === "failed") {
+        throw new Error(result.command?.result?.error || "Huỷ thất bại trên sàn");
+      }
       setNote(`Đã huỷ ${order.kind} #${id}`);
+      setError("");
       await load({ autoOrders: false });
       await reconcile();
       onChanged?.();
@@ -177,6 +187,19 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
     } finally {
       setBusyId("");
     }
+  }
+
+  function monitorForOrder(order) {
+    const id = String(order?.id || "");
+    const list = caseBody?.monitors || ownership || [];
+    const hit = list.find((m) => (m.expectedOrders || []).some((o) => String(o.id) === id));
+    if (hit) return `${hit.env || "config"}${hit.signal || hit.type ? ` · ${hit.signal || hit.type}` : ""}`;
+    if (list.length === 1) {
+      const m = list[0];
+      return `${m.env || "config"}${m.signal || m.type ? ` · ${m.signal || m.type}` : ""}`;
+    }
+    if (list.length > 1) return list.map((m) => m.env || "config").join(" · ");
+    return "—";
   }
 
   function startEdit(order) {
@@ -325,7 +348,139 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
   const visible = (name) => !embedded || section === "all" || section === name
     || (section === "monitor" && name === "timeline");
 
+  function renderOrdersTable({ popup = false } = {}) {
+    return (
+      <div className={`table-wrap${popup ? " pos-case-orders-popup-table" : ""}`}>
+        <table className="pos-table orders-table orders-table-compact">
+          <thead>
+            <tr>
+              <th>Loại</th>
+              <th>Type</th>
+              <th>Side</th>
+              <th>Monitor</th>
+              <th>Giá / Trig</th>
+              <th>Qty</th>
+              <th>St</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {openOrders.map((order) => {
+              const id = String(order.algoId || order.id || "");
+              const isEdit = editing?.id === String(order.id) || editing?.id === id;
+              return (
+                <tr key={`${order.kind}-${id}`} className={order.positionSide === "SHORT" || order.side === "SELL" ? "order-short" : "order-long"}>
+                  <td><span className={`order-kind order-kind-${order.kind}`}>{order.kind === "algo" ? "A" : "R"}</span></td>
+                  <td>{isEdit ? (
+                    <select value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}>
+                      <option value="LIMIT">LIMIT</option>
+                      <option value="STOP_MARKET">STOP_MARKET</option>
+                      <option value="STOP">STOP</option>
+                      <option value="TAKE_PROFIT_MARKET">TAKE_PROFIT_MARKET</option>
+                      <option value="TAKE_PROFIT">TAKE_PROFIT</option>
+                    </select>
+                  ) : (order.type || "—")}</td>
+                  <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>
+                    {order.side}
+                  </td>
+                  <td className="order-monitor" title={monitorForOrder(order)}>{monitorForOrder(order)}</td>
+                  <td>
+                    {isEdit ? (
+                      <span className="pos-case-inline-inputs">
+                        <input inputMode="decimal" placeholder="Giá" value={editing.price} onChange={(e) => setEditing({ ...editing, price: e.target.value })} />
+                        <input inputMode="decimal" placeholder="Trig" value={editing.triggerPrice} onChange={(e) => setEditing({ ...editing, triggerPrice: e.target.value })} />
+                      </span>
+                    ) : (
+                      <>
+                        {fmt(order.price)}
+                        {order.stopPrice != null && order.stopPrice !== order.price ? <span className="muted"> / {fmt(order.stopPrice)}</span> : ""}
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    {isEdit ? (
+                      <input inputMode="decimal" value={editing.quantity} onChange={(e) => setEditing({ ...editing, quantity: e.target.value })} />
+                    ) : fmt(order.qty)}
+                  </td>
+                  <td>{order.status || "—"}</td>
+                  <td className="pos-case-actions">
+                    {isEdit ? (
+                      <>
+                        <button type="button" className="ghost" disabled={busyId === id || busyId === editing?.id} onClick={saveEdit}>{busyId === id || busyId === editing?.id ? "…" : "Lưu"}</button>
+                        <button type="button" className="ghost" disabled={!!busyId} onClick={() => setEditing(null)}>×</button>
+                      </>
+                    ) : (
+                      <>
+                        {(canEdit || canCancel) ? (
+                          <button type="button" className="ghost" disabled={!!busyId} onClick={() => startEdit(order)}>Sửa</button>
+                        ) : null}
+                        {canCancel ? (
+                          <button type="button" className="ghost order-cancel-btn" disabled={!!busyId} onClick={() => cancelOrder(order)}>
+                            {busyId === id || busyId === String(order.id) ? "…" : "Huỷ"}
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!openOrders.length && !canCreate ? (
+              <tr><td colSpan={8} className="muted">Không có order mở — Reconcile nếu vừa đặt trên sàn.</td></tr>
+            ) : null}
+            {canCreate ? (
+              <tr className="pos-case-quick-row">
+                <td><span className="order-kind">+</span></td>
+                <td>
+                  <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
+                    <option value="LIMIT">LIMIT</option>
+                    <option value="MARKET">MARKET</option>
+                    <option value="STOP_MARKET">STOP_MARKET</option>
+                    <option value="STOP">STOP</option>
+                  </select>
+                </td>
+                <td>
+                  <select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value })}>
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                  </select>
+                </td>
+                <td className="muted">mới</td>
+                <td>
+                  <span className="pos-case-inline-inputs">
+                    {(draft.type === "LIMIT" || draft.type === "STOP") ? (
+                      <input inputMode="decimal" placeholder="Giá" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
+                    ) : null}
+                    {(draft.type === "STOP" || draft.type === "STOP_MARKET") ? (
+                      <input inputMode="decimal" placeholder="Trig" value={draft.triggerPrice} onChange={(e) => setDraft({ ...draft, triggerPrice: e.target.value })} />
+                    ) : null}
+                    {draft.type === "MARKET" ? <span className="muted">mkt</span> : null}
+                  </span>
+                </td>
+                <td>
+                  <input inputMode="decimal" placeholder="Qty" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
+                </td>
+                <td>
+                  <label className="pos-case-check">
+                    <input type="checkbox" checked={draft.reduceOnly} onChange={(e) => setDraft({ ...draft, reduceOnly: e.target.checked })} />
+                    RO
+                  </label>
+                </td>
+                <td className="pos-case-actions">
+                  <button type="button" className="pos-tpsl-confirm" disabled={busyId === "new"} onClick={placeQuick}>
+                    {busyId === "new" ? "…" : "Thêm"}
+                  </button>
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
+    <>
     <div className={embedded ? "term-case-inline" : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
       <div className={embedded ? "stack term-case-content" : "modal-card stack pos-case-panel"} role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : "true"} aria-labelledby="pos-case-title" onClick={(event) => event.stopPropagation()}>
         <header>
@@ -383,133 +538,12 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
             </section> : null}
 
             {visible("orders") ? <section className="pos-case-orders">
-              <h3>Order sàn đang mở</h3>
-              <p className="muted">{openOrders.filter((o) => o.kind !== "algo").length} thường · {openOrders.filter((o) => o.kind === "algo").length} algo</p>
-              <div className="table-wrap">
-                <table className="pos-table orders-table">
-                  <thead>
-                    <tr>
-                      <th>Loại</th>
-                      <th>Type</th>
-                      <th>Side</th>
-                      <th>Giá / Trigger</th>
-                      <th>Qty</th>
-                      <th>Status</th>
-                      <th>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openOrders.map((order) => {
-                      const id = String(order.id);
-                      const isEdit = editing?.id === id;
-                      return (
-                        <tr key={`${order.kind}-${id}`} className={order.positionSide === "SHORT" || order.side === "SELL" ? "order-short" : "order-long"}>
-                          <td><span className={`order-kind order-kind-${order.kind}`}>{order.kind === "algo" ? "Algo" : "Regular"}</span></td>
-                          <td>{isEdit ? (
-                            <select value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}>
-                              <option value="LIMIT">LIMIT</option>
-                              <option value="STOP_MARKET">STOP_MARKET</option>
-                              <option value="STOP">STOP</option>
-                              <option value="TAKE_PROFIT_MARKET">TAKE_PROFIT_MARKET</option>
-                              <option value="TAKE_PROFIT">TAKE_PROFIT</option>
-                            </select>
-                          ) : (order.type || "—")}</td>
-                          <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>
-                            {order.side} · {order.positionSide || "BOTH"}
-                          </td>
-                          <td>
-                            {isEdit ? (
-                              <span className="pos-case-inline-inputs">
-                                <input inputMode="decimal" placeholder="Giá" value={editing.price} onChange={(e) => setEditing({ ...editing, price: e.target.value })} />
-                                <input inputMode="decimal" placeholder="Trigger" value={editing.triggerPrice} onChange={(e) => setEditing({ ...editing, triggerPrice: e.target.value })} />
-                              </span>
-                            ) : (
-                              <>
-                                {fmt(order.price)}
-                                {order.stopPrice != null && order.stopPrice !== order.price ? ` / ${fmt(order.stopPrice)}` : ""}
-                                {order.callbackRate != null ? ` · trail ${fmt(order.callbackRate, 2)}%` : ""}
-                              </>
-                            )}
-                          </td>
-                          <td>
-                            {isEdit ? (
-                              <input inputMode="decimal" value={editing.quantity} onChange={(e) => setEditing({ ...editing, quantity: e.target.value })} />
-                            ) : fmt(order.qty)}
-                          </td>
-                          <td>{order.status || "—"}</td>
-                          <td className="pos-case-actions">
-                            {isEdit ? (
-                              <>
-                                <button type="button" className="ghost" disabled={busyId === id} onClick={saveEdit}>{busyId === id ? "…" : "Lưu"}</button>
-                                <button type="button" className="ghost" disabled={busyId === id} onClick={() => setEditing(null)}>Huỷ sửa</button>
-                              </>
-                            ) : (
-                              <>
-                                {(canEdit || canCancel) ? (
-                                  <button type="button" className="ghost" disabled={!!busyId} onClick={() => startEdit(order)}>Sửa</button>
-                                ) : null}
-                                {canCancel ? (
-                                  <button type="button" className="ghost order-cancel-btn" disabled={!!busyId} onClick={() => cancelOrder(order)}>
-                                    {busyId === id ? "…" : "Huỷ"}
-                                  </button>
-                                ) : null}
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {!openOrders.length && !canCreate ? (
-                      <tr><td colSpan={7} className="muted">Không có order mở — bấm Reconcile nếu vừa đặt trên sàn.</td></tr>
-                    ) : null}
-                    {canCreate ? (
-                      <tr className="pos-case-quick-row">
-                        <td><span className="order-kind order-kind-order">Mới</span></td>
-                        <td>
-                          <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
-                            <option value="LIMIT">LIMIT</option>
-                            <option value="MARKET">MARKET</option>
-                            <option value="STOP_MARKET">STOP_MARKET</option>
-                            <option value="STOP">STOP</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value })}>
-                            <option value="BUY">BUY</option>
-                            <option value="SELL">SELL</option>
-                          </select>
-                          <span className="muted"> · {row.side}</span>
-                        </td>
-                        <td>
-                          <span className="pos-case-inline-inputs">
-                            {(draft.type === "LIMIT" || draft.type === "STOP") ? (
-                              <input inputMode="decimal" placeholder="Giá" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
-                            ) : null}
-                            {(draft.type === "STOP" || draft.type === "STOP_MARKET") ? (
-                              <input inputMode="decimal" placeholder="Trigger" value={draft.triggerPrice} onChange={(e) => setDraft({ ...draft, triggerPrice: e.target.value })} />
-                            ) : null}
-                            {draft.type === "MARKET" ? <span className="muted">market</span> : null}
-                          </span>
-                        </td>
-                        <td>
-                          <input inputMode="decimal" placeholder="Qty" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
-                        </td>
-                        <td>
-                          <label className="pos-case-check">
-                            <input type="checkbox" checked={draft.reduceOnly} onChange={(e) => setDraft({ ...draft, reduceOnly: e.target.checked })} />
-                            RO
-                          </label>
-                        </td>
-                        <td className="pos-case-actions">
-                          <button type="button" className="pos-tpsl-confirm" disabled={busyId === "new"} onClick={placeQuick}>
-                            {busyId === "new" ? "…" : "Thêm"}
-                          </button>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+              <div className="pos-inline pos-case-orders-head">
+                <h3>Order sàn đang mở</h3>
+                <span className="muted">{openOrders.filter((o) => o.kind !== "algo").length} thường · {openOrders.filter((o) => o.kind === "algo").length} algo</span>
+                <button type="button" className="ghost" onClick={() => setOrdersPopup(true)} title="Mở bảng order full màn hình">Mở rộng</button>
               </div>
+              {renderOrdersTable()}
             </section> : null}
 
             {embedded && (section === "monitor" || section === "timeline") && monitors.length ? (
@@ -672,5 +706,31 @@ export default function PositionCasePanel({ row, audience, onClose, selectedMoni
         ) : null}
       </div>
     </div>
+    {ordersPopup && typeof document !== "undefined"
+      ? createPortal(
+        <div className="modal-backdrop pos-case-orders-popup" role="presentation" onClick={() => setOrdersPopup(false)}>
+          <div
+            className="modal-card stack pos-case-orders-popup-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-case-orders-popup-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="pos-case-orders-head">
+              <h2 id="pos-case-orders-popup-title">{row.account} · {row.symbol} · {row.side} — Order mở</h2>
+              <div className="pos-inline">
+                <button type="button" className="ghost" disabled={loading || reconciling} onClick={() => load({ autoOrders: false })}>Tải lại</button>
+                <button type="button" className="ghost" onClick={() => setOrdersPopup(false)}>Đóng</button>
+              </div>
+            </header>
+            {error ? <p className="form-error">{error}</p> : null}
+            {note ? <p className="form-ok">{note}</p> : null}
+            {renderOrdersTable({ popup: true })}
+          </div>
+        </div>,
+        document.body
+      )
+      : null}
+    </>
   );
 }

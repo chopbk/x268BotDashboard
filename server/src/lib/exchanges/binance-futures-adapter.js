@@ -308,19 +308,38 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         const cancelAlgo = () => this.client.signed("DELETE", "/fapi/v1/algoOrder", { symbol, algoId: id });
         const cancelRegular = () => this.client.signed("DELETE", "/fapi/v1/order", { symbol, orderId: id });
 
-        // Spec: cancel đúng orderKind — không fallback kind khác khi kind đã chỉ định rõ.
+        // Ưu tiên đúng kind; nếu Unknown order thì thử endpoint còn lại (Redis kind đôi khi lệch).
         if (kind === "conditional" || kind === "algo") {
             this.requireCapability("conditionalOrder");
-            const result = await cancelAlgo();
-            return { success: true, orderId: id, algoId: id, result, exchange: "binance" };
+            try {
+                const result = await cancelAlgo();
+                return { success: true, orderId: id, algoId: id, result, exchange: "binance" };
+            } catch (error) {
+                console.warn("[BinanceFuturesAdapter.cancelOrder] algo failed, try regular:", error.message);
+                try {
+                    const result = await cancelRegular();
+                    return { success: true, orderId: id, result, exchange: "binance" };
+                } catch (fallbackError) {
+                    throw httpError(400, `Huỷ algo #${id} thất bại: ${error.message || fallbackError.message}`);
+                }
+            }
         }
         if (kind === "regular" || kind === "order") {
             this.requireCapability("regularOrder");
-            const result = await cancelRegular();
-            return { success: true, orderId: id, result, exchange: "binance" };
+            try {
+                const result = await cancelRegular();
+                return { success: true, orderId: id, result, exchange: "binance" };
+            } catch (error) {
+                console.warn("[BinanceFuturesAdapter.cancelOrder] regular failed, try algo:", error.message);
+                try {
+                    const result = await cancelAlgo();
+                    return { success: true, orderId: id, algoId: id, result, exchange: "binance" };
+                } catch (fallbackError) {
+                    throw httpError(400, `Huỷ order #${id} thất bại: ${error.message || fallbackError.message}`);
+                }
+            }
         }
 
-        // kind không rõ: thử regular rồi algo (compat cũ).
         this.requireCapability("regularOrder");
         try {
             const result = await cancelRegular();

@@ -127,6 +127,11 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
 
     async function runCancelOne(order) {
         const key = rowKey(order);
+        const orderId = String(order.algoId || order.orderId || "").trim();
+        if (!orderId || orderId === "0") {
+            setError("Thiếu orderId/algoId hợp lệ — bấm Làm mới rồi thử lại");
+            return;
+        }
         setCancelling(key);
         try {
             const result = await api("/api/trading/orders/cancel", {
@@ -135,16 +140,24 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
                     username: order.username,
                     kind: order.kind === "algo" ? "algo" : "regular",
                     symbol: order.symbol,
-                    orderId: String(order.orderId),
+                    orderId,
                 },
             });
+            if (result?.command?.status === "failed") {
+                throw new Error(result.command?.result?.error || result.command?.error || "Huỷ thất bại trên sàn");
+            }
             setNote(
                 result?.duplicate
-                    ? `Huỷ ${order.symbol} #${order.orderId} trùng request trước`
-                    : `Đã huỷ ${order.kind === "algo" ? "algo" : "order"} ${order.symbol} #${order.orderId}`
+                    ? `Huỷ ${order.symbol} #${orderId} trùng request trước`
+                    : `Đã huỷ ${order.kind === "algo" ? "algo" : "order"} ${order.symbol} #${orderId}`
             );
             setError("");
             setConfirmCancel(null);
+            setPayload((prev) => prev ? {
+                ...prev,
+                orders: (prev.orders || []).filter((row) => rowKey(row) !== key),
+                total: Math.max(0, (prev.total || 1) - 1),
+            } : prev);
             await load();
         } catch (err) {
             console.error("[orders]", err);
@@ -160,25 +173,38 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
         const byAccount = new Map();
         for (const order of picked) {
             if (!byAccount.has(order.username)) byAccount.set(order.username, []);
+            const orderId = String(order.algoId || order.orderId || "").trim();
+            if (!orderId || orderId === "0") continue;
             byAccount.get(order.username).push({
                 kind: order.kind === "algo" ? "algo" : "regular",
                 symbol: order.symbol,
-                orderId: String(order.orderId),
+                orderId,
             });
         }
         setBatchBusy(true);
         try {
             let ok = 0;
+            let fail = 0;
             for (const [username, list] of byAccount) {
+                if (!list.length) continue;
                 const result = await api("/api/trading/orders/cancel-batch", {
                     method: "POST",
                     body: { username, orders: list },
                 });
+                if (result?.command?.status === "failed") {
+                    fail += list.length;
+                    continue;
+                }
                 const results = result?.command?.result?.results || [];
-                ok += results.filter((row) => row.success).length || list.length;
+                if (results.length) {
+                    ok += results.filter((row) => row.success).length;
+                    fail += results.filter((row) => !row.success).length;
+                } else {
+                    ok += list.length;
+                }
             }
-            setNote(`Đã gửi huỷ ${ok}/${picked.length} lệnh`);
-            setError("");
+            setNote(`Đã huỷ ${ok}/${picked.length} lệnh${fail ? ` · lỗi ${fail}` : ""}`);
+            setError(fail ? "Một số lệnh huỷ thất bại — xem log / làm mới" : "");
             setConfirmCancel(null);
             await load();
         } catch (err) {
@@ -273,7 +299,7 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
 
                 {orders.length ? (
                     <div className="table-wrap">
-                        <table className="pos-table orders-table">
+                        <table className="pos-table orders-table orders-table-compact">
                             <thead>
                                 <tr>
                                     {canCancel ? (
@@ -286,24 +312,24 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
                                             />
                                         </th>
                                     ) : null}
-                                    <th>Tài khoản</th>
+                                    <th>Acc</th>
                                     <th>Symbol</th>
-                                    <th>Loại</th>
+                                    <th>Monitor</th>
                                     <th>Side</th>
                                     <th>Type</th>
-                                    <th>Giá</th>
-                                    <th>Trigger</th>
+                                    <th>Giá / Trig</th>
                                     <th>Qty</th>
-                                    <th>Filled</th>
-                                    <th>Trạng thái</th>
-                                    <th>Thời gian</th>
-                                    {canCancel ? <th>Thao tác</th> : null}
+                                    <th>St</th>
+                                    {canCancel ? <th></th> : null}
                                 </tr>
                             </thead>
                             <tbody>
                                 {orders.map((order) => {
                                     const key = rowKey(order);
                                     const busy = cancelling === key || batchBusy;
+                                    const monitorText = (order.monitors || []).length > 1
+                                        ? order.monitors.join(" · ")
+                                        : (order.monitor || "—");
                                     return (
                                         <tr key={key} className={sideClass(order.side, order.positionSide)}>
                                             {canCancel ? (
@@ -316,36 +342,40 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
                                                     />
                                                 </td>
                                             ) : null}
-                                            <td>{order.username}</td>
+                                            <td title={order.username}>{order.username}</td>
                                             <td>
                                                 <span className="order-symbol">
                                                     {order.symbol}
-                                                    <span className="muted"> · {order.positionSide}</span>
+                                                    <span className="muted"> {order.positionSide !== "BOTH" ? order.positionSide[0] : ""}</span>
+                                                    <span className={`order-kind order-kind-${order.kind}`}>
+                                                        {order.kind === "algo" ? "A" : "R"}
+                                                    </span>
                                                 </span>
                                             </td>
-                                            <td>
-                                                <span className={`order-kind order-kind-${order.kind}`}>
-                                                    {order.kind === "algo" ? "Algo" : "Regular"}
-                                                </span>
-                                            </td>
+                                            <td className="order-monitor" title={monitorText}>{monitorText}</td>
                                             <td className={order.side === "BUY" ? "order-buy" : "order-sell"}>
                                                 {order.side}
                                             </td>
-                                            <td>{typeLabel(order.type)}</td>
-                                            <td>{fmt(order.price)}</td>
-                                            <td>{fmt(order.triggerPrice || order.stopPrice)}</td>
-                                            <td>{fmt(order.origQty)}</td>
-                                            <td>{fmt(order.executedQty)}</td>
+                                            <td title={order.type}>{typeLabel(order.type)}</td>
                                             <td>
-                                                <span className={`order-status order-status-${order.status?.toLowerCase()}`}>
-                                                    {order.status}
-                                                </span>
-                                                {order.reduceOnly ? <span className="muted"> · Reduce</span> : null}
-                                                {order.closePosition ? <span className="muted"> · Close</span> : null}
+                                                {fmt(order.price)}
+                                                {(order.triggerPrice || order.stopPrice) ? (
+                                                    <span className="muted"> / {fmt(order.triggerPrice || order.stopPrice)}</span>
+                                                ) : null}
                                             </td>
-                                            <td>{when(order.updateTime || order.time)}</td>
+                                            <td>
+                                                {fmt(order.origQty)}
+                                                {Number(order.executedQty) > 0 ? (
+                                                    <span className="muted"> ({fmt(order.executedQty)})</span>
+                                                ) : null}
+                                            </td>
+                                            <td>
+                                                <span className={`order-status order-status-${order.status?.toLowerCase()}`} title={[order.status, order.reduceOnly ? "RO" : "", order.closePosition ? "Close" : ""].filter(Boolean).join(" · ")}>
+                                                    {order.status === "NEW" || order.status === "WORKING" ? "Open" : (order.status || "—")}
+                                                </span>
+                                            </td>
                                             {canCancel ? (
-                                                <td>
+                                                <td className="orders-actions">
                                                     <button
                                                         type="button"
                                                         className="ghost order-cancel-btn"

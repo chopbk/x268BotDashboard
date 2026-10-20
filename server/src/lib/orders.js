@@ -48,11 +48,14 @@ function normalizeRegularOrder(row, username) {
  * Normalize một algo/conditional order từ Binance snapshot.
  */
 function normalizeAlgoOrder(row, username) {
+    // Canonical Redis có thể chỉ còn orderId (= algoId); đừng bỏ sót → huỷ gửi id rỗng / Unknown order.
+    const algoId = String(row.algoId || row.strategyId || row.orderId || "").trim();
     return {
         username,
         kind: "algo",
-        orderId: String(row.algoId || row.strategyId || ""),
-        clientOrderId: row.clientAlgoId || null,
+        orderId: algoId,
+        algoId: algoId || null,
+        clientOrderId: row.clientAlgoId || row.clientOrderId || null,
         symbol: String(row.symbol || "").toUpperCase(),
         positionSide: String(row.positionSide || "BOTH").toUpperCase(),
         side: String(row.side || "").toUpperCase(),
@@ -64,14 +67,14 @@ function normalizeAlgoOrder(row, username) {
         origQty: row.origQty || row.quantity || row.totalQty || null,
         executedQty: row.executedQty || "0",
         avgPrice: row.avgPrice || null,
-        reduceOnly: row.reduceOnly === true,
-        closePosition: row.closePosition === true,
+        reduceOnly: row.reduceOnly === true || row.reduceOnly === "true",
+        closePosition: row.closePosition === true || row.closePosition === "true",
         timeInForce: row.timeInForce || null,
         workingType: row.workingType || null,
         activationPrice: row.activationPrice || null,
         callbackRate: row.callbackRate || null,
-        time: row.bookTime || row.updateTime || row.time || null,
-        updateTime: row.updateTime || row.bookTime || row.time || null,
+        time: row.bookTime || row.updateTime || row.time || row.at || null,
+        updateTime: row.updateTime || row.bookTime || row.time || row.at || null,
         source: "exchange",
         confirmed: true,
     };
@@ -112,6 +115,88 @@ async function visibleBots(actor, UserAccount, audience = "mine") {
         if (!canAccessResource(actor, PERMISSIONS.ORDERS_VIEW, row)) return false;
         if (audience === "all") return true;
         return isMine(actor, row);
+    });
+}
+
+function orderSideKey(order) {
+    const mode = String(order.positionSide || "BOTH").toUpperCase();
+    if (mode === "LONG" || mode === "SHORT") return mode;
+    const side = String(order.side || "").toUpperCase();
+    if (side === "BUY") return "LONG";
+    if (side === "SELL") return "SHORT";
+    return "";
+}
+
+function expectedOrderIds(doc) {
+    const ids = new Set();
+    const orders = doc?.orders && typeof doc.orders === "object" ? doc.orders : {};
+    for (const value of Object.values(orders)) {
+        if (!value || typeof value !== "object") continue;
+        const id = String(value.algoId || value.orderId || "").trim();
+        if (id && id !== "0") ids.add(id);
+    }
+    return ids;
+}
+
+function monitorLabel(doc) {
+    const env = String(doc?.env || "").trim() || "config";
+    const signal = String(doc?.signal || doc?.type || "").trim();
+    return signal ? `${env} · ${signal}` : env;
+}
+
+/**
+ * Gắn monitor (env/signal) vào từng open order theo account+symbol+side / orderId dự kiến.
+ */
+async function attachMonitorLabels(orders, bots, selected, deps = {}) {
+    if (!orders.length || !selected.length) return orders;
+    const Monitor = deps.Monitor || require("../models/monitor-position");
+    const { monitorOwner, isClosedDoc } = deps.positions || require("./positions");
+
+    const envOwners = new Map();
+    for (const bot of bots) {
+        for (const env of bot.accounts || []) envOwners.set(env, bot.username);
+    }
+    const envs = [...envOwners.entries()].filter(([, name]) => selected.includes(name)).map(([env]) => env);
+
+    const found = await Monitor.find({
+        closed: { $ne: true },
+        isClosed: { $ne: true },
+        $or: [
+            { futuresClientName: { $in: selected } },
+            { env: { $in: envs.length ? envs : ["__none__"] } },
+        ],
+    }).select("env symbol side signal type orders futuresClientName positionAmt closed isClosed isPaper isLimit").lean();
+
+    const byKey = new Map();
+    for (const doc of found || []) {
+        if (isClosedDoc(doc) || doc.isPaper === true || doc.isLimit === true) continue;
+        const owner = monitorOwner(doc, envOwners);
+        if (!selected.includes(owner)) continue;
+        const symbol = String(doc.symbol || "").toUpperCase();
+        const side = String(doc.side || "").toUpperCase();
+        if (!symbol || (side !== "LONG" && side !== "SHORT")) continue;
+        const key = `${owner}|${symbol}|${side}`;
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(doc);
+    }
+
+    return orders.map((order) => {
+        const side = orderSideKey(order);
+        const key = `${order.username}|${order.symbol}|${side}`;
+        const monitors = byKey.get(key) || [];
+        if (!monitors.length) {
+            return { ...order, monitor: null, monitors: [] };
+        }
+        const orderId = String(order.orderId || "").trim();
+        const byId = monitors.filter((doc) => expectedOrderIds(doc).has(orderId));
+        const picked = byId.length ? byId : monitors;
+        const labels = picked.map(monitorLabel);
+        return {
+            ...order,
+            monitor: labels[0] || null,
+            monitors: labels,
+            monitorMatch: byId.length ? "orderId" : (monitors.length === 1 ? "sole" : "position"),
+        };
     });
 }
 
@@ -157,8 +242,10 @@ async function loadOpenOrders(actor, query = {}, deps = {}) {
             orders.push(normalizeRegularOrder(row, name));
         }
 
-        // Algo orders
-        const algoOrders = Array.isArray(book.algoOrders) ? book.algoOrders : [];
+        // Algo / conditional (Redis: algoOrders hoặc conditionalOrders)
+        const algoOrders = Array.isArray(book.algoOrders)
+            ? book.algoOrders
+            : (Array.isArray(book.conditionalOrders) ? book.conditionalOrders : []);
         for (const row of algoOrders) {
             orders.push(normalizeAlgoOrder(row, name));
         }
@@ -169,11 +256,12 @@ async function loadOpenOrders(actor, query = {}, deps = {}) {
 
     // Sort
     const sorted = sortOrders(filtered, query.sort || "updateTime", query.dir || "desc");
+    const withMonitors = await attachMonitorLabels(sorted, bots, selected, deps);
 
     return {
-        orders: sorted,
+        orders: withMonitors,
         accounts: bots.map((row) => ({ username: row.username })),
-        total: sorted.length,
+        total: withMonitors.length,
         errors: errors.length ? errors : undefined,
     };
 }
