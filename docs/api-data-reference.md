@@ -171,6 +171,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/summary` | [summary](../server/src/routes/summary.js) |
 | POST | `/api/summary/refresh` | [summary](../server/src/routes/summary.js) |
 | GET | `/api/signal-history` | [signal-history](../server/src/routes/signal-history.js) |
+| GET | `/api/signal-history/recent-by-symbol` | [signal-history](../server/src/routes/signal-history.js) — map symbol→signal gần đây (`signals.history`); dùng cột Signal tab Kỹ thuật |
 | GET | `/api/signal-config` | [signal-setup](../server/src/routes/signal-setup.js) |
 | POST | `/api/signal-config` | [signal-setup](../server/src/routes/signal-setup.js) |
 | GET | `/api/provider-scorecard` | [provider-scorecard](../server/src/routes/provider-scorecard.js) |

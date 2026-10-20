@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import "./market.css";
 
 const TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"];
@@ -9,6 +10,8 @@ const STYLES = [
   { id: "scalp", label: "Ngắn hạn" },
   { id: "swing", label: "Swing" },
 ];
+const SIGNALS_HISTORY = "signals.history";
+const SIGNAL_HOURS = 72;
 
 function fmt(value, digits = 2) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
@@ -64,15 +67,74 @@ function compositeLabel(c) {
   return "—";
 }
 
+function relTime(iso) {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "";
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60_000));
+  if (mins < 60) return `${mins}p`;
+  if (mins < 48 * 60) return `${Math.round(mins / 60)}h`;
+  return `${Math.round(mins / (60 * 24))}d`;
+}
+
+function sideShort(side) {
+  if (side === "LONG") return "L";
+  if (side === "SHORT") return "S";
+  return "?";
+}
+
+function signalCellLabel(pack) {
+  if (!pack?.count || !pack.latest) return { text: "—", cls: "mkt-wait", title: "Không có signal trong cửa sổ" };
+  const latest = pack.latest;
+  const name = String(latest.signal || "?").slice(0, 8);
+  const side = sideShort(latest.side);
+  const age = relTime(latest.openTime);
+  const extra = pack.count > 1 ? ` ·${pack.count}` : "";
+  const cls = latest.side === "LONG" ? "mkt-long" : latest.side === "SHORT" ? "mkt-short" : "mkt-wait";
+  return {
+    text: `${name}${side}${extra}${age ? ` ${age}` : ""}`,
+    cls,
+    title: `${latest.signal || "?"} ${latest.side || "—"} · ${pack.count} signal / ${SIGNAL_HOURS}h`,
+  };
+}
+
+/** Signal đáng chú ý: mới nhất + cùng chiều lean kỹ thuật (nếu có). */
+function notableSignals(pack, composite) {
+  const recent = pack?.recent || [];
+  if (!recent.length) return [];
+  const lean =
+    composite?.status === "lean_long" ? "LONG" : composite?.status === "lean_short" ? "SHORT" : null;
+  const scored = recent.map((row, index) => {
+    let score = recent.length - index;
+    if (lean && row.side === lean) score += 10;
+    if (String(row.status || "").toUpperCase() === "OPEN") score += 3;
+    return { row, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const picked = [];
+  const seen = new Set();
+  for (const item of scored) {
+    const key = item.row.id || `${item.row.signal}-${item.row.openTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    picked.push({ ...item.row, matchLean: lean && item.row.side === lean });
+    if (picked.length >= 5) break;
+  }
+  return picked;
+}
+
 export default function MarketPage({
   embedded = false,
   canFlow = false,
   canTerminal = true,
 } = {}) {
+  const { user } = useAuth();
+  const canSignals = (user?.permissions || []).includes(SIGNALS_HISTORY);
   const [params, setParams] = useSearchParams();
   const symbol = (params.get("symbol") || "").toUpperCase();
   const style = STYLES.some((s) => s.id === params.get("style")) ? params.get("style") : "intraday";
   const timeframe = TIMEFRAMES.includes(params.get("tf")) ? params.get("tf") : "";
+  const focusSignals = params.get("signals") === "1";
   const q = params.get("q") || "";
   const side = params.get("side") || "";
   const regime = params.get("regime") || "";
@@ -86,6 +148,7 @@ export default function MarketPage({
   const [list, setList] = useState(null);
   const [detail, setDetail] = useState(null);
   const [history, setHistory] = useState(null);
+  const [signalMap, setSignalMap] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -216,7 +279,47 @@ export default function MarketPage({
     };
   }, [symbol, style, timeframe]);
 
+  const listSymbolsKey = (list?.rows || []).map((r) => r.symbol).join(",");
+
+  useEffect(() => {
+    if (!canSignals || !listSymbolsKey) {
+      setSignalMap(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const qs = new URLSearchParams({
+      symbols: listSymbolsKey,
+      hours: String(SIGNAL_HOURS),
+      perSymbol: "5",
+    });
+    api(`/api/signal-history/recent-by-symbol?${qs}`)
+      .then((body) => {
+        if (!cancelled) setSignalMap(body?.bySymbol || {});
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("[MarketPage:signals]", err.message || err);
+          setSignalMap({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSignals, listSymbolsKey]);
+
+  useEffect(() => {
+    if (!focusSignals || !symbol) return undefined;
+    const el = document.getElementById("mkt-signals-panel");
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return undefined;
+  }, [focusSignals, symbol, signalMap, detail]);
+
   const mobileTf = timeframe || "15m";
+  const symbolSignals = symbol && signalMap ? signalMap[symbol] : null;
+  const notableForSymbol = useMemo(
+    () => notableSignals(symbolSignals, detail?.composite || list?.rows?.find((r) => r.symbol === symbol)?.composite),
+    [symbolSignals, detail?.composite, list?.rows, symbol]
+  );
 
   const breakdownRows = useMemo(() => {
     const frame = detail?.frame || (timeframe ? detail?.snapshot?.timeframes?.[timeframe] : null);
@@ -386,17 +489,19 @@ export default function MarketPage({
                     </SortTh>
                   ))}
                   <SortTh col="composite" className="num">Tổng hợp</SortTh>
+                  {canSignals ? <th title={`Signal gần đây (${SIGNAL_HOURS}h)`}>Signal</th> : null}
                   <SortTh col="status">Trạng thái</SortTh>
                 </tr>
               </thead>
               <tbody>
                 {list.rows.map((row) => {
                   const selected = row.symbol === symbol;
+                  const sigLab = canSignals ? signalCellLabel(signalMap?.[row.symbol]) : null;
                   return (
                     <tr
                       key={row.symbol}
                       className={selected ? "selected" : ""}
-                      onClick={() => patchParams({ symbol: row.symbol })}
+                      onClick={() => patchParams({ symbol: row.symbol, signals: null })}
                     >
                       <td>
                         <strong>{row.symbol}</strong>
@@ -419,7 +524,7 @@ export default function MarketPage({
                               title={cell ? `L${fmt(cell.longScore)} / S${fmt(cell.shortScore)} · ${cell.regime || "—"} · ${cell.quality || ""}` : ""}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                patchParams({ symbol: row.symbol, tf });
+                                patchParams({ symbol: row.symbol, tf, signals: null });
                               }}
                             >
                               {lab.text}
@@ -430,6 +535,21 @@ export default function MarketPage({
                       <td className={`num ${biasClass(row.composite?.lean === "lean_long" ? "long" : row.composite?.lean === "lean_short" ? "short" : "wait")}`}>
                         {compositeLabel(row.composite)}
                       </td>
+                      {canSignals ? (
+                        <td>
+                          <button
+                            type="button"
+                            className={`mkt-cell mkt-sig-cell ${sigLab.cls}`}
+                            title={sigLab.title}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              patchParams({ symbol: row.symbol, signals: "1", tf: null });
+                            }}
+                          >
+                            {sigLab.text}
+                          </button>
+                        </td>
+                      ) : null}
                       <td>
                         {row.pending ? (
                           <span className="mkt-status mkt-warm">Đang tính…</span>
@@ -458,7 +578,7 @@ export default function MarketPage({
               <>
                 <div className="mkt-detail-head">
                   <h2>{symbol}</h2>
-                  <button type="button" className="ghost" onClick={() => patchParams({ symbol: null, tf: null })}>
+                  <button type="button" className="ghost" onClick={() => patchParams({ symbol: null, tf: null, signals: null })}>
                     Đóng
                   </button>
                 </div>
@@ -480,7 +600,47 @@ export default function MarketPage({
                   {canTerminal ? (
                     <Link to={`/terminal?symbol=${encodeURIComponent(symbol)}`}>Terminal</Link>
                   ) : null}
+                  {canSignals ? (
+                    <Link to={`/signal-search?tab=history&symbol=${encodeURIComponent(symbol)}`}>
+                      Lịch sử signal
+                    </Link>
+                  ) : null}
                 </div>
+
+                {canSignals ? (
+                  <section
+                    id="mkt-signals-panel"
+                    className={`mkt-signals ${focusSignals ? "mkt-signals-focus" : ""}`}
+                  >
+                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>
+                      Signal đáng chú ý · {SIGNAL_HOURS}h
+                      {symbolSignals?.count ? (
+                        <span className="muted"> · {symbolSignals.count} tín hiệu</span>
+                      ) : null}
+                    </h3>
+                    {!signalMap ? (
+                      <p className="muted" style={{ fontSize: 12 }}>Đang tải signal…</p>
+                    ) : notableForSymbol.length ? (
+                      <ul className="mkt-sig-list">
+                        {notableForSymbol.map((row) => (
+                          <li key={row.id || `${row.signal}-${row.openTime}`}>
+                            <span className={row.side === "LONG" ? "mkt-long" : row.side === "SHORT" ? "mkt-short" : ""}>
+                              {row.signal || "—"} · {row.side || "—"}
+                            </span>
+                            <span className="muted">
+                              {row.type || "—"} · {row.status || "—"} · {relTime(row.openTime) || when(row.openTime)}
+                              {row.matchLean ? " · khớp lean" : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12 }}>
+                        Không có signal gần đây cho {symbol} trong {SIGNAL_HOURS} giờ.
+                      </p>
+                    )}
+                  </section>
+                ) : null}
 
                 <div className="mkt-matrix">
                   {TIMEFRAMES.map((tf) => {

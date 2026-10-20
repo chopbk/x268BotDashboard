@@ -44,6 +44,90 @@ function withSignal(stages, matcher) {
     return matcher ? [{ $match: { signal: matcher } }, ...stages] : stages;
 }
 
+/**
+ * Map symbol → signal gần đây (cửa sổ hours) để gắn cột Thị trường.
+ * Không đổi listSignalHistory; chỉ đọc signal_infos.
+ */
+async function listRecentSignalsBySymbols(_actor, input = {}) {
+    const raw = String(input.symbols || "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+    const seen = new Set();
+    const symbols = [];
+    for (const s of raw) {
+        if (seen.has(s)) continue;
+        seen.add(s);
+        symbols.push(s);
+        if (symbols.length >= 80) break;
+    }
+    const hours = Math.min(168, Math.max(1, Number.parseInt(input.hours, 10) || 72));
+    const perSymbol = Math.min(20, Math.max(1, Number.parseInt(input.perSymbol, 10) || 5));
+    const now = new Date();
+    const from = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    const bySymbol = Object.create(null);
+    for (const symbol of symbols) {
+        bySymbol[symbol] = { symbol, count: 0, latest: null, recent: [] };
+    }
+    if (!symbols.length) {
+        return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
+    }
+
+    // Giới hạn tổng dòng để tránh $push nặng; group trong JS.
+    const fetchCap = Math.min(800, Math.max(symbols.length * perSymbol, 100));
+    let rows = [];
+    try {
+        rows = await SignalInfo.find({
+            symbol: { $in: symbols },
+            openTime: { $gte: from },
+        })
+            .select("signal status side symbol type openTime")
+            .sort({ openTime: -1, _id: -1 })
+            .limit(fetchCap)
+            .lean();
+    } catch (error) {
+        console.error("[listRecentSignalsBySymbols]", error.message || error);
+        throw error;
+    }
+
+    const counts = Object.create(null);
+    for (const row of rows) {
+        const symbol = String(row.symbol || "").toUpperCase();
+        if (!bySymbol[symbol]) continue;
+        counts[symbol] = (counts[symbol] || 0) + 1;
+        if (bySymbol[symbol].recent.length >= perSymbol) continue;
+        const item = {
+            id: String(row._id),
+            signal: row.signal || null,
+            side: row.side || null,
+            status: row.status || null,
+            type: row.type || null,
+            openTime: row.openTime || null,
+        };
+        bySymbol[symbol].recent.push(item);
+        if (!bySymbol[symbol].latest) bySymbol[symbol].latest = item;
+    }
+    // count từ scan đủ cap có thể thiếu nếu >fetchCap — bổ sung countDocuments theo symbol khi cần chính xác hơn.
+    // Với UI cột, count trong cửa sổ lấy từ aggregate nhẹ.
+    let countRows = [];
+    try {
+        countRows = await SignalInfo.aggregate([
+            { $match: { symbol: { $in: symbols }, openTime: { $gte: from } } },
+            { $group: { _id: "$symbol", count: { $sum: 1 } } },
+        ]);
+    } catch (error) {
+        console.error("[listRecentSignalsBySymbols:count]", error.message || error);
+        for (const symbol of symbols) bySymbol[symbol].count = counts[symbol] || 0;
+        return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
+    }
+    for (const row of countRows) {
+        const symbol = String(row._id || "").toUpperCase();
+        if (bySymbol[symbol]) bySymbol[symbol].count = row.count || 0;
+    }
+
+    return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
+}
+
 async function listSignalHistory(_actor, input = {}) {
     const page = Math.max(1, Number.parseInt(input.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(input.limit, 10) || 50));
@@ -119,4 +203,4 @@ async function listSignalHistory(_actor, input = {}) {
     };
 }
 
-module.exports = { SESSIONS, sessionId, listSignalHistory };
+module.exports = { SESSIONS, sessionId, listSignalHistory, listRecentSignalsBySymbols };
