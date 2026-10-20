@@ -678,6 +678,38 @@ async function refreshLedger(actor, username, options = {}) {
     return loadLedger(actor, { username: user.username, days: options.days });
 }
 
+async function refreshCombinedLedgers(actor, query = {}) {
+    const users = await visibleUsers(actor);
+    const picked = audienceUsers(users, actor, query);
+    const targets = walletTargets(picked);
+    const ok = [];
+    const failed = [];
+    for (const target of targets) {
+        try {
+            await refreshLedger(actor, target.username, {
+                days: query.days,
+                fetchImpl: query.fetchImpl,
+            });
+            ok.push(target.username);
+        } catch (error) {
+            failed.push({
+                username: target.username,
+                message: error?.message || String(error),
+                status: error?.status || 500,
+            });
+        }
+    }
+    const ledger = await loadCombinedLedger(actor, {
+        days: query.days,
+        others: query.others,
+        inactive: query.inactive,
+    });
+    return {
+        ...ledger,
+        refresh: { ok, failed, total: targets.length },
+    };
+}
+
 async function loadAssignedIncome(actor, audience = "assigned") {
     const users = await usersForAudience(actor, audience === "all" ? "all" : "mine");
     const today = startOfUtcDay(new Date());
@@ -766,6 +798,7 @@ module.exports = {
     loadCombinedLedger,
     loadAssignedIncome,
     refreshLedger,
+    refreshCombinedLedgers,
     buildUserBreakdown,
     staticSumForAccounts,
     pickWalletOwner,

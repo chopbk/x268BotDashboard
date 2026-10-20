@@ -411,6 +411,7 @@ export default function TradePerformancePage() {
   const [groupTab, setGroupTab] = useState("user");
   const [groupSort, setGroupSort] = useState("profit");
   const [error, setError] = useState("");
+  const [refreshNote, setRefreshNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -509,6 +510,44 @@ export default function TradePerformancePage() {
       page: "1",
     });
     setSignalDraft("");
+  }
+
+  async function softRefresh() {
+    if (loading || refreshing || !username) return;
+    setRefreshing(true);
+    setError("");
+    setRefreshNote("");
+    try {
+      if (book === "live") {
+        if (allUsers) {
+          const result = await api("/api/account-ledger/refresh-all", {
+            method: "POST",
+            body: {
+              days: "today",
+              others: audience === "others" ? true : undefined,
+            },
+          });
+          const ok = result?.refresh?.ok?.length || 0;
+          const failed = result?.refresh?.failed || [];
+          if (failed.length && !ok) {
+            setRefreshNote(failed.map((row) => `${row.username}: ${row.message}`).join(" · "));
+          } else if (failed.length) {
+            setRefreshNote(`Income hôm nay: ${ok} ví ok · lỗi ${failed.map((row) => row.username).join(", ")}`);
+          } else if (ok) {
+            setRefreshNote(`Đã kéo income sàn hôm nay cho ${ok} ví`);
+          }
+        } else {
+          await api(`/api/account-ledger/${encodeURIComponent(username)}/refresh`, {
+            method: "POST",
+            body: { days: "today" },
+          });
+          setRefreshNote("Đã kéo income sàn hôm nay · đang tải lại lệnh Static");
+        }
+      }
+    } catch (err) {
+      setRefreshNote(err.message || "Không kéo được income sàn; vẫn tải lại lệnh từ DB");
+    }
+    setTick((value) => value + 1);
   }
 
   function openConfigPeek(targetEnv, rowUser) {
@@ -784,7 +823,10 @@ export default function TradePerformancePage() {
                 <button
                   type="button"
                   disabled={loading || refreshing || !username}
-                  onClick={() => setTick((value) => value + 1)}
+                  onClick={softRefresh}
+                  title={book === "live"
+                    ? "Kéo income sàn hôm nay (UTC) rồi tải lại lệnh Account Static từ DB"
+                    : "Tải lại lệnh Paper từ DB"}
                 >
                   Làm mới
                 </button>
@@ -795,6 +837,7 @@ export default function TradePerformancePage() {
                 ) : null}
               </div>
             </div>
+            {refreshNote ? <p className="muted perf-range-note">{refreshNote}</p> : null}
             <div className="perf-chips perf-chips-inline">
               {chips.map((chip) => (
                 <span key={chip.key} className="perf-chip">

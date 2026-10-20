@@ -178,7 +178,8 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/account-statics/ai-suggest` | [account-statics](../server/src/routes/account-statics.js) + [account-statics-ai](../server/src/lib/account-statics-ai.js) |
 | GET | `/api/account-statics/:id` | [account-statics](../server/src/routes/account-statics.js) |
 | GET | `/api/account-ledger` | [account-ledger](../server/src/routes/account-ledger.js) (+ attribution [ledger-attribution](../server/src/lib/ledger-attribution.js)) |
-| POST | `/api/account-ledger/:username/refresh` | [account-ledger](../server/src/routes/account-ledger.js) |
+| POST | `/api/account-ledger/refresh-all` | [account-ledger](../server/src/routes/account-ledger.js) |
+| POST | `/api/account-ledger/:username/refresh` | [account-ledger](../server/src/routes/account-ledger.js) (`username=__all__` = refresh-all) |
 
 Không có REST `/api/logs`, `/api/user/stats` hay wildcard `/api/signals/*` chỉ vì menu có tên tương tự. Path parameter phải URL-encode.
 
@@ -196,7 +197,7 @@ Không có REST `/api/logs`, `/api/user/stats` hay wildcard `/api/signals/*` ch�
 | Signal history | `signal`, `q`, `side`, `type`, `status`, `from/to`, `page/limit` | Nhật ký signal, không quy đổi thành profit của user |
 | Provider scorecard | `from/to`, `scope`, `book`, `minTrades`, `sort`, `q` | Ghép feed `signal_infos` + trades `account_statics` theo tên channel; xem [spec](provider-scorecard-spec.md) |
 | Account statics | `username` (`__all__` + `scope=mine\|others\|all`), `env`, `signal`, `from/to`, `range=today\|7\|…`, `time=close\|open`, `analytics`, `book`, `copy`, `closed`, `status`, `profit`, `listDay`, `page` | Aggregate KPI/series/insights/groups; `byUser`/`byConfig`/`byEnv` kèm `income` từ `futures_profits` cùng kỳ UTC; `listDay` chỉ lọc danh sách. Chi tiết `/:id` cần username |
-| Ledger | `username`, `view=all`, `days=today\|3\|7\|…` (UI Báo cáo mặc định `today` + tất cả user) | Đọc DB; POST refresh mới gọi sàn, rate limit riêng |
+| Ledger | `username`, `view=all`, `days=today\|3\|7\|…` (UI Báo cáo mặc định `today` + tất cả user) | Đọc DB; POST `refresh-all` hoặc `/:username/refresh` gọi sàn hôm nay UTC ghi `futures_profits`, rate limit 4/10 phút; `refresh-all` trả `refresh.ok/failed` |
 | Summary | `range=today/3d/7d/30d/90d/all`, `audience` | Payload aggregate hoặc snapshot kèm metadata; refresh có giới hạn |
 | Positions | `account`, `audience`, `book` và filter vị thế | Monitor + snapshot sàn đã lọc quyền; detail cần `id` |
 | Dashboard | GET trả bots/configs/profitToday/incomeToday/closedToday/compare/series/activity/openRisk/health/attention/mine/thresholds/ai + `cached`; `?refresh=1` bỏ cache; openRisk Redis; [overview spec](dashboard-overview-spec.md) |

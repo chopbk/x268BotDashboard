@@ -104,7 +104,7 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 ## 6. Lãi lỗ ví và AI
 
-[AccountLedgerPage](../client/src/pages/AccountLedgerPage.jsx) → GET `/api/account-ledger` đọc DB. Nút refresh → POST `/:username/refresh` → [refreshLedger](../server/src/lib/account-ledger.js) → kiểm tra scope → lấy credential phía server → Binance balance/income ngày UTC → ghi `futures_profits` → UI đọc kết quả. Không trả API key cho browser.
+[AccountLedgerPage](../client/src/pages/AccountLedgerPage.jsx) → GET `/api/account-ledger` đọc DB. Nút **Cập nhật hôm nay**: một user → POST `/:username/refresh`; Tất cả → POST `/refresh-all` → [refreshCombinedLedgers](../server/src/lib/account-ledger.js) lần lượt từng ví (thiếu API key thì ghi failed, không dừng batch) → ghi `futures_profits` → trả ledger tổng hợp. Tab Hiệu quả lệnh **Làm mới** (sổ Live) cũng gọi refresh income hôm nay rồi tải lại `account-statics` (cột Income DB). Không trả API key cho browser.
 
 [DashboardPage](../client/src/pages/DashboardPage.jsx) → GET `/api/dashboard` (cache memory theo actor; `?refresh=1` tính lại; client sessionStorage 60s) → [dashboard](../server/src/lib/dashboard.js): bot scope + series 7 ngày profit/income + compare hôm qua + heartbeat + uPnL Redis + activity + attention (severity, lọc noise). POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) → [dashboard-brief](../server/src/lib/dashboard-brief.js). Timeout 12 giây; rate limit 15 giây/user.
 

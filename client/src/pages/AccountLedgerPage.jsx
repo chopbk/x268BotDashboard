@@ -135,14 +135,34 @@ export default function AccountLedgerPage() {
   }, [data, showInactive, showOthers, username]);
 
   async function refresh() {
-    if (!data?.username) return;
+    const target = username === ALL ? ALL : (username || data?.username);
+    if (!target) return;
     setBusy(true);
     setError("");
     try {
-      const result = await api(`/api/account-ledger/${encodeURIComponent(data.username)}/refresh`, {
-        method: "POST",
-        body: { days },
-      });
+      let result;
+      if (target === ALL) {
+        result = await api("/api/account-ledger/refresh-all", {
+          method: "POST",
+          body: {
+            days,
+            others: showOthers || undefined,
+            inactive: showInactive || undefined,
+          },
+        });
+        const failed = result?.refresh?.failed || [];
+        const ok = result?.refresh?.ok || [];
+        if (failed.length && !ok.length) {
+          setError(failed.map((row) => `${row.username}: ${row.message}`).join(" · ") || "Không cập nhật được ví nào");
+        } else if (failed.length) {
+          setError(`Đã cập nhật ${ok.length}/${ok.length + failed.length} ví. Lỗi: ${failed.map((row) => row.username).join(", ")}`);
+        }
+      } else {
+        result = await api(`/api/account-ledger/${encodeURIComponent(target)}/refresh`, {
+          method: "POST",
+          body: { days },
+        });
+      }
       setData(result);
     } catch (err) {
       setError(err.message || "Không cập nhật được số liệu sàn");
@@ -235,7 +255,14 @@ export default function AccountLedgerPage() {
               {showBreakdown ? "Ẩn từng ví" : "Từng ví"}
             </button>
           ) : null}
-          <button type="button" disabled={busy || !data?.username} onClick={refresh}>{busy ? "Đang cập nhật…" : "Cập nhật hôm nay"}</button>
+          <button
+            type="button"
+            disabled={busy || loading || (username !== ALL && !(username || data?.username))}
+            onClick={refresh}
+            title={username === ALL ? "Kéo income/số dư sàn hôm nay UTC cho từng ví đang xem" : "Kéo income/số dư sàn hôm nay UTC cho user này"}
+          >
+            {busy ? "Đang cập nhật…" : "Cập nhật hôm nay"}
+          </button>
         </div>
       </header>
       {error ? <p className="form-error">{error}</p> : null}

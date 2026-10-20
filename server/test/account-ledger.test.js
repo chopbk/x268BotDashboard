@@ -8,7 +8,7 @@ const UserApi = require("../src/models/user-api");
 const FuturesProfit = require("../src/models/futures-profit");
 const AccountStatic = require("../src/models/account-static");
 const AuditLog = require("../src/models/audit-log");
-const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, audienceUsers, walletTargets, mergeDayRows, loadLedger, buildUserBreakdown } = require("../src/lib/account-ledger");
+const { isOwnUser, usersForAudience, ledgerEnv, ledgerWindow, summarizeLedger, refreshLedger, refreshCombinedLedgers, audienceUsers, walletTargets, mergeDayRows, loadLedger, buildUserBreakdown } = require("../src/lib/account-ledger");
 
 function chain(value) {
     return {
@@ -227,6 +227,66 @@ test("refresh stores today's exchange wallet and does not return the API secret"
         assert.equal(saved[0].update.$set.stats.wallet.unPnlNow, -15);
         assert.equal(JSON.stringify(result).includes("secret-1"), false);
         assert.equal(JSON.stringify(result).includes("key-1"), false);
+    } finally {
+        UserAccount.find = originalAccount;
+        UserApi.findOne = originalApi;
+        FuturesProfit.find = originalProfit;
+        FuturesProfit.findOne = originalOne;
+        FuturesProfit.findOneAndUpdate = originalUpdate;
+        AccountStatic.aggregate = originalStatic;
+        AccountStatic.find = originalStaticFind;
+        AuditLog.create = originalAudit;
+    }
+});
+
+test("refresh-all updates every wallet in view and keeps going when one user has no API", async () => {
+    const originalAccount = UserAccount.find;
+    const originalApi = UserApi.findOne;
+    const originalProfit = FuturesProfit.find;
+    const originalOne = FuturesProfit.findOne;
+    const originalUpdate = FuturesProfit.findOneAndUpdate;
+    const originalStatic = AccountStatic.aggregate;
+    const originalStaticFind = AccountStatic.find;
+    const originalAudit = AuditLog.create;
+    const saved = [];
+    UserAccount.find = () => chain([
+        { username: "V", accounts: ["V"], ownerUserId: "vx", visibility: "public", active: true },
+        { username: "NOKEY", accounts: ["NOKEY"], ownerUserId: "vx", visibility: "public", active: true },
+    ]);
+    UserApi.findOne = (filter) => {
+        const source = String(filter?.username?.source || filter?.username || "");
+        if (source.includes("NOKEY") || String(filter?.username).includes("NOKEY")) return chain(null);
+        return chain({ username: "V", exchange: "binance", api_key: "key-1", api_secret: "secret-1" });
+    };
+    FuturesProfit.findOne = () => chain(null);
+    FuturesProfit.find = () => chain([]);
+    FuturesProfit.findOneAndUpdate = async (filter, update) => {
+        saved.push({ filter, update });
+        return {};
+    };
+    AccountStatic.aggregate = async () => [];
+    AccountStatic.find = () => chain([]);
+    AuditLog.create = async () => ({});
+    const fetchImpl = async (url) => {
+        const path = String(url);
+        let body = [];
+        if (path.includes("/fapi/v2/account")) body = { totalWalletBalance: "50", availableBalance: "40", totalUnrealizedProfit: "0", totalInitialMargin: "0" };
+        else if (path.includes("/fapi/v2/balance")) body = [{ asset: "USDT", balance: "50", crossUnPnl: "0" }];
+        else if (path.includes("/fapi/v1/ticker/price")) body = [];
+        else if (path.includes("/fapi/v1/income")) body = [{ incomeType: "REALIZED_PNL", income: "2", asset: "USDT", time: Date.now() }];
+        return { ok: true, status: 200, json: async () => body };
+    };
+    try {
+        const result = await refreshCombinedLedgers(
+            { id: "vx", role: "supervisor", username: "root" },
+            { days: "today", fetchImpl }
+        );
+        assert.equal(result.view, "all");
+        assert.deepEqual(result.refresh.ok, ["V"]);
+        assert.equal(result.refresh.failed.length, 1);
+        assert.equal(result.refresh.failed[0].username, "NOKEY");
+        assert.equal(saved.length, 1);
+        assert.equal(saved[0].update.$set.balance, 50);
     } finally {
         UserAccount.find = originalAccount;
         UserApi.findOne = originalApi;
