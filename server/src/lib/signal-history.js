@@ -44,6 +44,32 @@ function withSignal(stages, matcher) {
     return matcher ? [{ $match: { signal: matcher } }, ...stages] : stages;
 }
 
+/** signal_infos thường là BTC; Thị trường dùng BTCUSDT — map cả hai dạng về key yêu cầu. */
+function symbolAliases(symbol) {
+    const s = String(symbol || "").trim().toUpperCase();
+    if (!s) return [];
+    const out = [s];
+    if (s.endsWith("USDT") && s.length > 4) out.push(s.slice(0, -4));
+    else out.push(`${s}USDT`);
+    return out;
+}
+
+function buildSymbolAliasMap(symbols) {
+    const aliasToCanonical = new Map();
+    const querySymbols = [];
+    const seenQuery = new Set();
+    for (const symbol of symbols) {
+        for (const alias of symbolAliases(symbol)) {
+            if (!aliasToCanonical.has(alias)) aliasToCanonical.set(alias, symbol);
+            if (!seenQuery.has(alias)) {
+                seenQuery.add(alias);
+                querySymbols.push(alias);
+            }
+        }
+    }
+    return { aliasToCanonical, querySymbols };
+}
+
 /**
  * Map symbol → signal gần đây (cửa sổ hours) để gắn cột Thị trường.
  * Không đổi listSignalHistory; chỉ đọc signal_infos.
@@ -73,12 +99,14 @@ async function listRecentSignalsBySymbols(_actor, input = {}) {
         return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
     }
 
+    const { aliasToCanonical, querySymbols } = buildSymbolAliasMap(symbols);
+
     // Giới hạn tổng dòng để tránh $push nặng; group trong JS.
     const fetchCap = Math.min(800, Math.max(symbols.length * perSymbol, 100));
     let rows = [];
     try {
         rows = await SignalInfo.find({
-            symbol: { $in: symbols },
+            symbol: { $in: querySymbols },
             openTime: { $gte: from },
         })
             .select("signal status side symbol type openTime")
@@ -92,10 +120,10 @@ async function listRecentSignalsBySymbols(_actor, input = {}) {
 
     const counts = Object.create(null);
     for (const row of rows) {
-        const symbol = String(row.symbol || "").toUpperCase();
-        if (!bySymbol[symbol]) continue;
-        counts[symbol] = (counts[symbol] || 0) + 1;
-        if (bySymbol[symbol].recent.length >= perSymbol) continue;
+        const canonical = aliasToCanonical.get(String(row.symbol || "").toUpperCase());
+        if (!canonical || !bySymbol[canonical]) continue;
+        counts[canonical] = (counts[canonical] || 0) + 1;
+        if (bySymbol[canonical].recent.length >= perSymbol) continue;
         const item = {
             id: String(row._id),
             signal: row.signal || null,
@@ -104,15 +132,13 @@ async function listRecentSignalsBySymbols(_actor, input = {}) {
             type: row.type || null,
             openTime: row.openTime || null,
         };
-        bySymbol[symbol].recent.push(item);
-        if (!bySymbol[symbol].latest) bySymbol[symbol].latest = item;
+        bySymbol[canonical].recent.push(item);
+        if (!bySymbol[canonical].latest) bySymbol[canonical].latest = item;
     }
-    // count từ scan đủ cap có thể thiếu nếu >fetchCap — bổ sung countDocuments theo symbol khi cần chính xác hơn.
-    // Với UI cột, count trong cửa sổ lấy từ aggregate nhẹ.
     let countRows = [];
     try {
         countRows = await SignalInfo.aggregate([
-            { $match: { symbol: { $in: symbols }, openTime: { $gte: from } } },
+            { $match: { symbol: { $in: querySymbols }, openTime: { $gte: from } } },
             { $group: { _id: "$symbol", count: { $sum: 1 } } },
         ]);
     } catch (error) {
@@ -121,8 +147,10 @@ async function listRecentSignalsBySymbols(_actor, input = {}) {
         return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
     }
     for (const row of countRows) {
-        const symbol = String(row._id || "").toUpperCase();
-        if (bySymbol[symbol]) bySymbol[symbol].count = row.count || 0;
+        const canonical = aliasToCanonical.get(String(row._id || "").toUpperCase());
+        if (canonical && bySymbol[canonical]) {
+            bySymbol[canonical].count += row.count || 0;
+        }
     }
 
     return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };

@@ -101,14 +101,19 @@ test("recent-by-symbol maps latest signals per symbol in the window", async () =
     const originals = { signal: SignalInfo.find, aggregate: SignalInfo.aggregate };
     const t1 = new Date("2026-10-19T10:00:00.000Z");
     const t2 = new Date("2026-10-19T12:00:00.000Z");
-    SignalInfo.find = () => query([
-        { _id: "2", signal: "ROSE", symbol: "BTCUSDT", side: "LONG", type: "SCALP", status: "OPEN", openTime: t2 },
-        { _id: "1", signal: "BULL", symbol: "BTCUSDT", side: "SHORT", type: "SCALP", status: "CLOSE", openTime: t1 },
-        { _id: "3", signal: "ROSE", symbol: "ETHUSDT", side: "SHORT", type: "SWING", status: "OPEN", openTime: t2 },
-    ]);
+    let findFilter;
+    // signal_infos dùng BTC/ETH; request từ Thị trường là BTCUSDT.
+    SignalInfo.find = (filter) => {
+        findFilter = filter;
+        return query([
+            { _id: "2", signal: "ROSE", symbol: "BTC", side: "LONG", type: "SCALP", status: "OPEN", openTime: t2 },
+            { _id: "1", signal: "BULL", symbol: "BTC", side: "SHORT", type: "SCALP", status: "CLOSE", openTime: t1 },
+            { _id: "3", signal: "ROSE", symbol: "ETH", side: "SHORT", type: "SWING", status: "OPEN", openTime: t2 },
+        ]);
+    };
     SignalInfo.aggregate = async () => [
-        { _id: "BTCUSDT", count: 2 },
-        { _id: "ETHUSDT", count: 1 },
+        { _id: "BTC", count: 2 },
+        { _id: "ETH", count: 1 },
     ];
     try {
         const result = await listRecentSignalsBySymbols({}, {
@@ -117,6 +122,8 @@ test("recent-by-symbol maps latest signals per symbol in the window", async () =
             perSymbol: 5,
         });
         assert.equal(result.hours, 72);
+        assert.ok(findFilter.symbol.$in.includes("BTC"));
+        assert.ok(findFilter.symbol.$in.includes("BTCUSDT"));
         assert.equal(result.bySymbol.BTCUSDT.count, 2);
         assert.equal(result.bySymbol.BTCUSDT.latest.signal, "ROSE");
         assert.equal(result.bySymbol.BTCUSDT.latest.side, "LONG");

@@ -11,6 +11,7 @@ const {
     normalizeSymbol,
 } = require("../lib/market/read-api");
 const { requestRefresh } = require("../lib/market/scheduler");
+const { listRecentSignalsBySymbols } = require("../lib/signal-history");
 
 const router = express.Router();
 
@@ -94,6 +95,16 @@ router.get("/events", requireAuth, requireMarketRead, async (req, res) => {
     } catch (error) {
         console.error("[market:events]", error.message || error);
         res.status(500).json({ error: "Không đọc được sự kiện" });
+    }
+});
+
+/** Cột Signal trên tab Kỹ thuật — cùng quyền đọc Thị trường (không cần signals.history). */
+router.get("/recent-signals", requireAuth, requireMarketRead, async (req, res) => {
+    try {
+        res.json(await listRecentSignalsBySymbols(req.webUser, req.query));
+    } catch (error) {
+        console.error("[market:recent-signals]", error.message || error);
+        res.status(500).json({ error: "Không đọc được signal gần đây" });
     }
 });
 

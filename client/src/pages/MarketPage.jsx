@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { useAuth } from "../auth";
 import "./market.css";
 
 const TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"];
@@ -10,7 +9,6 @@ const STYLES = [
   { id: "scalp", label: "Ngắn hạn" },
   { id: "swing", label: "Swing" },
 ];
-const SIGNALS_HISTORY = "signals.history";
 const SIGNAL_HOURS = 72;
 
 function fmt(value, digits = 2) {
@@ -128,8 +126,6 @@ export default function MarketPage({
   canFlow = false,
   canTerminal = true,
 } = {}) {
-  const { user } = useAuth();
-  const canSignals = (user?.permissions || []).includes(SIGNALS_HISTORY);
   const [params, setParams] = useSearchParams();
   const symbol = (params.get("symbol") || "").toUpperCase();
   const style = STYLES.some((s) => s.id === params.get("style")) ? params.get("style") : "intraday";
@@ -282,7 +278,7 @@ export default function MarketPage({
   const listSymbolsKey = (list?.rows || []).map((r) => r.symbol).join(",");
 
   useEffect(() => {
-    if (!canSignals || !listSymbolsKey) {
+    if (!listSymbolsKey) {
       setSignalMap(null);
       return undefined;
     }
@@ -292,7 +288,7 @@ export default function MarketPage({
       hours: String(SIGNAL_HOURS),
       perSymbol: "5",
     });
-    api(`/api/signal-history/recent-by-symbol?${qs}`)
+    api(`/api/market/recent-signals?${qs}`)
       .then((body) => {
         if (!cancelled) setSignalMap(body?.bySymbol || {});
       })
@@ -305,7 +301,7 @@ export default function MarketPage({
     return () => {
       cancelled = true;
     };
-  }, [canSignals, listSymbolsKey]);
+  }, [listSymbolsKey]);
 
   useEffect(() => {
     if (!focusSignals || !symbol) return undefined;
@@ -489,14 +485,14 @@ export default function MarketPage({
                     </SortTh>
                   ))}
                   <SortTh col="composite" className="num">Tổng hợp</SortTh>
-                  {canSignals ? <th title={`Signal gần đây (${SIGNAL_HOURS}h)`}>Signal</th> : null}
+                  <th title={`Signal gần đây (${SIGNAL_HOURS}h)`}>Signal</th>
                   <SortTh col="status">Trạng thái</SortTh>
                 </tr>
               </thead>
               <tbody>
                 {list.rows.map((row) => {
                   const selected = row.symbol === symbol;
-                  const sigLab = canSignals ? signalCellLabel(signalMap?.[row.symbol]) : null;
+                  const sigLab = signalCellLabel(signalMap?.[row.symbol]);
                   return (
                     <tr
                       key={row.symbol}
@@ -535,21 +531,19 @@ export default function MarketPage({
                       <td className={`num ${biasClass(row.composite?.lean === "lean_long" ? "long" : row.composite?.lean === "lean_short" ? "short" : "wait")}`}>
                         {compositeLabel(row.composite)}
                       </td>
-                      {canSignals ? (
-                        <td>
-                          <button
-                            type="button"
-                            className={`mkt-cell mkt-sig-cell ${sigLab.cls}`}
-                            title={sigLab.title}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              patchParams({ symbol: row.symbol, signals: "1", tf: null });
-                            }}
-                          >
-                            {sigLab.text}
-                          </button>
-                        </td>
-                      ) : null}
+                      <td>
+                        <button
+                          type="button"
+                          className={`mkt-cell mkt-sig-cell ${sigLab.cls}`}
+                          title={sigLab.title}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            patchParams({ symbol: row.symbol, signals: "1", tf: null });
+                          }}
+                        >
+                          {signalMap == null ? "…" : sigLab.text}
+                        </button>
+                      </td>
                       <td>
                         {row.pending ? (
                           <span className="mkt-status mkt-warm">Đang tính…</span>
@@ -600,47 +594,43 @@ export default function MarketPage({
                   {canTerminal ? (
                     <Link to={`/terminal?symbol=${encodeURIComponent(symbol)}`}>Terminal</Link>
                   ) : null}
-                  {canSignals ? (
-                    <Link to={`/signal-search?tab=history&symbol=${encodeURIComponent(symbol)}`}>
-                      Lịch sử signal
-                    </Link>
-                  ) : null}
+                  <Link to={`/signal-search?tab=history&symbol=${encodeURIComponent(symbol)}`}>
+                    Lịch sử signal
+                  </Link>
                 </div>
 
-                {canSignals ? (
-                  <section
-                    id="mkt-signals-panel"
-                    className={`mkt-signals ${focusSignals ? "mkt-signals-focus" : ""}`}
-                  >
-                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>
-                      Signal đáng chú ý · {SIGNAL_HOURS}h
-                      {symbolSignals?.count ? (
-                        <span className="muted"> · {symbolSignals.count} tín hiệu</span>
-                      ) : null}
-                    </h3>
-                    {!signalMap ? (
-                      <p className="muted" style={{ fontSize: 12 }}>Đang tải signal…</p>
-                    ) : notableForSymbol.length ? (
-                      <ul className="mkt-sig-list">
-                        {notableForSymbol.map((row) => (
-                          <li key={row.id || `${row.signal}-${row.openTime}`}>
-                            <span className={row.side === "LONG" ? "mkt-long" : row.side === "SHORT" ? "mkt-short" : ""}>
-                              {row.signal || "—"} · {row.side || "—"}
-                            </span>
-                            <span className="muted">
-                              {row.type || "—"} · {row.status || "—"} · {relTime(row.openTime) || when(row.openTime)}
-                              {row.matchLean ? " · khớp lean" : ""}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted" style={{ fontSize: 12 }}>
-                        Không có signal gần đây cho {symbol} trong {SIGNAL_HOURS} giờ.
-                      </p>
-                    )}
-                  </section>
-                ) : null}
+                <section
+                  id="mkt-signals-panel"
+                  className={`mkt-signals ${focusSignals ? "mkt-signals-focus" : ""}`}
+                >
+                  <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>
+                    Signal đáng chú ý · {SIGNAL_HOURS}h
+                    {symbolSignals?.count ? (
+                      <span className="muted"> · {symbolSignals.count} tín hiệu</span>
+                    ) : null}
+                  </h3>
+                  {!signalMap ? (
+                    <p className="muted" style={{ fontSize: 12 }}>Đang tải signal…</p>
+                  ) : notableForSymbol.length ? (
+                    <ul className="mkt-sig-list">
+                      {notableForSymbol.map((row) => (
+                        <li key={row.id || `${row.signal}-${row.openTime}`}>
+                          <span className={row.side === "LONG" ? "mkt-long" : row.side === "SHORT" ? "mkt-short" : ""}>
+                            {row.signal || "—"} · {row.side || "—"}
+                          </span>
+                          <span className="muted">
+                            {row.type || "—"} · {row.status || "—"} · {relTime(row.openTime) || when(row.openTime)}
+                            {row.matchLean ? " · khớp lean" : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted" style={{ fontSize: 12 }}>
+                      Không có signal gần đây cho {symbol} trong {SIGNAL_HOURS} giờ.
+                    </p>
+                  )}
+                </section>
 
                 <div className="mkt-matrix">
                   {TIMEFRAMES.map((tf) => {
