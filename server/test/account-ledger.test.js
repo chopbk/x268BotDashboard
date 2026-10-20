@@ -194,6 +194,7 @@ test("refresh stores today's exchange wallet and does not return the API secret"
     const originalOne = FuturesProfit.findOne;
     const originalUpdate = FuturesProfit.findOneAndUpdate;
     const originalStatic = AccountStatic.aggregate;
+    const originalStaticFind = AccountStatic.find;
     const originalAudit = AuditLog.create;
     const saved = [];
     UserAccount.find = () => chain([{ username: "V", accounts: ["V"], ownerUserId: "vx", visibility: "public", active: true }]);
@@ -205,6 +206,7 @@ test("refresh stores today's exchange wallet and does not return the API secret"
         return {};
     };
     AccountStatic.aggregate = async () => [{ profit: 0 }];
+    AccountStatic.find = () => chain([]);
     AuditLog.create = async () => ({});
     const fetchImpl = async (url) => {
         assert.equal(String(url).includes("secret-1"), false);
@@ -232,6 +234,7 @@ test("refresh stores today's exchange wallet and does not return the API secret"
         FuturesProfit.findOne = originalOne;
         FuturesProfit.findOneAndUpdate = originalUpdate;
         AccountStatic.aggregate = originalStatic;
+        AccountStatic.find = originalStaticFind;
         AuditLog.create = originalAudit;
     }
 });

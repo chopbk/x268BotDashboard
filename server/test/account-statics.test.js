@@ -21,6 +21,9 @@ function query(value) {
     return { select() { return this; }, sort() { return this; }, skip() { return this; }, limit() { return this; }, lean() { return Promise.resolve(value); }, then(ok, fail) { return Promise.resolve(value).then(ok, fail); } };
 }
 
+// listAccountStatics gắn income từ futures_profits — stub mặc định tránh buffering timeout khi không có Mongo.
+FuturesProfit.find = () => query([]);
+
 function flattenMatch(filter) {
     if (!filter || typeof filter !== "object") return {};
     if (!filter.$and) return filter;
