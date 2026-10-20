@@ -606,17 +606,25 @@ async function resolveListAudience(actor, input = {}) {
     const env = String(input.env || "").trim();
     const envUser = new Map();
     if (username === "__all__") {
-        const { usersForAudience, isOwnUser } = require("./account-ledger");
+        const { usersForAudience, isOwnUser, pickWalletOwner } = require("./account-ledger");
         const scope = input.scope === "all" || input.scope === "others" ? input.scope : "mine";
         let users = await usersForAudience(actor, scope === "mine" ? "mine" : "all");
         if (scope === "others") {
             users = users.filter((row) => !isOwnUser(actor, row));
         }
+        const candidates = new Map();
         for (const user of users) {
             for (const account of user.accounts || []) {
                 const name = String(account || "").trim();
-                if (name && !envUser.has(name)) envUser.set(name, user.username);
+                if (!name) continue;
+                const list = candidates.get(name) || [];
+                list.push(user);
+                candidates.set(name, list);
             }
+        }
+        for (const [name, list] of candidates) {
+            const preferred = pickWalletOwner(name, list);
+            if (preferred) envUser.set(name, preferred.username);
         }
         const envs = env ? (envUser.has(env) ? [env] : []) : [...envUser.keys()];
         if (env && !envs.length) throw httpError(404, "Config không thuộc phạm vi đang xem");
@@ -801,8 +809,36 @@ async function listAccountStatics(actor, input = {}) {
     const bySymbol = byProfit((facet.bySymbol || []).map((row) => presentGroup(row, "symbol", labelUser)));
     const bySide = (facet.bySide || []).map((row) => presentGroup(row, "side", labelUser));
     const byEnv = byProfit((facet.byEnv || []).map((row) => presentGroup(row, "env", resolveEnvUsername(envUser, row?._id) || labelUser)));
-    const byUser = single ? [] : rollupByUser(facet.byEnv || [], envUser);
+    let byUser = single ? [] : rollupByUser(facet.byEnv || [], envUser);
     const byConfigSignal = byConfigThenProfit((facet.byConfigSignal || []).map((row) => presentConfigSignal(row, resolveEnvUsername(envUser, row?._id?.env) || labelUser)));
+
+    let incomeByEnv = new Map();
+    try {
+        const { sumTradingIncomeByEnvs } = require("./account-ledger");
+        incomeByEnv = await sumTradingIncomeByEnvs(envs, range.from, range.to || new Date());
+    } catch (error) {
+        console.error("[listAccountStatics]", error?.code || error?.name || "income-by-env");
+    }
+    if (!single && byUser.length) {
+        byUser = byUser.map((row) => {
+            let income = 0;
+            let has = false;
+            for (const [account, owner] of envUser) {
+                if (owner !== row.username) continue;
+                const pack = incomeByEnv.get(String(account).toUpperCase());
+                if (!pack) continue;
+                has = true;
+                income += Number(pack.trading) || 0;
+            }
+            return { ...row, income: has ? round3(income) : null };
+        });
+    }
+    const attachIncome = (row) => {
+        const pack = incomeByEnv.get(String(row.env || "").toUpperCase());
+        return { ...row, income: pack ? pack.trading : null };
+    };
+    const byEnvWithIncome = byEnv.map(attachIncome);
+    const byConfigWithIncome = byConfig.map(attachIncome);
 
     const stats = {
         total: sum.count || 0,
@@ -833,8 +869,8 @@ async function listAccountStatics(actor, input = {}) {
         lowSample: (sum.count || 0) < LOW_SAMPLE,
         bySignal,
         byConfigSignal,
-        byEnv,
-        byConfig,
+        byEnv: byEnvWithIncome,
+        byConfig: byConfigWithIncome,
         byUser,
         bySymbol,
         bySide,
@@ -870,6 +906,7 @@ async function listAccountStatics(actor, input = {}) {
         insights,
         formulas: {
             pnl: "Tổng field profit trên account_statics sau bộ lọc. Không gọi là lãi ròng sau phí trừ khi bản ghi có cờ phí đầy đủ.",
+            income: "Trading income từ futures_profits (DB, cùng kỳ UTC) — REALIZED_PNL+phí+funding+rebate khi có incomeByType; gần với /i, khác PnL lệnh Static.",
             winRate: "Số lệnh profit > 0 / số lệnh có profit hợp lệ (thắng + thua + hòa). Không dùng status WIN/LOSS làm nguồn duy nhất.",
             profitFactor: "Tổng profit dương / abs(tổng profit âm). Không có lệnh lỗ → nhãn “Không có lệnh lỗ”.",
             avgProfit: "Tổng profit / số lệnh có profit hợp lệ.",

@@ -15,9 +15,18 @@ export default function ReportsPage() {
   function tabHref(nextTab) {
     const next = new URLSearchParams(params);
     next.set("tab", nextTab);
+    if (!next.get("username")) next.set("username", "__all__");
     if (nextTab === "performance") {
       next.delete("view");
-      if (!next.get("analytics")) next.set("analytics", "1");
+      next.set("analytics", "1");
+      if (!next.get("scope") && next.get("username") === "__all__") next.set("scope", "mine");
+      if (!next.get("range") && !next.get("from")) next.set("range", "today");
+      if (!next.get("time")) next.set("time", "close");
+      if (!next.get("closed")) next.set("closed", "closed");
+      if (!next.get("book")) next.set("book", "live");
+    } else {
+      if (!next.get("days") && !next.get("from")) next.set("days", "today");
+      if (!next.get("book")) next.set("book", "live");
     }
     return `/reports?${next}`;
   }

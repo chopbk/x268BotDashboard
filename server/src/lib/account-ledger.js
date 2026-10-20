@@ -720,6 +720,36 @@ async function loadAssignedIncome(actor, audience = "assigned") {
     return { scope: audience === "all" ? "all" : "mine", from: ymd(today), to: ymd(today), rows, totals };
 }
 
+async function sumTradingIncomeByEnvs(envs, from, to) {
+    const keys = [...new Set((envs || [])
+        .flatMap((item) => {
+            const raw = String(item || "").trim();
+            return raw ? [raw, raw.toUpperCase()] : [];
+        }))];
+    const out = new Map();
+    if (!keys.length || !from) return out;
+    const dayFrom = startOfUtcDay(from instanceof Date ? from : new Date(from));
+    const endBase = to ? (to instanceof Date ? to : new Date(to)) : new Date();
+    const dayTo = addUtcDays(startOfUtcDay(endBase), 1);
+    if (Number.isNaN(dayFrom.getTime()) || Number.isNaN(dayTo.getTime())) return out;
+    const docs = await FuturesProfit.find({
+        env: { $in: keys },
+        day: { $gte: dayFrom, $lt: dayTo },
+    }).lean();
+    for (const doc of docs || []) {
+        const key = String(doc.env || "").toUpperCase();
+        if (!key) continue;
+        const row = dayRow(doc);
+        const prev = out.get(key) || { trading: 0, fee: 0, funding: 0, profit: 0 };
+        prev.trading = r3(prev.trading + toNum(row.trading));
+        prev.fee = r3(prev.fee + toNum(row.fee));
+        prev.funding = r3(prev.funding + toNum(row.funding));
+        prev.profit = r3(prev.profit + toNum(row.profit));
+        out.set(key, prev);
+    }
+    return out;
+}
+
 module.exports = {
     ledgerWindow,
     ledgerEnv,
@@ -739,4 +769,6 @@ module.exports = {
     buildUserBreakdown,
     staticSumForAccounts,
     pickWalletOwner,
+    sumTradingIncomeByEnvs,
+    dayRow,
 };

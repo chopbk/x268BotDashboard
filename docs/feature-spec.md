@@ -14,7 +14,7 @@
 | Signal `/signal-search` | SignalSearchPage và panel | Tab lịch sử / tìm / scorecard / thống kê / cấu hình; từng API có quyền riêng |
 | Terminal `/terminal` | TerminalPage | Workspace giao dịch (R1): vị thế, lệnh, lịch sử, panel chi tiết. Menu Position đã gỡ; `/positions` redirect sang `/terminal`. Gate: `positions.view` \| `orders.view` \| `statistics.view`. Khối **Dòng tiền** trong Tổng quan đọc snapshot Smart Money chung. Spec: [terminal-workspace-spec](terminal-workspace-spec.md), [smart-money-spec](smart-money-spec.md) |
 | Thị trường `/market` | MarketHubPage | Hub P0: tab **Kỹ thuật** (ma trận market-v1) và **Dòng tiền** (Smart Money: Tổng quan / Đáng chú ý / Watchlist). URL `tab=technical\|flow`, `flowTab=overview\|notable\|watchlist`. Gate: Terminal **hoặc** `market.view` / `smart_money.view`. `/smart-money` redirect vào Dòng tiền. API/collector không gộp. — [market-hub-spec](market-hub-spec.md), [market-scoring-spec](market-scoring-spec.md), [smart-money-spec](smart-money-spec.md) |
-| Báo cáo `/reports` | ReportsPage | Tab **Hiệu quả lệnh** = TradePerformancePage: đủ bộ lọc Account Static (Live/Paper theo `isPaper`, status, copy, closed…), lọc kết quả nhóm (minWin/minTrades/minPnl/gain) không đổi KPI tổng; tab **Ví & dòng tiền** = AccountLedgerPage (chưa hỗ trợ Paper — báo + nút Chuyển sang Live); **Báo cáo cũ** → Account Static. `statistics.view`. URL giữ bộ lọc. |
+| Báo cáo `/reports` | ReportsPage | Tab **Hiệu quả lệnh** = TradePerformancePage: mặc định `username=__all__` + `scope=mine` + `range=today` (UTC), sổ Live, theo closeTime; đủ bộ lọc Account Static; bảng nhóm có cột **PnL Static** và **Income DB** (`futures_profits`) ở tab Tài khoản/Config; chart PnL thu nhỏ khi ≤3 ngày; tab **Ví & dòng tiền** = AccountLedgerPage (mặc định tất cả user + hôm nay UTC; chưa hỗ trợ Paper); **Báo cáo cũ** → Account Static. `statistics.view`. URL giữ bộ lọc. |
 | Account Static `/signals?view=statics` | AccountStaticLegacyPage | Legacy so sánh signal/config; giữ trong giai đoạn chuyển đổi. openTime mặc định 3 ngày; AI gợi ý lọc |
 | Tổng kết (cũ) `/summary` | Redirect | → `/?tab=summary` (giữ query range/audience) |
 | Lịch sử `/logs` | AuditLogsPage | Hai nguồn: sửa trên web và log runtime; `logs.view` |
@@ -77,7 +77,7 @@ Khi sổ live đổi (đóng, mở, đổi size), Terminal hiện toast trong tr
 
 | Mục | Nguồn / thời gian |
 |---|---|
-| Hiệu quả giao dịch (Account Static) | `account_statics`; UI analytics mặc định 7 ngày, theo closeTime UTC, lệnh đã đóng, sổ Live. Win rate/profit factor theo `profit` hợp lệ (không dùng status làm nguồn duy nhất). `roe` không gọi ROI tài khoản. Deep-link Ledger khi có quyền. API cũ không gửi `analytics`/`range` vẫn lọc openTime mặc định 3 ngày |
+| Hiệu quả giao dịch (Account Static) | `account_statics`; UI Báo cáo analytics mặc định hôm nay UTC + tất cả user của tôi, theo closeTime, lệnh đã đóng, sổ Live. Win rate/profit factor theo `profit` hợp lệ. Cột Income DB từ `futures_profits` cùng kỳ (gần `/i`, khác PnL lệnh). `roe` không gọi ROI tài khoản. Deep-link Ledger khi có quyền. API cũ không gửi `analytics`/`range` vẫn lọc openTime mặc định 3 ngày |
 | Provider Scorecard | Feed `signal_infos` (hệ thống) + trades `account_statics` (scope bot); cùng openTime; win = status WIN |
 | Tìm Signal | Lệnh thật theo openTime, signal và config; điều kiện win dựa vào profit trong module này |
 | Tổng kết | Lệnh live; lọc closeTime, fallback openTime nếu thiếu closeTime; win/loss dựa trạng thái WIN và LOSS/LOSE |

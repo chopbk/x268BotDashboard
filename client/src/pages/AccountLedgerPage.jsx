@@ -47,7 +47,7 @@ function points(series, key, width, height, minValue, maxValue) {
 
 export default function AccountLedgerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const days = searchParams.get("days") || "14";
+  const days = searchParams.get("days") || "today";
   const username = searchParams.get("username") || "";
   const showOthers = searchParams.get("others") === "1";
   const showInactive = searchParams.get("inactive") === "1";
@@ -74,7 +74,7 @@ export default function AccountLedgerPage() {
   }
 
   function setDays(value) {
-    patchParams({ days: value || "14" });
+    patchParams({ days: value || "today" });
   }
 
   function setShowOthers(checked) {
@@ -110,9 +110,7 @@ export default function AccountLedgerPage() {
         if (requested && !requested.mine && !showOthers) patchParams({ others: true });
         if (requested && requested.active === false && !showInactive) patchParams({ inactive: true });
         if (!username) {
-          const choices = filterUsers(result.users, showOthers, showInactive);
-          const preferred = choices.find((item) => item.username === result.username) || choices[0];
-          if (preferred) patchParams({ username: preferred.username });
+          patchParams({ username: ALL, days: searchParams.get("days") || "today" });
         }
       })
       .catch((err) => {

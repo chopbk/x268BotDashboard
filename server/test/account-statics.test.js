@@ -5,6 +5,7 @@ process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 const UserAccount = require("../src/models/user-account");
 const AccountConfig = require("../src/models/account-config");
 const AccountStatic = require("../src/models/account-static");
+const FuturesProfit = require("../src/models/futures-profit");
 const FuturesSymbol = require("../src/models/futures-symbol");
 const { decimalsFromStep } = require("../src/lib/symbol-info");
 const {
@@ -368,6 +369,7 @@ test("Account Static analytics aggregates every user in scope when username=__al
         count: AccountStatic.countDocuments,
         aggregate: AccountStatic.aggregate,
         configs: AccountConfig.find,
+        profits: FuturesProfit.find,
     };
     let rowFilter;
     UserAccount.find = () => query([
@@ -376,6 +378,24 @@ test("Account Static analytics aggregates every user in scope when username=__al
         { username: "gamma", accounts: ["g1"], ownerUserId: "other", visibility: "public", active: true },
     ]);
     AccountConfig.find = () => query([]);
+    FuturesProfit.find = () => query([
+        {
+            env: "A1",
+            day: new Date("2026-10-01T00:00:00.000Z"),
+            profit: 10,
+            fee: -1,
+            funding: 0,
+            stats: { wallet: { incomeByType: { REALIZED_PNL: 10, COMMISSION: -1 } } },
+        },
+        {
+            env: "B1",
+            day: new Date("2026-10-01T00:00:00.000Z"),
+            profit: -4,
+            fee: -0.5,
+            funding: 0,
+            stats: { wallet: { incomeByType: { REALIZED_PNL: -4, COMMISSION: -0.5 } } },
+        },
+    ]);
     AccountStatic.find = (filter) => {
         rowFilter = filter;
         return query([{
@@ -421,11 +441,17 @@ test("Account Static analytics aggregates every user in scope when username=__al
         assert.equal(result.stats.byUser.length, 2);
         assert.equal(result.stats.byUser.find((row) => row.username === "alpha")?.profit, 3);
         assert.equal(result.stats.byUser.find((row) => row.username === "beta")?.profit, 2);
+        assert.equal(result.stats.byUser.find((row) => row.username === "alpha")?.income, 9);
+        assert.equal(result.stats.byUser.find((row) => row.username === "beta")?.income, -4.5);
+        assert.equal(result.stats.byConfig.find((row) => row.env === "a1")?.income, 9);
+        assert.equal(result.stats.byConfig.find((row) => row.env === "b1")?.income, -4.5);
+        assert.equal(result.formulas.income.includes("futures_profits"), true);
     } finally {
         UserAccount.find = originals.find;
         AccountStatic.find = originals.rows;
         AccountStatic.countDocuments = originals.count;
         AccountStatic.aggregate = originals.aggregate;
         AccountConfig.find = originals.configs;
+        FuturesProfit.find = originals.profits;
     }
 });

@@ -1643,6 +1643,12 @@ button.linkish:hover { background: none; }
 .perf-extras-list small { display: block; font-size: 0.68rem; font-weight: 500; }
 .perf-analysis { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 12px; min-width: 0; }
 .perf-chart { min-width: 0; }
+.perf-chart.compact { max-width: 480px; }
+.perf-chart.tiny { max-width: 360px; }
+.perf-chart.compact .perf-chart-head h2 { font-size: 1rem; }
+.perf-chart.tiny .perf-chart-head h2 { font-size: 0.95rem; margin: 0 0 2px; }
+.perf-chart.compact .perf-chart-head .muted { font-size: 0.8rem; margin: 0; }
+.perf-chart.tiny .perf-chart-head { margin-bottom: 4px; }
 .perf-chart-head { margin-bottom: 8px; }
 .perf-chart-svg { width: 100%; height: auto; display: block; }
 .perf-chart-zero { stroke: var(--line); stroke-dasharray: 4 4; }

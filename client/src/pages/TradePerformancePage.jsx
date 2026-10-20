@@ -143,10 +143,14 @@ function sortGroups(rows, key) {
 }
 
 function PnlChart({ series, selectedDay, onSelectDay, timeField }) {
-  const width = 640;
-  const height = 220;
-  const pad = { top: 16, right: 12, bottom: 28, left: 48 };
   const rows = series || [];
+  const activeDays = rows.filter((row) => (row.trades || 0) > 0 || Number(row.profit)).length;
+  const spanDays = rows.length;
+  const slim = Math.min(activeDays || spanDays, spanDays) <= 3 || spanDays <= 3;
+  const tiny = activeDays <= 1 || spanDays <= 1;
+  const width = tiny ? 360 : slim ? 480 : 640;
+  const height = tiny ? 100 : slim ? 140 : 220;
+  const pad = { top: 12, right: 12, bottom: tiny ? 18 : 28, left: tiny ? 40 : 48 };
   if (!rows.length) {
     return <div className="card perf-chart empty"><p className="muted">Chưa có chuỗi PnL để vẽ.</p></div>;
   }
@@ -169,14 +173,18 @@ function PnlChart({ series, selectedDay, onSelectDay, timeField }) {
   }).join(" ");
 
   return (
-    <div className="card perf-chart">
+    <div className={`card perf-chart${slim ? " compact" : ""}${tiny ? " tiny" : ""}`}>
       <div className="perf-chart-head">
         <div>
           <h2>PnL theo ngày đóng (UTC)</h2>
-          <p className="muted">
-            Đường là PnL lũy kế của tập lệnh đang xem, bắt đầu từ 0 — không phải balance/equity tài khoản.
-            {timeField === "openTime" ? " Đang lọc theo ngày mở; trục vẫn theo ngày đóng của nhóm lệnh đó." : ""}
-          </p>
+          {activeDays > 1 ? (
+            <p className="muted">
+              Đường là PnL lũy kế của tập lệnh đang xem, bắt đầu từ 0 — không phải balance/equity tài khoản.
+              {timeField === "openTime" ? " Đang lọc theo ngày mở; trục vẫn theo ngày đóng của nhóm lệnh đó." : ""}
+            </p>
+          ) : (
+            <p className="muted">Một ngày trong kỳ — cột = PnL ngày (Account Static).</p>
+          )}
         </div>
       </div>
       <svg className="perf-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Biểu đồ PnL theo ngày">
@@ -223,17 +231,19 @@ function PnlChart({ series, selectedDay, onSelectDay, timeField }) {
   );
 }
 
-function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek, sortKey, onSort, book }) {
+function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek, sortKey, onSort, book, showIncome }) {
   const sorted = sortGroups(rows, sortKey);
   const maxAbs = Math.max(1, ...sorted.map((row) => Math.abs(Number(row.profit) || 0)));
   const heads = [
     ["count", "Lệnh"],
     ["winRate", "Win rate"],
-    ["profit", "PnL"],
+    ["profit", "PnL Static"],
+    showIncome ? ["income", "Income DB"] : null,
     ["avgProfit", "PnL TB"],
     ["volume", "Volume"],
     ["profitFactor", "PF"],
-  ];
+  ].filter(Boolean);
+  const colCount = 3 + heads.length + (onPeek ? 1 : 0);
   return (
     <div className="table-wrap perf-table">
       <table>
@@ -250,7 +260,7 @@ function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 ? <tr><td colSpan={onPeek ? 9 : 8}>Không có nhóm đạt bộ lọc kết quả.</td></tr> : null}
+          {sorted.length === 0 ? <tr><td colSpan={colCount}>Không có nhóm đạt bộ lọc kết quả.</td></tr> : null}
           {sorted.map((row) => {
             const name = row[nameKey];
             const pnl = row.profit;
@@ -283,6 +293,7 @@ function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek
                     <span className={`perf-inlinebar ${tone(pnl)}`} style={{ width }} />
                   </div>
                 </td>
+                {showIncome ? <td className={`num ${tone(row.income)}`}>{money(row.income)}</td> : null}
                 <td className="num">{money(avg)}</td>
                 <td className="num">{row.volume == null ? "—" : money(row.volume)}</td>
                 <td className="num">{row.profitFactorLabel || (row.profitFactor == null ? "—" : fmt(row.profitFactor, 2))}</td>
@@ -397,7 +408,7 @@ export default function TradePerformancePage() {
   const [audience, setAudience] = useState("mine");
   const [data, setData] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [groupTab, setGroupTab] = useState("signal");
+  const [groupTab, setGroupTab] = useState("user");
   const [groupSort, setGroupSort] = useState("profit");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -425,7 +436,7 @@ export default function TradePerformancePage() {
   const copy = params.get("copy") || "";
   const closed = params.get("closed") || "closed";
   const timeField = params.get("time") === "open" ? "open" : "close";
-  const range = params.get("range") || "7";
+  const range = params.get("range") || "today";
   const from = params.get("from") || "";
   const to = params.get("to") || "";
   const listDay = params.get("listDay") || "";
@@ -485,7 +496,7 @@ export default function TradePerformancePage() {
       copy: "",
       closed: "closed",
       time: "close",
-      range: "7",
+      range: "today",
       from: "",
       to: "",
       listDay: "",
@@ -523,28 +534,31 @@ export default function TradePerformancePage() {
       else if (current && inOthers && !inMine) setAudience("others");
       else if (!current || (!isAll && !inMine && !inOthers)) {
         update({
-          username: mine[0]?.username || ALL_USERS,
-          scope: mine.length ? "" : "mine",
+          username: ALL_USERS,
+          scope: "mine",
           env: "",
           book: "live",
-          range: range || "7",
+          range: "today",
           time: "close",
           closed: "closed",
           analytics: "1",
         }, { replace: true });
+        setGroupTab("user");
       } else if (
         !params.get("analytics")
         || (onReports ? params.get("tab") !== "performance" : params.get("view") !== "performance")
         || (isAll && !scopeParam)
+        || !params.get("range")
       ) {
         update({
           book: params.get("book") || "live",
-          range: params.get("range") || (params.get("from") ? "custom" : "7"),
+          range: params.get("range") || (params.get("from") ? "custom" : "today"),
           time: params.get("time") || "close",
           closed: params.get("closed") || "closed",
-          scope: isAll ? (scopeParam || audienceScope) : "",
+          scope: isAll ? (scopeParam || "mine") : "",
           analytics: "1",
         }, { replace: true });
+        if (isAll) setGroupTab("user");
       }
     }).catch((err) => {
       if (!cancelled) setError(err.message);
@@ -887,6 +901,9 @@ export default function TradePerformancePage() {
                   {groupRows.length}/{rawGroupRows.length} nhóm
                   {resultFilterNote ? ` · lọc kết quả: ${resultFilterNote}` : " · chưa lọc kết quả nhóm"}.
                   Bấm một nhóm để lọc danh sách lệnh (giữ sổ {book === "paper" ? "Paper" : "Live"} và kỳ hiện tại).
+                  {(groupTab === "user" || groupTab === "config")
+                    ? " PnL Static = profit lệnh account_statics; Income DB = trading income futures_profits (gần /i) cùng kỳ UTC."
+                    : ""}
                 </p>
                 <GroupTable
                   rows={groupRows.map((row) => ({ ...row, avgProfit: row.valid ? (Number(row.profit) || 0) / row.valid : null }))}
@@ -894,8 +911,9 @@ export default function TradePerformancePage() {
                   nameLabel={groupTab === "user" ? "Tài khoản" : groupTab === "config" ? "Config" : groupTab === "symbol" ? "Symbol" : groupTab === "side" ? "Side" : "Signal"}
                   username={allUsers ? "" : username}
                   book={book}
+                  showIncome={groupTab === "user" || groupTab === "config"}
                   active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : groupTab === "user" ? "" : q}
-                  sortKey={groupSort === "avgProfit" || groupSort === "volume" ? groupSort : groupSort}
+                  sortKey={groupSort === "avgProfit" || groupSort === "volume" || groupSort === "income" ? groupSort : groupSort}
                   onSort={setGroupSort}
                   onPeek={groupTab === "config" && configAllowed
                     ? (value, row) => openConfigPeek(value, row?.username)
