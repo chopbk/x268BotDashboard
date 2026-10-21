@@ -287,9 +287,14 @@ function grossFromPrices(side, qty, entry, close) {
 
 function historyPart(row) {
     const side = String(row?.positionSide || row?.side || "BOTH").toUpperCase();
-    const fromPrices = grossFromPrices(side, row?.closedVolume ?? row?.closedQty ?? row?.qty, row?.entryPrice ?? row?.avgEntryPrice, row?.avgClosePrice ?? row?.closePrice);
-    const given = Number(row?.realizedPnl ?? row?.realizedProfit ?? row?.pnl);
-    const realized = Number.isFinite(given) ? given : (fromPrices || 0);
+    // Ưu tiên đúng field PnL Binance /fapi/v1/positionHistory trả về — không bịa từ entry/close khi đã có số.
+    const rawPnl = row?.realizedPnl ?? row?.realizedProfit ?? row?.closedPnl ?? row?.pnl;
+    const hasBinancePnl = rawPnl != null && rawPnl !== "";
+    const given = Number(rawPnl);
+    const fromPrices = hasBinancePnl
+        ? null
+        : grossFromPrices(side, row?.closedVolume ?? row?.closedQty ?? row?.qty, row?.entryPrice ?? row?.avgEntryPrice, row?.avgClosePrice ?? row?.closePrice);
+    const realized = hasBinancePnl && Number.isFinite(given) ? given : (fromPrices || 0);
     return {
         symbol: String(row?.symbol || "").toUpperCase(),
         side,
@@ -297,6 +302,7 @@ function historyPart(row) {
         fee: signedFee(row?.commission ?? row?.fee),
         funding: Number(row?.fundingFee ?? row?.funding) || 0,
         time: Number(row?.updateTime || row?.closedTime || row?.time || 0),
+        fromBinance: hasBinancePnl && Number.isFinite(given),
     };
 }
 
@@ -709,8 +715,15 @@ function applyFillRecord(parent, history, trades, income) {
         .filter((row) => row.symbol === parent.symbol && sameSide(parent.side, row.side) && inWindow(row.time, opened));
     if (historyRows.length) {
         const parts = sumParts(historyRows);
-        parent.recorded = recordedBundle(parts, "positionHistory");
-        parent.recordedNet = parent.recorded.net;
+        const fromBinance = historyRows.some((row) => row.fromBinance);
+        // Hiển thị theo PnL Binance (realizedPnl); fee/funding chỉ ghi chú trong tooltip.
+        const bundle = recordedBundle(parts, "positionHistory");
+        if (fromBinance) {
+            bundle.display = parts.realized;
+            bundle.displayLabel = "Binance positionHistory";
+        }
+        parent.recorded = bundle;
+        parent.recordedNet = fromBinance ? parts.realized : bundle.net;
         return;
     }
     const fills = (Array.isArray(trades) ? trades : [])

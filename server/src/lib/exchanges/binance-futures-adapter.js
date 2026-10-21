@@ -148,7 +148,8 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
             positionHistory = rows.map((row) => ({
                 symbol: row.symbol,
                 positionSide: row.positionSide,
-                realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.pnl,
+                // Closed PnL từ Binance Position History (ưu tiên field sàn trả về).
+                realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.closedPnl ?? row.pnl,
                 commission: row.commission ?? row.fee,
                 fundingFee: row.fundingFee ?? row.funding,
                 closedVolume: row.closedVolume ?? row.closedQty ?? row.qty,

@@ -150,7 +150,12 @@ export default function DetailPanel({
               <div><span>Entry</span><strong className="term-num">{fmt(row.entry)}</strong></div>
               <div><span>Mark</span><strong className="term-num">{fmt(row.mark)}</strong></div>
               <div><span>PnL mở (toàn vị thế)</span><strong className={`term-num ${pnlClass(row.unrealized)}`}>{row.unrealized == null ? "—" : fmt(row.unrealized, 2)}</strong></div>
-              <div><span>PnL ghi nhận</span><strong className={`term-num ${pnlClass(row.recorded?.net)}`}>{row.recorded ? fmt(row.recorded.net, 2) : "—"}</strong></div>
+              <div>
+                <span>PnL ghi nhận{row.recorded?.displayLabel ? " · Binance" : ""}</span>
+                <strong className={`term-num ${pnlClass(row.recorded?.display ?? row.recordedNet ?? row.recorded?.net)}`}>
+                  {row.recorded ? fmt(row.recorded.display ?? row.recordedNet ?? row.recorded.net, 2) : "—"}
+                </strong>
+              </div>
               <div><span>Thanh lý</span><strong className="term-num">{fmt(row.liquidation)}</strong></div>
               <div><span>SL</span><strong className={`term-protect-${status.sl.kind}`}>{status.sl.label} {status.sl.detail}</strong></div>
               <div><span>TP</span><strong className={`term-protect-${status.tp.kind}`}>{status.tp.label} {status.tp.detail}</strong></div>

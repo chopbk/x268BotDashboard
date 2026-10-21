@@ -940,9 +940,17 @@ export default function PositionsPage() {
             <tbody>
               {rows.map((row) => {
                 const roi = roiOf(row);
-                const recordedFrom = row.recorded?.source === "positionHistory" ? "Position history" : row.recorded?.source === "trades" ? "Lệnh đóng" : row.recorded?.source === "income" ? "Income" : "Monitor";
+                const fromBinance = row.recorded?.source === "positionHistory" && row.recorded?.displayLabel;
+                const recordedFrom = fromBinance ? "Binance /fapi/v1/positionHistory"
+                  : row.recorded?.source === "positionHistory" ? "Position history"
+                  : row.recorded?.source === "trades" ? "Lệnh đóng"
+                  : row.recorded?.source === "income" ? "Income"
+                  : "Monitor";
+                const recordedValue = fromBinance && row.recorded.display != null
+                  ? row.recorded.display
+                  : (row.recordedNet != null ? row.recordedNet : row.recorded?.net);
                 const recordedTitle = row.recorded
-                  ? `${recordedFrom} · chốt ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
+                  ? `${recordedFrom} · PnL ${fmt(row.recorded.realized, 2)} · fee ${fmt(row.recorded.fee, 2)} · funding ${fmt(row.recorded.funding, 2)}`
                   : "Chưa có position history, lệnh đóng hoặc stats";
                 return (
                 <Fragment key={row.key}>
@@ -964,7 +972,7 @@ export default function PositionsPage() {
                         {roi == null ? null : <span>{roi > 0 ? "+" : ""}{fmt(roi, 2)}%</span>}
                       </span>
                     </td>
-                    <td className={pnlClass(row.recorded?.net)} title={recordedTitle}>{row.recorded ? fmt(row.recorded.net, 2) : "—"}</td>
+                    <td className={pnlClass(recordedValue)} title={recordedTitle}>{row.recorded ? fmt(recordedValue, 2) : "—"}</td>
                     <td>{fmt(row.liquidation)}</td>
                     <td>{volumeOf(row) == null ? "—" : fmt(volumeOf(row), 2)}</td>
                   </tr>
