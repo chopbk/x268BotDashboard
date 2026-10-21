@@ -114,7 +114,7 @@ URL đề xuất: `/terminal?tab=positions&account=bot-demo&book=live&symbol=BTC
 | P15 | Open orders, lọc, chọn và hủy từng lệnh/hàng loạt | Tab Lệnh chờ |
 | P16 | Ticket Buy/Sell Market/Limit/Stop Market/Stop Limit; reduce-only đúng mode | Panel Đặt lệnh → Lệnh nâng cao |
 | P17 | Order history, lọc thời gian/type/status/kind/side, phân trang, chi tiết | Tab Lịch sử lệnh |
-| P18 | Position history: range, profit, reason, copy, signal, sort/page | Tab Lịch sử vị thế |
+| P18 | Position history live từ Binance `/fapi/v1/positionHistory`; gắn config env/signal; range, profit, reason, copy, signal, sort/page | Tab Lịch sử vị thế |
 | P19 | History summary: lời/lỗ/hòa, win rate, PF, avg win/loss/hold, missing PnL | Summary của tab lịch sử |
 | P20 | Trade detail: narrative, source/missing, fees/funding, ROE/R, observed extremes, snapshot/logs, link config khi có quyền | Panel chi tiết lịch sử |
 | P21 | Toast và opt-in browser notification mở/đóng vị thế | Trung tâm thông báo nhỏ |

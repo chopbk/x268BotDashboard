@@ -19,6 +19,34 @@ const ALGO_ORDER_TYPES = new Set([
     "TRAILING_STOP_MARKET",
 ]);
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HISTORY_CHUNK_MS = 7 * DAY_MS;
+
+function mapPositionHistoryRow(row) {
+    return {
+        symbol: row.symbol,
+        positionSide: row.positionSide,
+        // Closed PnL từ Binance Position History (ưu tiên field sàn trả về).
+        realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.closedPnl ?? row.pnl,
+        commission: row.commission ?? row.fee,
+        fundingFee: row.fundingFee ?? row.funding,
+        closedVolume: row.closedVolume ?? row.closedQty ?? row.qty,
+        entryPrice: row.entryPrice ?? row.avgEntryPrice,
+        avgClosePrice: row.avgClosePrice ?? row.closePrice,
+        time: row.updateTime || row.closedTime || row.time,
+    };
+}
+
+function historyRowKey(row) {
+    return [
+        String(row.symbol || "").toUpperCase(),
+        String(row.positionSide || ""),
+        String(row.time || ""),
+        String(row.realizedPnl ?? ""),
+        String(row.closedVolume ?? ""),
+    ].join("|");
+}
+
 class BinanceFuturesAdapter extends BaseExchangeAdapter {
     constructor(opts = {}) {
         super({ ...opts, exchange: "binance" });
@@ -115,10 +143,52 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         }
     }
 
+    /**
+     * Lịch sử vị thế đóng từ /fapi/v1/positionHistory.
+     * Chia cửa sổ 7 ngày vì API giới hạn limit ~100 mỗi lần gọi.
+     */
+    async fetchPositionHistory({ startTime, endTime, limit = 100 } = {}) {
+        this.requireCapability("history");
+        const end = Number.isFinite(Number(endTime)) ? Number(endTime) : Date.now();
+        const start = Number.isFinite(Number(startTime)) ? Number(startTime) : end - 3 * DAY_MS;
+        if (!(end >= start)) return [];
+        const pageLimit = Math.min(100, Math.max(1, Number(limit) || 100));
+        const out = [];
+        const seen = new Set();
+        for (let cursor = start; cursor < end; cursor += HISTORY_CHUNK_MS) {
+            const chunkEnd = Math.min(cursor + HISTORY_CHUNK_MS, end);
+            try {
+                const raw = await this.queued(
+                    () => this.client.signedGet("/fapi/v1/positionHistory", {
+                        startTime: cursor,
+                        endTime: chunkEnd,
+                        limit: pageLimit,
+                    }),
+                    5
+                );
+                const rows = Array.isArray(raw) ? raw : raw?.rows || raw?.list || [];
+                for (const row of rows) {
+                    const mapped = mapPositionHistoryRow(row);
+                    const key = historyRowKey(mapped);
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    out.push(mapped);
+                }
+            } catch (error) {
+                if (error.status === 429) throw error;
+                console.error("[BinanceFuturesAdapter.fetchPositionHistory]", error.message);
+            }
+            if (chunkEnd < end) {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+        }
+        return out;
+    }
+
     async getHistoryDetails({ positions = null } = {}) {
         this.requireCapability("history");
         const now = Date.now();
-        const startTime = now - 3 * 24 * 60 * 60 * 1000;
+        const startTime = now - 3 * DAY_MS;
         let income = [];
         let positionHistory = [];
         const trades = [];
@@ -140,23 +210,7 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         }
 
         try {
-            const raw = await this.queued(
-                () => this.client.signedGet("/fapi/v1/positionHistory", { startTime, limit: 100 }),
-                5
-            );
-            const rows = Array.isArray(raw) ? raw : raw?.rows || raw?.list || [];
-            positionHistory = rows.map((row) => ({
-                symbol: row.symbol,
-                positionSide: row.positionSide,
-                // Closed PnL từ Binance Position History (ưu tiên field sàn trả về).
-                realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.closedPnl ?? row.pnl,
-                commission: row.commission ?? row.fee,
-                fundingFee: row.fundingFee ?? row.funding,
-                closedVolume: row.closedVolume ?? row.closedQty ?? row.qty,
-                entryPrice: row.entryPrice ?? row.avgEntryPrice,
-                avgClosePrice: row.avgClosePrice ?? row.closePrice,
-                time: row.updateTime || row.closedTime || row.time,
-            }));
+            positionHistory = await this.fetchPositionHistory({ startTime, endTime: now, limit: 100 });
         } catch (error) {
             if (error.status === 429) throw error;
             console.error("[BinanceFuturesAdapter.getHistoryDetails] history", error.message);

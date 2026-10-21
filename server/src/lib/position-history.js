@@ -120,6 +120,147 @@ function reasonClause(reason) {
     return null;
 }
 
+/** Khớp bộ lọc lý do đóng trên closeReason (dùng cho dòng Binance đã gắn config). */
+function reasonMatches(closeReason, reason) {
+    const name = String(reason || "").trim().toLowerCase();
+    if (!name) return true;
+    const r = String(closeReason || "");
+    if (name === "max_loss") return /MAX_LOSS/i.test(r);
+    if (name === "signal") return /SIGNAL/i.test(r);
+    if (name === "sl_profit" || name === "trailing") return /SL_PROFIT|HSL_PROFIT|TRAIL_SL|TRAIL/i.test(r);
+    if (name === "sl") return /SL_FILL|HSL_FILL|SL_LEFTOVER/i.test(r);
+    if (name === "manual" || name === "gone") return /MANUAL|COMMAND|POSITION_GONE/i.test(r);
+    if (name === "tp") return /TP_FILL|TP_ALL|TP_PARTIAL|(^|_)TP($|_)/i.test(r);
+    if (name === "unknown") return !r.trim() || r === "END_MONITOR" || r === "FETCH_FAIL";
+    return true;
+}
+
+const MATCH_CLOSE_MS = 45 * 60 * 1000;
+
+function normalizeHistorySide(positionSide, fallback = "") {
+    const side = String(positionSide || "").trim().toUpperCase();
+    if (side === "LONG" || side === "SHORT") return side;
+    const fb = String(fallback || "").trim().toUpperCase();
+    if (fb === "LONG" || fb === "SHORT") return fb;
+    return side === "BOTH" ? "BOTH" : "";
+}
+
+function encodeBinanceHistoryId(parts = {}) {
+    const payload = [
+        parts.account || "",
+        String(parts.symbol || "").toUpperCase(),
+        parts.side || "",
+        String(parts.time || ""),
+        parts.pnl == null || parts.pnl === "" ? "" : String(parts.pnl),
+    ].join("|");
+    return `bh_${Buffer.from(payload, "utf8").toString("base64url")}`;
+}
+
+function decodeBinanceHistoryId(id) {
+    const text = String(id || "");
+    if (!text.startsWith("bh_")) return null;
+    try {
+        const raw = Buffer.from(text.slice(3), "base64url").toString("utf8");
+        const [account, symbol, side, time, pnl] = raw.split("|");
+        return {
+            account: account || "",
+            symbol: symbol || "",
+            side: side || "",
+            time: Number(time),
+            pnl: pnl === "" || pnl == null ? null : Number(pnl),
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Gắn dòng Binance positionHistory với account_statics cùng account (env),
+ * symbol/side và closeTime gần nhau — chỉ để biết config nào.
+ */
+function matchConfigToHistory(binanceRow, statics, accountEnvs) {
+    const symbol = String(binanceRow?.symbol || "").toUpperCase();
+    const side = normalizeHistorySide(binanceRow?.positionSide);
+    const closeMs = Number(binanceRow?.time) || 0;
+    if (!symbol || !closeMs || !accountEnvs?.length) return null;
+    const envSet = new Set(accountEnvs.map((env) => String(env || "").trim()).filter(Boolean));
+    const qty = finite(binanceRow?.closedVolume);
+    const candidates = (statics || []).filter((row) => {
+        if (!envSet.has(String(row?.env || "").trim())) return false;
+        if (String(row?.symbol || "").toUpperCase() !== symbol) return false;
+        const rowSide = String(row?.side || "").toUpperCase();
+        if (side === "LONG" || side === "SHORT") {
+            if (rowSide && rowSide !== side) return false;
+        }
+        const rowClose = new Date(row?.closeTime).getTime();
+        if (!Number.isFinite(rowClose)) return false;
+        return Math.abs(rowClose - closeMs) <= MATCH_CLOSE_MS;
+    });
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => {
+        const da = Math.abs(new Date(a.closeTime).getTime() - closeMs);
+        const db = Math.abs(new Date(b.closeTime).getTime() - closeMs);
+        if (da !== db) return da - db;
+        if (qty == null) return 0;
+        const qa = finite(a.positionAmt);
+        const qb = finite(b.positionAmt);
+        const ea = qa == null ? 1e9 : Math.abs(Math.abs(qa) - Math.abs(qty));
+        const eb = qb == null ? 1e9 : Math.abs(Math.abs(qb) - Math.abs(qty));
+        return ea - eb;
+    });
+    return candidates[0];
+}
+
+function presentBinanceHistoryRow(row, account, match) {
+    const profit = finite(row?.realizedPnl);
+    const entry = finite(row?.entryPrice);
+    const exit = finite(row?.avgClosePrice);
+    const qty = finite(row?.closedVolume);
+    const cost = match ? finite(match.costAmount) : null;
+    const leverage = match ? finite(match.futuresLeverage) : null;
+    let roe = match ? finite(match.roe) : null;
+    if (roe == null && profit != null && cost != null && cost > 0) {
+        roe = Math.round((profit / cost) * 10000) / 100;
+    }
+    const closeTime = row?.time ? new Date(Number(row.time)) : null;
+    const openTime = match?.openTime || null;
+    const side = normalizeHistorySide(row?.positionSide, match?.side);
+    return {
+        id: encodeBinanceHistoryId({
+            account,
+            symbol: row?.symbol,
+            side,
+            time: row?.time,
+            pnl: profit,
+        }),
+        account: account || "",
+        env: match?.env || "",
+        signal: match?.typeSignal || "",
+        symbol: String(row?.symbol || "").toUpperCase(),
+        side: side === "BOTH" ? (match?.side || "") : side,
+        entry,
+        exit,
+        qty,
+        volume: null,
+        leverage,
+        cost,
+        profit,
+        roe,
+        roeBasis: cost != null && cost > 0
+            ? "realizedPnl Binance / costAmount config khớp"
+            : "PnL từ Binance /fapi/v1/positionHistory",
+        openTime,
+        closeTime,
+        holdMs: openTime && closeTime ? Math.max(0, closeTime.getTime() - new Date(openTime).getTime()) : null,
+        closeReason: match?.closeReason || "",
+        reasonLabel: match ? reasonLabel(match.closeReason) : "—",
+        paper: false,
+        copy: match?.isCopy === true,
+        source: "binance_position_history",
+        configMatched: Boolean(match?.env),
+    };
+}
+
 function narrateTrade(row) {
     const logs = Array.isArray(row?.logs) ? row.logs : [];
     const events = new Set(logs.map((item) => String(item?.event || "")));
@@ -320,23 +461,128 @@ function envAccount(bots) {
     return map;
 }
 
-async function listPositionHistory(actor, query = {}) {
-    const bots = await historyBots(actor, query.audience);
-    const account = String(query.account || "").trim();
-    const selected = account ? bots.filter((bot) => bot.username === account) : bots;
-    if (account && !selected.length) throw httpError(403, "Không có quyền thống kê tài khoản này");
-    const owners = envAccount(selected);
+function sortPresented(rows, sortKey, dir) {
+    return [...(rows || [])].sort((a, b) => {
+        const left = sortKey === "holdMs"
+            ? (a.holdMs != null ? a.holdMs : holdMs(a))
+            : sortKey === "profit"
+                ? finite(a.profit)
+                : new Date(a.closeTime).getTime();
+        const right = sortKey === "holdMs"
+            ? (b.holdMs != null ? b.holdMs : holdMs(b))
+            : sortKey === "profit"
+                ? finite(b.profit)
+                : new Date(b.closeTime).getTime();
+        if (left == null && right == null) return 0;
+        if (left == null) return 1;
+        if (right == null) return -1;
+        return left === right ? 0 : (left > right ? dir : -dir);
+    });
+}
+
+function passesPresentedFilters(row, query = {}) {
+    const side = String(query.side || "").trim().toUpperCase();
+    if ((side === "LONG" || side === "SHORT") && String(row.side || "").toUpperCase() !== side) return false;
+    const symbol = String(query.symbol || "").trim();
+    if (symbol && !new RegExp(escapeRegex(symbol), "i").test(row.symbol || "")) return false;
+    const signal = String(query.signal || "").trim();
+    if (signal && !new RegExp(`^${escapeRegex(signal)}$`, "i").test(row.signal || "")) return false;
+    const copy = String(query.copy || "").trim().toLowerCase();
+    if (copy === "copy" && row.copy !== true) return false;
+    if (copy === "manual" && row.copy === true) return false;
+    const profit = String(query.profit || "").trim().toLowerCase();
+    const pnl = finite(row.profit);
+    if (profit === "win" && !(pnl > 0)) return false;
+    if (profit === "loss" && !(pnl < 0)) return false;
+    if (profit === "flat" && pnl !== 0) return false;
+    const reason = String(query.reason || "").trim().toLowerCase();
+    if (reason) {
+        if (reason === "unknown") {
+            if (row.configMatched && !reasonMatches(row.closeReason, "unknown")) return false;
+            // chưa khớp config → coi là unknown
+        } else if (!row.configMatched || !reasonMatches(row.closeReason, reason)) {
+            return false;
+        }
+    }
+    const env = String(query.env || "").trim();
+    if (env && row.env !== env) return false;
+    return true;
+}
+
+async function loadConfigStaticsForMatch(envs, window) {
+    const list = envs.length ? envs : ["__none__"];
+    return AccountStatic.find({
+        env: { $in: list },
+        isPaper: { $ne: true },
+        closeTime: {
+            $gte: new Date(window.from.getTime() - MATCH_CLOSE_MS),
+            $lte: new Date(window.to.getTime() + MATCH_CLOSE_MS),
+        },
+    })
+        .select("env symbol side typeSignal closeReason closeTime openTime entryPrice closePrice positionAmt profit roe isCopy futuresLeverage costAmount")
+        .lean();
+}
+
+async function listBinanceLiveHistory(selected, owners, window, query, errors) {
+    const { getExchangeAdapter } = require("./exchanges");
+    const { eachLimit } = require("./positions");
+    const envFilter = String(query.env || "").trim();
+    const envs = envFilter ? [envFilter] : [...owners.keys()];
+    const statics = await loadConfigStaticsForMatch(envs, window);
+    const accounts = selected.map((bot) => bot.username);
+    const fetched = await eachLimit(
+        accounts,
+        1,
+        async (username) => {
+            try {
+                const adapter = await getExchangeAdapter(username);
+                if (!adapter.capabilities().history) {
+                    return { username, rows: [], unsupported: true };
+                }
+                if (typeof adapter.fetchPositionHistory !== "function") {
+                    return { username, rows: [], unsupported: true };
+                }
+                const rows = await adapter.fetchPositionHistory({
+                    startTime: window.from.getTime(),
+                    endTime: window.to.getTime(),
+                    limit: 100,
+                });
+                return { username, rows: Array.isArray(rows) ? rows : [] };
+            } catch (error) {
+                console.error("[listPositionHistory]", username, error.message);
+                return { username, rows: [], error: error.message || "Không lấy được positionHistory" };
+            }
+        },
+        { gapMs: 400 }
+    );
+
+    const presented = [];
+    for (const item of fetched) {
+        if (item.error) errors.push({ account: item.username, error: item.error });
+        // Sàn không có positionHistory: bỏ qua im lặng (tab này ưu tiên Binance).
+        if (item.unsupported) continue;
+        const bot = selected.find((row) => row.username === item.username);
+        const accountEnvs = (bot?.accounts || []).map((name) => String(name || "").trim()).filter(Boolean);
+        for (const row of item.rows || []) {
+            const t = Number(row.time);
+            if (Number.isFinite(t) && (t < window.from.getTime() || t > window.to.getTime())) continue;
+            const match = matchConfigToHistory(row, statics, accountEnvs);
+            const presentedRow = presentBinanceHistoryRow(row, item.username, match);
+            if (!passesPresentedFilters(presentedRow, query)) continue;
+            presented.push(presentedRow);
+        }
+    }
+    return presented;
+}
+
+async function listPaperHistoryMongo(owners, window, query) {
     const env = String(query.env || "").trim();
     const envs = env ? [env] : [...owners.keys()];
-    if (env && !owners.has(env)) throw httpError(404, "Config không thuộc các tài khoản đang xem");
-    const window = historyWindow(query);
-    const book = bookOf(query.book);
     const match = {
         env: { $in: envs.length ? envs : ["__none__"] },
         closeTime: { $gte: window.from, $lte: window.to },
+        isPaper: true,
     };
-    if (book === "paper") match.isPaper = true;
-    else if (book === "live") match.isPaper = { $ne: true };
     const side = String(query.side || "").trim().toUpperCase();
     if (side === "LONG" || side === "SHORT") match.side = side;
     const symbol = String(query.symbol || "").trim();
@@ -352,9 +598,6 @@ async function listPositionHistory(actor, query = {}) {
     else if (profit === "flat") match.profit = 0;
     const reason = reasonClause(query.reason);
     if (reason) Object.assign(match, reason);
-    const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
-    const dir = query.dir === "asc" ? 1 : -1;
-    const sortKey = query.sort === "pnl" ? "profit" : query.sort === "hold" ? "holdMs" : "closeTime";
     const grouped = await AccountStatic.aggregate([
         { $match: match },
         { $project: { logs: 0 } },
@@ -362,41 +605,178 @@ async function listPositionHistory(actor, query = {}) {
         { $group: { _id: { env: "$env", symbol: "$symbol", side: "$side", open: { $ifNull: ["$openTime", "$_id"] } }, doc: { $first: "$$ROOT" } } },
         { $replaceRoot: { newRoot: "$doc" } },
     ]);
-    const rows = collapseTrades(grouped);
-    const liveRows = rows.filter((row) => row.isPaper !== true);
-    const paperRows = rows.filter((row) => row.isPaper === true);
-    const sorted = [...rows].sort((a, b) => {
-        const left = sortKey === "holdMs" ? holdMs(a) : sortKey === "profit" ? finite(a.profit) : new Date(a.closeTime).getTime();
-        const right = sortKey === "holdMs" ? holdMs(b) : sortKey === "profit" ? finite(b.profit) : new Date(b.closeTime).getTime();
-        if (left == null && right == null) return 0;
-        if (left == null) return 1;
-        if (right == null) return -1;
-        return left === right ? 0 : (left > right ? dir : -dir);
+    return collapseTrades(grouped).map((row) => {
+        const presented = presentRow(row, owners.get(row.env) || "");
+        presented.source = "account_statics";
+        presented.configMatched = Boolean(row.env);
+        return presented;
     });
+}
+
+async function listPositionHistory(actor, query = {}) {
+    const bots = await historyBots(actor, query.audience);
+    const account = String(query.account || "").trim();
+    const selected = account ? bots.filter((bot) => bot.username === account) : bots;
+    if (account && !selected.length) throw httpError(403, "Không có quyền thống kê tài khoản này");
+    const owners = envAccount(selected);
+    const env = String(query.env || "").trim();
+    if (env && !owners.has(env)) throw httpError(404, "Config không thuộc các tài khoản đang xem");
+    const window = historyWindow(query);
+    const book = bookOf(query.book);
+    const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+    const dir = query.dir === "asc" ? 1 : -1;
+    const sortKey = query.sort === "pnl" ? "profit" : query.sort === "hold" ? "holdMs" : "closeTime";
+    const errors = [];
+
+    let liveRows = [];
+    let paperRows = [];
+    if (book !== "paper") {
+        liveRows = await listBinanceLiveHistory(selected, owners, window, query, errors);
+    }
+    if (book !== "live") {
+        paperRows = await listPaperHistoryMongo(owners, window, query);
+    }
+
+    const rows = book === "paper" ? paperRows : book === "all" ? [...liveRows, ...paperRows] : liveRows;
+    const sorted = sortPresented(rows, sortKey, dir);
     const slice = sorted.slice((page - 1) * PAGE_LIMIT, page * PAGE_LIMIT);
     return {
         accounts: bots.map((bot) => ({ username: bot.username, accounts: bot.accounts || [] })),
-        rows: slice.map((row) => presentRow(row, owners.get(row.env) || "")),
+        rows: slice,
         page,
         limit: PAGE_LIMIT,
         total: rows.length,
         range: { preset: window.preset, from: window.from, to: window.to },
         book,
         separateBooks: true,
+        source: book === "paper" ? "account_statics" : "binance_position_history",
+        errors,
         summaries: {
             live: book === "paper" ? null : summarizeBook(liveRows),
             paper: book === "live" ? null : summarizeBook(paperRows),
         },
         formula: {
-            winRate: "Thắng / (thắng + thua + hòa). Lệnh không có profit không đưa vào mẫu số.",
-            profitFactor: "Tổng profit dương / trị tuyệt đối tổng profit âm. Thiếu một trong hai nhóm thì để trống.",
-            pnl: "Tổng field profit đã lưu trên account_statics. Lệnh live là realized + commission + funding theo symbol từ lúc mở. Không cộng live với paper.",
-            hold: "Trung bình closeTime − openTime của lệnh có đủ cả hai mốc.",
+            winRate: "Thắng / (thắng + thua + hòa). Lệnh không có PnL không đưa vào mẫu số.",
+            profitFactor: "Tổng PnL dương / trị tuyệt đối tổng PnL âm. Thiếu một trong hai nhóm thì để trống.",
+            pnl: "Live: realizedPnl từ Binance /fapi/v1/positionHistory. Paper: profit đã lưu trên account_statics. Không cộng live với paper. Cột config/signal chỉ gắn khi khớp account_statics.",
+            hold: "Trung bình closeTime − openTime khi có giờ mở từ config khớp (live) hoặc account_statics (paper).",
         },
     };
 }
 
+async function readBinanceTrade(row, account, match, actor, bots) {
+    let full = match;
+    if (match?._id) {
+        try {
+            const loaded = await AccountStatic.findById(match._id).lean();
+            if (loaded) full = loaded;
+        } catch (error) {
+            console.error("[getPositionHistory] load static", error.message);
+        }
+    }
+    const base = presentBinanceHistoryRow(row, account, full || match);
+    const stats = snapshotOf(full?.stats);
+    const includesFees = stats.pnlIncludesFees === true;
+    const canConfig = hasPermission(actor, PERMISSIONS.CONFIG_VIEW)
+        && bots.some((bot) => bot.username === account && canAccessResource(actor, PERMISSIONS.CONFIG_VIEW, bot));
+    let monitorId = null;
+    if (full?.openTime && full?.env) {
+        const monitor = await MonitorPosition.findOne({
+            env: full.env,
+            symbol: full.symbol,
+            side: full.side,
+            startTime: full.openTime,
+        }).select("_id").lean();
+        if (monitor && hasPermission(actor, PERMISSIONS.POSITIONS_VIEW)) monitorId = String(monitor._id);
+    }
+    return {
+        ...base,
+        logs: Array.isArray(full?.logs) ? full.logs.slice(-80) : [],
+        stats,
+        narrative: full
+            ? narrateTrade(full)
+            : "Dữ liệu từ Binance /fapi/v1/positionHistory. Chưa khớp config trên account_statics.",
+        rMultiple: full ? rMultiple(full) : null,
+        rNote: "R = profit / (|entry − SL mở| × |qty|) khi có stats.slPriceOpen khác 0 từ config khớp.",
+        costs: {
+            profit: base.profit,
+            realized: finite(row?.realizedPnl),
+            commission: finite(row?.commission),
+            funding: finite(row?.fundingFee),
+            includesFees,
+            note: "PnL chính từ Binance Position History (realizedPnl). Config chỉ để biết env/signal/lý do đóng.",
+        },
+        observed: {
+            maxRoe: finite(stats.maxRoe),
+            minRoe: finite(stats.minRoe),
+            maxUnrealized: finite(stats.maxUnrealized),
+            minUnrealized: finite(stats.minUnrealized),
+            note: "Mức cao/thấp monitor ghi khi có config khớp; không phải toàn bộ biến động sàn.",
+        },
+        source: "binance_position_history",
+        missing: [
+            base.profit == null ? "realizedPnl" : null,
+            base.exit == null ? "giá đóng" : null,
+            !base.env ? "config" : null,
+            !(full?.logs?.length) ? "logs" : null,
+        ].filter(Boolean),
+        links: {
+            config: canConfig && base.env
+                ? `/bots/${encodeURIComponent(account)}/accounts/${encodeURIComponent(base.env)}`
+                : null,
+            monitorId,
+        },
+    };
+}
+
+async function getBinancePositionHistoryDetail(actor, decoded, query = {}) {
+    const bots = await historyBots(actor, query.audience);
+    const bot = bots.find((row) => row.username === decoded.account);
+    if (!bot) throw httpError(404, "Không tìm thấy giao dịch");
+    const { getExchangeAdapter } = require("./exchanges");
+    let rows = [];
+    try {
+        const adapter = await getExchangeAdapter(decoded.account);
+        if (!adapter.capabilities().history || typeof adapter.fetchPositionHistory !== "function") {
+            throw httpError(404, "Sàn không hỗ trợ positionHistory");
+        }
+        const t = Number(decoded.time);
+        const center = Number.isFinite(t) ? t : Date.now();
+        rows = await adapter.fetchPositionHistory({
+            startTime: center - DAY_MS,
+            endTime: center + DAY_MS,
+            limit: 100,
+        });
+    } catch (error) {
+        if (error.status) throw error;
+        console.error("[getPositionHistory]", decoded.account, error.message);
+        throw httpError(502, error.message || "Không lấy được positionHistory");
+    }
+    const symbol = String(decoded.symbol || "").toUpperCase();
+    const found = (rows || []).find((row) => {
+        if (String(row.symbol || "").toUpperCase() !== symbol) return false;
+        if (Number(row.time) !== Number(decoded.time)) return false;
+        const side = normalizeHistorySide(row.positionSide);
+        if (decoded.side && side && side !== "BOTH" && decoded.side !== "BOTH" && side !== decoded.side) return false;
+        if (decoded.pnl != null && Number.isFinite(decoded.pnl)) {
+            const pnl = finite(row.realizedPnl);
+            if (pnl != null && pnl !== decoded.pnl) return false;
+        }
+        return true;
+    });
+    if (!found) throw httpError(404, "Không tìm thấy giao dịch trên Binance");
+    const owners = envAccount([bot]);
+    const statics = await loadConfigStaticsForMatch([...owners.keys()], {
+        from: new Date(Number(decoded.time) - MATCH_CLOSE_MS),
+        to: new Date(Number(decoded.time) + MATCH_CLOSE_MS),
+    });
+    const match = matchConfigToHistory(found, statics, bot.accounts || []);
+    return readBinanceTrade(found, decoded.account, match, actor, bots);
+}
+
 async function getPositionHistory(actor, id, query = {}) {
+    const decoded = decodeBinanceHistoryId(id);
+    if (decoded) return getBinancePositionHistoryDetail(actor, decoded, query);
     if (!/^[a-f0-9]{24}$/i.test(String(id || ""))) throw httpError(400, "Mã giao dịch không hợp lệ");
     const bots = await historyBots(actor, query.audience);
     const owners = envAccount(bots);
@@ -424,7 +804,13 @@ module.exports = {
     narrateTrade,
     rMultiple,
     reasonLabel,
+    reasonMatches,
     readTrade,
+    normalizeHistorySide,
+    encodeBinanceHistoryId,
+    decodeBinanceHistoryId,
+    matchConfigToHistory,
+    presentBinanceHistoryRow,
     listPositionHistory,
     getPositionHistory,
 };

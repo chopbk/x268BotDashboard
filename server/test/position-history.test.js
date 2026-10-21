@@ -3,7 +3,19 @@ const assert = require("node:assert/strict");
 
 process.env.WEB_JWT_SECRET = "test-secret-at-least-16-characters";
 
-const { collapseTrades, summarizeBook, narrateTrade, rMultiple, reasonLabel, historyWindow } = require("../src/lib/position-history");
+const {
+    collapseTrades,
+    summarizeBook,
+    narrateTrade,
+    rMultiple,
+    reasonLabel,
+    historyWindow,
+    encodeBinanceHistoryId,
+    decodeBinanceHistoryId,
+    matchConfigToHistory,
+    presentBinanceHistoryRow,
+    reasonMatches,
+} = require("../src/lib/position-history");
 
 test("same monitor is one trade and two configs of one symbol stay separate", () => {
     const open = new Date("2026-10-01T00:00:00.000Z");
@@ -61,4 +73,62 @@ test("today and custom bounds are UTC calendar days", () => {
     const custom = historyWindow({ range: "custom", from: "2026-10-01", to: "2026-10-03" }, now);
     assert.equal(custom.from.toISOString(), "2026-10-01T00:00:00.000Z");
     assert.equal(custom.to.toISOString(), "2026-10-03T23:59:59.999Z");
+});
+
+test("binance history id round-trips", () => {
+    const id = encodeBinanceHistoryId({
+        account: "alice",
+        symbol: "btcusdt",
+        side: "LONG",
+        time: 1710000000000,
+        pnl: 12.5,
+    });
+    assert.match(id, /^bh_/);
+    const decoded = decodeBinanceHistoryId(id);
+    assert.equal(decoded.account, "alice");
+    assert.equal(decoded.symbol, "BTCUSDT");
+    assert.equal(decoded.side, "LONG");
+    assert.equal(decoded.time, 1710000000000);
+    assert.equal(decoded.pnl, 12.5);
+});
+
+test("matchConfigToHistory prefers closest closeTime on same symbol/side", () => {
+    const closeMs = Date.parse("2026-10-10T12:00:00.000Z");
+    const match = matchConfigToHistory(
+        { symbol: "ETHUSDT", positionSide: "SHORT", time: closeMs, closedVolume: 2, realizedPnl: -1 },
+        [
+            { env: "A1", symbol: "ETHUSDT", side: "SHORT", closeTime: new Date(closeMs - 60 * 60 * 1000), positionAmt: 2, typeSignal: "OLD" },
+            { env: "A1", symbol: "ETHUSDT", side: "SHORT", closeTime: new Date(closeMs + 2 * 60 * 1000), positionAmt: 2, typeSignal: "NEAR" },
+            { env: "B1", symbol: "ETHUSDT", side: "SHORT", closeTime: new Date(closeMs), positionAmt: 2, typeSignal: "OTHER" },
+        ],
+        ["A1"]
+    );
+    assert.equal(match.typeSignal, "NEAR");
+    assert.equal(match.env, "A1");
+});
+
+test("presentBinanceHistoryRow uses Binance PnL and optional config", () => {
+    const row = presentBinanceHistoryRow(
+        {
+            symbol: "BTCUSDT",
+            positionSide: "LONG",
+            realizedPnl: 8.25,
+            entryPrice: 100,
+            avgClosePrice: 101,
+            closedVolume: 1,
+            time: Date.parse("2026-10-10T12:00:00.000Z"),
+        },
+        "bob",
+        { env: "CFG1", typeSignal: "ROSE", closeReason: "TP_FILL", costAmount: 50, isCopy: true }
+    );
+    assert.equal(row.account, "bob");
+    assert.equal(row.env, "CFG1");
+    assert.equal(row.signal, "ROSE");
+    assert.equal(row.profit, 8.25);
+    assert.equal(row.roe, 16.5);
+    assert.equal(row.reasonLabel, "Khớp hết TP");
+    assert.equal(row.source, "binance_position_history");
+    assert.equal(row.configMatched, true);
+    assert.equal(reasonMatches("TP_FILL", "tp"), true);
+    assert.equal(reasonMatches("", "unknown"), true);
 });

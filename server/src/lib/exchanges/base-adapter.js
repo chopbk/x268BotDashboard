@@ -38,6 +38,10 @@ class BaseExchangeAdapter {
         throw unsupportedAction(this.displayName, "history");
     }
 
+    async fetchPositionHistory() {
+        throw unsupportedAction(this.displayName, "history");
+    }
+
     async getBalance() {
         throw unsupportedAction(this.displayName, "snapshot");
     }

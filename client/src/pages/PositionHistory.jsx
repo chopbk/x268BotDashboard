@@ -205,14 +205,17 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
           </select>
         </label>
       </div>
-      <p className="muted">Mỗi dòng là một account_statics lúc monitor của config đóng, không tách từng lần TP. Live và paper không cộng chung. {data?.formula?.pnl}</p>
+      <p className="muted">Live lấy từ Binance <code>/fapi/v1/positionHistory</code>; cột config/signal chỉ gắn khi khớp monitor đã đóng. Paper vẫn từ account_statics. Không cộng live với paper. {data?.formula?.pnl}</p>
       <p className="muted">{data?.formula?.winRate} {data?.formula?.profitFactor}</p>
       {fresh ? <p className="pos-stale">Có lệnh đóng mới. Bộ lọc vẫn giữ. <button type="button" onClick={() => setReload((value) => value + 1)}>Tải lại</button></p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {data?.errors?.length ? (
+        <p className="form-error">{data.errors.map((row) => `${row.account}: ${row.error}`).join(" · ")}</p>
+      ) : null}
       {loading ? <p className="muted">Đang tải lịch sử…</p> : null}
       {data ? (
         <div className="stats-grid">
-          <SummaryCard title="Live · profit đã lưu" summary={data.summaries?.live} />
+          <SummaryCard title="Live · Binance realizedPnl" summary={data.summaries?.live} />
           <SummaryCard title="Paper · profit đã lưu" summary={data.summaries?.paper} />
         </div>
       ) : null}
@@ -224,6 +227,7 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
               <tr>
                 <th><button type="button" className="sort-col" onClick={() => sortBy("time")}>Đóng</button></th>
                 <th>Tài khoản</th>
+                <th>Config</th>
                 <th>Signal</th>
                 <th>Symbol</th>
                 <th>Vào / ra</th>
@@ -238,7 +242,8 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
               {data.rows.map((row) => (
                 <tr key={row.id}>
                   <td>{when(row.closeTime)}</td>
-                  <td>{row.account} · {row.env}</td>
+                  <td>{row.account || "—"}</td>
+                  <td title={row.configMatched ? "Khớp account_statics" : "Chưa khớp config"}>{row.env || "—"}</td>
                   <td>{row.signal || "—"}</td>
                   <td>
                     <button type="button" className="linkish" data-row={row.id} onClick={() => go((query) => query.set("trade", row.id), { layer: true })}>{row.symbol}</button>
@@ -287,7 +292,7 @@ function TradeDetail({ detail }) {
       <p className="muted">Nguồn {detail.source}. Thiếu: {detail.missing?.length ? detail.missing.join(", ") : "không"}.</p>
       <p>Mở {when(detail.openTime)} · đóng {when(detail.closeTime)} · {detail.account} / {detail.env} · {detail.signal || "không signal"} · {detail.reasonLabel}</p>
       <p>Entry {num(detail.entry, 4)} · exit {num(detail.exit, 4)} · qty {num(detail.qty, 4)} · đòn bẩy {num(detail.leverage, 0)} · vốn {num(detail.cost, 2)}</p>
-      <p className={tone(detail.profit)}>PnL đã lưu {signed(detail.profit)}. ROE {num(detail.roe, 2)} ({detail.roeBasis}).</p>
+      <p className={tone(detail.profit)}>PnL {signed(detail.profit)}. ROE {num(detail.roe, 2)} ({detail.roeBasis}).</p>
       <p className="muted">{detail.costs?.note} Realized {signed(detail.costs?.realized)} · phí {signed(detail.costs?.commission)} · funding {signed(detail.costs?.funding)}.</p>
       <p className="muted">{detail.observed?.note} ROE cao {num(detail.observed?.maxRoe, 1)} · ROE thấp {num(detail.observed?.minRoe, 1)} · lãi mở cao {signed(detail.observed?.maxUnrealized)} · thấp {signed(detail.observed?.minUnrealized)}.</p>
       <p className="muted">{detail.rNote} R {detail.rMultiple == null ? "—" : num(detail.rMultiple, 2)}.</p>
