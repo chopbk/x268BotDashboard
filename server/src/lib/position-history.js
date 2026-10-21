@@ -213,9 +213,9 @@ function matchConfigToHistory(binanceRow, statics, accountEnvs) {
 
 function presentBinanceHistoryRow(row, account, match) {
     const profit = finite(row?.realizedPnl);
-    const entry = finite(row?.entryPrice);
-    const exit = finite(row?.avgClosePrice);
-    const qty = finite(row?.closedVolume);
+    const entry = finite(row?.entryPrice) ?? (match ? finite(match.entryPrice) : null);
+    const exit = finite(row?.avgClosePrice) ?? (match ? finite(match.closePrice) : null);
+    const qty = finite(row?.closedVolume) ?? (match ? finite(match.positionAmt) : null);
     const cost = match ? finite(match.costAmount) : null;
     const leverage = match ? finite(match.futuresLeverage) : null;
     let roe = match ? finite(match.roe) : null;
@@ -223,8 +223,11 @@ function presentBinanceHistoryRow(row, account, match) {
         roe = Math.round((profit / cost) * 10000) / 100;
     }
     const closeTime = row?.time ? new Date(Number(row.time)) : null;
-    const openTime = match?.openTime || null;
+    const openTime = row?.openTime ? new Date(Number(row.openTime)) : (match?.openTime || null);
     const side = normalizeHistorySide(row?.positionSide, match?.side);
+    const binanceSource = row?.source === "income_realized_pnl"
+        ? "binance_income_realized_pnl"
+        : "binance_user_trades";
     return {
         id: encodeBinanceHistoryId({
             account,
@@ -248,15 +251,15 @@ function presentBinanceHistoryRow(row, account, match) {
         roe,
         roeBasis: cost != null && cost > 0
             ? "realizedPnl Binance / costAmount config khớp"
-            : "PnL từ Binance /fapi/v1/positionHistory",
+            : "PnL từ Binance (userTrades / income REALIZED_PNL)",
         openTime,
         closeTime,
-        holdMs: openTime && closeTime ? Math.max(0, closeTime.getTime() - new Date(openTime).getTime()) : null,
+        holdMs: openTime && closeTime ? Math.max(0, new Date(closeTime).getTime() - new Date(openTime).getTime()) : null,
         closeReason: match?.closeReason || "",
         reasonLabel: match ? reasonLabel(match.closeReason) : "—",
         paper: false,
         copy: match?.isCopy === true,
-        source: "binance_position_history",
+        source: binanceSource,
         configMatched: Boolean(match?.env),
     };
 }
@@ -649,7 +652,7 @@ async function listPositionHistory(actor, query = {}) {
         range: { preset: window.preset, from: window.from, to: window.to },
         book,
         separateBooks: true,
-        source: book === "paper" ? "account_statics" : "binance_position_history",
+        source: book === "paper" ? "account_statics" : "binance_user_trades",
         errors,
         summaries: {
             live: book === "paper" ? null : summarizeBook(liveRows),
@@ -658,8 +661,8 @@ async function listPositionHistory(actor, query = {}) {
         formula: {
             winRate: "Thắng / (thắng + thua + hòa). Lệnh không có PnL không đưa vào mẫu số.",
             profitFactor: "Tổng PnL dương / trị tuyệt đối tổng PnL âm. Thiếu một trong hai nhóm thì để trống.",
-            pnl: "Live: realizedPnl từ Binance /fapi/v1/positionHistory. Paper: profit đã lưu trên account_statics. Không cộng live với paper. Cột config/signal chỉ gắn khi khớp account_statics.",
-            hold: "Trung bình closeTime − openTime khi có giờ mở từ config khớp (live) hoặc account_statics (paper).",
+            pnl: "Live: tái tạo từ Binance userTrades (fallback income REALIZED_PNL). API không có /fapi/v1/positionHistory. Paper: account_statics. Không cộng live với paper. Config/signal chỉ khi khớp account_statics.",
+            hold: "Trung bình closeTime − openTime khi có giờ mở từ userTrades hoặc config khớp.",
         },
     };
 }
@@ -695,7 +698,7 @@ async function readBinanceTrade(row, account, match, actor, bots) {
         stats,
         narrative: full
             ? narrateTrade(full)
-            : "Dữ liệu từ Binance /fapi/v1/positionHistory. Chưa khớp config trên account_statics.",
+            : "Dữ liệu từ Binance userTrades / income REALIZED_PNL. Chưa khớp config trên account_statics.",
         rMultiple: full ? rMultiple(full) : null,
         rNote: "R = profit / (|entry − SL mở| × |qty|) khi có stats.slPriceOpen khác 0 từ config khớp.",
         costs: {
@@ -704,7 +707,7 @@ async function readBinanceTrade(row, account, match, actor, bots) {
             commission: finite(row?.commission),
             funding: finite(row?.fundingFee),
             includesFees,
-            note: "PnL chính từ Binance Position History (realizedPnl). Config chỉ để biết env/signal/lý do đóng.",
+            note: "PnL từ Binance (tái tạo userTrades hoặc income REALIZED_PNL). Config chỉ để biết env/signal/lý do đóng.",
         },
         observed: {
             maxRoe: finite(stats.maxRoe),
@@ -713,7 +716,7 @@ async function readBinanceTrade(row, account, match, actor, bots) {
             minUnrealized: finite(stats.minUnrealized),
             note: "Mức cao/thấp monitor ghi khi có config khớp; không phải toàn bộ biến động sàn.",
         },
-        source: "binance_position_history",
+        source: base.source || "binance_user_trades",
         missing: [
             base.profit == null ? "realizedPnl" : null,
             base.exit == null ? "giá đóng" : null,

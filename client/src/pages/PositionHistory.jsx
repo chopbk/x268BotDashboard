@@ -205,7 +205,7 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
           </select>
         </label>
       </div>
-      <p className="muted">Live lấy từ Binance <code>/fapi/v1/positionHistory</code>; cột config/signal chỉ gắn khi khớp monitor đã đóng. Paper vẫn từ account_statics. Không cộng live với paper. {data?.formula?.pnl}</p>
+      <p className="muted">Live tái tạo từ Binance <code>userTrades</code> / <code>income REALIZED_PNL</code> (API không có <code>/fapi/v1/positionHistory</code>). Config/signal chỉ khi khớp monitor đã đóng. Paper từ account_statics. {data?.formula?.pnl}</p>
       <p className="muted">{data?.formula?.winRate} {data?.formula?.profitFactor}</p>
       {fresh ? <p className="pos-stale">Có lệnh đóng mới. Bộ lọc vẫn giữ. <button type="button" onClick={() => setReload((value) => value + 1)}>Tải lại</button></p> : null}
       {error ? <p className="form-error">{error}</p> : null}
@@ -215,7 +215,7 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
       {loading ? <p className="muted">Đang tải lịch sử…</p> : null}
       {data ? (
         <div className="stats-grid">
-          <SummaryCard title="Live · Binance realizedPnl" summary={data.summaries?.live} />
+          <SummaryCard title="Live · Binance (trades/income)" summary={data.summaries?.live} />
           <SummaryCard title="Paper · profit đã lưu" summary={data.summaries?.paper} />
         </div>
       ) : null}

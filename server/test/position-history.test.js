@@ -127,7 +127,7 @@ test("presentBinanceHistoryRow uses Binance PnL and optional config", () => {
     assert.equal(row.profit, 8.25);
     assert.equal(row.roe, 16.5);
     assert.equal(row.reasonLabel, "Khớp hết TP");
-    assert.equal(row.source, "binance_position_history");
+    assert.equal(row.source, "binance_user_trades");
     assert.equal(row.configMatched, true);
     assert.equal(reasonMatches("TP_FILL", "tp"), true);
     assert.equal(reasonMatches("", "unknown"), true);

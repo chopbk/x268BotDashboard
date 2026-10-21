@@ -287,7 +287,7 @@ function grossFromPrices(side, qty, entry, close) {
 
 function historyPart(row) {
     const side = String(row?.positionSide || row?.side || "BOTH").toUpperCase();
-    // Ưu tiên đúng field PnL Binance /fapi/v1/positionHistory trả về — không bịa từ entry/close khi đã có số.
+    // Ưu tiên realizedPnl sàn (userTrades / income) — không bịa từ entry/close khi đã có số.
     const rawPnl = row?.realizedPnl ?? row?.realizedProfit ?? row?.closedPnl ?? row?.pnl;
     const hasBinancePnl = rawPnl != null && rawPnl !== "";
     const given = Number(rawPnl);

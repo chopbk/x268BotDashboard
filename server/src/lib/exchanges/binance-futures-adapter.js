@@ -20,21 +20,15 @@ const ALGO_ORDER_TYPES = new Set([
 ]);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** userTrades / income: khung truy vấn an toàn ~7 ngày. */
 const HISTORY_CHUNK_MS = 7 * DAY_MS;
+/** Gộp các lần REALIZED_PNL cùng symbol trong burst đóng. */
+const REALIZED_GROUP_MS = 5 * 60 * 1000;
+const QTY_EPS = 1e-8;
+const MAX_HISTORY_SYMBOLS = 40;
 
-function mapPositionHistoryRow(row) {
-    return {
-        symbol: row.symbol,
-        positionSide: row.positionSide,
-        // Closed PnL từ Binance Position History (ưu tiên field sàn trả về).
-        realizedPnl: row.realizedPnl ?? row.realizedProfit ?? row.closedPnl ?? row.pnl,
-        commission: row.commission ?? row.fee,
-        fundingFee: row.fundingFee ?? row.funding,
-        closedVolume: row.closedVolume ?? row.closedQty ?? row.qty,
-        entryPrice: row.entryPrice ?? row.avgEntryPrice,
-        avgClosePrice: row.avgClosePrice ?? row.closePrice,
-        time: row.updateTime || row.closedTime || row.time,
-    };
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function historyRowKey(row) {
@@ -45,6 +39,132 @@ function historyRowKey(row) {
         String(row.realizedPnl ?? ""),
         String(row.closedVolume ?? ""),
     ].join("|");
+}
+
+/**
+ * Binance không có GET /fapi/v1/positionHistory (404).
+ * Gộp income REALIZED_PNL cùng symbol trong cửa sổ ngắn → gần với một lần đóng.
+ */
+function groupRealizedPnlIncomes(rows) {
+    const sorted = [...(rows || [])]
+        .filter((row) => String(row?.symbol || "").trim())
+        .filter((row) => {
+            const kind = String(row?.incomeType || "REALIZED_PNL").toUpperCase();
+            return !row?.incomeType || kind === "REALIZED_PNL";
+        })
+        .sort((a, b) => (Number(a.time) || 0) - (Number(b.time) || 0));
+    const groups = [];
+    for (const row of sorted) {
+        const symbol = String(row.symbol || "").toUpperCase();
+        const time = Number(row.time) || 0;
+        const income = Number(row.income);
+        if (!Number.isFinite(income)) continue;
+        const last = groups[groups.length - 1];
+        if (last && last.symbol === symbol && time - last.time <= REALIZED_GROUP_MS) {
+            last.realizedPnl += income;
+            last.time = time;
+            last.count += 1;
+            continue;
+        }
+        groups.push({ symbol, realizedPnl: income, time, count: 1 });
+    }
+    return groups.map((group) => ({
+        symbol: group.symbol,
+        positionSide: "BOTH",
+        realizedPnl: Math.round(group.realizedPnl * 1e8) / 1e8,
+        commission: null,
+        fundingFee: null,
+        closedVolume: null,
+        entryPrice: null,
+        avgClosePrice: null,
+        time: group.time,
+        source: "income_realized_pnl",
+    }));
+}
+
+function tradeQtyDelta(trade) {
+    const qty = Math.abs(Number(trade?.qty) || 0);
+    if (!(qty > 0)) return 0;
+    const orderSide = String(trade?.side || "").toUpperCase();
+    const positionSide = String(trade?.positionSide || "BOTH").toUpperCase();
+    if (positionSide === "LONG") return orderSide === "BUY" ? qty : -qty;
+    if (positionSide === "SHORT") return orderSide === "SELL" ? qty : -qty;
+    return orderSide === "BUY" ? qty : -qty;
+}
+
+/**
+ * Tái tạo vị thế đã đóng (net qty về 0) từ userTrades — gần menu Position History trên Binance.
+ */
+function reconstructClosedFromTrades(trades) {
+    const byKey = new Map();
+    for (const trade of trades || []) {
+        const symbol = String(trade?.symbol || "").toUpperCase();
+        if (!symbol) continue;
+        const positionSide = String(trade?.positionSide || "BOTH").toUpperCase();
+        const key = `${symbol}|${positionSide}`;
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(trade);
+    }
+    const closed = [];
+    for (const [key, list] of byKey) {
+        const [symbol, positionSide] = key.split("|");
+        const ordered = [...list].sort((a, b) => (Number(a.time) || 0) - (Number(b.time) || 0)
+            || (Number(a.id) || 0) - (Number(b.id) || 0));
+        let net = 0;
+        let cycle = null;
+        for (const trade of ordered) {
+            const delta = tradeQtyDelta(trade);
+            if (!delta) continue;
+            const price = Number(trade.price) || 0;
+            const absQty = Math.abs(delta);
+            const pnl = Number(trade.realizedPnl);
+            const fee = Number(trade.commission);
+            if (Math.abs(net) < QTY_EPS) {
+                cycle = {
+                    openTime: trade.time,
+                    entryNotional: 0,
+                    entryQty: 0,
+                    closeNotional: 0,
+                    closeQty: 0,
+                    realized: 0,
+                    commission: 0,
+                };
+            }
+            if (!cycle) continue;
+            const prev = net;
+            const next = prev + delta;
+            if (Math.abs(next) > Math.abs(prev) + QTY_EPS) {
+                cycle.entryNotional += price * absQty;
+                cycle.entryQty += absQty;
+            } else {
+                cycle.closeNotional += price * absQty;
+                cycle.closeQty += absQty;
+            }
+            if (Number.isFinite(pnl)) cycle.realized += pnl;
+            if (Number.isFinite(fee)) cycle.commission += fee;
+            net = next;
+            if (Math.abs(prev) > QTY_EPS && Math.abs(net) <= QTY_EPS) {
+                closed.push({
+                    symbol,
+                    positionSide,
+                    realizedPnl: Math.round(cycle.realized * 1e8) / 1e8,
+                    commission: Math.round(cycle.commission * 1e8) / 1e8,
+                    fundingFee: null,
+                    closedVolume: cycle.closeQty > 0
+                        ? Math.round(cycle.closeQty * 1e8) / 1e8
+                        : (cycle.entryQty > 0 ? Math.round(cycle.entryQty * 1e8) / 1e8 : null),
+                    entryPrice: cycle.entryQty > 0 ? cycle.entryNotional / cycle.entryQty : null,
+                    avgClosePrice: cycle.closeQty > 0 ? cycle.closeNotional / cycle.closeQty : null,
+                    time: Number(trade.time) || 0,
+                    openTime: cycle.openTime || null,
+                    source: "user_trades",
+                });
+                net = 0;
+                cycle = null;
+            }
+        }
+    }
+    return closed;
 }
 
 class BinanceFuturesAdapter extends BaseExchangeAdapter {
@@ -144,45 +264,150 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
     }
 
     /**
-     * Lịch sử vị thế đóng từ /fapi/v1/positionHistory.
-     * Chia cửa sổ 7 ngày vì API giới hạn limit ~100 mỗi lần gọi.
+     * Income theo loại — chia cửa sổ 7 ngày + phân trang limit 1000.
+     * (API public không có /fapi/v1/positionHistory — endpoint đó 404.)
+     */
+    async fetchIncomeRange({ startTime, endTime, incomeType = null } = {}) {
+        const end = Number.isFinite(Number(endTime)) ? Number(endTime) : Date.now();
+        const start = Number.isFinite(Number(startTime)) ? Number(startTime) : end - 3 * DAY_MS;
+        if (!(end >= start)) return [];
+        const out = [];
+        for (let cursor = start; cursor < end; cursor += HISTORY_CHUNK_MS) {
+            const chunkEnd = Math.min(cursor + HISTORY_CHUNK_MS, end);
+            let pageStart = cursor;
+            while (pageStart <= chunkEnd) {
+                try {
+                    const params = { startTime: pageStart, endTime: chunkEnd, limit: 1000 };
+                    if (incomeType) params.incomeType = incomeType;
+                    const batch = await this.queued(
+                        () => this.client.signedGet("/fapi/v1/income", params),
+                        30
+                    );
+                    if (!Array.isArray(batch) || !batch.length) break;
+                    out.push(...batch);
+                    if (batch.length < 1000) break;
+                    const last = Number(batch[batch.length - 1].time) || pageStart;
+                    const next = last + 1;
+                    if (next <= pageStart) break;
+                    pageStart = next;
+                } catch (error) {
+                    if (error.status === 429) throw error;
+                    console.error("[BinanceFuturesAdapter.fetchIncomeRange]", error.message);
+                    break;
+                }
+                await sleep(150);
+            }
+            if (chunkEnd < end) await sleep(150);
+        }
+        return out;
+    }
+
+    async fetchUserTradesRange(symbol, startTime, endTime) {
+        const sym = String(symbol || "").toUpperCase();
+        if (!sym) return [];
+        const end = Number.isFinite(Number(endTime)) ? Number(endTime) : Date.now();
+        const start = Number.isFinite(Number(startTime)) ? Number(startTime) : end - 3 * DAY_MS;
+        const out = [];
+        for (let cursor = start; cursor < end; cursor += HISTORY_CHUNK_MS) {
+            const chunkEnd = Math.min(cursor + HISTORY_CHUNK_MS, end);
+            try {
+                const rows = await this.queued(
+                    () => this.client.signedGet("/fapi/v1/userTrades", {
+                        symbol: sym,
+                        startTime: cursor,
+                        endTime: chunkEnd,
+                        limit: 1000,
+                    }),
+                    5
+                );
+                if (Array.isArray(rows)) {
+                    for (const row of rows) {
+                        out.push({
+                            id: row.id,
+                            symbol: row.symbol,
+                            positionSide: row.positionSide,
+                            side: row.side,
+                            realizedPnl: row.realizedPnl,
+                            commission: row.commission,
+                            qty: row.qty,
+                            price: row.price,
+                            time: row.time,
+                        });
+                    }
+                }
+            } catch (error) {
+                if (error.status === 429) throw error;
+                console.error("[BinanceFuturesAdapter.fetchUserTradesRange]", sym, error.message);
+            }
+            if (chunkEnd < end) await sleep(200);
+        }
+        return out;
+    }
+
+    /**
+     * Lịch sử vị thế đóng gần với menu Binance Position History.
+     * Nguồn: userTrades (tái tạo vòng đóng) + fallback income REALIZED_PNL.
      */
     async fetchPositionHistory({ startTime, endTime, limit = 100 } = {}) {
         this.requireCapability("history");
         const end = Number.isFinite(Number(endTime)) ? Number(endTime) : Date.now();
         const start = Number.isFinite(Number(startTime)) ? Number(startTime) : end - 3 * DAY_MS;
         if (!(end >= start)) return [];
-        const pageLimit = Math.min(100, Math.max(1, Number(limit) || 100));
-        const out = [];
+
+        let incomes = [];
+        try {
+            incomes = await this.fetchIncomeRange({
+                startTime: start,
+                endTime: end,
+                incomeType: "REALIZED_PNL",
+            });
+        } catch (error) {
+            if (error.status === 429) throw error;
+            console.error("[BinanceFuturesAdapter.fetchPositionHistory] income", error.message);
+        }
+
+        const score = new Map();
+        for (const row of incomes) {
+            const symbol = String(row.symbol || "").toUpperCase();
+            if (!symbol) continue;
+            score.set(symbol, (score.get(symbol) || 0) + Math.abs(Number(row.income) || 0));
+        }
+        const symbols = [...score.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([symbol]) => symbol)
+            .slice(0, MAX_HISTORY_SYMBOLS);
+
+        const reconstructed = [];
         const seen = new Set();
-        for (let cursor = start; cursor < end; cursor += HISTORY_CHUNK_MS) {
-            const chunkEnd = Math.min(cursor + HISTORY_CHUNK_MS, end);
+        for (let i = 0; i < symbols.length; i += 1) {
+            if (i > 0) await sleep(250);
             try {
-                const raw = await this.queued(
-                    () => this.client.signedGet("/fapi/v1/positionHistory", {
-                        startTime: cursor,
-                        endTime: chunkEnd,
-                        limit: pageLimit,
-                    }),
-                    5
-                );
-                const rows = Array.isArray(raw) ? raw : raw?.rows || raw?.list || [];
-                for (const row of rows) {
-                    const mapped = mapPositionHistoryRow(row);
-                    const key = historyRowKey(mapped);
+                const trades = await this.fetchUserTradesRange(symbols[i], start, end);
+                for (const row of reconstructClosedFromTrades(trades)) {
+                    if (row.time && (row.time < start || row.time > end)) continue;
+                    const key = historyRowKey(row);
                     if (seen.has(key)) continue;
                     seen.add(key);
-                    out.push(mapped);
+                    reconstructed.push(row);
                 }
             } catch (error) {
                 if (error.status === 429) throw error;
-                console.error("[BinanceFuturesAdapter.fetchPositionHistory]", error.message);
-            }
-            if (chunkEnd < end) {
-                await new Promise((resolve) => setTimeout(resolve, 200));
+                console.error("[BinanceFuturesAdapter.fetchPositionHistory] trades", symbols[i], error.message);
             }
         }
-        return out;
+
+        if (!reconstructed.length) {
+            return groupRealizedPnlIncomes(incomes);
+        }
+
+        const covered = new Set(reconstructed.map((row) => String(row.symbol || "").toUpperCase()));
+        const fallback = groupRealizedPnlIncomes(
+            incomes.filter((row) => !covered.has(String(row.symbol || "").toUpperCase()))
+        );
+        const merged = [...reconstructed, ...fallback]
+            .sort((a, b) => (Number(b.time) || 0) - (Number(a.time) || 0));
+        const maxRows = Math.max(100, Number(limit) || 100) * 20;
+        return merged.slice(0, maxRows);
     }
 
     async getHistoryDetails({ positions = null } = {}) {
@@ -194,11 +419,8 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         const trades = [];
 
         try {
-            const incomeRaw = await this.queued(
-                () => this.client.signedGet("/fapi/v1/income", { startTime, limit: 1000 }),
-                30
-            );
-            income = (Array.isArray(incomeRaw) ? incomeRaw : []).map((row) => ({
+            const incomeRaw = await this.fetchIncomeRange({ startTime, endTime: now });
+            income = incomeRaw.map((row) => ({
                 symbol: row.symbol,
                 incomeType: row.incomeType,
                 income: row.income,
@@ -209,40 +431,25 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
             console.error("[BinanceFuturesAdapter.getHistoryDetails] income", error.message);
         }
 
-        try {
-            positionHistory = await this.fetchPositionHistory({ startTime, endTime: now, limit: 100 });
-        } catch (error) {
-            if (error.status === 429) throw error;
-            console.error("[BinanceFuturesAdapter.getHistoryDetails] history", error.message);
-        }
-
         const openPositions = Array.isArray(positions) ? positions : [];
         const symbols = [...new Set(openPositions.map((row) => String(row.symbol || "").toUpperCase()).filter(Boolean))].slice(0, 15);
         for (let i = 0; i < symbols.length; i += 1) {
             const symbol = symbols[i];
-            if (i > 0) await new Promise((r) => setTimeout(r, 350));
+            if (i > 0) await sleep(350);
             try {
-                const rows = await this.queued(
-                    () => this.client.signedGet("/fapi/v1/userTrades", { symbol, startTime, limit: 1000 }),
-                    5
-                );
-                if (!Array.isArray(rows)) continue;
-                for (const row of rows) {
-                    trades.push({
-                        symbol: row.symbol,
-                        positionSide: row.positionSide,
-                        side: row.side,
-                        realizedPnl: row.realizedPnl,
-                        commission: row.commission,
-                        qty: row.qty,
-                        price: row.price,
-                        time: row.time,
-                    });
-                }
+                const rows = await this.fetchUserTradesRange(symbol, startTime, now);
+                trades.push(...rows);
             } catch (error) {
                 if (error.status === 429) throw error;
                 console.error("[BinanceFuturesAdapter.getHistoryDetails] trades", symbol, error.message);
             }
+        }
+
+        positionHistory = reconstructClosedFromTrades(trades);
+        if (!positionHistory.length) {
+            positionHistory = groupRealizedPnlIncomes(
+                income.filter((row) => String(row.incomeType || "").toUpperCase() === "REALIZED_PNL")
+            );
         }
 
         return { income, positionHistory, trades, at: new Date(now).toISOString() };
@@ -743,4 +950,10 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
     }
 }
 
-module.exports = { BinanceFuturesAdapter, ALGO_ORDER_TYPES };
+module.exports = {
+    BinanceFuturesAdapter,
+    ALGO_ORDER_TYPES,
+    groupRealizedPnlIncomes,
+    reconstructClosedFromTrades,
+    tradeQtyDelta,
+};
