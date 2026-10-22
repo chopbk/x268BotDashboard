@@ -12,6 +12,19 @@ const {
 } = require("./store");
 const { getLatestSnapshot: getSmartMoneySnapshot } = require("../smart-money/store");
 const { buildPriceSeed, hasScoredFrames, estimateEtaSeconds } = require("./price-seed");
+const { listRecentSignalsBySymbols } = require("../signal-history");
+const {
+    normalizeTop,
+    normalizeAnalysisTf,
+    normalizeScreen,
+    normalizeEntrySource,
+    reenrichLocation,
+    matchScreen,
+    sortLocationRows,
+    buildSignalEntries,
+    locationSummary,
+} = require("./location-read");
+const { ANALYSIS_TFS } = require("./location");
 
 const SYMBOL_RE = /^[A-Z0-9]{4,25}$/;
 
@@ -156,7 +169,185 @@ async function getStatusPayload() {
     };
 }
 
+function mapFlowSnapshot(sm) {
+    if (!sm) return null;
+    const bias = sm.derived?.bias || sm.moneyFlow?.bias || null;
+    const oiQty = sm.openInterest?.qty ?? sm.openInterest?.openInterest ?? null;
+    const fundingRate = sm.funding?.currentRate ?? sm.funding?.fundingRate ?? null;
+    const quality = sm.quality?.overall || null;
+    const stale = quality === "stale";
+    return {
+        collectedAt: sm.collectedAt,
+        bias,
+        quality,
+        stale,
+        openInterest: sm.openInterest
+            ? { status: sm.openInterest.status, qty: oiQty, value: oiQty }
+            : null,
+        funding: sm.funding
+            ? { status: sm.funding.status, currentRate: fundingRate, rate: fundingRate }
+            : null,
+        note: "Flow từ snapshot Smart Money dùng chung — không cộng vào technical score.",
+    };
+}
+
+async function listLocationSymbolsQuery(query = {}) {
+    const analysisTf = normalizeAnalysisTf(query.analysisTf);
+    const screen = normalizeScreen(query.screen);
+    const entrySource = normalizeEntrySource(query.entrySource);
+    const top = normalizeTop(query.top ?? query.limit, 10);
+    const recentHours = [24, 72, 168].includes(Number(query.recentHours))
+        ? Number(query.recentHours)
+        : 72;
+    const sortKey = String(query.sort || "default");
+    const dirKey = String(query.dir || "asc") === "desc" ? "desc" : "asc";
+    const includeFlow = screen === "flow_aligned" || query.includeFlow === "1";
+
+    const universe = getMarketUniverse().symbols.length
+        ? getMarketUniverse()
+        : await buildMarketUniverse();
+    const snapList = await listLatestSnapshots(universe.symbols || []);
+    const snapMap = new Map(snapList.map((s) => [s.symbol, s]));
+    let metas = universe.meta?.rows || universe.symbols.map((symbol) => ({ symbol }));
+    const q = String(query.q || "").trim().toUpperCase();
+    if (q) metas = metas.filter((m) => String(m.symbol).includes(q));
+
+    const symbols = metas.map((m) => m.symbol);
+    let signalPack = { bySymbol: {} };
+    try {
+        signalPack = await listRecentSignalsBySymbols(null, {
+            symbols: symbols.join(","),
+            hours: recentHours,
+            perSymbol: 8,
+            perSide: 4,
+        });
+    } catch (error) {
+        console.warn("[marketRead] recent signals", error.message || error);
+    }
+
+    const now = Date.now();
+    const rows = [];
+    for (const meta of metas) {
+        const snap =
+            snapMap.get(meta.symbol) ||
+            buildPriceSeed({
+                symbol: meta.symbol,
+                ticker: {
+                    lastPrice: meta.lastPrice,
+                    priceChangePercent: meta.priceChangePercent,
+                    quoteVolume: meta.quoteVolume,
+                },
+                meta,
+                universeVersion: universe.version,
+            });
+        const price = snap.price?.last ?? meta.lastPrice ?? null;
+        const priceAsOf = snap.price?.asOf || snap.calculatedAt || null;
+        const rawLoc = snap.locationByTimeframe?.[analysisTf] || null;
+        const loc = rawLoc
+            ? reenrichLocation(rawLoc, price, priceAsOf, now)
+            : {
+                  timeframe: analysisTf,
+                  quality: "warming",
+                  positionTags: ["unknown"],
+                  support: null,
+                  resistance: null,
+                  primarySetup: null,
+                  recentEvents: [],
+                  setups: [],
+                  price,
+                  priceAsOf,
+                  priceFresh: false,
+              };
+
+        let flow = null;
+        if (includeFlow) {
+            try {
+                flow = mapFlowSnapshot(await getSmartMoneySnapshot(meta.symbol));
+            } catch {
+                flow = null;
+            }
+        }
+
+        const pack = signalPack.bySymbol?.[meta.symbol];
+        const signalEntries = buildSignalEntries(pack, price, loc.atrCurrent).map((e) => ({
+            id: e.id,
+            source: e.source,
+            side: e.side,
+            openTime: e.openTime,
+            sourceStatus: e.sourceStatus,
+            entryReference: e.entryReference,
+            priceRelation: e.priceRelation,
+            validity: e.validity,
+            quality: e.quality,
+            missingEntry: e.missingEntry,
+        }));
+
+        rows.push({
+            symbol: meta.symbol,
+            price: {
+                last: price,
+                changePct24h: snap.price?.changePct24h ?? meta.priceChangePercent ?? null,
+                volume24h: snap.price?.volume24h ?? meta.quoteVolume ?? null,
+                asOf: priceAsOf,
+                source: snap.price?.source || "ticker",
+            },
+            volumeRank: snap.volumeRank ?? meta.volumeRank ?? null,
+            location: locationSummary(loc),
+            setups: (loc.setups || [])
+                .filter((s) => s.lifecycle === "active")
+                .slice(0, 4)
+                .map((s) => ({
+                    id: s.id,
+                    side: s.side,
+                    type: s.type,
+                    lifecycle: s.lifecycle,
+                    entryState: s.entryState,
+                    entryLow: s.entryLow,
+                    entryHigh: s.entryHigh,
+                    createdAt: s.createdAt,
+                })),
+            signalEntries,
+            signalSummary: pack
+                ? { count: pack.count, latest: pack.latest, truncated: pack.truncated }
+                : { count: 0, latest: null, truncated: false },
+            flow,
+            qualityOverall: snap.qualityOverall || loc.quality,
+        });
+    }
+
+    const matched = rows.filter((r) => matchScreen(r, screen, entrySource));
+    sortLocationRows(matched, sortKey, dirKey);
+    const totalMatched = matched.length;
+    const limited = matched.slice(0, top);
+
+    return {
+        view: "location",
+        analysisTf,
+        screen,
+        entrySource,
+        recentHours,
+        top,
+        sort: sortKey,
+        dir: dirKey,
+        count: limited.length,
+        totalMatched,
+        totalRows: rows.length,
+        coverage: {
+            withLocation: rows.filter((r) => r.location?.quality && r.location.quality !== "warming").length,
+            total: rows.length,
+            analysisTfs: ANALYSIS_TFS,
+        },
+        universeVersion: universe.version,
+        formulaVersion: FORMULA_VERSION,
+        rows: limited,
+    };
+}
+
 async function listSymbolsQuery(query = {}) {
+    if (String(query.view || "") === "location") {
+        return listLocationSymbolsQuery(query);
+    }
+
     const style = STYLES[query.style] ? query.style : config.defaultStyle;
     const universe = getMarketUniverse().symbols.length
         ? getMarketUniverse()
@@ -271,12 +462,17 @@ async function listSymbolsQuery(query = {}) {
         return cmp * dir;
     });
 
-    const limit = Math.min(config.listLimitMax, Math.max(1, Number(query.limit) || config.topN));
+    const topRaw = query.top != null ? normalizeTop(query.top, null) : null;
+    const limit = Math.min(
+        config.listLimitMax,
+        Math.max(1, topRaw || Number(query.limit) || config.topN)
+    );
     const rows = snaps.slice(0, limit).map((s) => rowFromSnapshot(s, style));
     return {
         style,
         sort,
         dir: dirKey,
+        top: topRaw || limit,
         count: rows.length,
         totalScored: scoredCount,
         totalRows: snaps.length,
@@ -297,19 +493,7 @@ async function getSymbolDetail(symbolRaw, query = {}) {
 
     let flow = null;
     try {
-        const sm = await getSmartMoneySnapshot(symbol);
-        if (sm) {
-            flow = {
-                collectedAt: sm.collectedAt,
-                bias: sm.moneyFlow?.bias || sm.bias || null,
-                quality: sm.quality?.overall || null,
-                openInterest: sm.openInterest
-                    ? { status: sm.openInterest.status, value: sm.openInterest.openInterest }
-                    : null,
-                funding: sm.funding ? { status: sm.funding.status, rate: sm.funding.fundingRate } : null,
-                note: "Flow từ snapshot Smart Money dùng chung — không cộng vào technical score.",
-            };
-        }
+        flow = mapFlowSnapshot(await getSmartMoneySnapshot(symbol));
     } catch (error) {
         console.warn("[marketRead] smart money", error.message || error);
     }
@@ -325,16 +509,48 @@ async function getSymbolDetail(symbolRaw, query = {}) {
             ?.filter((r) => r.points < 0)
             .sort((a, b) => a.points - b.points)[0] || null;
 
+    const analysisTf = normalizeAnalysisTf(query.analysisTf || timeframe || "1h");
+    const price = snap.price?.last ?? null;
+    const priceAsOf = snap.price?.asOf || snap.calculatedAt || null;
+    const rawLoc = snap.locationByTimeframe?.[analysisTf] || null;
+    const loc = rawLoc ? reenrichLocation(rawLoc, price, priceAsOf) : null;
+    const zones = (loc?.zones || []).slice(0, 50);
+    const setups = (loc?.setups || []).slice(0, 20);
+    const truncated = {
+        zones: (loc?.zones || []).length > 50,
+        setups: (loc?.setups || []).length > 20,
+    };
+
+    let signalEntries = [];
+    try {
+        const pack = await listRecentSignalsBySymbols(null, {
+            symbols: symbol,
+            hours: Number(query.recentHours) || 72,
+            perSymbol: 10,
+            perSide: 5,
+        });
+        signalEntries = buildSignalEntries(pack.bySymbol?.[symbol], price, loc?.atrCurrent);
+    } catch (error) {
+        console.warn("[marketRead] symbol signals", error.message || error);
+    }
+
     return {
         symbol,
         style,
         timeframe,
+        analysisTf,
+        view: query.view || null,
         snapshot: snap,
         composite,
         frame,
         strongest,
         weakest,
         flow,
+        location: locationSummary(loc),
+        zones,
+        setups,
+        signalEntries,
+        truncated,
         links: snap.links,
     };
 }

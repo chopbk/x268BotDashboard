@@ -152,10 +152,11 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/smart-money/ai/symbol` | [smart-money](../server/src/routes/smart-money.js) — AI 1 symbol (rate-limit) |
 | POST | `/api/smart-money/refresh` | [smart-money](../server/src/routes/smart-money.js) — `smart_money.manage` |
 | GET | `/api/market/overview` | [market](../server/src/routes/market.js) |
-| GET | `/api/market/symbols` | [market](../server/src/routes/market.js) |
-| GET | `/api/market/symbols/:symbol` | [market](../server/src/routes/market.js) |
+| GET | `/api/market/symbols` | [market](../server/src/routes/market.js) — `view=location` trả vị trí/setup/signal; không view = scores cũ |
+| GET | `/api/market/symbols/:symbol` | [market](../server/src/routes/market.js) — kèm `location`/`zones`/`setups`/`signalEntries` |
 | GET | `/api/market/symbols/:symbol/scores` | [market](../server/src/routes/market.js) |
 | GET | `/api/market/events` | [market](../server/src/routes/market.js) |
+| GET | `/api/market/recent-signals` | [market](../server/src/routes/market.js) — map symbol→signal (cùng quyền đọc market) |
 | POST | `/api/market/refresh` | [market](../server/src/routes/market.js) — `market.manage` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
@@ -171,7 +172,6 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/summary` | [summary](../server/src/routes/summary.js) |
 | POST | `/api/summary/refresh` | [summary](../server/src/routes/summary.js) |
 | GET | `/api/signal-history` | [signal-history](../server/src/routes/signal-history.js) |
-| GET | `/api/market/recent-signals` | [market](../server/src/routes/market.js) — map symbol→signal gần đây cho cột Signal (cùng quyền đọc Thị trường; alias BTC↔BTCUSDT) |
 | GET | `/api/signal-config` | [signal-setup](../server/src/routes/signal-setup.js) |
 | POST | `/api/signal-config` | [signal-setup](../server/src/routes/signal-setup.js) |
 | GET | `/api/provider-scorecard` | [provider-scorecard](../server/src/routes/provider-scorecard.js) |

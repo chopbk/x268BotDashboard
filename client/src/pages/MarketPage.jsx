@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import MarketLocationTable from "../components/market/MarketLocationTable";
+import {
+  normalizeTopParam,
+  normalizeViewParam,
+  normalizeAnalysisTfParam,
+  TOP_OPTIONS,
+  ANALYSIS_TFS,
+} from "../lib/market-hub";
 import "./market.css";
 
 const TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"];
@@ -128,6 +136,14 @@ export default function MarketPage({
 } = {}) {
   const [params, setParams] = useSearchParams();
   const symbol = (params.get("symbol") || "").toUpperCase();
+  const view = normalizeViewParam(params.get("view"));
+  const analysisTf = normalizeAnalysisTfParam(params.get("analysisTf"));
+  const top = normalizeTopParam(params.get("top"), 10);
+  const screen = params.get("screen") || "all";
+  const entrySource = params.get("entrySource") === "signal" ? "signal" : "technical";
+  const recentHours = ["24", "72", "168"].includes(params.get("recentHours") || "")
+    ? params.get("recentHours")
+    : "72";
   const style = STYLES.some((s) => s.id === params.get("style")) ? params.get("style") : "intraday";
   const timeframe = TIMEFRAMES.includes(params.get("tf")) ? params.get("tf") : "";
   const focusSignals = params.get("signals") === "1";
@@ -139,6 +155,7 @@ export default function MarketPage({
   const fresh = params.get("fresh") === "1";
   const sort = params.get("sort") || "";
   const dir = params.get("dir") === "asc" ? "asc" : "desc";
+  const pollRef = useRef(null);
 
   const [overview, setOverview] = useState(null);
   const [list, setList] = useState(null);
@@ -168,8 +185,21 @@ export default function MarketPage({
 
   const loadList = useCallback(async () => {
     const qs = new URLSearchParams();
-    qs.set("style", style);
+    qs.set("top", String(top));
     if (q) qs.set("q", q);
+    if (view === "location") {
+      qs.set("view", "location");
+      qs.set("analysisTf", analysisTf);
+      qs.set("screen", screen);
+      qs.set("entrySource", entrySource);
+      qs.set("recentHours", recentHours);
+      if (canFlow && screen === "flow_aligned") qs.set("includeFlow", "1");
+      if (sort) qs.set("sort", sort);
+      if (dir) qs.set("dir", dir);
+      return api(`/api/market/symbols?${qs}`);
+    }
+    qs.set("style", style);
+    qs.set("limit", String(top));
     if (side) qs.set("side", side);
     if (regime) qs.set("regime", regime);
     if (minScore) qs.set("minScore", minScore);
@@ -178,7 +208,7 @@ export default function MarketPage({
     if (sort) qs.set("sort", sort);
     if (dir) qs.set("dir", dir);
     return api(`/api/market/symbols?${qs}`);
-  }, [style, q, side, regime, minScore, consensus, fresh, sort, dir]);
+  }, [view, analysisTf, screen, entrySource, recentHours, top, canFlow, style, q, side, regime, minScore, consensus, fresh, sort, dir]);
 
   const activeSort = list?.sort || sort || "composite";
   const activeDir = list?.dir || dir;
@@ -249,6 +279,28 @@ export default function MarketPage({
     };
   }, [overview?.progress?.complete, overview?.progress?.scored, loadList]);
 
+  // Poll cache 30s khi trang visible — không POST collector.
+  useEffect(() => {
+    function tick() {
+      if (document.visibilityState === "hidden") return;
+      loadList()
+        .then((listBody) => setList(listBody))
+        .catch(() => {});
+      api("/api/market/overview")
+        .then((ov) => setOverview(ov))
+        .catch(() => {});
+    }
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    pollRef.current = setInterval(tick, 30_000);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(pollRef.current);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [loadList]);
+
   useEffect(() => {
     if (!symbol) {
       setDetail(null);
@@ -258,9 +310,14 @@ export default function MarketPage({
     let cancelled = false;
     const qs = new URLSearchParams({ style });
     if (timeframe) qs.set("timeframe", timeframe);
+    if (view === "location") {
+      qs.set("view", "location");
+      qs.set("analysisTf", analysisTf);
+      qs.set("recentHours", recentHours);
+    }
     Promise.all([
-      api(`/api/market/symbols/${symbol}?${qs}`),
-      api(`/api/market/symbols/${symbol}/scores?limit=30`),
+      api(`/api/market/symbols/${encodeURIComponent(symbol)}?${qs}`),
+      api(`/api/market/symbols/${encodeURIComponent(symbol)}/scores?limit=30`),
     ])
       .then(([d, h]) => {
         if (cancelled) return;
@@ -273,7 +330,7 @@ export default function MarketPage({
     return () => {
       cancelled = true;
     };
-  }, [symbol, style, timeframe]);
+  }, [symbol, style, timeframe, view, analysisTf, recentHours]);
 
   const listSymbolsKey = (list?.rows || []).map((r) => r.symbol).join(",");
 
@@ -360,11 +417,12 @@ export default function MarketPage({
       <header className="mkt-header">
         <div>
           <TitleTag>
-            {embedded ? "Kỹ thuật · Top 50 Futures theo volume24h" : "Thị trường · Top 50 Futures theo volume24h"}
+            {embedded ? "Kỹ thuật · Futures theo volume24h" : "Thị trường · Futures theo volume24h"}
           </TitleTag>
           <p className="mkt-sub">
-            Scoring Long/Short độc lập trên 5m–1d (chỉ nến đóng). Điểm là mức đáp ứng quy tắc market-v1,
-            không phải xác suất thắng. Dòng tiền Smart Money giữ thang điểm riêng.
+            {view === "location"
+              ? "Vị trí giá so với hỗ trợ/kháng cự, setup kỹ thuật và entry signal gần đây — không phải lệnh mua/bán."
+              : "Scoring Long/Short độc lập trên 5m–1d (chỉ nến đóng). Điểm market-v1 không phải xác suất thắng."}
           </p>
         </div>
         <div className="mkt-meta">
@@ -407,53 +465,112 @@ export default function MarketPage({
 
       <div className="mkt-filters">
         <label>
-          Symbol
-          <input value={q} onChange={(e) => patchParams({ q: e.target.value }, { replace: true })} placeholder="BTC…" />
+          Chế độ
+          <select value={view} onChange={(e) => patchParams({ view: e.target.value })}>
+            <option value="location">Vị trí & Setup</option>
+            <option value="scores">Điểm đa khung</option>
+          </select>
         </label>
-        <label>
-          Phong cách
-          <select value={style} onChange={(e) => patchParams({ style: e.target.value })}>
-            {STYLES.map((s) => (
-              <option key={s.id} value={s.id}>{s.label}</option>
+        <label title="Số dòng tối đa hiển thị">
+          Top
+          <select value={String(top)} onChange={(e) => patchParams({ top: e.target.value })}>
+            {TOP_OPTIONS.map((n) => (
+              <option key={n} value={n}>Top {n}</option>
             ))}
           </select>
         </label>
         <label>
-          Side
-          <select value={side} onChange={(e) => patchParams({ side: e.target.value || null })}>
-            <option value="">Tất cả</option>
-            <option value="lean_long">Thiên Long</option>
-            <option value="lean_short">Thiên Short</option>
-            <option value="wait">Chờ</option>
-          </select>
+          Symbol
+          <input value={q} onChange={(e) => patchParams({ q: e.target.value }, { replace: true })} placeholder="BTC…" />
         </label>
-        <label>
-          Regime 1h
-          <select value={regime} onChange={(e) => patchParams({ regime: e.target.value || null })}>
-            <option value="">Tất cả</option>
-            <option value="trending">Trending</option>
-            <option value="ranging">Ranging</option>
-            <option value="transitional">Transitional</option>
-          </select>
-        </label>
-        <label>
-          Điểm ≥
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={minScore}
-            onChange={(e) => patchParams({ minScore: e.target.value || null }, { replace: true })}
-          />
-        </label>
-        <label className="mkt-check">
-          <input type="checkbox" checked={consensus} onChange={(e) => patchParams({ consensus: e.target.checked || null })} />
-          Ứng viên đủ ĐK
-        </label>
-        <label className="mkt-check">
-          <input type="checkbox" checked={fresh} onChange={(e) => patchParams({ fresh: e.target.checked || null })} />
-          Chỉ dữ liệu mới
-        </label>
+        {view === "location" ? (
+          <>
+            <label>
+              Khung phân tích
+              <select value={analysisTf} onChange={(e) => patchParams({ analysisTf: e.target.value })}>
+                {ANALYSIS_TFS.map((tf) => (
+                  <option key={tf} value={tf}>{tf}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Màn hình
+              <select value={screen} onChange={(e) => patchParams({ screen: e.target.value })}>
+                <option value="all">Tất cả</option>
+                <option value="near_support">Gần hỗ trợ</option>
+                <option value="near_resistance">Gần kháng cự</option>
+                <option value="buy_zone">Vùng mua (setup)</option>
+                <option value="sell_zone">Vùng bán (setup)</option>
+                <option value="entry_long">Còn entry Long</option>
+                <option value="entry_short">Còn entry Short</option>
+                <option value="retest">Retest gần đây</option>
+                {canFlow ? <option value="flow_aligned">Đồng thuận flow</option> : null}
+              </select>
+            </label>
+            <label>
+              Nguồn entry
+              <select value={entrySource} onChange={(e) => patchParams({ entrySource: e.target.value })}>
+                <option value="technical">Setup kỹ thuật</option>
+                <option value="signal">Signal kênh</option>
+              </select>
+            </label>
+            <label>
+              Signal trong
+              <select value={recentHours} onChange={(e) => patchParams({ recentHours: e.target.value })}>
+                <option value="24">24h</option>
+                <option value="72">72h</option>
+                <option value="168">7d</option>
+              </select>
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              Phong cách
+              <select value={style} onChange={(e) => patchParams({ style: e.target.value })}>
+                {STYLES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Side
+              <select value={side} onChange={(e) => patchParams({ side: e.target.value || null })}>
+                <option value="">Tất cả</option>
+                <option value="lean_long">Thiên Long</option>
+                <option value="lean_short">Thiên Short</option>
+                <option value="wait">Chờ</option>
+              </select>
+            </label>
+            <label>
+              Regime 1h
+              <select value={regime} onChange={(e) => patchParams({ regime: e.target.value || null })}>
+                <option value="">Tất cả</option>
+                <option value="trending">Trending</option>
+                <option value="ranging">Ranging</option>
+                <option value="transitional">Transitional</option>
+              </select>
+            </label>
+            <label>
+              Điểm ≥
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={minScore}
+                onChange={(e) => patchParams({ minScore: e.target.value || null }, { replace: true })}
+              />
+            </label>
+            <label className="mkt-check">
+              <input type="checkbox" checked={consensus} onChange={(e) => patchParams({ consensus: e.target.checked || null })} />
+              Ứng viên đủ ĐK
+            </label>
+            <label className="mkt-check">
+              <input type="checkbox" checked={fresh} onChange={(e) => patchParams({ fresh: e.target.checked || null })} />
+              Chỉ dữ liệu mới
+            </label>
+          </>
+        )}
       </div>
 
       {error ? <div className="mkt-banner">{error}</div> : null}
@@ -461,7 +578,16 @@ export default function MarketPage({
 
       <div className={`mkt-layout ${symbol ? "has-detail" : ""}`}>
         <div className="mkt-table-wrap panel">
-          {loading && !list ? (
+          {view === "location" ? (
+            <MarketLocationTable
+              rows={list?.rows || []}
+              symbol={symbol}
+              canFlow={canFlow}
+              top={top}
+              loading={loading}
+              onSelect={(sym) => patchParams({ symbol: sym, signals: null })}
+            />
+          ) : loading && !list ? (
             <div className="mkt-empty mkt-skel">Đang tải giá top 50…</div>
           ) : !list?.rows?.length ? (
             <div className="mkt-empty">
@@ -502,6 +628,20 @@ export default function MarketPage({
                       <td>
                         <strong>{row.symbol}</strong>
                         {!row.inTop ? <span className="muted"> · ngoài top</span> : null}
+                        {canFlow ? (
+                          <>
+                            {" "}
+                            <Link
+                              className="mkt-flow-link"
+                              to={`/market?tab=flow&flowTab=overview&symbol=${encodeURIComponent(row.symbol)}&top=${top}`}
+                              aria-label={`Xem dòng tiền ${row.symbol}`}
+                              title={`Xem dòng tiền ${row.symbol}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Dòng tiền
+                            </Link>
+                          </>
+                        ) : null}
                       </td>
                       <td className="num">{fmt(row.price?.last)}</td>
                       <td className={`num mkt-col-hide-mobile ${Number(row.price?.changePct24h) >= 0 ? "mkt-long" : "mkt-short"}`}>
@@ -598,6 +738,80 @@ export default function MarketPage({
                     Lịch sử signal
                   </Link>
                 </div>
+
+                {view === "location" && detail?.location ? (
+                  <section className="mkt-signals">
+                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Vị trí · {detail.analysisTf || analysisTf}</h3>
+                    <p className="muted" style={{ fontSize: 12, margin: "0 0 6px" }}>
+                      Giá {detail.location.price ?? "—"} · {detail.location.priceFresh ? "tươi" : "stale/unknown"} ·{" "}
+                      {detail.location.structureLabel || "—"}
+                    </p>
+                    <div className="mkt-ruler" aria-hidden="true">
+                      <span>Hỗ trợ</span>
+                      <span className="mkt-ruler-bar" />
+                      <span>Kháng cự</span>
+                    </div>
+                    <ul className="mkt-sig-list">
+                      <li>
+                        <span>Hỗ trợ</span>
+                        <span className="muted">
+                          {detail.location.support
+                            ? `[${detail.location.support.low}–${detail.location.support.high}] · ${detail.location.support.distancePct ?? "—"}%`
+                            : "—"}
+                        </span>
+                      </li>
+                      <li>
+                        <span>Kháng cự</span>
+                        <span className="muted">
+                          {detail.location.resistance
+                            ? `[${detail.location.resistance.low}–${detail.location.resistance.high}] · ${detail.location.resistance.distancePct ?? "—"}%`
+                            : "—"}
+                        </span>
+                      </li>
+                      <li>
+                        <span>Setup</span>
+                        <span className="muted">
+                          {detail.location.primarySetup
+                            ? `${detail.location.primarySetup.side} ${detail.location.primarySetup.type} · ${detail.location.primarySetup.entryState}`
+                            : "Không có setup đủ điều kiện (chạm hỗ trợ ≠ mua)"}
+                        </span>
+                      </li>
+                    </ul>
+                    {(detail.setups || []).length ? (
+                      <>
+                        <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Setup gần đây</h3>
+                        <ul className="mkt-sig-list">
+                          {detail.setups.slice(0, 8).map((s) => (
+                            <li key={s.id}>
+                              <span className={s.side === "long" ? "mkt-long" : "mkt-short"}>
+                                {s.side} · {s.type} · {s.lifecycle}/{s.entryState}
+                              </span>
+                              <span className="muted">
+                                entry [{s.entryLow}–{s.entryHigh}] · {s.createdAt || "—"}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                    {(detail.signalEntries || []).length ? (
+                      <>
+                        <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Entry signal (tách khỏi setup)</h3>
+                        <ul className="mkt-sig-list">
+                          {detail.signalEntries.slice(0, 8).map((e) => (
+                            <li key={e.id}>
+                              <span>
+                                {e.source} · {e.side}
+                                {e.missingEntry ? " · thiếu giá entry" : ` · ${e.priceRelation}/${e.validity}`}
+                              </span>
+                              <span className="muted">{e.openTime || "—"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </section>
+                ) : null}
 
                 <section
                   id="mkt-signals-panel"

@@ -1,7 +1,7 @@
 # Hub Thị trường — gộp điều hướng Kỹ thuật và Dòng tiền
 
 Ngày: 2026-10-16. Trạng thái: **P0 đã triển khai** (hub UI + redirect; API/collector không đổi).
-Phạm vi: `web-bot`, P0 giao diện và điều hướng. **Yêu cầu mở rộng R1 (chưa triển khai): nút dòng tiền cạnh symbol, Top 10/25/50 và collector SM top 50 — xem mục 11.** Các giới hạn không đổi collector/URL Top ở mục 1–10 chỉ áp dụng bản P0; mục 11 là contract ưu tiên cho R1.
+Phạm vi: `web-bot`, P0 giao diện và điều hướng. **R1 đã triển khai:** nút dòng tiền cạnh symbol, Top 10/25/50 và collector SM top 50 — xem mục 11.
 
 ## 1. Quyết định sản phẩm
 
@@ -215,7 +215,7 @@ P0 hoàn thành khi điều hướng thống nhất và tính năng cũ vẫn tr
 
 ## 11. R1 — truy cập dòng tiền từng dòng và Smart Money top 50
 
-Trạng thái: **yêu cầu đã chốt, chưa triển khai**. R1 mở rộng P0 hiện có; không làm lại hub, không bao gồm panel chung hay cộng điểm kỹ thuật với flow.
+Trạng thái: **đã triển khai (cùng Vị trí & Setup)**. R1 mở rộng P0; không làm lại hub, không bao gồm panel chung hay cộng điểm kỹ thuật với flow.
 
 ### 11.1 Nút cạnh symbol trong bảng Kỹ thuật
 

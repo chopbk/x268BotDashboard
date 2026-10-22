@@ -13,6 +13,9 @@ const SmartMoneyWatchlist = require("../../models/smart-money-watchlist");
 function clampLimit(value, max, fallback) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return fallback;
+    // R1: map legacy 20→25, 30→50
+    if (n === 20) return Math.min(max, 25);
+    if (n === 30) return Math.min(max, 50);
     return Math.min(max, Math.floor(n));
 }
 
@@ -79,8 +82,8 @@ async function listSymbolsQuery(query = {}) {
     const q = String(query.q || query.search || "").trim().toUpperCase();
     if (q) symbols = symbols.filter((s) => s.includes(q));
 
-    const top = clampLimit(query.top, config.maxSymbols, config.topN);
-    symbols = symbols.slice(0, top);
+    // Mặc định hiển thị Top 10; không cắt universe trước filter/sort.
+    const top = clampLimit(query.top, config.maxSymbols, 10);
 
     // Giá 24h từ ticker ngay cả khi snapshot collector chưa kịp ghi.
     let tickerMap = new Map();
@@ -91,7 +94,6 @@ async function listSymbolsQuery(query = {}) {
             symbols = tickers
                 .filter((t) => t.quoteVolume != null)
                 .sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0))
-                .slice(0, top)
                 .map((t) => t.symbol);
         }
     } catch (error) {
@@ -185,8 +187,12 @@ async function listSymbolsQuery(query = {}) {
         return vb - va;
     });
 
+    const totalMatched = rows.length;
+    rows = rows.slice(0, top);
+
     return {
         top,
+        totalMatched,
         count: rows.length,
         universeRefreshedAt: universe.meta?.refreshedAt || null,
         rows,

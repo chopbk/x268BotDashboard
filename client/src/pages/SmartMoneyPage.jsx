@@ -71,7 +71,11 @@ export default function SmartMoneyPage({
   const flowTab = resolveFlowTabFromParams(params);
   const symbol = (params.get("symbol") || "").toUpperCase();
   const q = params.get("q") || "";
-  const top = params.get("top") || "10";
+  const topRaw = params.get("top") || "10";
+  const top =
+    topRaw === "20" ? "25" : topRaw === "30" ? "50" : ["10", "25", "50"].includes(topRaw) ? topRaw : "10";
+  // Watchlist: lấy đủ universe hiển thị (50) rồi lọc membership — không cắt Top trước.
+  const listTop = flowTab === "watchlist" ? "50" : top;
   const bias = params.get("bias") || "all";
   const freshness = params.get("freshness") || "";
   const anomaly = params.get("anomaly") === "1";
@@ -112,12 +116,12 @@ export default function SmartMoneyPage({
   const loadList = useCallback(async () => {
     const qs = new URLSearchParams();
     if (q) qs.set("q", q);
-    qs.set("top", top);
+    qs.set("top", listTop);
     if (bias && bias !== "all") qs.set("bias", bias);
     if (freshness) qs.set("freshness", freshness);
     if (anomaly) qs.set("anomaly", "1");
     return api(`/api/smart-money/symbols?${qs}`);
-  }, [q, top, bias, freshness, anomaly]);
+  }, [q, listTop, bias, freshness, anomaly]);
 
   useEffect(() => {
     let cancelled = false;
@@ -317,12 +321,12 @@ export default function SmartMoneyPage({
               onChange={(e) => patchParams({ q: e.target.value.toUpperCase() }, { replace: true })}
             />
           </label>
-          <label>
+          <label title="Số dòng tối đa hiển thị">
             Top
             <select value={top} onChange={(e) => patchParams({ top: e.target.value })}>
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="30">30</option>
+              <option value="10">Top 10</option>
+              <option value="25">Top 25</option>
+              <option value="50">Top 50</option>
             </select>
           </label>
           <label>

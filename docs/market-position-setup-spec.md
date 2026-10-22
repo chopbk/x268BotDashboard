@@ -1,6 +1,6 @@
 # Thị trường — bảng Vị trí & Setup
 
-Ngày: 2026-10-22. Trạng thái: **đề xuất triển khai, chưa có implementation**.
+Ngày: 2026-10-22. Trạng thái: **đã triển khai (v1)** — engine zone/setup + view location + R1 phụ thuộc.
 Phạm vi: tab Kỹ thuật trong hub Thị trường của `web-bot`.
 
 ## 1. Mục tiêu và quyết định UX
@@ -234,4 +234,17 @@ File trọng tâm: `MarketPage.jsx`, hub/query helper/CSS; `market/score-symbol.
 
 Unit: toán khoảng cách, zone/setup transitions, signal normalization. Replay: tăng từng nến, boundary/tie/gap, đổi trend và restart từ state lưu. Integration: read-api → filter/sort/limit → response theo quyền, legacy snapshot. UI/network: chuyển view/khung/symbol nhanh, timer, mobile, nguồn lỗi. Test mock không được ghi là đã xác nhận coverage production hoặc hiệu quả giao dịch.
 
-Cập nhật `feature-spec.md`, `flows.md`, `api-data-reference.md`, market docs và auth spec nếu contract quyền thực sự đổi khi implementation hoàn tất. Bản spec này chỉ thêm thiết kế; chưa thay runtime.
+### Kết quả kiểm tra triển khai (2026-10-22)
+
+| ID | Cách kiểm | Kết quả |
+|---|---|---|
+| S1 | UI view + Top + nút flow; unit hub top | Code + unit; browser chưa chạy |
+| S2–S7 | `server/test/market-location.test.js` | Pass unit/replay fixtures |
+| S8–S9 | signal-entry + recent-by-symbol test | Pass |
+| S10 | filter/sort/top unit | Pass |
+| S11 | Poll 30s + visibility trong MarketPage | Theo code; chưa network UI |
+| S12–S13 | Quyền market read; warming snapshot cũ | Theo code |
+| S14 | CSS mobile cột ẩn | Chưa kiểm browser |
+| S15 | Suite server 300 + client build; không đổi formula market-v1 | Pass |
+
+Location chỉ hiện đủ sau khi collector chấm lại symbol (gắn `locationByTimeframe` vào snapshot). Snapshot cũ thiếu field → warming, không crash.

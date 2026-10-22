@@ -158,7 +158,7 @@ Mỗi symbol có object chuẩn hóa (rút gọn):
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `SMART_MONEY_ENABLED` | `true` | Bật scheduler |
-| `SMART_MONEY_TOP_N` | `10` | Top volume |
+| `SMART_MONEY_TOP_N` | `50` | Top volume theo dõi (R1); UI Top 10/25/50 chỉ cắt hiển thị |
 | `SMART_MONEY_MAX_SYMBOLS` | `30` | Trần tổng (watchlist/vị thế bổ sung) |
 | `SMART_MONEY_STICKY_MS` | `7200000` | Giữ symbol rời top tối thiểu |
 | `SMART_MONEY_RETENTION_DAYS` | `90` | TTL raw history |

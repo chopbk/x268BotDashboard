@@ -1,5 +1,6 @@
 const SignalInfo = require("../models/signal-info");
 const { openTimeFilter, openTimeRange } = require("./open-time-range");
+const { toSignalEntry } = require("./market/signal-entry");
 
 const SESSIONS = [
     { id: "Á", label: "Phiên Á", from: 7, to: 15, hours: "07:00–15:00" },
@@ -88,12 +89,21 @@ async function listRecentSignalsBySymbols(_actor, input = {}) {
         if (symbols.length >= 80) break;
     }
     const hours = Math.min(168, Math.max(1, Number.parseInt(input.hours, 10) || 72));
-    const perSymbol = Math.min(20, Math.max(1, Number.parseInt(input.perSymbol, 10) || 5));
+    // Giới hạn độc lập mỗi symbol/hướng — tránh global cap làm mất entry coin ít tin.
+    const perSymbol = Math.min(20, Math.max(1, Number.parseInt(input.perSymbol, 10) || 8));
+    const perSide = Math.min(10, Math.max(1, Number.parseInt(input.perSide, 10) || 4));
     const now = new Date();
     const from = new Date(now.getTime() - hours * 60 * 60 * 1000);
     const bySymbol = Object.create(null);
     for (const symbol of symbols) {
-        bySymbol[symbol] = { symbol, count: 0, latest: null, recent: [] };
+        bySymbol[symbol] = {
+            symbol,
+            count: 0,
+            latest: null,
+            recent: [],
+            entries: [],
+            truncated: false,
+        };
     }
     if (!symbols.length) {
         return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
@@ -101,55 +111,70 @@ async function listRecentSignalsBySymbols(_actor, input = {}) {
 
     const { aliasToCanonical, querySymbols } = buildSymbolAliasMap(symbols);
 
-    // Giới hạn tổng dòng để tránh $push nặng; group trong JS.
-    const fetchCap = Math.min(800, Math.max(symbols.length * perSymbol, 100));
-    let rows = [];
+    // Fetch theo từng symbol để không bị global cap che coin ít tin.
+    const sideCounts = Object.create(null);
     try {
-        rows = await SignalInfo.find({
-            symbol: { $in: querySymbols },
-            openTime: { $gte: from },
-        })
-            .select("signal status side symbol type openTime")
-            .sort({ openTime: -1, _id: -1 })
-            .limit(fetchCap)
-            .lean();
+        await Promise.all(
+            symbols.map(async (canonical) => {
+                const aliases = symbolAliases(canonical);
+                const rows = await SignalInfo.find({
+                    symbol: { $in: aliases },
+                    openTime: { $gte: from },
+                })
+                    .select("signal status side symbol type openTime prices infos")
+                    .sort({ openTime: -1, _id: -1 })
+                    .limit(perSymbol * 3)
+                    .lean();
+                const pack = bySymbol[canonical];
+                for (const row of rows) {
+                    const side = String(row.side || "").toUpperCase() || "NA";
+                    const entry = toSignalEntry(row, {});
+                    const item = {
+                        id: entry.id,
+                        signal: entry.source,
+                        side: entry.side,
+                        status: entry.sourceStatus,
+                        type: entry.type,
+                        openTime: entry.openTime,
+                        entryReference: entry.entryReference,
+                        priceRelation: entry.priceRelation,
+                        validity: entry.validity,
+                        quality: entry.quality,
+                        missingEntry: entry.missingEntry,
+                    };
+                    if (pack.recent.length < perSymbol) {
+                        pack.recent.push(item);
+                        if (!pack.latest) pack.latest = item;
+                    }
+                    if ((sideCounts[`${canonical}:${side}`] || 0) < perSide) {
+                        pack.entries.push(item);
+                        sideCounts[`${canonical}:${side}`] = (sideCounts[`${canonical}:${side}`] || 0) + 1;
+                    }
+                }
+                if (rows.length >= perSymbol * 3) pack.truncated = true;
+            })
+        );
     } catch (error) {
         console.error("[listRecentSignalsBySymbols]", error.message || error);
         throw error;
     }
 
-    const counts = Object.create(null);
-    for (const row of rows) {
-        const canonical = aliasToCanonical.get(String(row.symbol || "").toUpperCase());
-        if (!canonical || !bySymbol[canonical]) continue;
-        counts[canonical] = (counts[canonical] || 0) + 1;
-        if (bySymbol[canonical].recent.length >= perSymbol) continue;
-        const item = {
-            id: String(row._id),
-            signal: row.signal || null,
-            side: row.side || null,
-            status: row.status || null,
-            type: row.type || null,
-            openTime: row.openTime || null,
-        };
-        bySymbol[canonical].recent.push(item);
-        if (!bySymbol[canonical].latest) bySymbol[canonical].latest = item;
-    }
-    let countRows = [];
     try {
-        countRows = await SignalInfo.aggregate([
+        const countRows = await SignalInfo.aggregate([
             { $match: { symbol: { $in: querySymbols }, openTime: { $gte: from } } },
             { $group: { _id: "$symbol", count: { $sum: 1 } } },
         ]);
+        for (const symbol of symbols) bySymbol[symbol].count = 0;
+        for (const row of countRows) {
+            const canonical = aliasToCanonical.get(String(row._id || "").toUpperCase());
+            if (canonical && bySymbol[canonical]) {
+                bySymbol[canonical].count += row.count || 0;
+            }
+        }
     } catch (error) {
         console.error("[listRecentSignalsBySymbols:count]", error.message || error);
-        for (const symbol of symbols) bySymbol[symbol].count = counts[symbol] || 0;
-        return { bySymbol, hours, from: from.toISOString(), to: now.toISOString() };
-    }
-    for (const row of countRows) {
-        const canonical = aliasToCanonical.get(String(row._id || "").toUpperCase());
-        if (canonical && bySymbol[canonical]) {
-            bySymbol[canonical].count += row.count || 0;
+        for (const symbol of symbols) {
+            bySymbol[symbol].count = bySymbol[symbol].recent.length;
         }
     }
 

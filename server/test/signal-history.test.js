@@ -101,15 +101,23 @@ test("recent-by-symbol maps latest signals per symbol in the window", async () =
     const originals = { signal: SignalInfo.find, aggregate: SignalInfo.aggregate };
     const t1 = new Date("2026-10-19T10:00:00.000Z");
     const t2 = new Date("2026-10-19T12:00:00.000Z");
-    let findFilter;
+    const filters = [];
     // signal_infos dùng BTC/ETH; request từ Thị trường là BTCUSDT.
     SignalInfo.find = (filter) => {
-        findFilter = filter;
-        return query([
-            { _id: "2", signal: "ROSE", symbol: "BTC", side: "LONG", type: "SCALP", status: "OPEN", openTime: t2 },
-            { _id: "1", signal: "BULL", symbol: "BTC", side: "SHORT", type: "SCALP", status: "CLOSE", openTime: t1 },
-            { _id: "3", signal: "ROSE", symbol: "ETH", side: "SHORT", type: "SWING", status: "OPEN", openTime: t2 },
-        ]);
+        filters.push(filter);
+        const syms = filter.symbol?.$in || [];
+        if (syms.includes("BTC") || syms.includes("BTCUSDT")) {
+            return query([
+                { _id: "2", signal: "ROSE", symbol: "BTC", side: "LONG", type: "SCALP", status: "OPEN", openTime: t2, prices: { entryPrice: [100] } },
+                { _id: "1", signal: "BULL", symbol: "BTC", side: "SHORT", type: "SCALP", status: "CLOSE", openTime: t1, prices: { currentPrice: 1 } },
+            ]);
+        }
+        if (syms.includes("ETH") || syms.includes("ETHUSDT")) {
+            return query([
+                { _id: "3", signal: "ROSE", symbol: "ETH", side: "SHORT", type: "SWING", status: "OPEN", openTime: t2 },
+            ]);
+        }
+        return query([]);
     };
     SignalInfo.aggregate = async () => [
         { _id: "BTC", count: 2 },
@@ -122,12 +130,12 @@ test("recent-by-symbol maps latest signals per symbol in the window", async () =
             perSymbol: 5,
         });
         assert.equal(result.hours, 72);
-        assert.ok(findFilter.symbol.$in.includes("BTC"));
-        assert.ok(findFilter.symbol.$in.includes("BTCUSDT"));
+        assert.ok(filters.some((f) => f.symbol.$in.includes("BTC")));
         assert.equal(result.bySymbol.BTCUSDT.count, 2);
         assert.equal(result.bySymbol.BTCUSDT.latest.signal, "ROSE");
         assert.equal(result.bySymbol.BTCUSDT.latest.side, "LONG");
         assert.equal(result.bySymbol.BTCUSDT.recent.length, 2);
+        assert.ok(result.bySymbol.BTCUSDT.latest.entryReference);
         assert.equal(result.bySymbol.ETHUSDT.count, 1);
         assert.equal(result.bySymbol.SOLUSDT.count, 0);
         assert.equal(result.bySymbol.SOLUSDT.latest, null);

@@ -39,10 +39,11 @@ const config = Object.freeze({
     enabled: boolEnv("SMART_MONEY_ENABLED", true),
     /** Khi có giá trị: universe = đúng list này (vd BTCUSDT,ETHUSDT). */
     forceSymbols,
-    topN: forceSymbols.length ? forceSymbols.length : intEnv("SMART_MONEY_TOP_N", 10),
+    // R1: mặc định theo dõi top 50; UI Top 10/25/50 chỉ cắt hiển thị.
+    topN: forceSymbols.length ? forceSymbols.length : intEnv("SMART_MONEY_TOP_N", 50),
     maxSymbols: forceSymbols.length
-        ? Math.max(forceSymbols.length, intEnv("SMART_MONEY_MAX_SYMBOLS", 30))
-        : intEnv("SMART_MONEY_MAX_SYMBOLS", 30),
+        ? Math.max(forceSymbols.length, intEnv("SMART_MONEY_MAX_SYMBOLS", 60))
+        : intEnv("SMART_MONEY_MAX_SYMBOLS", 60),
     stickyMs: intEnv("SMART_MONEY_STICKY_MS", 2 * 60 * 60 * 1000),
     universeRefreshMs: intEnv("SMART_MONEY_UNIVERSE_MS", 60 * 60 * 1000),
     retentionDays: intEnv("SMART_MONEY_RETENTION_DAYS", 90),
