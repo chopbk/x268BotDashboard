@@ -16,3 +16,4 @@ Sau khi hoàn thành một việc user yêu cầu (sửa, thêm, xoá code hoặ
 - Kiểm tra các commit sắp push; không gom thay đổi hoặc commit ngoài phạm vi được phép.
 - Nếu chưa có upstream hoặc push bị từ chối, báo rõ; không tự force-push, rewrite history, dùng `--no-verify` hoặc amend.
 - Không đổi git config.
+- Sau push thành công: deploy production theo `deploy-after-change.mdc` (`npm run deploy:remote`).

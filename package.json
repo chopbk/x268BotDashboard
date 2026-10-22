@@ -6,6 +6,7 @@
     "dev:client": "npm --prefix client run dev",
     "deploy": "bash scripts/deploy.sh",
     "update": "bash scripts/update.sh",
+    "deploy:remote": "bash scripts/remote-update.sh",
     "test:deploy": "node --test scripts/deploy.test.cjs"
   }
 }

@@ -111,6 +111,8 @@ npm run update
 
 `npm run update` chạy `scripts/update.sh`: kiểm tra checkout sạch và upstream, pull bằng `git pull --ff-only`, rồi chạy bản `scripts/deploy.sh` vừa cập nhật. Nếu pull lỗi thì dừng, không deploy. Server chưa có lệnh này cần chạy `git pull --ff-only` một lần để lấy script. Dùng `npm run deploy` khi muốn deploy code hiện tại mà không pull.
 
+Từ máy local (sau khi push): copy `.env.deploy.example` → `.env.deploy`, điền `DEPLOY_SSH` / `DEPLOY_DIR`, rồi `npm run deploy:remote` (SSH vào server chạy `npm run update`). Agent Cursor cũng chạy bước này sau commit+push theo rule deploy-after-change.
+
 Không copy đè Nginx mẫu sau khi Certbot đã cấu hình HTTPS. `.env` vẫn được giữ vì không nằm trong Git. Script có restart backend nên có gián đoạn ngắn; không phải deploy không downtime.
 
 ## Khi deploy lỗi

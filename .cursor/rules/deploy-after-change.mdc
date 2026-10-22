@@ -1,0 +1,33 @@
+---
+description: Sau commit+push web-bot thì deploy production tự động
+alwaysApply: true
+---
+
+# Deploy sau khi xong
+
+Repo này là `web-bot`. Sau khi việc user yêu cầu **đã kiểm tra đạt**, **đã commit**, và **đã push** upstream thành công thì **tự deploy production** — không chờ nhắc lại.
+
+## Khi nào deploy
+
+- Đã hoàn thành phần user yêu cầu trong repo này.
+- Test/build liên quan (nếu có) đạt; commit + push đã thành công.
+- Thay đổi sẽ lên production (code server/client, script deploy, config runtime đã commit).
+
+## Khi nào bỏ qua
+
+- Chỉ sửa docs/rule/planning không ảnh hưởng runtime **và** user không bảo deploy — vẫn được deploy nếu vừa push code runtime; với commit chỉ docs/rule thì vẫn chạy `deploy:remote` trừ khi thiếu `.env.deploy`.
+- Push thất bại, chưa có upstream, hoặc commit bị bỏ vì không tách được worktree bẩn → **không** deploy; báo rõ.
+- User nói rõ **không deploy** / chỉ local → bỏ qua lần đó.
+
+## Cách chạy
+
+1. Cần file local `.env.deploy` (gitignore) — mẫu `.env.deploy.example` (`DEPLOY_SSH`, `DEPLOY_DIR`).
+2. Chạy từ root repo: `npm run deploy:remote` (SSH → `cd DEPLOY_DIR` → `npm run update` trên server).
+3. Không đọc/commit `.env` / `.env.deploy`. Không force-push. Không đổi git config.
+4. Deploy fail (SSH, pull, test server, build, PM2, health) → báo rõ host/lỗi; **không** giả là đã lên production.
+
+## Thứ tự hoàn tất
+
+```
+kiểm tra → commit → push → npm run deploy:remote → bàn giao
+```

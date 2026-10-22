@@ -53,3 +53,4 @@ npm --prefix client run build
 - Sau khi commit và kiểm tra xong, tự push branch hiện tại lên upstream GitHub đã cấu hình.
 - Chỉ push khi upstream rõ ràng và các commit sắp push thuộc phạm vi được phép. Nếu chưa có upstream hoặc bị từ chối, báo rõ; không tự force-push, amend, rewrite history hoặc bỏ qua hook.
 - Không đưa thay đổi có sẵn của user/tiến trình khác vào commit hoặc push nếu chưa được yêu cầu.
+- Sau push thành công: tự deploy production bằng `npm run deploy:remote` (cần `.env.deploy` local; xem `.cursor/rules/deploy-after-change.mdc`).
