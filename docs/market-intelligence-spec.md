@@ -1,7 +1,16 @@
 # Thị trường & Kỹ thuật — workspace hỗ trợ quyết định
 
-Ngày: 2026-10-23. Trạng thái: **Đề xuất sản phẩm và kỹ thuật, chưa triển khai**.
-Phạm vi: web-bot. Bản này định hướng nâng cấp hub hiện có; không thay công thức market-v1, lifecycle setup, quyền hay engine giao dịch. Những ngưỡng mới bên dưới là giả thuyết thiết kế cần kiểm định, không phải xác suất thắng đã được chứng minh.
+Ngày: 2026-10-23. Cập nhật triển khai: **2026-10-23**.
+Trạng thái: **P0 đã triển khai trên tab Kỹ thuật** (API additive `context` / `decisionContext`, header, thẻ bối cảnh, brief template, bảng Location gọn, panel evidence/phản biện, poll lifecycle). **P1/P2 vẫn là đề xuất** — chưa triển khai relative return, percentile, preset mới, RR, event timeline, scatter, sector/macro.
+Phạm vi: web-bot. Không thay công thức market-v1, lifecycle setup, quyền hay engine giao dịch. Những ngưỡng mới ở mục P1 là giả thuyết thiết kế cần kiểm định, không phải xác suất thắng đã được chứng minh.
+
+### Phân biệt nghiệm thu (P0)
+
+| Trạng thái | Nội dung |
+|---|---|
+| Đã triển khai và kiểm chứng bằng test/build | Derive `market-context.js`; overview/list/detail additive; fixture breadth mẫu số; dual Long/Short scenarios; regression market-location/scoring; client build |
+| Đã triển khai, chưa kiểm chứng browser/production trong phiên này | Header/UI thẻ/brief/bảng/panel trên môi trường thật; network poll không POST; Escape/focus |
+| Còn đề xuất P1/P2 | §6 preset mới & sort ưu tiên; §7 RR; §8 metric mới; §9 timeline/scatter/sector; M6/M12/M13 |
 
 ## 1. Tầm nhìn
 
@@ -193,7 +202,7 @@ Giữ query hiện hành: tab/view/analysisTf/tf/top/symbol và các filter đú
 
 | Đợt | Kết quả | Dependency / điều kiện ra mắt |
 |---|---|---|
-| P0 — Làm rõ cái đã có | Header chất lượng, context từ dữ liệu sẵn, bảng gọn, panel evidence/phản biện, giữ Location/Scores | Xác minh fields nguồn; thiếu metric thì bỏ; không thay score/setup engine |
+| P0 — Làm rõ cái đã có (**đã ship**) | Header chất lượng, context từ dữ liệu sẵn, bảng gọn, panel evidence/phản biện, giữ Location/Scores | Derive read-api `market-context.js`; thiếu metric thì bỏ/báo thiếu; không thay score/setup engine |
 | P1a — Tìm cơ hội tốt hơn | Relative return, volatility percentile, preset, sort tùy chọn, RR tham khảo | Đủ history, metric version, fixture và replay; không thêm dependency |
 | P1b — Theo dõi thay đổi | Event timeline, sức mạnh tương đối, watchlist đủ membership | Dedupe/restart, quyền, filter-before-limit, retention hiện hành được đánh giá |
 | P2 — Nghiên cứu chuyên sâu | Sector, macro/on-chain, heatmap ước tính, replay | Chọn provider, quyền dùng dữ liệu, ngân sách và chất lượng lịch sử; spec triển khai riêng |

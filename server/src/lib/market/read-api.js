@@ -25,6 +25,12 @@ const {
     locationSummary,
 } = require("./location-read");
 const { ANALYSIS_TFS } = require("./location");
+const {
+    buildOverviewContext,
+    buildRowContext,
+    buildDecisionContext,
+    enrichPrimarySetupFields,
+} = require("./market-context");
 
 const SYMBOL_RE = /^[A-Z0-9]{4,25}$/;
 
@@ -93,7 +99,7 @@ function rowFromSnapshot(snap, styleId) {
     };
 }
 
-async function getStatusPayload() {
+async function getStatusPayload(query = {}) {
     const universe = getMarketUniverse().symbols.length
         ? getMarketUniverse()
         : await buildMarketUniverse();
@@ -111,6 +117,7 @@ async function getStatusPayload() {
             ? meta.etaSeconds
             : estimateEtaSeconds({ remainingSymbols: remaining, bootstrap: remaining > 0 });
     const style = config.defaultStyle;
+    const analysisTf = normalizeAnalysisTf(query.analysisTf);
     let leanLong = 0;
     let leanShort = 0;
     let conflict = 0;
@@ -130,26 +137,37 @@ async function getStatusPayload() {
         else if (mid === "ranging") ranging += 1;
         else if (mid === "transitional") transitional += 1;
     }
+    const breadth = { leanLong, leanShort, conflict, eligible, trending, ranging, transitional };
+    const coverage = {
+        ready,
+        warming,
+        pending,
+        priced,
+        scored,
+        total,
+        label: `${scored}/${total} đã chấm · ${priced}/${total} có giá`,
+    };
+    const universePayload = {
+        version: universe.version,
+        topN: universe.meta?.topN || config.topN,
+        count: universe.symbols.length,
+        refreshedAt: universe.meta?.refreshedAt || null,
+    };
+    const context = buildOverviewContext({
+        snaps,
+        universe: universePayload,
+        analysisTf,
+        breadth,
+        coverage,
+        collector: meta,
+    });
     return {
         formulaVersion: FORMULA_VERSION,
         defaultStyle: style,
         styles: Object.values(STYLES).map((s) => ({ id: s.id, label: s.label, frames: s.frames })),
         timeframes: TIMEFRAMES,
-        universe: {
-            version: universe.version,
-            topN: universe.meta?.topN || config.topN,
-            count: universe.symbols.length,
-            refreshedAt: universe.meta?.refreshedAt || null,
-        },
-        coverage: {
-            ready,
-            warming,
-            pending,
-            priced,
-            scored,
-            total,
-            label: `${scored}/${total} đã chấm · ${priced}/${total} có giá`,
-        },
+        universe: universePayload,
+        coverage,
         progress: {
             priced,
             scored,
@@ -163,7 +181,8 @@ async function getStatusPayload() {
             bootstrapHint:
                 "Giá/%/volume hiện ngay từ ticker. Điểm từng khung bổ sung dần (~3–6 phút lần đầu, 50×5 klines).",
         },
-        breadth: { leanLong, leanShort, conflict, eligible, trending, ranging, transitional },
+        breadth,
+        context,
         collector: meta,
         note: "Điểm kỹ thuật market-v1 — không phải xác suất thắng. Chỉ nến đóng.",
     };
@@ -282,6 +301,17 @@ async function listLocationSymbolsQuery(query = {}) {
             missingEntry: e.missingEntry,
         }));
 
+        const composite = snap.composites?.[config.defaultStyle] || snap.composites?.intraday || null;
+        const locSummary = locationSummary(loc);
+        if (locSummary?.primarySetup) {
+            locSummary.primarySetup = enrichPrimarySetupFields(
+                locSummary.primarySetup,
+                analysisTf,
+                loc.candleCloseTime
+            );
+        }
+        const rowContext = buildRowContext({ loc, snap, flow, composite });
+
         rows.push({
             symbol: meta.symbol,
             price: {
@@ -292,7 +322,8 @@ async function listLocationSymbolsQuery(query = {}) {
                 source: snap.price?.source || "ticker",
             },
             volumeRank: snap.volumeRank ?? meta.volumeRank ?? null,
-            location: locationSummary(loc),
+            location: locSummary,
+            context: rowContext,
             setups: (loc.setups || [])
                 .filter((s) => s.lifecycle === "active")
                 .slice(0, 4)
@@ -305,6 +336,9 @@ async function listLocationSymbolsQuery(query = {}) {
                     entryLow: s.entryLow,
                     entryHigh: s.entryHigh,
                     createdAt: s.createdAt,
+                    invalidationLevel: s.invalidationLevel ?? null,
+                    touchEvidence: s.touchEvidence ?? null,
+                    expiresAtIndex: s.expiresAtIndex ?? null,
                 })),
             signalEntries,
             signalSummary: pack
@@ -534,6 +568,25 @@ async function getSymbolDetail(symbolRaw, query = {}) {
         console.warn("[marketRead] symbol signals", error.message || error);
     }
 
+    const locSummary = locationSummary(loc);
+    if (locSummary?.primarySetup) {
+        locSummary.primarySetup = enrichPrimarySetupFields(
+            locSummary.primarySetup,
+            analysisTf,
+            loc?.candleCloseTime
+        );
+    }
+    const detailFrame = frame || snap.timeframes?.[analysisTf] || null;
+    const decisionContext = buildDecisionContext({
+        snap,
+        loc,
+        composite,
+        frame: detailFrame,
+        flow,
+        analysisTf,
+        setups,
+    });
+
     return {
         symbol,
         style,
@@ -546,7 +599,8 @@ async function getSymbolDetail(symbolRaw, query = {}) {
         strongest,
         weakest,
         flow,
-        location: locationSummary(loc),
+        location: locSummary,
+        decisionContext,
         zones,
         setups,
         signalEntries,

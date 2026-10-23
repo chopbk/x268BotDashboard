@@ -1,3 +1,4 @@
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Link } from "react-router-dom";
 
 function fmt(value, digits = 2) {
@@ -10,45 +11,78 @@ function fmtPct(value) {
   return `${fmt(value, 2)}%`;
 }
 
-function zoneCell(z) {
-  if (!z) return { text: "—", title: "" };
-  const band = `[${fmt(z.low, 6)}–${fmt(z.high, 6)}]`;
-  const dist = z.distancePct != null ? ` · ${fmtPct(z.distancePct)}` : "";
-  const near = z.nearFar && z.nearFar !== "far" ? ` · ${z.nearFar}` : "";
+function zoneShort(z, role) {
+  if (!z) return { text: "—", title: `Không có ${role}` };
+  const near = z.nearFar && z.nearFar !== "far" ? z.nearFar : null;
+  const dist = z.distancePct != null ? fmtPct(z.distancePct) : null;
+  const parts = [role === "support" ? "S" : "R"];
+  if (near) parts.push(near);
+  if (dist) parts.push(dist);
   return {
-    text: `${band}${dist}${near}`,
-    title: `${z.role || ""} · ${z.source || ""} · ATR ${fmt(z.distanceAtr, 2)}`,
+    text: parts.join(" · "),
+    title: `${z.role || role} [${fmt(z.low, 6)}–${fmt(z.high, 6)}] · ATR ${fmt(z.distanceAtr, 2)} · ${z.source || ""}`,
   };
 }
 
-function setupCell(setup) {
-  if (!setup) return "—";
+function positionCell(loc) {
+  const tags = (loc.positionTags || []).filter(Boolean);
+  const sup = zoneShort(loc.support, "support");
+  const res = zoneShort(loc.resistance, "resistance");
+  const tagText = tags.length ? tags.join(", ") : "—";
+  return {
+    text: tagText,
+    sub: `${sup.text} / ${res.text}`,
+    title: `${sup.title}\n${res.title}`,
+  };
+}
+
+function setupTriggerCell(setup, trigger) {
+  if (!setup) return { text: "—", title: "Không có setup active", cls: "" };
   const side = setup.side === "long" ? "L" : setup.side === "short" ? "S" : "?";
-  return `${side} ${setup.type || ""} · ${setup.entryState || setup.lifecycle || ""}`;
+  const type = setup.type || trigger?.type || "";
+  const state = setup.entryState || setup.lifecycle || "";
+  const touch = setup.touchEvidence || trigger?.touchEvidence;
+  return {
+    text: `${side} ${type} · ${state}`,
+    title: [
+      type,
+      state,
+      touch ? `touch: ${touch}` : null,
+      (trigger?.reasons || setup.reasons || []).slice(0, 2).join("; "),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    cls: setup.side === "long" ? "mkt-long" : setup.side === "short" ? "mkt-short" : "",
+  };
 }
 
-function signalCell(entries) {
-  const list = entries || [];
-  if (!list.length) return "—";
-  const primary = list.find((e) => !e.missingEntry) || list[0];
-  const side = primary.side === "LONG" ? "L" : primary.side === "SHORT" ? "S" : "?";
-  if (primary.missingEntry) return `${primary.source || "?"} ${side} · thiếu entry`;
-  return `${primary.source || "?"} ${side} · ${primary.priceRelation || "?"} · ${primary.validity || "?"}`;
+function waitingCell(ctx) {
+  if (ctx?.waiting?.text) return { text: ctx.waiting.text, title: ctx.waiting.entryState || "" };
+  return { text: "—", title: ctx?.waitingReason || "Không có điều kiện chờ" };
 }
 
-function tagsLabel(tags) {
-  if (!tags?.length) return "—";
-  return tags.join(", ");
+function obstaclesCell(ctx) {
+  const list = ctx?.obstacles || [];
+  if (!list.length) return { text: "—", title: "Không ghi nhận cản trở từ dữ liệu hiện có" };
+  return {
+    text: list.map((o) => o.text).join(" · "),
+    title: list.map((o) => o.text).join("\n"),
+  };
 }
 
-export default function MarketLocationTable({
-  rows,
-  symbol,
-  canFlow,
-  top,
-  onSelect,
-  loading,
-}) {
+const MarketLocationTable = forwardRef(function MarketLocationTable(
+  { rows, symbol, canFlow, top, onSelect, loading },
+  ref
+) {
+  const rowRefs = useRef(new Map());
+
+  useImperativeHandle(ref, () => ({
+    focusSymbol(sym) {
+      const el = rowRefs.current.get(sym);
+      if (el && typeof el.focus === "function") el.focus();
+    },
+  }));
+
   if (loading && !rows?.length) {
     return <div className="mkt-empty mkt-skel">Đang tải vị trí & setup…</div>;
   }
@@ -65,29 +99,43 @@ export default function MarketLocationTable({
       <thead>
         <tr>
           <th>Coin</th>
-          <th className="num">Giá</th>
+          <th className="num">Giá / Δ</th>
           <th>Cấu trúc</th>
-          <th>Hỗ trợ</th>
-          <th className="mkt-col-hide-mobile">Kháng cự</th>
           <th>Vị trí</th>
-          <th>Setup</th>
-          <th className="mkt-col-hide-mobile">Entry signal</th>
-          <th className="mkt-col-hide-mobile">Xác nhận</th>
-          <th>Độ mới</th>
+          <th>Setup / Trigger</th>
+          <th className="mkt-col-hide-mobile">Cần chờ</th>
+          <th>Cản trở</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => {
           const loc = row.location || {};
+          const ctx = row.context || {};
           const selected = row.symbol === symbol;
-          const sup = zoneCell(loc.support);
-          const res = zoneCell(loc.resistance);
+          const pos = positionCell(loc);
+          const setup = setupTriggerCell(loc.primarySetup, ctx.trigger);
+          const wait = waitingCell(ctx);
+          const obst = obstaclesCell(ctx);
           const flowHref = `/market?tab=flow&flowTab=overview&symbol=${encodeURIComponent(row.symbol)}&top=${top || 10}`;
+          const change = row.price?.changePct24h;
+          const changeCls =
+            change == null ? "muted" : Number(change) >= 0 ? "mkt-long" : "mkt-short";
           return (
             <tr
               key={row.symbol}
+              ref={(el) => {
+                if (el) rowRefs.current.set(row.symbol, el);
+                else rowRefs.current.delete(row.symbol);
+              }}
+              tabIndex={0}
               className={selected ? "selected" : ""}
               onClick={() => onSelect(row.symbol)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(row.symbol);
+                }
+              }}
             >
               <td>
                 <strong>{row.symbol}</strong>
@@ -105,11 +153,20 @@ export default function MarketLocationTable({
                     </Link>
                   </>
                 ) : null}
+                <div className="mkt-loc-mobile-extra muted">
+                  {wait.text !== "—" ? wait.text : setup.text}
+                </div>
               </td>
               <td className="num">
                 {fmt(row.price?.last, 6)}
-                <div className={`muted ${Number(row.price?.changePct24h) >= 0 ? "mkt-long" : "mkt-short"}`} style={{ fontSize: 11 }}>
-                  {row.price?.changePct24h == null ? "" : `${fmt(row.price.changePct24h, 2)}%`}
+                <div className={changeCls} style={{ fontSize: 11 }}>
+                  {change == null ? "—" : `${fmt(change, 2)}%`}
+                  {row.price?.asOf ? (
+                    <span className="muted" title={row.price.asOf}>
+                      {" "}
+                      · tuổi dữ liệu
+                    </span>
+                  ) : null}
                 </div>
               </td>
               <td>
@@ -117,24 +174,30 @@ export default function MarketLocationTable({
                 {loc.htfLabel && loc.htfLabel !== "N/A" ? (
                   <div className="muted" style={{ fontSize: 11 }}>
                     Lớn: {loc.htfLabel}
+                    {loc.structureBias &&
+                    loc.htfBias &&
+                    loc.htfBias !== "n/a" &&
+                    loc.structureBias !== loc.htfBias &&
+                    loc.htfBias !== "unknown"
+                      ? " · mâu thuẫn"
+                      : null}
                   </div>
                 ) : null}
               </td>
-              <td title={sup.title}>{sup.text}</td>
-              <td className="mkt-col-hide-mobile" title={res.title}>
-                {res.text}
+              <td title={pos.title}>
+                {pos.text}
+                <div className="muted mkt-col-hide-mobile" style={{ fontSize: 11 }}>
+                  {pos.sub}
+                </div>
               </td>
-              <td>{tagsLabel(loc.positionTags)}</td>
-              <td className={loc.primarySetup?.side === "long" ? "mkt-long" : loc.primarySetup?.side === "short" ? "mkt-short" : ""}>
-                {setupCell(loc.primarySetup)}
+              <td className={setup.cls} title={setup.title}>
+                {setup.text}
               </td>
-              <td className="mkt-col-hide-mobile">{signalCell(row.signalEntries)}</td>
-              <td className="mkt-col-hide-mobile">
-                {(loc.confirmations || []).map((c) => c.label).join(" · ") || "—"}
+              <td className="mkt-col-hide-mobile" title={wait.title}>
+                {wait.text}
               </td>
-              <td>
-                <span className={`mkt-status ${loc.quality || ""}`}>{loc.quality || "—"}</span>
-                {!loc.priceFresh ? <div className="muted" style={{ fontSize: 11 }}>giá stale/unknown</div> : null}
+              <td title={obst.title}>
+                <span className="mkt-obstacle">{obst.text}</span>
               </td>
             </tr>
           );
@@ -142,4 +205,6 @@ export default function MarketLocationTable({
       </tbody>
     </table>
   );
-}
+});
+
+export default MarketLocationTable;

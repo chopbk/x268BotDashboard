@@ -13,7 +13,7 @@
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
 | Hiệu quả giao dịch / ví | SignalHistoryPage → account-statics; AccountLedgerPage → account-ledger; summary | account-statics, account-ledger, system-summary |
 | Position / REST Binance | PositionsPage → routes/positions → position-live + binance-rest-queue → position-feed | positions, binance-rest-queue, position-sync |
-| Thị trường hub + Vị trí & Setup | MarketHubPage → MarketPage (location/scores) / SmartMoneyPage → `/api/market/*` \| `/api/smart-money/*` | `node --test server/test/market-hub-url.test.js server/test/market-location.test.js` |
+| Thị trường hub + Vị trí & Setup + Intelligence P0 | MarketHubPage → MarketPage (location/scores, context/brief/panel) / SmartMoneyPage → `/api/market/*` \| `/api/smart-money/*` | `node --test server/test/market-hub-url.test.js server/test/market-location.test.js server/test/market-read-context.test.js` |
 | Terminal workspace R1 | TerminalPage + components/terminal → cùng API Position/Orders/Trading | `node --test client/src/components/terminal/protection.test.js` (+ trade-preview / position-sort / position-alerts) |
 | AI/dashboard | DashboardPage → routes/dashboard → dashboard-ai/brief/dashboard | dashboard |
 | Lịch sử/Hệ thống | AuditLogsPage/SystemHealthPage → routes → lib → models | audit, runtime-logs, system-health, peer-proxy (`/api/admin/peer-proxy`) |

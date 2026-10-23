@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import MarketLocationTable from "../components/market/MarketLocationTable";
+import { useEscape } from "../navigation";
 import {
   normalizeTopParam,
   normalizeViewParam,
@@ -89,6 +90,20 @@ function sideShort(side) {
   return "?";
 }
 
+function qualityLabel(q) {
+  if (q === "fresh" || q === "ready") return "đủ";
+  if (q === "stale") return "cũ";
+  if (q === "warming" || q === "pending") return "đang nóng";
+  if (q === "missing") return "thiếu";
+  if (q === "error") return "lỗi";
+  return q || "—";
+}
+
+function fmtPctSafe(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  return `${fmt(value, 2)}%`;
+}
+
 function signalCellLabel(pack) {
   if (!pack?.count || !pack.latest) return { text: "—", cls: "mkt-wait", title: "Không có signal trong cửa sổ" };
   const latest = pack.latest;
@@ -156,6 +171,12 @@ export default function MarketPage({
   const sort = params.get("sort") || "";
   const dir = params.get("dir") === "asc" ? "asc" : "desc";
   const pollRef = useRef(null);
+  const pollInFlight = useRef(false);
+  const pollGen = useRef(0);
+  const pollStopped = useRef(false);
+  const pollBackoffMs = useRef(30_000);
+  const tableRef = useRef(null);
+  const lastFocusedSymbol = useRef(null);
 
   const [overview, setOverview] = useState(null);
   const [list, setList] = useState(null);
@@ -165,6 +186,7 @@ export default function MarketPage({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [briefFocus, setBriefFocus] = useState(null);
 
   const patchParams = useCallback(
     (patch, { replace = false } = {}) => {
@@ -238,18 +260,49 @@ export default function MarketPage({
     );
   }
 
+  const overviewUrl = useCallback(() => {
+    const qs = new URLSearchParams();
+    if (view === "location") qs.set("analysisTf", analysisTf);
+    const s = qs.toString();
+    return s ? `/api/market/overview?${s}` : "/api/market/overview";
+  }, [view, analysisTf]);
+
+  const handlePollError = useCallback((err) => {
+    const status = err?.status;
+    if (status === 401 || status === 403) {
+      pollStopped.current = true;
+      setError(err.message || "Hết phiên hoặc không có quyền — dừng poll");
+      return;
+    }
+    if (status === 429 || status === 503) {
+      pollBackoffMs.current = Math.min(120_000, (pollBackoffMs.current || 30_000) * 2);
+      setError(err.message || `Nguồn tạm thời (${status}) — backoff ${Math.round(pollBackoffMs.current / 1000)}s`);
+      return;
+    }
+    // Giữ snapshot cũ; chỉ báo lỗi tạm
+    if (err?.message) setError(err.message);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    pollStopped.current = false;
+    pollBackoffMs.current = 30_000;
     setLoading(true);
     setError("");
-    Promise.all([api("/api/market/overview"), loadList()])
+    const gen = ++pollGen.current;
+    Promise.all([api(overviewUrl()), loadList()])
       .then(([ov, listBody]) => {
-        if (cancelled) return;
+        if (cancelled || gen !== pollGen.current) return;
         setOverview(ov);
         setList(listBody);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message || "Lỗi tải Thị trường");
+        if (!cancelled) {
+          handlePollError(err);
+          if (!(err?.status === 401 || err?.status === 403)) {
+            setError(err.message || "Lỗi tải Thị trường");
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -257,49 +310,51 @@ export default function MarketPage({
     return () => {
       cancelled = true;
     };
-  }, [loadList]);
+  }, [loadList, overviewUrl, handlePollError]);
 
-  // Poll nhẹ khi còn symbol chưa chấm — bảng cập nhật dần, không phải chờ hết.
+  // Poll: warming 12s hoặc ổn định 30s — serial, pause hidden, discard cũ, không POST.
   useEffect(() => {
-    const progress = overview?.progress;
-    if (!progress || progress.complete) return undefined;
-    let cancelled = false;
-    const id = setInterval(() => {
-      Promise.all([api("/api/market/overview"), loadList()])
-        .then(([ov, listBody]) => {
-          if (cancelled) return;
-          setOverview(ov);
-          setList(listBody);
-        })
-        .catch(() => {});
-    }, 12_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [overview?.progress?.complete, overview?.progress?.scored, loadList]);
+    pollStopped.current = false;
+    const warming = overview?.progress && !overview.progress.complete;
+    const baseMs = warming ? 12_000 : 30_000;
 
-  // Poll cache 30s khi trang visible — không POST collector.
-  useEffect(() => {
-    function tick() {
+    async function tick() {
+      if (pollStopped.current) return;
       if (document.visibilityState === "hidden") return;
-      loadList()
-        .then((listBody) => setList(listBody))
-        .catch(() => {});
-      api("/api/market/overview")
-        .then((ov) => setOverview(ov))
-        .catch(() => {});
+      if (pollInFlight.current) return;
+      pollInFlight.current = true;
+      const gen = ++pollGen.current;
+      try {
+        const [ov, listBody] = await Promise.all([api(overviewUrl()), loadList()]);
+        if (gen !== pollGen.current) return;
+        setOverview(ov);
+        setList(listBody);
+        pollBackoffMs.current = baseMs;
+        setError((prev) => (prev && /backoff|tạm thời/i.test(prev) ? "" : prev));
+      } catch (err) {
+        if (gen === pollGen.current) handlePollError(err);
+      } finally {
+        pollInFlight.current = false;
+      }
     }
+
+    function schedule() {
+      clearInterval(pollRef.current);
+      const ms = Math.max(baseMs, pollBackoffMs.current || baseMs);
+      pollRef.current = setInterval(tick, ms);
+    }
+
+    schedule();
     const onVis = () => {
-      if (document.visibilityState === "visible") tick();
+      if (document.visibilityState === "visible" && !pollStopped.current) tick();
     };
-    pollRef.current = setInterval(tick, 30_000);
     document.addEventListener("visibilitychange", onVis);
     return () => {
       clearInterval(pollRef.current);
       document.removeEventListener("visibilitychange", onVis);
+      pollGen.current += 1;
     };
-  }, [loadList]);
+  }, [overview?.progress?.complete, overview?.progress?.scored, loadList, overviewUrl, handlePollError]);
 
   useEffect(() => {
     if (!symbol) {
@@ -396,7 +451,7 @@ export default function MarketPage({
     setError("");
     try {
       await api("/api/market/refresh", { method: "POST", body: {} });
-      const [ov, listBody] = await Promise.all([api("/api/market/overview"), loadList()]);
+      const [ov, listBody] = await Promise.all([api(overviewUrl()), loadList()]);
       setOverview(ov);
       setList(listBody);
     } catch (err) {
@@ -406,9 +461,31 @@ export default function MarketPage({
     }
   }
 
-  const breadth = overview?.breadth || {};
+  const closePanel = useCallback(() => {
+    const prev = symbol;
+    lastFocusedSymbol.current = prev || lastFocusedSymbol.current;
+    patchParams({ symbol: null, tf: null, signals: null });
+    requestAnimationFrame(() => {
+      const sym = lastFocusedSymbol.current;
+      if (sym && tableRef.current?.focusSymbol) tableRef.current.focusSymbol(sym);
+    });
+  }, [symbol, patchParams]);
+
+  useEscape(Boolean(symbol), closePanel);
+
+  const selectSymbol = useCallback(
+    (sym) => {
+      lastFocusedSymbol.current = sym;
+      patchParams({ symbol: sym, signals: null });
+    },
+    [patchParams]
+  );
+
   const coverage = overview?.coverage || {};
   const progress = overview?.progress || {};
+  const ctx = overview?.context || null;
+  const briefStatements = ctx?.brief?.statements || [];
+  const dc = detail?.decisionContext || null;
 
   const TitleTag = embedded ? "h2" : "h1";
 
@@ -421,14 +498,23 @@ export default function MarketPage({
           </TitleTag>
           <p className="mkt-sub">
             {view === "location"
-              ? "Vị trí giá so với hỗ trợ/kháng cự, setup kỹ thuật và entry signal gần đây — không phải lệnh mua/bán."
+              ? "Vị trí giá so với hỗ trợ/kháng cự, setup kỹ thuật — không phải lệnh mua/bán."
               : "Scoring Long/Short độc lập trên 5m–1d (chỉ nến đóng). Điểm market-v1 không phải xác suất thắng."}
+          </p>
+          <p className="mkt-meta-line" aria-label="Nguồn phạm vi cập nhật chất lượng">
+            <span>Nguồn: Binance USDM cache · {overview?.formulaVersion || "market-v1"}</span>
+            <span>
+              Phạm vi: Top {top}
+              {view === "location" ? ` · khung ${analysisTf}` : ""} · universe {overview?.universe?.count ?? "—"}
+              {overview?.universe?.version != null ? ` (v${overview.universe.version})` : ""}
+            </span>
+            <span>Cập nhật: {when(ctx?.asOf || overview?.universe?.refreshedAt)}</span>
+            <span>
+              Chất lượng: {qualityLabel(ctx?.quality)} · {coverage.label || "—"}
+            </span>
           </p>
         </div>
         <div className="mkt-meta">
-          <span>Universe v{overview?.universe?.version ?? "—"} · {when(overview?.universe?.refreshedAt)}</span>
-          <span>Formula {overview?.formulaVersion || "market-v1"}</span>
-          <span>Coverage {coverage.label || "—"}</span>
           <button type="button" className="ghost" disabled={refreshing} onClick={onRefresh}>
             {refreshing ? "Đang refresh…" : "Refresh collector"}
           </button>
@@ -455,13 +541,89 @@ export default function MarketPage({
         </div>
       ) : null}
 
-      <div className="mkt-summary">
-        <span className="mkt-pill mkt-long">Thiên Long <strong>{breadth.leanLong ?? "—"}</strong></span>
-        <span className="mkt-pill mkt-short">Thiên Short <strong>{breadth.leanShort ?? "—"}</strong></span>
-        <span className="mkt-pill">Ứng viên <strong>{breadth.eligible ?? "—"}</strong></span>
-        <span className="mkt-pill">Mâu thuẫn <strong>{breadth.conflict ?? "—"}</strong></span>
-        <span className="mkt-pill">Trend/Range/Trans <strong>{breadth.trending ?? 0}/{breadth.ranging ?? 0}/{breadth.transitional ?? 0}</strong></span>
+      <div className="mkt-context-cards" id="mkt-context">
+        {ctx?.btc4h && ctx.btc4h.quality !== "missing" ? (
+          <button
+            type="button"
+            className={`mkt-ctx-card ${briefFocus === "btc4h" ? "active" : ""}`}
+            onClick={() => setBriefFocus("btc4h")}
+          >
+            <span className="mkt-ctx-label">BTC 4h</span>
+            <strong>
+              {ctx.btc4h.value?.structureLabel || ctx.btc4h.value?.structureBias || "—"}
+              {ctx.btc4h.value?.regime ? ` · ${ctx.btc4h.value.regime}` : ""}
+            </strong>
+            <span className="muted">
+              {qualityLabel(ctx.btc4h.quality)} · {when(ctx.btc4h.asOf)}
+            </span>
+          </button>
+        ) : (
+          <div className="mkt-ctx-card mkt-ctx-missing">
+            <span className="mkt-ctx-label">BTC 4h</span>
+            <strong>Thiếu dữ liệu</strong>
+            <span className="muted">{ctx?.btc4h?.reason || "không có snapshot BTC"}</span>
+          </div>
+        )}
+        {ctx?.breadth?.value ? (
+          <button
+            type="button"
+            className={`mkt-ctx-card ${briefFocus === "breadth" ? "active" : ""}`}
+            onClick={() => setBriefFocus("breadth")}
+          >
+            <span className="mkt-ctx-label">Độ rộng 1h</span>
+            <strong>
+              L {ctx.breadth.value.leanLong}/{ctx.breadth.value.universeTotal} · S {ctx.breadth.value.leanShort}/
+              {ctx.breadth.value.universeTotal}
+            </strong>
+            <span className="muted">
+              thiếu {ctx.breadth.value.missing ?? "—"}/{ctx.breadth.value.universeTotal} ·{" "}
+              {qualityLabel(ctx.breadth.quality)}
+            </span>
+          </button>
+        ) : null}
+        {ctx?.volatility && ctx.volatility.quality !== "missing" ? (
+          <button
+            type="button"
+            className={`mkt-ctx-card ${briefFocus === "volatility" ? "active" : ""}`}
+            onClick={() => setBriefFocus("volatility")}
+          >
+            <span className="mkt-ctx-label">Biến động</span>
+            <strong>ATR% BTC 4h {fmtPctSafe(ctx.volatility.value?.atrPct)}</strong>
+            <span className="muted">không gắn nhãn cực đoan · {qualityLabel(ctx.volatility.quality)}</span>
+          </button>
+        ) : null}
+        {ctx?.setupCounts && ctx.setupCounts.quality !== "missing" ? (
+          <button
+            type="button"
+            className={`mkt-ctx-card ${briefFocus === "setups" ? "active" : ""}`}
+            onClick={() => setBriefFocus("setups")}
+          >
+            <span className="mkt-ctx-label">Setup · {ctx.setupCounts.value?.analysisTf || analysisTf}</span>
+            <strong>
+              {ctx.setupCounts.value?.active ?? "—"} active · {ctx.setupCounts.value?.inEntry ?? "—"} in-entry
+            </strong>
+            <span className="muted">{ctx.setupCounts.value?.scope || "universe"}</span>
+          </button>
+        ) : null}
       </div>
+
+      {briefStatements.length ? (
+        <div className="mkt-brief" role="region" aria-label="Tóm tắt bối cảnh">
+          {briefStatements.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`mkt-brief-item ${briefFocus === s.id ? "active" : ""}`}
+              onClick={() => {
+                setBriefFocus(s.id);
+                document.getElementById("mkt-context")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              }}
+            >
+              {s.text}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mkt-filters">
         <label>
@@ -580,12 +742,13 @@ export default function MarketPage({
         <div className="mkt-table-wrap panel">
           {view === "location" ? (
             <MarketLocationTable
+              ref={tableRef}
               rows={list?.rows || []}
               symbol={symbol}
               canFlow={canFlow}
               top={top}
               loading={loading}
-              onSelect={(sym) => patchParams({ symbol: sym, signals: null })}
+              onSelect={selectSymbol}
             />
           ) : loading && !list ? (
             <div className="mkt-empty mkt-skel">Đang tải giá top 50…</div>
@@ -623,7 +786,7 @@ export default function MarketPage({
                     <tr
                       key={row.symbol}
                       className={selected ? "selected" : ""}
-                      onClick={() => patchParams({ symbol: row.symbol, signals: null })}
+                      onClick={() => selectSymbol(row.symbol)}
                     >
                       <td>
                         <strong>{row.symbol}</strong>
@@ -712,7 +875,7 @@ export default function MarketPage({
               <>
                 <div className="mkt-detail-head">
                   <h2>{symbol}</h2>
-                  <button type="button" className="ghost" onClick={() => patchParams({ symbol: null, tf: null, signals: null })}>
+                  <button type="button" className="ghost" onClick={closePanel}>
                     Đóng
                   </button>
                 </div>
@@ -739,12 +902,17 @@ export default function MarketPage({
                   </Link>
                 </div>
 
-                {view === "location" && detail?.location ? (
-                  <section className="mkt-signals">
-                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Vị trí · {detail.analysisTf || analysisTf}</h3>
+                {dc ? (
+                  <section className="mkt-decision" aria-label="Luận điểm quyết định">
+                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>
+                      Định vị · {dc.analysisTf || analysisTf}
+                      <span className="muted"> · {qualityLabel(dc.quality)}</span>
+                    </h3>
                     <p className="muted" style={{ fontSize: 12, margin: "0 0 6px" }}>
-                      Giá {detail.location.price ?? "—"} · {detail.location.priceFresh ? "tươi" : "stale/unknown"} ·{" "}
-                      {detail.location.structureLabel || "—"}
+                      Giá {dc.positioning?.price ?? "—"} · nguồn {dc.positioning?.priceSource || "—"} ·{" "}
+                      {dc.positioning?.priceFresh ? "tươi" : "stale/unknown"} ·{" "}
+                      {dc.positioning?.structureLabel || "—"}
+                      {dc.positioning?.htfLabel ? ` / HTF ${dc.positioning.htfLabel}` : ""}
                     </p>
                     <div className="mkt-ruler" aria-hidden="true">
                       <span>Hỗ trợ</span>
@@ -755,61 +923,91 @@ export default function MarketPage({
                       <li>
                         <span>Hỗ trợ</span>
                         <span className="muted">
-                          {detail.location.support
-                            ? `[${detail.location.support.low}–${detail.location.support.high}] · ${detail.location.support.distancePct ?? "—"}%`
+                          {dc.positioning?.support
+                            ? `[${dc.positioning.support.low}–${dc.positioning.support.high}] · ${dc.positioning.support.distancePct ?? "—"}%`
                             : "—"}
                         </span>
                       </li>
                       <li>
                         <span>Kháng cự</span>
                         <span className="muted">
-                          {detail.location.resistance
-                            ? `[${detail.location.resistance.low}–${detail.location.resistance.high}] · ${detail.location.resistance.distancePct ?? "—"}%`
+                          {dc.positioning?.resistance
+                            ? `[${dc.positioning.resistance.low}–${dc.positioning.resistance.high}] · ${dc.positioning.resistance.distancePct ?? "—"}%`
                             : "—"}
                         </span>
                       </li>
-                      <li>
-                        <span>Setup</span>
-                        <span className="muted">
-                          {detail.location.primarySetup
-                            ? `${detail.location.primarySetup.side} ${detail.location.primarySetup.type} · ${detail.location.primarySetup.entryState}`
-                            : "Không có setup đủ điều kiện (chạm hỗ trợ ≠ mua)"}
-                        </span>
-                      </li>
                     </ul>
-                    {(detail.setups || []).length ? (
-                      <>
-                        <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Setup gần đây</h3>
-                        <ul className="mkt-sig-list">
-                          {detail.setups.slice(0, 8).map((s) => (
-                            <li key={s.id}>
-                              <span className={s.side === "long" ? "mkt-long" : "mkt-short"}>
-                                {s.side} · {s.type} · {s.lifecycle}/{s.entryState}
-                              </span>
-                              <span className="muted">
-                                entry [{s.entryLow}–{s.entryHigh}] · {s.createdAt || "—"}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : null}
-                    {(detail.signalEntries || []).length ? (
-                      <>
-                        <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Entry signal (tách khỏi setup)</h3>
-                        <ul className="mkt-sig-list">
-                          {detail.signalEntries.slice(0, 8).map((e) => (
-                            <li key={e.id}>
-                              <span>
-                                {e.source} · {e.side}
-                                {e.missingEntry ? " · thiếu giá entry" : ` · ${e.priceRelation}/${e.validity}`}
-                              </span>
-                              <span className="muted">{e.openTime || "—"}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : null}
+
+                    <h3 style={{ margin: "10px 0 4px", fontSize: 13 }}>Kịch bản</h3>
+                    {(dc.scenarios || []).length ? (
+                      <ul className="mkt-sig-list">
+                        {dc.scenarios.map((sc) => (
+                          <li key={sc.id}>
+                            <span className={sc.side === "long" ? "mkt-long" : "mkt-short"}>
+                              {sc.side} · {sc.type} · {sc.entryState}
+                            </span>
+                            <span className="muted">
+                              entry [{sc.entryLow}–{sc.entryHigh}] · invalidation {sc.invalidationLevel ?? "—"}
+                              {sc.expiresAt ? ` · hết ${when(sc.expiresAt)}` : sc.expiresAtIndex != null ? ` · hết bar #${sc.expiresAtIndex}` : ""}
+                            </span>
+                            <span className="muted" style={{ fontSize: 11 }}>
+                              Trigger: {sc.trigger?.description || sc.type} · {sc.entryNote}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12 }}>{dc.note || "Chưa có setup active."}</p>
+                    )}
+
+                    <h3 style={{ margin: "10px 0 4px", fontSize: 13 }}>Bằng chứng</h3>
+                    {(dc.evidence || []).length ? (
+                      <ul className="mkt-sig-list">
+                        {dc.evidence.map((e) => (
+                          <li key={e.id}>
+                            <span>{e.text}</span>
+                            <span className="muted">
+                              {e.source} · {when(e.asOf)} · {e.version || ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12 }}>Chưa có bằng chứng đủ từ snapshot.</p>
+                    )}
+
+                    <h3 style={{ margin: "10px 0 4px", fontSize: 13 }}>Phản biện</h3>
+                    {(dc.conflicts || []).length ? (
+                      <ul className="mkt-sig-list">
+                        {dc.conflicts.map((c) => (
+                          <li key={c.id}>
+                            <span>{c.text}</span>
+                            <span className="muted">
+                              {c.source} · {when(c.asOf)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12 }}>Không ghi nhận mâu thuẫn từ dữ liệu hiện có.</p>
+                    )}
+                  </section>
+                ) : null}
+
+                {view === "location" && (detail.signalEntries || []).length ? (
+                  <section className="mkt-signals">
+                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Entry signal (tách khỏi setup)</h3>
+                    <ul className="mkt-sig-list">
+                      {detail.signalEntries.slice(0, 8).map((e) => (
+                        <li key={e.id}>
+                          <span>
+                            {e.source} · {e.side}
+                            {e.missingEntry ? " · thiếu giá entry" : ` · ${e.priceRelation}/${e.validity}`}
+                          </span>
+                          <span className="muted">{e.openTime || "—"}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </section>
                 ) : null}
 

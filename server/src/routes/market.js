@@ -44,7 +44,7 @@ const refreshLimit = createRateLimit({
 
 router.get("/overview", requireAuth, requireMarketRead, async (req, res) => {
     try {
-        res.json(await getStatusPayload());
+        res.json(await getStatusPayload(req.query || {}));
     } catch (error) {
         console.error("[market:overview]", error.message || error);
         res.status(500).json({ error: "Không đọc được tổng quan thị trường" });
