@@ -10,6 +10,7 @@ const { createConcurrencyLimit, requestTimeout, sessionIdentity } = require("./m
 const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
 const { startSmartMoneyJob } = require("./lib/smart-money/scheduler");
 const { startMarketJob } = require("./lib/market/scheduler");
+const { startMarketDashJob } = require("./lib/market-dash/scheduler");
 const { connectRateLimitStore, rateLimitStoreStatus, getRedisClient } = require("./lib/rate-limit-store");
 const { bindRedis } = require("./lib/position-live");
 const { startMarkPrices } = require("./lib/mark-prices");
@@ -38,6 +39,7 @@ async function main() {
         await startSummarySnapshotJob();
         await startSmartMoneyJob();
         await startMarketJob();
+        await startMarketDashJob();
         await initBotCommandBridge();
 
         const app = express();
@@ -122,6 +124,11 @@ async function main() {
             "/api/smart-money",
             (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
             require("./routes/smart-money")
+        );
+        app.use(
+            "/api/market/dash",
+            (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
+            require("./routes/market-dash")
         );
         app.use(
             "/api/market",

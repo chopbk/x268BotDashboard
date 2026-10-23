@@ -3,7 +3,7 @@
  * Spec: docs/market-hub-spec.md
  */
 
-export const MAIN_TABS = Object.freeze(["technical", "flow"]);
+export const MAIN_TABS = Object.freeze(["technical", "flow", "dashboard"]);
 export const FLOW_TABS = Object.freeze(["overview", "notable", "watchlist"]);
 export const VIEW_MODES = Object.freeze(["location", "scores"]);
 export const TOP_OPTIONS = Object.freeze([10, 25, 50]);
@@ -49,6 +49,7 @@ export function marketHubAccess(user) {
     canTerminal,
     canTechnical,
     canFlow,
+    canDashboard: canTechnical,
     canMarketHub: canTechnical || canFlow,
     defaultMainTab: canTechnical ? "technical" : "flow",
   };
@@ -105,6 +106,11 @@ export function normalizeMarketHubSearch(search, access) {
   if (mainTab === "technical" && !access.canTechnical && access.canFlow) {
     mainTab = "flow";
     params.set("tab", "flow");
+    replaced = true;
+    notice = "Bạn không có quyền xem tab đã chọn";
+  } else if (mainTab === "dashboard" && !access.canDashboard) {
+    mainTab = access.canFlow ? "flow" : access.defaultMainTab;
+    params.set("tab", mainTab);
     replaced = true;
     notice = "Bạn không có quyền xem tab đã chọn";
   } else if (mainTab === "flow" && !access.canFlow && access.canTechnical) {

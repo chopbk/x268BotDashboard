@@ -112,17 +112,21 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 ```
 Menu /market
- → MarketHubPage (tab=technical|flow, top=10|25|50)
+ → MarketHubPage (tab=technical|dashboard|flow, top=10|25|50)
  → chỉ mount domain active
     ├─ technical
     │    ├─ view=location (mặc định) → zones/setups + signal entry
     │    └─ view=scores → ma trận market-v1
+    ├─ dashboard → MarketDashPage → GET /api/market/dash/*
+    │    collector mdash (WS ticker/mark + REST) → hist funding/OI
+    │    → analyzer nến đóng → pulse/regime/setups/score → signals Mongo
+    │    → alert Telegram (cooldown 4h) nếu env cấu hình
     └─ flow → SmartMoneyPage → GET /api/smart-money/*
  Scheduler market → nến đóng → score + locationByTimeframe → snapshot
  /smart-money?* → replace → /market?tab=flow&flowTab=…
 ```
 
-Collector: market scoring top 50; Smart Money mặc định top 50 (UI Top chỉ cắt hiển thị). Hai thang điểm không cộng. Spec: [market-position-setup-spec](market-position-setup-spec.md), [market-hub-spec](market-hub-spec.md), [market-formula-v1](market-formula-v1.md).
+Collector: market scoring top 50; Market Dashboard top 100 (lọc vol/listing); Smart Money mặc định top 50. Các thang điểm không cộng. Spec: [market.md](market.md), [market-position-setup-spec](market-position-setup-spec.md), [market-hub-spec](market-hub-spec.md), [market-formula-v1](market-formula-v1.md).
 
 ## 8. Deploy
 

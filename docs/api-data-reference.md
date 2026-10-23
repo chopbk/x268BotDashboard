@@ -158,6 +158,13 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/market/events` | [market](../server/src/routes/market.js) |
 | GET | `/api/market/recent-signals` | [market](../server/src/routes/market.js) — map symbol→signal (cùng quyền đọc market) |
 | POST | `/api/market/refresh` | [market](../server/src/routes/market.js) — `market.manage` |
+| GET | `/api/market/dash/overview` | [market-dash](../server/src/routes/market-dash.js) — top bar + freshness |
+| GET | `/api/market/dash/pulse` | [market-dash](../server/src/routes/market-dash.js) — Market Pulse + regime |
+| GET | `/api/market/dash/heatmap` | [market-dash](../server/src/routes/market-dash.js) — `?color=` |
+| GET | `/api/market/dash/derivatives` | [market-dash](../server/src/routes/market-dash.js) |
+| GET | `/api/market/dash/signals` | [market-dash](../server/src/routes/market-dash.js) — filter setup/tf/direction/minScore |
+| GET | `/api/market/dash/symbols/:symbol` | [market-dash](../server/src/routes/market-dash.js) — candles + checklist + MTF |
+| POST | `/api/market/dash/refresh` | [market-dash](../server/src/routes/market-dash.js) — `market.manage` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders/cancel-batch` | [trading](../server/src/routes/trading.js) |

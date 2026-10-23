@@ -7,6 +7,7 @@ import {
 } from "../lib/market-hub";
 import MarketPage from "./MarketPage";
 import SmartMoneyPage from "./SmartMoneyPage";
+import MarketDashPage from "./MarketDashPage";
 import "./market-hub.css";
 
 export default function MarketHubPage() {
@@ -45,10 +46,12 @@ export default function MarketHubPage() {
   }
 
   const showTechnical = mainTab === "technical" && access.canTechnical;
+  const showDashboard = mainTab === "dashboard" && access.canDashboard;
   const showFlow = mainTab === "flow" && access.canFlow;
 
   function selectMainTab(next) {
     if (next === "technical" && !access.canTechnical) return;
+    if (next === "dashboard" && !access.canDashboard) return;
     if (next === "flow" && !access.canFlow) return;
     setParams(
       (prev) => {
@@ -67,7 +70,7 @@ export default function MarketHubPage() {
       <header className="mkt-hub-header">
         <h1>Thị trường</h1>
         <p className="mkt-hub-sub muted">
-          Kỹ thuật (market-v1) và dòng tiền Smart Money — hai góc nhìn riêng, không cộng chung thành một điểm vào lệnh.
+          Kỹ thuật (market-v1), Dashboard (Pulse/Heatmap/Scanner), và dòng tiền Smart Money — các góc nhìn riêng, không cộng chung thành một điểm vào lệnh.
         </p>
       </header>
 
@@ -83,6 +86,19 @@ export default function MarketHubPage() {
             onClick={() => selectMainTab("technical")}
           >
             Kỹ thuật
+          </button>
+        ) : null}
+        {access.canDashboard ? (
+          <button
+            type="button"
+            role="tab"
+            id="mkt-hub-tab-dashboard"
+            aria-controls="mkt-hub-panel"
+            aria-selected={mainTab === "dashboard"}
+            className={mainTab === "dashboard" ? "active" : ""}
+            onClick={() => selectMainTab("dashboard")}
+          >
+            Dashboard
           </button>
         ) : null}
         {access.canFlow ? (
@@ -102,7 +118,14 @@ export default function MarketHubPage() {
 
       {denyNotice ? <p className="mkt-hub-notice" role="status">{denyNotice}</p> : null}
 
-      <div className="mkt-hub-body" id="mkt-hub-panel" role="tabpanel" aria-label={mainTab === "flow" ? "Dòng tiền" : "Kỹ thuật"}>
+      <div
+        className="mkt-hub-body"
+        id="mkt-hub-panel"
+        role="tabpanel"
+        aria-label={
+          mainTab === "flow" ? "Dòng tiền" : mainTab === "dashboard" ? "Dashboard" : "Kỹ thuật"
+        }
+      >
         {showTechnical ? (
           <MarketPage
             embedded
@@ -110,6 +133,7 @@ export default function MarketHubPage() {
             canTerminal={access.canTerminal}
           />
         ) : null}
+        {showDashboard ? <MarketDashPage /> : null}
         {showFlow ? (
           <SmartMoneyPage
             embedded
