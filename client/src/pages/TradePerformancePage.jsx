@@ -232,6 +232,7 @@ function PnlChart({ series, selectedDay, onSelectDay, timeField }) {
 }
 
 function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek, sortKey, onSort, book, showIncome }) {
+  const [copied, setCopied] = useState(false);
   const sorted = sortGroups(rows, sortKey);
   const maxAbs = Math.max(1, ...sorted.map((row) => Math.abs(Number(row.profit) || 0)));
   const heads = [
@@ -244,70 +245,114 @@ function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek
     ["profitFactor", "PF"],
   ].filter(Boolean);
   const colCount = 3 + heads.length + (onPeek ? 1 : 0);
+  const listNames = sorted
+    .map((row) => {
+      const name = row[nameKey];
+      if (name == null || name === "") return "";
+      if (nameKey === "env" && (row.username || username)) return `${row.username || username}/${name}`;
+      return String(name);
+    })
+    .filter(Boolean);
+  const listText = listNames.join(", ");
+
+  async function copyList() {
+    if (!listText) return;
+    try {
+      await navigator.clipboard.writeText(listText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   return (
-    <div className="table-wrap perf-table">
-      <table>
-        <thead>
-          <tr>
-            <th>{nameLabel}</th>
-            {heads.map(([key, label]) => (
-              <th key={key} className="num">
-                <button type="button" className={sortKey === key ? "th-sort active" : "th-sort"} onClick={() => onSort(key)}>{label}</button>
-              </th>
-            ))}
-            <th className="num">Thắng/Thua</th>
-            {onPeek ? <th></th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.length === 0 ? <tr><td colSpan={colCount}>Không có nhóm đạt bộ lọc kết quả.</td></tr> : null}
-          {sorted.map((row) => {
-            const name = row[nameKey];
-            const pnl = row.profit;
-            const width = `${Math.max(4, (Math.abs(Number(pnl) || 0) / maxAbs) * 100)}%`;
-            const avg = row.valid ? (Number(row.profit) || 0) / row.valid : null;
-            const owner = row.username || username;
-            const lowSample = row.lowSample || (Number(row.count) || 0) < LOW_SAMPLE;
-            return (
-              <tr key={`${nameKey}-${name}-${owner || ""}`} className={active === name ? "trade-row active" : "trade-row"}>
-                <td>
-                  <button type="button" className="perf-linkish" onClick={() => onPick(name, row)}>
-                    {nameKey === "env" && owner ? `${owner} / ${name}` : name}
-                  </button>
-                  {owner && nameKey !== "username" && nameKey !== "env" ? (
-                    <small className="muted"> · {owner}</small>
-                  ) : null}
-                  {lowSample ? (
-                    <span className="perf-badge" title={`Dưới ${LOW_SAMPLE} lệnh — chỉ đọc số liệu, không khẳng định tốt chỉ vì win rate cao.`}>Ít mẫu</span>
-                  ) : null}
-                  {book === "paper" ? <span className="perf-badge">Paper</span> : null}
-                </td>
-                <td className="num">{row.count ?? "—"}</td>
-                <td className="num">
-                  {row.winRate == null ? "—" : `${fmt(row.winRate, 1)}%`}
-                  <small className="muted"> · {row.count ?? 0} lệnh</small>
-                </td>
-                <td className="num">
-                  <div className="perf-barcell">
-                    <span className={tone(pnl)}>{money(pnl)}</span>
-                    <span className={`perf-inlinebar ${tone(pnl)}`} style={{ width }} />
-                  </div>
-                </td>
-                {showIncome ? <td className={`num ${tone(row.income)}`}>{money(row.income)}</td> : null}
-                <td className="num">{money(avg)}</td>
-                <td className="num">{row.volume == null ? "—" : money(row.volume)}</td>
-                <td className="num">{row.profitFactorLabel || (row.profitFactor == null ? "—" : fmt(row.profitFactor, 2))}</td>
-                <td className="num">{row.wins ?? 0}/{row.losses ?? 0}</td>
-                {onPeek ? (
+    <div className="perf-group-block">
+      <div className="table-wrap perf-table">
+        <table>
+          <thead>
+            <tr>
+              <th>{nameLabel}</th>
+              {heads.map(([key, label]) => (
+                <th key={key} className="num">
+                  <button type="button" className={sortKey === key ? "th-sort active" : "th-sort"} onClick={() => onSort(key)}>{label}</button>
+                </th>
+              ))}
+              <th className="num">Thắng/Thua</th>
+              {onPeek ? <th></th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.length === 0 ? <tr><td colSpan={colCount}>Không có nhóm đạt bộ lọc kết quả.</td></tr> : null}
+            {sorted.map((row) => {
+              const name = row[nameKey];
+              const pnl = row.profit;
+              const width = `${Math.max(4, (Math.abs(Number(pnl) || 0) / maxAbs) * 100)}%`;
+              const avg = row.valid ? (Number(row.profit) || 0) / row.valid : null;
+              const owner = row.username || username;
+              const lowSample = row.lowSample || (Number(row.count) || 0) < LOW_SAMPLE;
+              return (
+                <tr key={`${nameKey}-${name}-${owner || ""}`} className={active === name ? "trade-row active" : "trade-row"}>
                   <td>
-                    <button type="button" className="ghost" onClick={(event) => { event.stopPropagation(); onPeek(name, row); }}>Xem</button>
+                    <button type="button" className="perf-linkish" onClick={() => onPick(name, row)}>
+                      {nameKey === "env" && owner ? `${owner} / ${name}` : name}
+                    </button>
+                    {owner && nameKey !== "username" && nameKey !== "env" ? (
+                      <small className="muted"> · {owner}</small>
+                    ) : null}
+                    {lowSample ? (
+                      <span className="perf-badge" title={`Dưới ${LOW_SAMPLE} lệnh — chỉ đọc số liệu, không khẳng định tốt chỉ vì win rate cao.`}>Ít mẫu</span>
+                    ) : null}
+                    {book === "paper" ? <span className="perf-badge">Paper</span> : null}
                   </td>
-                ) : null}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  <td className="num">{row.count ?? "—"}</td>
+                  <td className="num">
+                    {row.winRate == null ? "—" : `${fmt(row.winRate, 1)}%`}
+                    <small className="muted"> · {row.count ?? 0} lệnh</small>
+                  </td>
+                  <td className="num">
+                    <div className="perf-barcell">
+                      <span className={tone(pnl)}>{money(pnl)}</span>
+                      <span className={`perf-inlinebar ${tone(pnl)}`} style={{ width }} />
+                    </div>
+                  </td>
+                  {showIncome ? <td className={`num ${tone(row.income)}`}>{money(row.income)}</td> : null}
+                  <td className="num">{money(avg)}</td>
+                  <td className="num">{row.volume == null ? "—" : money(row.volume)}</td>
+                  <td className="num">{row.profitFactorLabel || (row.profitFactor == null ? "—" : fmt(row.profitFactor, 2))}</td>
+                  <td className="num">{row.wins ?? 0}/{row.losses ?? 0}</td>
+                  {onPeek ? (
+                    <td>
+                      <button type="button" className="ghost" onClick={(event) => { event.stopPropagation(); onPeek(name, row); }}>Xem</button>
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {listNames.length ? (
+        <div className="perf-group-copy">
+          <div className="perf-group-copy-head">
+            <p className="muted">
+              Danh sách {nameLabel.toLowerCase()} theo thứ tự bảng ({listNames.length})
+              {nameKey === "signal" ? " — chép dán vào signals của bot" : ""}.
+            </p>
+            <button type="button" className="ghost" onClick={copyList} disabled={!listText}>
+              {copied ? "Đã chép" : "Chép danh sách"}
+            </button>
+          </div>
+          <textarea
+            className="perf-group-copy-text"
+            readOnly
+            rows={Math.min(5, Math.max(2, Math.ceil(listText.length / 72)))}
+            value={listText}
+            onFocus={(event) => event.target.select()}
+            aria-label={`Danh sách ${nameLabel} theo thứ tự bảng`}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

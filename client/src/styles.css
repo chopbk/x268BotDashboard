@@ -1665,6 +1665,24 @@ button.linkish:hover { background: none; }
 .perf-groups, .perf-trades { display: grid; gap: 12px; min-width: 0; }
 .perf-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .perf-tabs button.active { background: var(--accent); color: var(--ink); }
+.perf-group-block { display: grid; gap: 10px; min-width: 0; }
+.perf-group-copy { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.perf-group-copy-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.perf-group-copy-head p { margin: 0; }
+.perf-group-copy-text {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font: inherit;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
 .perf-table { max-height: 520px; overflow: auto; min-width: 0; }
 .perf-table th.num, .perf-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .perf-table .positive { color: var(--ok); }
