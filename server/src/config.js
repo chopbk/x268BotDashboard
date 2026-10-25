@@ -19,8 +19,9 @@ const config = {
     mqttUrl: process.env.WEB_MQTT_URL || "",
     cookieName: "wb_token",
     csrfCookieName: "wb_csrf",
-    jwtExpiresIn: "12h",
-    cookieMaxAgeMs: 12 * 60 * 60 * 1000,
+    /** Phiên đăng nhập: JWT + cookie auth/CSRF cùng hạn 7 ngày. */
+    jwtExpiresIn: "7d",
+    cookieMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
     /** Peer tinyproxy — public GET Binance; signed vẫn direct. Trống = hydrate từ peer_proxy_config. */
     binancePeerProxies: process.env.BINANCE_PEER_PROXIES || "",
     binancePeerProxySelfIp: process.env.BINANCE_PEER_PROXY_SELF_IP || "",

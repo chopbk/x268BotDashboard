@@ -218,14 +218,14 @@ khác nhau có bucket riêng nhưng vẫn gắn với IP gửi request.
 ### 5.2 JWT và cookie
 
 - JWT chỉ chứa `sub` là user id. Không nhét role, permissions hoặc bot scope vào JWT.
-- JWT hết hạn sau 12 giờ.
+- JWT và cookie auth hết hạn sau **7 ngày** (`jwtExpiresIn: "7d"`, `cookieMaxAgeMs` tương ứng). Cookie CSRF dùng cùng `maxAge`.
 - Cookie tên `wb_token`, `httpOnly`, `sameSite: "lax"`, `path: "/"`.
 - Cookie dùng `secure: true` khi `NODE_ENV=production`.
-- `WEB_JWT_SECRET` phải dài tối thiểu 16 ký tự khi server khởi động.
+- `WEB_JWT_SECRET` phải dài tối thiểu 16 ký tự khi server khởi động; **không đổi secret khi deploy** nếu muốn giữ phiên (đổi secret làm mọi cookie cũ hết hiệu lực).
 
 Lý do JWT chỉ chứa `sub`: `requireAuth` phải đọc user mới nhất từ Mongo ở mọi request,
 nhờ đó đổi role, scope hoặc `disabled` có hiệu lực ở backend ngay lập tức. Không cache
-permission theo JWT trong 12 giờ.
+permission theo JWT trong suốt thời hạn cookie.
 
 ### 5.3 Session response
 
