@@ -31,8 +31,23 @@ const {
     buildDecisionContext,
     enrichPrimarySetupFields,
 } = require("./market-context");
+const { findSymbolInfo, findSymbolInfoMap } = require("../symbol-info");
 
 const SYMBOL_RE = /^[A-Z0-9]{4,25}$/;
+
+async function attachSymbolInfoToRows(rows) {
+    if (!rows?.length) return rows;
+    try {
+        const map = await findSymbolInfoMap(rows.map((r) => r.symbol));
+        for (const row of rows) {
+            row.symbolInfo = map.get(row.symbol) || null;
+        }
+    } catch (error) {
+        console.warn("[marketRead] symbolInfo", error.message || error);
+        for (const row of rows) row.symbolInfo = null;
+    }
+    return rows;
+}
 
 function formatEta(seconds) {
     const s = Math.max(0, Number(seconds) || 0);
@@ -353,6 +368,7 @@ async function listLocationSymbolsQuery(query = {}) {
     sortLocationRows(matched, sortKey, dirKey);
     const totalMatched = matched.length;
     const limited = matched.slice(0, top);
+    await attachSymbolInfoToRows(limited);
 
     return {
         view: "location",
@@ -502,6 +518,7 @@ async function listSymbolsQuery(query = {}) {
         Math.max(1, topRaw || Number(query.limit) || config.topN)
     );
     const rows = snaps.slice(0, limit).map((s) => rowFromSnapshot(s, style));
+    await attachSymbolInfoToRows(rows);
     return {
         style,
         sort,
@@ -587,6 +604,13 @@ async function getSymbolDetail(symbolRaw, query = {}) {
         setups,
     });
 
+    let symbolInfo = null;
+    try {
+        symbolInfo = await findSymbolInfo(symbol);
+    } catch (error) {
+        console.warn("[marketRead] symbolInfo detail", error.message || error);
+    }
+
     return {
         symbol,
         style,
@@ -601,6 +625,7 @@ async function getSymbolDetail(symbolRaw, query = {}) {
         flow,
         location: locSummary,
         decisionContext,
+        symbolInfo,
         zones,
         setups,
         signalEntries,

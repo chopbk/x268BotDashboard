@@ -78,7 +78,7 @@ Các tham số dưới đây là **quy tắc sản phẩm phiên bản đầu**,
 Bản đầu dùng swing pivot xác nhận: 2 nến trái, 2 nến phải, tái sử dụng `findSwings` và kiểm tra strict comparison/tie của helper bằng fixture. `confirmedAt` là closeTime của nến bên phải thứ hai, không phải openTime/pivot time. Chỉ tính khi nến đó đã đóng.
 
 - Pivot low tạo support, pivot high tạo resistance.
-- ATR14 tại nến xác nhận; band `[pivotPrice − 0.15 × ATR, pivotPrice + 0.15 × ATR]`, làm tròn hiển thị theo tickSize, tính toán giữ precision.
+- ATR14 tại nến xác nhận; band `[pivotPrice − 0.15 × ATR, pivotPrice + 0.15 × ATR]`, làm tròn hiển thị theo tickSize từ Mongo `futures_symbols` (`symbolInfo` trên list/detail API), tính toán engine giữ precision.
 - ATR và band cố định khi tạo; không nới vùng theo ATR mới.
 - ID ổn định từ symbol + timeframe + loại pivot + pivot time + zoneVersion.
 - Hết hạn sau 50 nến khung phân tích kể từ xác nhận. Không tạo ID mới/đặt lại tuổi ở mỗi lần scan.

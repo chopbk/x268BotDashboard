@@ -10,6 +10,7 @@ import {
   TOP_OPTIONS,
   ANALYSIS_TFS,
 } from "../lib/market-hub";
+import { fmtMarketPrice } from "../lib/market-price";
 import "./market.css";
 
 const TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"];
@@ -486,6 +487,8 @@ export default function MarketPage({
   const ctx = overview?.context || null;
   const briefStatements = ctx?.brief?.statements || [];
   const dc = detail?.decisionContext || null;
+  const detailSymbolInfo =
+    detail?.symbolInfo || list?.rows?.find((r) => r.symbol === symbol)?.symbolInfo || null;
 
   const TitleTag = embedded ? "h2" : "h1";
 
@@ -806,7 +809,7 @@ export default function MarketPage({
                           </>
                         ) : null}
                       </td>
-                      <td className="num">{fmt(row.price?.last)}</td>
+                      <td className="num">{fmtMarketPrice(row.price?.last, row.symbolInfo)}</td>
                       <td className={`num mkt-col-hide-mobile ${Number(row.price?.changePct24h) >= 0 ? "mkt-long" : "mkt-short"}`}>
                         {row.price?.changePct24h == null ? "—" : `${fmt(row.price.changePct24h, 2)}%`}
                       </td>
@@ -909,7 +912,8 @@ export default function MarketPage({
                       <span className="muted"> · {qualityLabel(dc.quality)}</span>
                     </h3>
                     <p className="muted" style={{ fontSize: 12, margin: "0 0 6px" }}>
-                      Giá {dc.positioning?.price ?? "—"} · nguồn {dc.positioning?.priceSource || "—"} ·{" "}
+                      Giá {fmtMarketPrice(dc.positioning?.price, detailSymbolInfo)} · nguồn{" "}
+                      {dc.positioning?.priceSource || "—"} ·{" "}
                       {dc.positioning?.priceFresh ? "tươi" : "stale/unknown"} ·{" "}
                       {dc.positioning?.structureLabel || "—"}
                       {dc.positioning?.htfLabel ? ` / HTF ${dc.positioning.htfLabel}` : ""}
@@ -924,7 +928,7 @@ export default function MarketPage({
                         <span>Hỗ trợ</span>
                         <span className="muted">
                           {dc.positioning?.support
-                            ? `[${dc.positioning.support.low}–${dc.positioning.support.high}] · ${dc.positioning.support.distancePct ?? "—"}%`
+                            ? `[${fmtMarketPrice(dc.positioning.support.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.support.high, detailSymbolInfo)}] · ${dc.positioning.support.distancePct ?? "—"}%`
                             : "—"}
                         </span>
                       </li>
@@ -932,7 +936,7 @@ export default function MarketPage({
                         <span>Kháng cự</span>
                         <span className="muted">
                           {dc.positioning?.resistance
-                            ? `[${dc.positioning.resistance.low}–${dc.positioning.resistance.high}] · ${dc.positioning.resistance.distancePct ?? "—"}%`
+                            ? `[${fmtMarketPrice(dc.positioning.resistance.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.resistance.high, detailSymbolInfo)}] · ${dc.positioning.resistance.distancePct ?? "—"}%`
                             : "—"}
                         </span>
                       </li>
@@ -947,8 +951,14 @@ export default function MarketPage({
                               {sc.side} · {sc.type} · {sc.entryState}
                             </span>
                             <span className="muted">
-                              entry [{sc.entryLow}–{sc.entryHigh}] · invalidation {sc.invalidationLevel ?? "—"}
-                              {sc.expiresAt ? ` · hết ${when(sc.expiresAt)}` : sc.expiresAtIndex != null ? ` · hết bar #${sc.expiresAtIndex}` : ""}
+                              entry [{fmtMarketPrice(sc.entryLow, detailSymbolInfo)}–
+                              {fmtMarketPrice(sc.entryHigh, detailSymbolInfo)}] · invalidation{" "}
+                              {fmtMarketPrice(sc.invalidationLevel, detailSymbolInfo)}
+                              {sc.expiresAt
+                                ? ` · hết ${when(sc.expiresAt)}`
+                                : sc.expiresAtIndex != null
+                                  ? ` · hết bar #${sc.expiresAtIndex}`
+                                  : ""}
                             </span>
                             <span className="muted" style={{ fontSize: 11 }}>
                               Trigger: {sc.trigger?.description || sc.type} · {sc.entryNote}

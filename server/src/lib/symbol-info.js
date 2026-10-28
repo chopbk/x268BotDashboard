@@ -47,6 +47,67 @@ async function findSymbolInfo(symbol) {
     return toSymbolInfo(row);
 }
 
+/**
+ * Batch lookup tickSize/stepSize từ futures_symbols (ưu tiên exchange binance).
+ * @param {string[]} symbols
+ * @returns {Promise<Map<string, ReturnType<typeof toSymbolInfo>|null>>}
+ */
+async function findSymbolInfoMap(symbols) {
+    const list = [
+        ...new Set(
+            (symbols || [])
+                .map((s) => String(s || "").trim().toUpperCase())
+                .filter((s) => /^[A-Z0-9]{4,25}$/.test(s))
+        ),
+    ];
+    const out = new Map();
+    if (!list.length) return out;
+
+    const candidatesBySymbol = new Map();
+    const allNames = new Set();
+    for (const sym of list) {
+        const cands = symbolCandidates(sym);
+        candidatesBySymbol.set(sym, cands);
+        for (const name of cands) allNames.add(name);
+    }
+
+    let rows = [];
+    try {
+        rows = await FuturesSymbol.find({ symbol: { $in: [...allNames] } })
+            .select("symbol exchange tickSize stepSize")
+            .lean();
+    } catch (error) {
+        console.warn("[findSymbolInfoMap]", error.message || error);
+        for (const sym of list) out.set(sym, null);
+        return out;
+    }
+
+    const byName = new Map();
+    for (const row of rows) {
+        const key = String(row.symbol || "").toUpperCase();
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key).push(row);
+    }
+
+    for (const sym of list) {
+        const cands = candidatesBySymbol.get(sym) || [];
+        let pool = [];
+        for (const name of cands) {
+            pool = byName.get(name) || [];
+            if (pool.length) break;
+        }
+        if (!pool.length) {
+            out.set(sym, null);
+            continue;
+        }
+        const exact = pool.filter((row) => row.symbol === cands[0]);
+        const chosenPool = exact.length ? exact : pool;
+        const row = chosenPool.find((item) => item.exchange === "binance") || chosenPool[0];
+        out.set(sym, toSymbolInfo(row));
+    }
+    return out;
+}
+
 /** Floor qty xuống bội stepSize (Binance LOT_SIZE). */
 function floorToStep(value, step) {
     const n = Number(value);
@@ -77,4 +138,12 @@ function roundToTick(value, tick) {
     return rounded.toFixed(decimals);
 }
 
-module.exports = { decimalsFromStep, findSymbolInfo, toSymbolInfo, floorToStep, roundToTick };
+module.exports = {
+    decimalsFromStep,
+    findSymbolInfo,
+    findSymbolInfoMap,
+    toSymbolInfo,
+    floorToStep,
+    roundToTick,
+    symbolCandidates,
+};

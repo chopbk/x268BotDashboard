@@ -1,5 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Link } from "react-router-dom";
+import { fmtMarketPrice } from "../../lib/market-price";
 
 function fmt(value, digits = 2) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
@@ -11,23 +12,25 @@ function fmtPct(value) {
   return `${fmt(value, 2)}%`;
 }
 
-function zoneShort(z, role) {
+function zoneShort(z, role, symbolInfo) {
   if (!z) return { text: "—", title: `Không có ${role}` };
   const near = z.nearFar && z.nearFar !== "far" ? z.nearFar : null;
   const dist = z.distancePct != null ? fmtPct(z.distancePct) : null;
   const parts = [role === "support" ? "S" : "R"];
   if (near) parts.push(near);
   if (dist) parts.push(dist);
+  const low = fmtMarketPrice(z.low, symbolInfo);
+  const high = fmtMarketPrice(z.high, symbolInfo);
   return {
     text: parts.join(" · "),
-    title: `${z.role || role} [${fmt(z.low, 6)}–${fmt(z.high, 6)}] · ATR ${fmt(z.distanceAtr, 2)} · ${z.source || ""}`,
+    title: `${z.role || role} [${low}–${high}] · ATR ${fmt(z.distanceAtr, 2)} · ${z.source || ""}`,
   };
 }
 
-function positionCell(loc) {
+function positionCell(loc, symbolInfo) {
   const tags = (loc.positionTags || []).filter(Boolean);
-  const sup = zoneShort(loc.support, "support");
-  const res = zoneShort(loc.resistance, "resistance");
+  const sup = zoneShort(loc.support, "support", symbolInfo);
+  const res = zoneShort(loc.resistance, "resistance", symbolInfo);
   const tagText = tags.length ? tags.join(", ") : "—";
   return {
     text: tagText,
@@ -111,8 +114,9 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
         {rows.map((row) => {
           const loc = row.location || {};
           const ctx = row.context || {};
+          const info = row.symbolInfo || null;
           const selected = row.symbol === symbol;
-          const pos = positionCell(loc);
+          const pos = positionCell(loc, info);
           const setup = setupTriggerCell(loc.primarySetup, ctx.trigger);
           const wait = waitingCell(ctx);
           const obst = obstaclesCell(ctx);
@@ -158,7 +162,7 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
                 </div>
               </td>
               <td className="num">
-                {fmt(row.price?.last, 6)}
+                {fmtMarketPrice(row.price?.last, info)}
                 <div className={changeCls} style={{ fontSize: 11 }}>
                   {change == null ? "—" : `${fmt(change, 2)}%`}
                   {row.price?.asOf ? (

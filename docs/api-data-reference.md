@@ -152,8 +152,8 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/smart-money/ai/symbol` | [smart-money](../server/src/routes/smart-money.js) — AI 1 symbol (rate-limit) |
 | POST | `/api/smart-money/refresh` | [smart-money](../server/src/routes/smart-money.js) — `smart_money.manage` |
 | GET | `/api/market/overview` | [market](../server/src/routes/market.js) — additive `context` (BTC 4h, breadth mẫu số universe, ATR%, setupCounts, brief); query `analysisTf` cho đếm setup |
-| GET | `/api/market/symbols` | [market](../server/src/routes/market.js) — `view=location` trả vị trí/setup/signal + `row.context` (waiting/trigger/obstacles); không view = scores cũ |
-| GET | `/api/market/symbols/:symbol` | [market](../server/src/routes/market.js) — kèm `location`/`zones`/`setups`/`signalEntries` + additive `decisionContext` (scenarios/evidence/conflicts) |
+| GET | `/api/market/symbols` | [market](../server/src/routes/market.js) — `view=location` trả vị trí/setup/signal + `row.context` + `row.symbolInfo` (tickSize/priceDecimals từ `futures_symbols`); không view = scores cũ + `symbolInfo` |
+| GET | `/api/market/symbols/:symbol` | [market](../server/src/routes/market.js) — kèm `location`/`zones`/`setups`/`signalEntries` + `decisionContext` + `symbolInfo` |
 | GET | `/api/market/symbols/:symbol/scores` | [market](../server/src/routes/market.js) |
 | GET | `/api/market/events` | [market](../server/src/routes/market.js) |
 | GET | `/api/market/recent-signals` | [market](../server/src/routes/market.js) — map symbol→signal (cùng quyền đọc market) |
