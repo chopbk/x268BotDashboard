@@ -1,16 +1,16 @@
 /* Lab UI: Config + Danh sách. Chữ lớn; palette đồng bộ styles.css toàn app. */
 .config-lab {
-  --bg: #0d0e11; --surface: #151619; --surface-2: #1d1e23; --line: #303138;
-  --text: #f0f0f2; --muted: #a8a8b4; --accent: #ededf0; --accent-2: #d4d4dc;
+  --bg: #0f172a; --surface: #161e2e; --surface-2: #1e293b; --line: #334155;
+  --text: #f8fafc; --muted: #94a3b8; --accent: #f59e0b; --accent-2: #fbbf24;
   color: var(--text); padding-bottom: 96px; font-size: 17px;
 }
 main:has(.config-screen.config-lab),
 main:has(.lab-directory) { width: calc(100% - 48px); max-width: 1280px; margin: 22px auto 32px; }
-.config-lab button { border-radius: 6px; font-weight: 600; font-size: 16px; color: #141419; padding: 9px 14px; }
+.config-lab button { border-radius: 8px; font-weight: 600; font-size: 16px; color: #0f172a; padding: 9px 14px; }
 .config-lab button.ghost { color: var(--text); }
 .config-lab button:disabled { cursor: not-allowed; }
-.config-lab input, .config-lab select { border-radius: 6px; background: #101114; font-size: 16px; min-height: 40px; }
-.config-lab :is(button, a, input, select, summary):focus-visible { outline: 2px solid #b4b9cf; outline-offset: 2px; }
+.config-lab input, .config-lab select { border-radius: 8px; background: #0b1220; font-size: 16px; min-height: 40px; }
+.config-lab :is(button, a, input, select, summary):focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
 .config-lab :is(input,select):disabled { opacity: .7; cursor: default; }
 .config-lab a.link-btn { border-radius: 6px; font-size: 15px; padding: 7px 11px; }
 .lab-heading { display: grid; gap: 10px; margin-bottom: 16px; }
@@ -38,8 +38,13 @@ main:has(.lab-directory) { width: calc(100% - 48px); max-width: 1280px; margin: 
 .lab-workspace { display: grid; grid-template-columns: 200px minmax(300px, 1fr) 260px; gap: 16px; align-items: start; }
 .lab-groups { position: sticky; top: 18px; display: grid; gap: 4px; }
 .config-lab .lab-groups button { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; color: #b8b8c1; padding: 10px 10px; background: transparent; border: 1px solid transparent; font-size: 16px; }
-.config-lab .lab-groups button:hover { background: #1b1c21; }
-.config-lab .lab-groups button.selected { background: #25262d; border-color: #41424c; color: #fff; }
+.config-lab .lab-groups button:hover { background: #1e293b; }
+.config-lab .lab-groups button.selected {
+  background: color-mix(in srgb, var(--accent) 14%, #1e293b);
+  border-color: color-mix(in srgb, var(--accent) 40%, #334155);
+  color: #fff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
 .lab-groups button small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 3px; line-height: 1.45; }
 .lab-step { font-size: 13px; padding-top: 2px; opacity: .6; font-variant-numeric: tabular-nums; }
 .lab-nav-note { padding: 12px 10px; font-size: 14px; color: var(--muted); line-height: 1.65; }
@@ -58,8 +63,8 @@ main:has(.lab-directory) { width: calc(100% - 48px); max-width: 1280px; margin: 
 .config-lab .check { align-items: start; padding: 6px 0; }
 .config-lab .check input { appearance: none; min-height: 0; flex: 0 0 30px; width: 30px; height: 18px; margin: 2px 0 0; border-radius: 12px; border: 1px solid #4a4b55; background: #292a30; padding: 0; position: relative; }
 .config-lab .check input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #aaaab5; transition: transform .15s; }
-.config-lab .check input:checked { background: #dedee5; border-color: #dedee5; }
-.config-lab .check input:checked::after { transform: translateX(12px); background: #25252d; }
+.config-lab .check input:checked { background: var(--accent); border-color: var(--accent); }
+.config-lab .check input:checked::after { transform: translateX(12px); background: #0f172a; }
 .config-lab .field-note, .config-lab .field-hint { font-size: 14px; color: #aaaab6; line-height: 1.55; }
 .config-lab .mode-lead { background: #202127; border-left: 2px solid #9b9cac; padding: 11px 12px; font-size: 15px; line-height: 1.6; }
 .config-lab .mode-box, .config-lab .idle-box { border-radius: 6px; background: #111216; padding: 11px 12px; }

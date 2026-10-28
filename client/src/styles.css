@@ -1,21 +1,27 @@
 :root {
   color-scheme: dark;
-  --bg: #0d0e11;
-  --surface: #151619;
-  --surface-2: #1d1e23;
-  --line: #303138;
-  --text: #f0f0f2;
-  --muted: #a8a8b4;
-  --accent: #ededf0;
-  --accent-2: #d4d4dc;
-  --danger: #f3a5ad;
-  --ok: #91d6b4;
-  --ink: #141419;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  /* Fintech dark — Minimalism/Swiss (ui-ux-pro-max); gold trust, no AI purple */
+  --bg: #0f172a;
+  --surface: #161e2e;
+  --surface-2: #1e293b;
+  --line: #334155;
+  --border: var(--line);
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #f59e0b;
+  --accent-2: #fbbf24;
+  --danger: #f87171;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --ink: #0f172a;
+  --ring: #f59e0b;
+  --ease: 180ms ease;
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
+  scroll-padding-top: 72px;
 }
 
 * { box-sizing: border-box; }
@@ -24,7 +30,8 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(900px 420px at 8% -8%, #22232c 0%, transparent 55%),
+    radial-gradient(920px 460px at 6% -12%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 55%),
+    radial-gradient(700px 380px at 92% 0%, color-mix(in srgb, #38bdf8 8%, transparent) 0%, transparent 50%),
     var(--bg);
 }
 
@@ -47,26 +54,46 @@ h2 { font-size: 1.15rem; font-weight: 650; }
   padding: 24px;
 }
 
+.login-screen {
+  position: relative;
+}
+
+.login-screen::before {
+  content: "";
+  position: absolute;
+  inset: auto 50% 18% auto;
+  width: min(420px, 88vw);
+  height: 120px;
+  transform: translateX(50%);
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
 .muted { color: var(--muted); }
 
 .card {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 18px 20px;
+  backdrop-filter: blur(8px);
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   width: min(420px, 100%);
   display: grid;
   gap: 14px;
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.45);
 }
 
 .eyebrow {
-  color: var(--muted);
-  letter-spacing: 0.08em;
+  color: var(--accent-2);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -78,32 +105,43 @@ label {
 
 input, select {
   width: 100%;
-  background: #101114;
+  background: #0b1220;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 10px 12px;
   min-height: 40px;
   outline: none;
   font-size: 0.95rem;
+  transition: border-color var(--ease), box-shadow var(--ease);
 }
 
-input:focus, select:focus {
-  border-color: #6a6d80;
+input:focus, select:focus,
+input:focus-visible, select:focus-visible {
+  border-color: color-mix(in srgb, var(--ring) 70%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 28%, transparent);
 }
 
 button {
   background: var(--accent);
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 10px 14px;
   font-weight: 650;
   font-size: 0.95rem;
   color: var(--ink);
   cursor: pointer;
+  transition: background var(--ease), border-color var(--ease), opacity var(--ease);
 }
 
 button:hover { background: var(--accent-2); }
 button:disabled { opacity: 0.6; cursor: wait; }
+button:focus-visible,
+a:focus-visible,
+.link-btn:focus-visible,
+.sidenav nav a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 
 button.ghost {
   background: transparent;
@@ -117,9 +155,10 @@ a.link-btn {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 8px 12px;
   font-size: 0.9rem;
+  transition: background var(--ease);
 }
 
 a.link-btn:hover { background: var(--surface-2); }
@@ -160,10 +199,17 @@ a.link-btn:hover { background: var(--surface-2); }
   gap: 12px;
   padding: 18px 14px;
   border-right: 1px solid var(--line);
-  background: #111216f2;
+  background: color-mix(in srgb, var(--surface) 88%, #020617);
 }
 
-.brand-link { font-weight: 750; padding: 8px 12px; font-size: 1.05rem; }
+.brand-link {
+  font-weight: 750;
+  padding: 8px 12px;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.brand-link.active { color: var(--text); }
 
 .sidenav nav {
   display: grid;
@@ -183,11 +229,18 @@ a.link-btn:hover { background: var(--surface-2); }
 .sidenav nav a {
   color: var(--muted);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.95rem;
+  transition: background var(--ease), color var(--ease);
 }
 
-.sidenav nav a.active { color: var(--text); background: #25262d; }
+.sidenav nav a:hover { color: var(--text); background: color-mix(in srgb, var(--surface-2) 80%, transparent); }
+
+.sidenav nav a.active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
 
 .sidenav .who {
   margin-top: auto;
@@ -261,11 +314,23 @@ a.link-btn:hover { background: var(--surface-2); }
 .dash-data { max-height: 180px; overflow: auto; white-space: pre-wrap; color: var(--muted); font-size: 0.8rem; }
 
 .role {
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--line));
+  border-radius: 6px;
   padding: 3px 8px;
   color: var(--ok);
   font-size: 0.85rem;
+  width: fit-content;
+}
+
+.tabular-nums,
+.summary-stat strong,
+.perf-num,
+td.positive,
+td.negative,
+.pos-up,
+.pos-down {
+  font-variant-numeric: tabular-nums;
+  font-family: "IBM Plex Mono", "IBM Plex Sans", ui-monospace, monospace;
 }
 
 /* Full width như Terminal — form config giữ hẹp hơn qua :has(.config-screen) */
@@ -1732,4 +1797,12 @@ button.linkish:hover { background: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .skeleton-block { animation: none; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

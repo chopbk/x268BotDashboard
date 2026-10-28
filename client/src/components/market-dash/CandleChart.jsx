@@ -12,15 +12,15 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
     if (!ref.current) return undefined;
     const chart = createChart(ref.current, {
       layout: {
-        background: { color: "#151619" },
+        background: { color: "#161e2e" },
         textColor: "#a8a8b4",
       },
       grid: {
-        vertLines: { color: "#303138" },
-        horzLines: { color: "#303138" },
+        vertLines: { color: "#334155" },
+        horzLines: { color: "#334155" },
       },
-      rightPriceScale: { borderColor: "#303138" },
-      timeScale: { borderColor: "#303138" },
+      rightPriceScale: { borderColor: "#334155" },
+      timeScale: { borderColor: "#334155" },
       width: ref.current.clientWidth,
       height: 280,
     });
@@ -94,7 +94,7 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
     if (levels?.entry != null) {
       ctx.series.createPriceLine({
         price: levels.entry,
-        color: "#ededf0",
+        color: "#f8fafc",
         lineWidth: 1,
         lineStyle: 2,
         axisLabelVisible: true,
