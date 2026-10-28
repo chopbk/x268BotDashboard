@@ -43,8 +43,9 @@ npm --prefix client run build
 [[ -s client/dist/index.html ]] || { echo "Build did not produce index.html" >&2; exit 1; }
 
 pm2 startOrRestart ecosystem.config.cjs --only web-bot --update-env
+# Market Dash bootstrap can delay listen past ~30s; wait up to ~90s.
 healthy=false
-for attempt in {1..15}; do
+for attempt in {1..45}; do
     if curl --fail --silent --max-time 3 http://127.0.0.1:4000/api/health |
         node -e 'let s=""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => { try { process.exit(JSON.parse(s).ok === true ? 0 : 1); } catch { process.exit(1); } });'; then
         healthy=true
