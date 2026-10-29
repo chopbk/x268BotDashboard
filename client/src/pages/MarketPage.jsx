@@ -928,7 +928,7 @@ export default function MarketPage({
                         <span>Hỗ trợ</span>
                         <span className="muted">
                           {dc.positioning?.support
-                            ? `[${fmtMarketPrice(dc.positioning.support.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.support.high, detailSymbolInfo)}] · ${dc.positioning.support.distancePct ?? "—"}%`
+                            ? `[${fmtMarketPrice(dc.positioning.support.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.support.high, detailSymbolInfo)}] · ${fmtPctSafe(dc.positioning.support.distancePct)}`
                             : "—"}
                         </span>
                       </li>
@@ -936,7 +936,7 @@ export default function MarketPage({
                         <span>Kháng cự</span>
                         <span className="muted">
                           {dc.positioning?.resistance
-                            ? `[${fmtMarketPrice(dc.positioning.resistance.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.resistance.high, detailSymbolInfo)}] · ${dc.positioning.resistance.distancePct ?? "—"}%`
+                            ? `[${fmtMarketPrice(dc.positioning.resistance.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.resistance.high, detailSymbolInfo)}] · ${fmtPctSafe(dc.positioning.resistance.distancePct)}`
                             : "—"}
                         </span>
                       </li>
