@@ -1,7 +1,7 @@
 # Thị trường & Kỹ thuật — workspace hỗ trợ quyết định
 
 Ngày: 2026-10-23. Cập nhật triển khai: **2026-10-23**.
-Trạng thái: **P0 đã triển khai trên tab Kỹ thuật** (API additive `context` / `decisionContext`, header, thẻ bối cảnh, brief template, bảng Location gọn, panel evidence/phản biện, poll lifecycle). **P1/P2 vẫn là đề xuất** — chưa triển khai relative return, percentile, preset mới, RR, event timeline, scatter, sector/macro.
+Trạng thái: **P0 đã triển khai trên tab Kỹ thuật** (API additive `context` / `decisionContext`, header, thẻ bối cảnh, brief template, bảng Location gọn, panel evidence/phản biện, poll lifecycle). **P1a list đang triển khai** theo [market-decision-list-spec](market-decision-list-spec.md) (action/RR/preset/Giá×OI trên bảng). **P1b/P2 còn đề xuất** — relative return 7d, percentile, event timeline đầy đủ, scatter, sector/macro, liquidation.
 Phạm vi: web-bot. Không thay công thức market-v1, lifecycle setup, quyền hay engine giao dịch. Những ngưỡng mới ở mục P1 là giả thuyết thiết kế cần kiểm định, không phải xác suất thắng đã được chứng minh.
 
 ### Phân biệt nghiệm thu (P0)

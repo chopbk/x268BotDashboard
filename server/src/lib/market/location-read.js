@@ -5,6 +5,7 @@ const { ANALYSIS_TFS, locationSummary, priceFreshness } = require("./location");
 const { enrichSetupEntryState, pickPrimarySetup } = require("./setup-engine");
 const { pickNearestZones } = require("./zone-engine");
 const { toSignalEntry } = require("./signal-entry");
+const { actionRank, oppositeStructure } = require("./decision-list");
 
 const SCREENS = Object.freeze([
     "all",
@@ -16,6 +17,11 @@ const SCREENS = Object.freeze([
     "entry_short",
     "retest",
     "flow_aligned",
+    "trend_retest",
+    "in_entry_fresh",
+    "has_conflict",
+    "stronger_btc",
+    "decision_ready",
 ]);
 
 const TOP_ALLOWED = Object.freeze([10, 25, 50]);
@@ -133,10 +139,52 @@ function matchScreen(row, screen, entrySource) {
         if (flow.bias === "short" && setup.side === "short") return true;
         return false;
     }
+    if (screen === "trend_retest") {
+        return (
+            setup?.lifecycle === "active" &&
+            setup?.type === "breakout_retest" &&
+            !oppositeStructure(setup.side, loc?.htfBias)
+        );
+    }
+    if (screen === "in_entry_fresh") {
+        return (
+            setup?.lifecycle === "active" &&
+            setup?.entryState === "in_entry" &&
+            loc?.priceFresh !== false &&
+            (loc?.quality === "ready" || loc?.quality === "partial")
+        );
+    }
+    if (screen === "has_conflict") {
+        if (!setup || setup.lifecycle !== "active") return false;
+        const short = row.context?.decision?.conflictsShort || [];
+        if (short.length) return true;
+        const obstacles = row.context?.obstacles || [];
+        return obstacles.some((o) =>
+            ["htf_conflict", "setup_htf", "flow_vs_setup", "score_conflict"].includes(o.id)
+        );
+    }
+    if (screen === "stronger_btc") {
+        const rel = row.context?.decision?.relativeVsBtc24h;
+        return rel != null && Number(rel) > 0;
+    }
+    if (screen === "decision_ready") {
+        const action = row.context?.decision?.action;
+        return action === "in_zone" || action === "wait_confirm";
+    }
     return true;
 }
 
+function nearestDistanceAtr(loc) {
+    const s = loc?.support?.distanceAtr;
+    const r = loc?.resistance?.distanceAtr;
+    if (s == null) return r ?? null;
+    if (r == null) return s;
+    return Math.min(s, r);
+}
+
 function defaultRank(row) {
+    const action = row.context?.decision?.action;
+    if (action) return actionRank(action);
     const loc = row.location || {};
     const setup = loc.primarySetup;
     const tags = loc.positionTags || [];
@@ -150,19 +198,20 @@ function defaultRank(row) {
 
 function sortLocationRows(rows, sortKey, dirKey) {
     const dir = dirKey === "asc" ? 1 : -1;
+    const key = sortKey === "priority" ? "default" : sortKey;
     rows.sort((a, b) => {
         let cmp = 0;
-        if (sortKey === "symbol") {
+        if (key === "symbol") {
             cmp = String(a.symbol).localeCompare(String(b.symbol));
-        } else if (sortKey === "support") {
+        } else if (key === "support") {
             cmp = nullLast(a.location?.support?.distanceAtr, b.location?.support?.distanceAtr, 1);
-        } else if (sortKey === "resistance") {
+        } else if (key === "resistance") {
             cmp = nullLast(a.location?.resistance?.distanceAtr, b.location?.resistance?.distanceAtr, 1);
-        } else if (sortKey === "entry") {
+        } else if (key === "entry") {
             const da = a.location?.primarySetup?.entryState === "in_entry" ? 0 : a.location?.support?.distanceAtr;
             const db = b.location?.primarySetup?.entryState === "in_entry" ? 0 : b.location?.support?.distanceAtr;
             cmp = nullLast(da, db, 1);
-        } else if (sortKey === "setupAge") {
+        } else if (key === "setupAge") {
             cmp = nullLast(
                 a.location?.primarySetup?.createdAt
                     ? new Date(a.location.primarySetup.createdAt).getTime()
@@ -172,21 +221,22 @@ function sortLocationRows(rows, sortKey, dirKey) {
                     : null,
                 -1
             );
-        } else if (sortKey === "volume") {
+        } else if (key === "volume") {
             cmp = (a.price?.volume24h ?? 0) - (b.price?.volume24h ?? 0);
+        } else if (key === "rr") {
+            cmp = nullLast(a.context?.decision?.rr, b.context?.decision?.rr, -1);
+        } else if (key === "action") {
+            cmp = actionRank(a.context?.decision?.action) - actionRank(b.context?.decision?.action);
         } else {
-            // default groups
+            // default / priority: action → distance → changed → volume → symbol
             cmp = defaultRank(a) - defaultRank(b);
             if (cmp === 0) {
-                const da =
-                    a.location?.support?.distanceAtr ??
-                    a.location?.resistance?.distanceAtr ??
-                    null;
-                const db =
-                    b.location?.support?.distanceAtr ??
-                    b.location?.resistance?.distanceAtr ??
-                    null;
-                cmp = nullLast(da, db, 1);
+                cmp = nullLast(nearestDistanceAtr(a.location), nearestDistanceAtr(b.location), 1);
+            }
+            if (cmp === 0) {
+                const ca = a.context?.decision?.changed?.kind ? 0 : 1;
+                const cb = b.context?.decision?.changed?.kind ? 0 : 1;
+                cmp = ca - cb;
             }
             if (cmp === 0) cmp = (a.volumeRank ?? 999) - (b.volumeRank ?? 999);
             if (cmp === 0) cmp = String(a.symbol).localeCompare(String(b.symbol));
@@ -194,7 +244,7 @@ function sortLocationRows(rows, sortKey, dirKey) {
         }
         if (cmp === 0) cmp = (a.volumeRank ?? 999) - (b.volumeRank ?? 999);
         if (cmp === 0) cmp = String(a.symbol).localeCompare(String(b.symbol));
-        return cmp * (sortKey === "default" ? 1 : dir);
+        return cmp * (key === "default" ? 1 : dir);
     });
     return rows;
 }

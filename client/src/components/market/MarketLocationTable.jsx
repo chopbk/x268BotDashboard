@@ -73,8 +73,38 @@ function obstaclesCell(ctx) {
   };
 }
 
+function actionClass(action) {
+  if (action === "in_zone") return "mkt-action-in";
+  if (action === "wait_confirm") return "mkt-action-wait";
+  if (action === "skip") return "mkt-action-skip";
+  return "mkt-action-watch";
+}
+
+function entryRrCell(decision, symbolInfo) {
+  if (!decision || (decision.entryLow == null && decision.entryHigh == null)) {
+    return { text: "—", title: decision?.rrNote || "Không có entry band" };
+  }
+  const low = fmtMarketPrice(decision.entryLow, symbolInfo);
+  const high = fmtMarketPrice(decision.entryHigh, symbolInfo);
+  const inv =
+    decision.invalidationLevel != null ? fmtMarketPrice(decision.invalidationLevel, symbolInfo) : "—";
+  const rr = decision.rr != null ? `RR ${fmt(decision.rr, 2)}` : "RR —";
+  return {
+    text: `[${low}–${high}] · inv ${inv} · ${rr}`,
+    title: [
+      decision.rrNote,
+      decision.targetLevel != null
+        ? `target ${decision.targetRole || ""} ${fmtMarketPrice(decision.targetLevel, symbolInfo)}`
+        : "thiếu vùng đối diện → không tính RR",
+      decision.actionReason,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
+
 const MarketLocationTable = forwardRef(function MarketLocationTable(
-  { rows, symbol, canFlow, top, onSelect, loading },
+  { rows, symbol, canFlow, canTerminal = false, top, onSelect, loading },
   ref
 ) {
   const rowRefs = useRef(new Map());
@@ -97,6 +127,8 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
     );
   }
 
+  const showOiCol = rows.some((r) => r.context?.decision?.oiRegime || r.flow);
+
   return (
     <table className="mkt-table mkt-loc-table">
       <thead>
@@ -104,26 +136,36 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
           <th>Coin</th>
           <th className="num">Giá / Δ</th>
           <th>Cấu trúc</th>
+          <th>Hành động</th>
+          <th>Entry · Inv · RR</th>
           <th>Vị trí</th>
           <th>Setup / Trigger</th>
+          <th>Mâu thuẫn</th>
+          {showOiCol ? <th className="mkt-col-hide-mobile">OI×Giá</th> : null}
           <th className="mkt-col-hide-mobile">Cần chờ</th>
-          <th>Cản trở</th>
+          <th className="mkt-col-hide-mobile">Cản trở</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => {
           const loc = row.location || {};
           const ctx = row.context || {};
+          const decision = ctx.decision || null;
           const info = row.symbolInfo || null;
           const selected = row.symbol === symbol;
           const pos = positionCell(loc, info);
           const setup = setupTriggerCell(loc.primarySetup, ctx.trigger);
           const wait = waitingCell(ctx);
           const obst = obstaclesCell(ctx);
+          const entry = entryRrCell(decision, info);
           const flowHref = `/market?tab=flow&flowTab=overview&symbol=${encodeURIComponent(row.symbol)}&top=${top || 10}`;
+          const terminalHref = `/terminal?symbol=${encodeURIComponent(row.symbol)}`;
           const change = row.price?.changePct24h;
           const changeCls =
             change == null ? "muted" : Number(change) >= 0 ? "mkt-long" : "mkt-short";
+          const conflicts =
+            decision?.conflictsShort?.length > 0 ? decision.conflictsShort.join(" · ") : "—";
+          const changed = decision?.changed?.label;
           return (
             <tr
               key={row.symbol}
@@ -143,6 +185,11 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
             >
               <td>
                 <strong>{row.symbol}</strong>
+                {changed ? (
+                  <span className="mkt-changed-badge" title={decision?.changed?.at || ""}>
+                    {changed}
+                  </span>
+                ) : null}
                 {canFlow ? (
                   <>
                     {" "}
@@ -157,14 +204,38 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
                     </Link>
                   </>
                 ) : null}
+                {canTerminal ? (
+                  <>
+                    {" "}
+                    <Link
+                      className="mkt-flow-link"
+                      to={terminalHref}
+                      title={`Mở Terminal ${row.symbol}`}
+                      aria-label={`Mở Terminal ${row.symbol}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Terminal
+                    </Link>
+                  </>
+                ) : null}
                 <div className="mkt-loc-mobile-extra muted">
-                  {wait.text !== "—" ? wait.text : setup.text}
+                  <span className={actionClass(decision?.action)}>
+                    {decision?.actionLabel || "—"}
+                  </span>
+                  {" · "}
+                  {entry.text !== "—" ? entry.text : setup.text}
                 </div>
               </td>
               <td className="num">
                 {fmtMarketPrice(row.price?.last, info)}
                 <div className={changeCls} style={{ fontSize: 11 }}>
                   {change == null ? "—" : `${fmt(change, 2)}%`}
+                  {decision?.relativeVsBtc24h != null ? (
+                    <span className="muted" title="Δ24h so với BTC (điểm %)">
+                      {" "}
+                      · vsBTC {fmt(decision.relativeVsBtc24h, 2)}
+                    </span>
+                  ) : null}
                   {row.price?.asOf ? (
                     <span className="muted" title={row.price.asOf}>
                       {" "}
@@ -188,6 +259,12 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
                   </div>
                 ) : null}
               </td>
+              <td className={actionClass(decision?.action)} title={decision?.actionReason || ""}>
+                {decision?.actionLabel || "—"}
+              </td>
+              <td className="muted" title={entry.title} style={{ fontSize: 11 }}>
+                {entry.text}
+              </td>
               <td title={pos.title}>
                 {pos.text}
                 <div className="muted mkt-col-hide-mobile" style={{ fontSize: 11 }}>
@@ -197,10 +274,25 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
               <td className={setup.cls} title={setup.title}>
                 {setup.text}
               </td>
+              <td className="mkt-conflict" title={conflicts}>
+                {conflicts}
+              </td>
+              {showOiCol ? (
+                <td
+                  className="mkt-col-hide-mobile"
+                  title={
+                    decision?.oiRegimeReason
+                      ? `Lý do: ${decision.oiRegimeReason}`
+                      : "Giá×OI 24h — quan sát, không phải cá voi"
+                  }
+                >
+                  {decision?.oiRegimeLabel || "—"}
+                </td>
+              ) : null}
               <td className="mkt-col-hide-mobile" title={wait.title}>
                 {wait.text}
               </td>
-              <td title={obst.title}>
+              <td className="mkt-col-hide-mobile" title={obst.title}>
                 <span className="mkt-obstacle">{obst.text}</span>
               </td>
             </tr>

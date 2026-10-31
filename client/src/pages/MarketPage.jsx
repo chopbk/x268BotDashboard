@@ -216,7 +216,8 @@ export default function MarketPage({
       qs.set("screen", screen);
       qs.set("entrySource", entrySource);
       qs.set("recentHours", recentHours);
-      if (canFlow && screen === "flow_aligned") qs.set("includeFlow", "1");
+      // P1a: luôn kèm flow khi có quyền để có OI×Giá / conflict flow trên list
+      if (canFlow) qs.set("includeFlow", "1");
       if (sort) qs.set("sort", sort);
       if (dir) qs.set("dir", dir);
       return api(`/api/market/symbols?${qs}`);
@@ -662,14 +663,23 @@ export default function MarketPage({
               Màn hình
               <select value={screen} onChange={(e) => patchParams({ screen: e.target.value })}>
                 <option value="all">Tất cả</option>
-                <option value="near_support">Gần hỗ trợ</option>
-                <option value="near_resistance">Gần kháng cự</option>
-                <option value="buy_zone">Vùng mua (setup)</option>
-                <option value="sell_zone">Vùng bán (setup)</option>
-                <option value="entry_long">Còn entry Long</option>
-                <option value="entry_short">Còn entry Short</option>
-                <option value="retest">Retest gần đây</option>
-                {canFlow ? <option value="flow_aligned">Đồng thuận flow</option> : null}
+                <optgroup label="Quyết định">
+                  <option value="decision_ready">Sẵn sàng quyết định</option>
+                  <option value="trend_retest">Thuận xu hướng, chờ retest</option>
+                  <option value="in_entry_fresh">Trong vùng, còn hiệu lực</option>
+                  <option value="has_conflict">Có mâu thuẫn</option>
+                  <option value="stronger_btc">Mạnh hơn BTC 24h</option>
+                </optgroup>
+                <optgroup label="Vị trí / entry">
+                  <option value="near_support">Gần hỗ trợ</option>
+                  <option value="near_resistance">Gần kháng cự</option>
+                  <option value="buy_zone">Vùng mua (setup)</option>
+                  <option value="sell_zone">Vùng bán (setup)</option>
+                  <option value="entry_long">Còn entry Long</option>
+                  <option value="entry_short">Còn entry Short</option>
+                  <option value="retest">Retest gần đây</option>
+                  {canFlow ? <option value="flow_aligned">Đồng thuận flow</option> : null}
+                </optgroup>
               </select>
             </label>
             <label>
@@ -749,6 +759,7 @@ export default function MarketPage({
               rows={list?.rows || []}
               symbol={symbol}
               canFlow={canFlow}
+              canTerminal={canTerminal}
               top={top}
               loading={loading}
               onSelect={selectSymbol}

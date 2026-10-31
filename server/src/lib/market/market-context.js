@@ -5,6 +5,7 @@
 const { INTERVAL_MS, FORMULA_VERSION } = require("./config");
 const { STRUCTURE_LABEL } = require("./location");
 const { SETUP_EXPIRY_BARS, SETUP_VERSION } = require("./setup-engine");
+const { buildDecision, DECISION_VERSION } = require("./decision-list");
 const CONTEXT_VERSION = "market-context-v1";
 const BTC_CONTEXT_TF = "4h";
 
@@ -469,11 +470,27 @@ function buildObstacles(loc, composite, flow, qualityOverall) {
 
 /**
  * Tóm tắt context cho một dòng location.
+ * `btcChangePct24h` / `priceChangePct` / `canFlowLink` phục vụ decision P1a (additive).
  */
-function buildRowContext({ loc, snap, flow, composite } = {}) {
+function buildRowContext({
+    loc,
+    snap,
+    flow,
+    composite,
+    priceChangePct,
+    btcChangePct24h,
+    canFlowLink = false,
+    now = Date.now(),
+} = {}) {
     const setup = loc?.primarySetup || null;
     const waiting = waitingCopy(setup);
     const obstacles = buildObstacles(loc, composite || snap?.composites?.intraday, flow, snap?.qualityOverall);
+    const conflicts = buildConflictsList({
+        loc,
+        composite: composite || snap?.composites?.intraday,
+        flow,
+        frame: null,
+    });
     const trigger =
         setup && setup.lifecycle === "active"
             ? {
@@ -485,6 +502,21 @@ function buildRowContext({ loc, snap, flow, composite } = {}) {
               }
             : null;
 
+    const changePct =
+        priceChangePct ?? snap?.price?.changePct24h ?? null;
+
+    const decision = buildDecision({
+        loc,
+        setup,
+        obstacles,
+        conflicts,
+        flow,
+        priceChangePct: changePct,
+        btcChangePct24h,
+        canFlowLink,
+        now,
+    });
+
     return {
         version: CONTEXT_VERSION,
         waiting: waiting.text
@@ -493,6 +525,7 @@ function buildRowContext({ loc, snap, flow, composite } = {}) {
         waitingReason: waiting.text ? null : waiting.reason,
         trigger,
         obstacles,
+        decision,
         positionSummary: {
             tags: loc?.positionTags || [],
             supportNear: loc?.support?.nearFar || null,
@@ -735,6 +768,7 @@ function enrichPrimarySetupFields(setup, timeframe, candleCloseTime) {
 
 module.exports = {
     CONTEXT_VERSION,
+    DECISION_VERSION,
     BTC_CONTEXT_TF,
     envelope,
     mapDomainQuality,

@@ -207,6 +207,7 @@ function mapFlowSnapshot(sm) {
     if (!sm) return null;
     const bias = sm.derived?.bias || sm.moneyFlow?.bias || null;
     const oiQty = sm.openInterest?.qty ?? sm.openInterest?.openInterest ?? null;
+    const oiDeltaPct = sm.openInterest?.deltaPct ?? null;
     const fundingRate = sm.funding?.currentRate ?? sm.funding?.fundingRate ?? null;
     const quality = sm.quality?.overall || null;
     const stale = quality === "stale";
@@ -216,7 +217,12 @@ function mapFlowSnapshot(sm) {
         quality,
         stale,
         openInterest: sm.openInterest
-            ? { status: sm.openInterest.status, qty: oiQty, value: oiQty }
+            ? {
+                  status: sm.openInterest.status,
+                  qty: oiQty,
+                  value: oiQty,
+                  deltaPct: Number.isFinite(Number(oiDeltaPct)) ? Number(oiDeltaPct) : null,
+              }
             : null,
         funding: sm.funding
             ? { status: sm.funding.status, currentRate: fundingRate, rate: fundingRate }
@@ -235,7 +241,10 @@ async function listLocationSymbolsQuery(query = {}) {
         : 72;
     const sortKey = String(query.sort || "default");
     const dirKey = String(query.dir || "asc") === "desc" ? "desc" : "asc";
-    const includeFlow = screen === "flow_aligned" || query.includeFlow === "1";
+    const includeFlow =
+        screen === "flow_aligned" ||
+        screen === "has_conflict" ||
+        query.includeFlow === "1";
 
     const universe = getMarketUniverse().symbols.length
         ? getMarketUniverse()
@@ -245,6 +254,11 @@ async function listLocationSymbolsQuery(query = {}) {
     let metas = universe.meta?.rows || universe.symbols.map((symbol) => ({ symbol }));
     const q = String(query.q || "").trim().toUpperCase();
     if (q) metas = metas.filter((m) => String(m.symbol).includes(q));
+
+    const btcMeta = (universe.meta?.rows || []).find((m) => m.symbol === "BTCUSDT");
+    const btcSnap = snapMap.get("BTCUSDT");
+    const btcChangePct24h =
+        btcSnap?.price?.changePct24h ?? btcMeta?.priceChangePercent ?? null;
 
     const symbols = metas.map((m) => m.symbol);
     let signalPack = { bySymbol: {} };
@@ -325,13 +339,23 @@ async function listLocationSymbolsQuery(query = {}) {
                 loc.candleCloseTime
             );
         }
-        const rowContext = buildRowContext({ loc, snap, flow, composite });
+        const changePct24h = snap.price?.changePct24h ?? meta.priceChangePercent ?? null;
+        const rowContext = buildRowContext({
+            loc,
+            snap,
+            flow,
+            composite,
+            priceChangePct: changePct24h,
+            btcChangePct24h,
+            canFlowLink: Boolean(includeFlow),
+            now,
+        });
 
         rows.push({
             symbol: meta.symbol,
             price: {
                 last: price,
-                changePct24h: snap.price?.changePct24h ?? meta.priceChangePercent ?? null,
+                changePct24h: changePct24h,
                 volume24h: snap.price?.volume24h ?? meta.quoteVolume ?? null,
                 asOf: priceAsOf,
                 source: snap.price?.source || "ticker",

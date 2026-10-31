@@ -95,6 +95,30 @@
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
 }
+.mkt-changed-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--mkt-warn, #d4a017);
+  border: 1px solid color-mix(in srgb, var(--mkt-warn, #d4a017) 45%, transparent);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.mkt-action-in { color: var(--mkt-long, #3dba7e); font-weight: 600; }
+.mkt-action-wait { color: var(--mkt-warn, #d4a017); font-weight: 600; }
+.mkt-action-watch { color: inherit; }
+.mkt-action-skip { color: var(--muted, #8b93a7); }
+.mkt-conflict {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--mkt-short, #e06b6b);
+}
 .mkt-obstacle {
   display: inline-block;
   max-width: 14rem;
