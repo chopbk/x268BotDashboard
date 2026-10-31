@@ -190,6 +190,13 @@ test("S8 signal entry normalize range/point/missing", () => {
     const missing = normalizeEntryReference({ prices: { currentPrice: 11 } });
     assert.equal(missing, null);
 
+    const withExp = normalizeEntryReference({
+        prices: { entryPrice: 11, slPrice: 10 },
+        infos: { expiresAt: 1700003600000 },
+    });
+    assert.equal(withExp.expiresAt, new Date(1700003600000).toISOString());
+    assert.equal(signalValidity({ status: "OPEN" }, withExp), "expired");
+
     assert.equal(priceRelation(11, point), "in_range");
     assert.equal(priceRelation(20, point, 1), "above");
     assert.equal(signalValidity({ status: "CLOSE" }, point), "source_closed");

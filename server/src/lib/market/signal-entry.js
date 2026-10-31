@@ -53,11 +53,23 @@ function normalizeEntryReference(row) {
     if (!stopPick.values.length) stopPick = pickFromObject(infos, STOP_FIELDS);
     const stop = stopPick.values.length ? stopPick.values[0] : null;
 
+    // expiresAt từ bot payload V2 (infos/prices) — không suy từ openTime
+    let expiresAt = null;
+    const expRaw =
+        infos?.expiresAt ??
+        prices?.expiresAt ??
+        row?.expiresAt ??
+        null;
+    if (expRaw != null) {
+        const t = expRaw instanceof Date ? expRaw.getTime() : Number(expRaw);
+        if (Number.isFinite(t) && t > 0) expiresAt = new Date(t).toISOString();
+    }
+
     return {
         entryLow,
         entryHigh,
         stop,
-        expiresAt: null,
+        expiresAt,
         sourceField: picked.sourceField,
         referenceKind,
     };
