@@ -72,14 +72,16 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | Bot | `bots.view`, `bots.create`, `bots.edit`, `bots.delete`, `bots.operate` |
 | Config | `config.view`, `config.edit` |
 | Signal/hiệu suất | `signals.history`, `statistics.view` |
-| Position | `positions.view`, `positions.open`, `positions.close` |
+| Position | `positions.view`, `positions.open`, `positions.close`, `positions.tpsl` |
 | Order | `orders.view`, `orders.create`, `orders.edit`, `orders.cancel` |
+| Risk (Quant Terminal P2) | `risk.manage` — policy write, producer ACK, controls pause/resume/flatten preview. Đọc portfolio/scenarios: `positions.view` \| `statistics.view` \| `risk.manage`. Không thay `positions.close` / `orders.cancel`. Default policy mode **observe**; không auto-enforce live. |
+| Research / Inbox (P3) | Đọc/ghi track, scanner, Inbox: `market.view`. Timeline events: `positions.view`. `research.run` (quant job) vẫn đề xuất, chưa cấp template. |
 | API | `credentials.view`, `credentials.manage` |
 | User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
 | Log | `logs.view` |
 | Process env / PM2 | `processes.view`, `processes.edit`, `processes.restart` (scope chỉ `all`) |
 | Smart Money / Dòng tiền | Đọc: cùng Terminal hoặc `smart_money.view`. Quản lý collector: `smart_money.manage` (admin/ops). UI hub: tab Dòng tiền trong `/market` |
-| Thị trường (scoring / hub) | Menu hub `/market`: `canTechnical` = Terminal \| `market.view`; `canFlow` = Terminal \| `smart_money.view`; `canMarketHub` = một trong hai. Quản lý scoring: `market.manage`. Chi tiết: [market-hub-spec](market-hub-spec.md) |
+| Thị trường (scoring / hub) | Menu hub `/market`: `canTechnical` = Terminal \| `market.view`; `canFlow` = Terminal \| `smart_money.view`; `canMarketHub` = một trong hai. Quản lý scoring: `market.manage`. Inbox `/inbox`: `market.view`. Chi tiết: [market-hub-spec](market-hub-spec.md) |
 
 `config.*` bao trọn `Account_Config`: signal, trade config, symbol blacklist/whitelist và
 các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
@@ -385,6 +387,16 @@ Các invariant:
 | `POST /api/trading/positions/reverse` | `requireAuth` | `positions.open` + `positions.close` + scope bot. Reverse vị thế (saga) |
 | `POST /api/trading/orders` | `requireAuth` | `orders.create` + scope bot. Tạo order mới |
 | `PUT /api/trading/orders/:kind/:symbol/:orderId` | `requireAuth` | `orders.edit` + scope bot. Replace order |
+| `GET /api/risk/portfolio` | `requireAuth` | `positions.view` \| `statistics.view` \| `risk.manage` + scope bot. Snapshot exposure; provenance quality |
+| `POST /api/risk/scenarios` | `requireAuth` | Cùng quyền đọc risk. Shock scenarios partial |
+| `GET/PUT /api/risk/policies[/:id]` | `requireAuth` | `risk.manage` + scope. Policy versioned; CAS `expectedRevision` |
+| `GET /api/risk/policies/:id/acks` / `POST /api/risk/acks` | `requireAuth` | `risk.manage`. Producer ACK coverage |
+| `POST /api/risk/reservations` (+ bind/release) | `requireAuth` | Trade tăng exposure (`positions.open` \| `orders.create`) hoặc `risk.manage`. Default observe |
+| `POST /api/risk/controls` | `requireAuth` | `risk.manage`. pause/resume entries; cancel-pending & flatten trả preview targets (cần `orders.cancel` / `positions.close` để thực thi) |
+| `GET/POST/PATCH /api/research/tracks*` | `requireAuth` | `market.view`. Research tracks actor-scoped |
+| `GET/PATCH /api/research/inbox*` | `requireAuth` | `market.view`. Inbox; không gửi Telegram/email |
+| `GET/POST/PATCH /api/research/scanners*` | `requireAuth` | `market.view`. Predicate allowlist |
+| `GET/POST /api/research/timeline*` | `requireAuth` | `positions.view`. Timeline events; không bịa `tradeInstanceId` |
 | `GET /api/summary` | `requireAuth` | `summary.view` hoặc `bots.view` hoặc `statistics.view`. `audience=mine` chỉ user bot đang active mà actor sở hữu hoặc được gán. `audience=system` (mặc định) lấy user bot active mà scope `bots.view` hoặc `statistics.view` cho phép, không dùng scope `summary.view`; bot private vẫn chỉ khi sở hữu hoặc được gán, trừ admin. Admin và `summary_viewer` với `audience=system` đọc snapshot toàn hệ thống. `audience=mine` luôn tính trực tiếp, không dùng snapshot chung. Mặc định hôm nay, `range=today\|3d\|7d\|30d\|90d\|all`, `today` là ngày UTC hiện tại. Position mở là `monitor_positions` có `closed` khác `true`, bỏ paper (`isPaper` hoặc `config.PAPER`). Profit, balance và ROI trong `userRanks` lấy một ví `futures_profits` mỗi user: env trùng username nếu username nằm trong `accounts`, không cộng các config vì lệnh `/i` có thể ghi cùng một ví lên nhiều env. Profit cộng các ngày UTC trong kỳ, sau khi gộp bản ghi trùng env và ngày. Balance là số dư ngày cuối của ví đó. ROI là profit kỳ chia số dư đầu ngày đầu tiên trong kỳ. Volume, số lệnh, win rate, profit thẻ và xếp hạng signal/symbol vẫn là `account_statics` lệnh đóng, không paper, theo `closeTime`. Signal trong kỳ là số tên signal khác nhau mà user bot trong phạm vi đã vào lệnh: `account_statics.typeSignal`, không paper, theo `openTime` |
 | `POST /api/summary/refresh` | `requireAuth` | Cùng quyền với GET. Cùng `range` và `audience` với GET. Admin và `summary_viewer` khi `audience=system` tính lại snapshot dùng chung. Các trường hợp còn lại chỉ tính lại đúng phạm vi, không ghi đè snapshot hệ thống. Giới hạn 6 lần / 15 phút |
 | `GET /api/signal-history` | `requireAuth` | `signals.history`; nhật ký signal của cả hệ thống từ `signal_infos`, không lọc theo user bot hay account config. Màn hình là tab Lịch sử trong Signal → Tìm Signal. Bấm một signal xem số lượng và lịch sử; nút Tìm config chuyển sang tìm config với đúng tên đó. Query `from`/`to` lọc `openTime`; không truyền thì chỉ 3 ngày gần nhất. Query `signal` lọc đúng một kênh; danh sách kênh để chọn vẫn lấy trong khoảng thời gian, không bị thu hẹp bởi chính bộ lọc đó |

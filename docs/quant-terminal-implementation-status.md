@@ -1,17 +1,17 @@
-# Quant Terminal — implementation status (P0)
+# Quant Terminal — implementation status
 
-Ngày audit: **2026-11-01**. Milestone hiện tại: **P1 (Q1) đã implement foundation** — chart/plan/preview; P2 chưa.  
+Ngày cập nhật: **2026-11-01**. Milestone hiện tại: **P2+P3 foundation đã merge code** (observe mặc định; chưa bật enforce live / deploy).  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
-Contracts đã chốt: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
+Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
-> Đây là inventory + quyết định + backlog có evidence từ source. Không phải tuyên bố feature đã live. Không đo ETA.
+> Inventory + evidence. Không tuyên bố enforce production hay collector trả phí đã bật.
 
 ## 0. Git / phạm vi lần này
 
-| Repo | Git (lúc audit) | Ghi chú |
+| Repo | Git | Ghi chú |
 |---|---|---|
-| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên**, không stage | Chỉ commit artifact P0 |
-| `binance-bot` | Có thay đổi sẵn (config/session/monitor) — **không đụng** | Inventory bot ghi trong doc này; không commit bot ở P0 |
+| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit P2/P3 + docs; push; **không deploy** |
+| `binance-bot` | Chỉ stage `services/risk-gate/**` + hooks entry đã liệt kê | Không commit dirty sẵn (config/session/…) |
 
 Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration production / lệnh thật.
 
@@ -29,11 +29,11 @@ Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration produc
 | D6 | Reservation durable Mongo (đề xuất `web_risk_reservations`); default policy **observe**; lease hết hạn **không** auto-release khi exchange unknown | Spec §5.3; contract `reservation.v1` |
 | D7 | Gate phải phủ mọi entry tăng exposure đã audit (kể cả `/open` bypass `checkBotStatus`, COPY DCA, MTF scale-in, ROSEI open leg) | bot inventory GOAL1 |
 | D8 | Close/reduce/protection **không** bị chặn chỉ vì vượt exposure / store enforce unavailable | Spec §5.3 |
-| D9 | Preview trading: server-side versioned + `expiresAt` (P1); client `trade-preview.js` chỉ advisory | Hiện không có `POST /api/trading/preview` |
-| D10 | Chart Terminal reuse `lightweight-charts` (đã có trong Market Dash); chưa gắn Terminal | `CandleChart.jsx` only |
-| D11 | `/research` giữ tracking setup; Research Lab = `/quant-lab` | Spec §9; research-tracking-inbox chưa code |
+| D9 | Preview trading: server-side versioned + `expiresAt` (P1); client `trade-preview.js` chỉ advisory | `POST /api/trading/preview` đã có (P1) |
+| D10 | Chart Terminal reuse `lightweight-charts` | TerminalChart P1 |
+| D11 | Research tracks/Inbox dưới `/api/research/*` + UI `/inbox`; Research Lab = `/quant-lab` (P5) | P3 |
 | D12 | Backtest engines: **không parity-ready**; chỉ expose strategy có fixture parity ở P5 | `backtest-engines.fixture.json` |
-| D13 | Quyền mới đề xuất (chưa thêm catalog): `risk.manage`, `research.run`, `portfolio.allocate` — cập nhật auth-rbac + tests cùng milestone dùng | Spec §12; không tạo auth map thứ hai |
+| D13 | `risk.manage` đã vào catalog + OPERATOR template; `research.run` / `portfolio.allocate` vẫn đề xuất | auth-rbac + access-control |
 | D14 | Retention đề xuất (chưa apply TTL lên collection tài chính legacy) | Xem §6 |
 | D15 | Live/paper luôn tách sổ | positions/account_statics/PAPER/DCA_MTF_PAPER đã có precedent |
 
@@ -54,7 +54,7 @@ UI → POST/PUT/DELETE /api/trading/*
 
 Actions: `ORDER_CANCEL`, `ORDER_CANCEL_BATCH`, `POSITION_SET_TPSL`, `POSITION_CANCEL_TPSL`, `POSITION_CLOSE`, `POSITION_OPEN`, `POSITION_REVERSE`, `ORDER_CREATE`, `ORDER_REPLACE`.
 
-**Risk reservation trước submit: missing.**
+**Risk reservation trước submit: hooked** trên `POSITION_OPEN` / `ORDER_CREATE` / `ORDER_REPLACE` (observe mặc định). `POSITION_REVERSE` không hard-gate cả saga (close phải chạy).
 
 ### 2.2 Config MQTT bridge (không đặt lệnh)
 
@@ -81,9 +81,9 @@ Chi tiết surfaces: [entry-surfaces.v1.json](contracts/quant-terminal/entry-sur
 | ID | Theme | Status | Evidence chính | Spec liên quan | Gap lớn |
 |---|---|---|---|---|---|
 | Q1 | Workspace / chart / trade plan | **partial→implemented foundation** | Terminal quant strip: Watchlist/Chart/Plan/Ticket; `POST /api/terminal/plans`, `POST /api/trading/preview`, `GET /api/terminal/candles`, workspace prefs; overlay + hline drawings; bracket `entry_filled_protection_pending` | terminal-workspace, master §4, contracts P0 | UI QA browser chưa chạy trong CI; fills overlay từ live stream còn mỏng; multi-chart sync optional chưa làm |
-| Q2 | Portfolio risk / gate | **partial** | `lib/risk-profile.js`, `decision-support/account-metrics.js`, `AccountRiskAi.jsx`; **không** `/api/risk/*` | master §5, ai-decision-support | Không policy versioned, reservation, enforce, 3 controls độc lập; web+bot entry bypass |
-| Q3 | Market scanner / alerts | **partial** | `lib/market/*`, `market-dash/*`, `smart-money/*`, MarketHub; Telegram dash alerts | market-hub, intelligence, research-tracking-inbox | Không Inbox/tracking UI; không predicate scanner builder; không worker dedup Inbox |
-| Q4 | Timeline / journal / TCA | **partial** | `web_trading_receipts`, `web_exchange_fills`, `web_exchange_order_events`, journal CRUD, decision-support | master §7, R2, AI decision | Không timeline event stream + taxonomy; thiếu `tradeInstanceId`; không slippage/latency chuẩn |
+| Q2 | Portfolio risk / gate | **implemented foundation (observe)** | `/api/risk/*`, models policies/reservations/acks, trading-bridge gate, bot `services/risk-gate`, RiskCockpit UI | master §5 | Enforce live chưa bật; reverse open-leg partial; ACK coverage UI tối giản; concurrent stress chưa CI |
+| Q3 | Market scanner / alerts | **implemented foundation** | `/api/research/scanners|tracks|inbox`, predicate allowlist, Inbox UI `/inbox`, dedupe `sourceEventId` | research-tracking-inbox | Worker cron tự chạy scanner chưa; history OI/funding collector mới chưa (reuse market cache) |
+| Q4 | Timeline / journal / TCA | **implemented foundation** | `web_trade_events`, bridge append, journal `tradeInstanceId`/`legacy_unresolved`, `arrivalSlippageBps` | master §7 | Bot fill/signal-skip producers chưa đầy đủ; clock sync UI mỏng |
 | Q5 | Strategy analytics | **partial** | Reports, account-statics, ledger, provider-scorecard | provider-scorecard, master §8 | Thiếu net accounting thống nhất, R/MAE/MFE/Sharpe cadence, sample/uncertainty gates |
 | Q6 | Research Lab | **missing** | Không `/quant-lab` trong App; `/research` chưa code | master §9, research-tracking-inbox | Dataset/experiment/runner/paper promotion chưa có trên web |
 | Q7 | Allocation / microstructure / algos | **missing** | “allocation” Terminal = own vs exchange leftover; adapters có order types một phần | master §10 | Không portfolio allocation, depth/tape, TWAP parent/child |
@@ -204,23 +204,23 @@ Mỗi task: repo, entry files, dependency, contract, test. **Không ETA.**
 
 | Task | Repo | Entry | Dep | Contract | Test |
 |---|---|---|---|---|---|
-| P2.1 Risk read cockpit + scenarios | web-bot | `/api/risk/*` | positions/balance scope | provenance | unknown/partial |
-| P2.2 Policy versioned observe | web-bot | `web_risk_policies` | auth proposal `risk.manage` | reservation | CAS revision |
-| P2.3 Durable reservation store | web-bot | `web_risk_reservations` | P2.2 | reservation | concurrent + lease unknown |
-| P2.4 Hook web increase paths | web-bot | trading-bridge before execute | P2.3 | entry-surfaces | open/create/replace/reverse |
-| P2.5 Hook bot entry surfaces | binance-bot | signal/command/COPY/MTF paths | P2.3 API or shared protocol | entry-surfaces | web+bot concurrent |
-| P2.6 Three controls | both | `/api/risk/controls` + bot honor pause | P2.4–5 | reservation | pause≠stop monitor; cancel≠SL/TP |
-| P2.7 Producer ACK coverage UI | web-bot | compatibility matrix | P2.5 | compatibility | gap visible |
+| P2.1 Risk read cockpit + scenarios | web-bot | `/api/risk/*` + RiskCockpit | positions/balance scope | provenance | **done** unit snapshot/scenarios |
+| P2.2 Policy versioned observe | web-bot | `web_risk_policies` + `risk.manage` | auth | reservation | **done** CAS in upsert |
+| P2.3 Durable reservation store | web-bot | `web_risk_reservations` | P2.2 | reservation | **done** lease unknown rule in lib |
+| P2.4 Hook web increase paths | web-bot | trading-bridge before execute | P2.3 | entry-surfaces | **done** open/create/replace; reverse deferred |
+| P2.5 Hook bot entry surfaces | binance-bot | signal/command/COPY DCA/MTF entry+tryDca | shared Mongo collections | entry-surfaces | **done** observe; unit mustBypass |
+| P2.6 Three controls | both | `/api/risk/controls` + bot pause honor | P2.4–5 | reservation | **done** pause/resume; cancel/flatten preview |
+| P2.7 Producer ACK coverage UI | web-bot | API acks + matrix doc | P2.5 | compatibility | **partial** API; UI coverage matrix chưa |
 
 ### P3 — Q3 + Q4
 
 | Task | Repo | Entry | Dep | Contract | Test |
 |---|---|---|---|---|---|
-| P3.1 History price/OI/funding + RS/breadth provenance | web-bot | market collectors | P0 | provenance | missing≠false |
-| P3.2 Scanner predicate + saved + Inbox | web-bot | research-tracking reuse | P3.1 | — | worker restart dedup |
-| P3.3 Producer timeline events | both | fills/orders/signal skip | identity | timeline fixture | late/dup/lost ACK |
-| P3.4 Journal tradeInstanceId additive | web-bot | trade-journal | identity | identity | legacy_unresolved |
-| P3.5 Slippage/latency flags | web-bot | analytics facts | P3.3 | provenance | clock_uncertainty |
+| P3.1 History price/OI/funding + RS/breadth provenance | web-bot | reuse market cache provenance | P0 | provenance | **partial** (không collector mới) |
+| P3.2 Scanner predicate + saved + Inbox | web-bot | `/api/research/*` + `/inbox` | P3.1 | — | **done** unit missing≠false |
+| P3.3 Producer timeline events | both | bridge append + `/api/research/timeline` | identity | timeline fixture | **partial** web; bot fills chưa |
+| P3.4 Journal tradeInstanceId additive | web-bot | trade-journal | identity | identity | **done** legacy_unresolved |
+| P3.5 Slippage/latency flags | web-bot | `arrivalSlippageBps` + clockUncertainty | P3.3 | provenance | **done** unit |
 
 ### P4 — Q5 analytics
 
@@ -256,12 +256,12 @@ Mỗi task: repo, entry files, dependency, contract, test. **Không ETA.**
 
 | Proposed (master §11) | P0 status |
 |---|---|
-| `/api/terminal/workspaces` | missing |
-| `/api/terminal/plans` | missing |
-| `POST /api/trading/preview` | missing |
-| `/api/risk/*` | missing (chỉ `/api/auth/me/risk-profile`) |
-| `/api/market/alerts` Inbox | missing (dash Telegram khác) |
-| `/api/terminal/trades/:id/timeline` | missing |
+| `/api/terminal/workspaces` | **existing** (`/me`) |
+| `/api/terminal/plans` | **existing** |
+| `POST /api/trading/preview` | **existing** |
+| `/api/risk/*` | **existing** (P2; risk-profile vẫn riêng) |
+| `/api/research/inbox` (+ scanners/tracks) | **existing** (P3; dash Telegram khác) |
+| `/api/research/timeline` | **existing** (alias trade timeline) |
 | `/api/analytics/strategies` | missing (scorecard/statics existing khác) |
 | `/api/quant/*` | missing |
 | `/api/portfolio/allocations` | missing |
@@ -274,15 +274,13 @@ Conflict codes đề xuất (chưa wire): `source_changed`, `preview_expired`, `
 
 ---
 
-## 10. Permissions đề xuất (chưa merge catalog)
+## 10. Permissions
 
-Khi implement milestone tương ứng, cập nhật **một** nguồn `auth-rbac-spec.md` + `access-control` + tests:
-
-| Permission | Dùng cho | Không suy ra |
+| Permission | Trạng thái | Không suy ra |
 |---|---|---|
-| `risk.manage` | policy write, controls pause/flatten preview | không thay `positions.close` |
-| `research.run` | tạo/cancel quant job | không live trade |
-| `portfolio.allocate` | activate allocation | không tự place thiếu risk gate |
+| `risk.manage` | **đã merge** catalog + OPERATOR/admin/ops templates | không thay `positions.close` |
+| `research.run` | đề xuất (P5) | không live trade |
+| `portfolio.allocate` | đề xuất (P6) | không tự place thiếu risk gate |
 
 Map controls: pause → trade-policy/risk.manage explicit; cancel pending → `orders.cancel`; flatten → `positions.close`.
 

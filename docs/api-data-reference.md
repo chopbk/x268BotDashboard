@@ -138,6 +138,17 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET/POST/PATCH | `/api/terminal/plans[/:id]` | [terminal](../server/src/routes/terminal.js) — trade plan draft (Q1) |
 | GET | `/api/terminal/candles` | [terminal](../server/src/routes/terminal.js) — nến đóng + provenance cho chart |
 | POST/GET | `/api/trading/preview[/:previewId]` | [trading](../server/src/routes/trading.js) — preview version/expiry, không đặt lệnh |
+| GET | `/api/risk/portfolio` | [risk](../server/src/routes/risk.js) — snapshot exposure + provenance; default observe |
+| POST | `/api/risk/scenarios` | [risk](../server/src/routes/risk.js) — shock scenarios (partial / beta placeholder) |
+| GET/PUT | `/api/risk/policies[/:policyId]` | [risk](../server/src/routes/risk.js) — `risk.manage`; CAS revision |
+| GET/POST | `/api/risk/policies/:id/acks`, `/api/risk/acks` | [risk](../server/src/routes/risk.js) — producer ACK coverage |
+| POST | `/api/risk/reservations[/:id/bind\|release]` | [risk](../server/src/routes/risk.js) — durable reservation; lease unknown không auto-release |
+| POST | `/api/risk/controls` | [risk](../server/src/routes/risk.js) — pause/resume entries; cancel-pending & flatten = preview targets |
+| GET/POST/PATCH | `/api/research/tracks[/:id]` | [research](../server/src/routes/research.js) — `market.view`; research tracks |
+| GET/PATCH | `/api/research/inbox[/:id/read]` | [research](../server/src/routes/research.js) — Inbox dedupe; không Telegram |
+| GET/POST/PATCH | `/api/research/scanners[/:id]` | [research](../server/src/routes/research.js) — predicate allowlist |
+| POST | `/api/research/scanners/:id/run` | [research](../server/src/routes/research.js) — evaluate + upsert Inbox |
+| GET/POST | `/api/research/timeline[/events]` | [research](../server/src/routes/research.js) — trade timeline + TCA helpers |
 | POST | `/api/terminal/decision/position` | [terminal](../server/src/routes/terminal.js) |
 | POST | `/api/terminal/decision/account` | [terminal](../server/src/routes/terminal.js) |
 | GET | `/api/terminal/decision/reports` | [terminal](../server/src/routes/terminal.js) |

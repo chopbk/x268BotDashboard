@@ -27,44 +27,44 @@
     {
       "id": "signal_open",
       "path": "services/signal-handlers/index.js → traders → OrderHandler.openPosition",
-      "localGate": "checkBotStatus",
-      "reservation": "missing"
+      "localGate": "checkBotStatus + riskGate.checkIncrease",
+      "reservation": "observe_default"
     },
     {
       "id": "manual_open",
       "path": "command-handler handleOpen → signal-handler.run",
-      "localGate": "bypasses checkBotStatus",
-      "reservation": "missing"
+      "localGate": "bypasses checkBotStatus; riskGate on handleOpen",
+      "reservation": "observe_default"
     },
     {
       "id": "manual_long_short",
-      "path": "handleLong/handleShort → futuresOpen*",
-      "localGate": "none",
-      "reservation": "missing"
+      "path": "handleLong/handleShort → futuresOpen* via handleOpenPosition",
+      "localGate": "riskGate.checkIncrease",
+      "reservation": "observe_default"
     },
     {
       "id": "copy_open",
       "path": "COPY new_signal → callHandleSignalBot",
-      "localGate": "checkBotStatus + COPY.ON",
-      "reservation": "missing"
+      "localGate": "checkBotStatus + COPY.ON + riskGate via signal path",
+      "reservation": "observe_default"
     },
     {
       "id": "copy_dca_add",
       "path": "position-monitor handleEventSignalUpdate amountRate>0",
-      "localGate": "COPY.DCA caps",
-      "reservation": "missing"
+      "localGate": "COPY.DCA caps + riskGate.checkIncrease",
+      "reservation": "observe_default"
     },
     {
       "id": "dca_mtf_entry",
       "path": "dca-mtf-bot scanner runTier2Entry → openEntry",
-      "localGate": "RiskControl.canOpenNewPosition",
-      "reservation": "missing"
+      "localGate": "RiskControl.canOpenNewPosition + riskGate.checkIncrease",
+      "reservation": "observe_default"
     },
     {
       "id": "dca_mtf_scale_in",
       "path": "position-manager tryDca",
-      "localGate": "dca-gate",
-      "reservation": "missing"
+      "localGate": "dca-gate + riskGate.checkIncrease",
+      "reservation": "observe_default"
     },
     {
       "id": "mtf_publish_secondary",
