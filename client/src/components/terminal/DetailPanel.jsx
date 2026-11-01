@@ -56,6 +56,10 @@ export default function DetailPanel({
   aiOpen = false,
   onAiOpen,
   onAiClose,
+  tradeDraft = null,
+  tradePreview = null,
+  onTradeDraftChange,
+  onTradePlaced,
 }) {
   const [tradeMode, setTradeMode] = useState("close"); // close | open | protect | advanced
   const [closeForm, setCloseForm] = useState(() => defaultClose(row));
@@ -353,8 +357,14 @@ export default function DetailPanel({
                   accounts={accounts}
                   defaultAccount={row.account}
                   defaultSymbol={row.symbol}
+                  draft={tradeDraft}
+                  preview={tradePreview}
+                  onDraftChange={onTradeDraftChange}
                   canCreate={canCreateOrder}
-                  onPlaced={() => onDirtyChange?.(false)}
+                  onPlaced={(result) => {
+                    onDirtyChange?.(false);
+                    onTradePlaced?.(result);
+                  }}
                 />
               </div>
             ) : null}

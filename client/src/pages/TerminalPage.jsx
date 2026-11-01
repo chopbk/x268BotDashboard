@@ -33,6 +33,10 @@ import { usePositionsFeed } from "../components/terminal/usePositionsFeed.js";
 import { CLOSE_PERCENTS, exchangeTpsl, monitorTpsl, newIdempotencyKey, numInput, when } from "../components/terminal/format.js";
 import { estimateSize } from "../components/terminal/sizing.js";
 import TerminalCli from "../components/terminal/TerminalCli.jsx";
+import TerminalChart from "../components/terminal/TerminalChart.jsx";
+import TerminalWatchlist from "../components/terminal/TerminalWatchlist.jsx";
+import TradePlanPanel from "../components/terminal/TradePlanPanel.jsx";
+import OrderTicket from "../components/OrderTicket.jsx";
 
 export default function TerminalPage() {
   const { user } = useAuth();
@@ -87,9 +91,50 @@ export default function TerminalPage() {
   const [mutation, setMutation] = useState({ phase: "idle" });
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [ticketOpen, setTicketOpen] = useState(false);
+  const [tradeDraft, setTradeDraft] = useState({
+    positionSide: "LONG",
+    entryType: "MARKET",
+    thesis: "",
+    quantity: "",
+    entryPrice: "",
+    stopLoss: "",
+    takeProfit: "",
+    timeframe: "15m",
+  });
+  const [tradePlan, setTradePlan] = useState(null);
+  const [tradePreview, setTradePreview] = useState(null);
+  const [protectionNotice, setProtectionNotice] = useState(null);
+  const [workspaceRevision, setWorkspaceRevision] = useState(null);
+  const [drawMode, setDrawMode] = useState(null);
 
   useEffect(() => {
     setPrefs(loadPrefs(user?.id || user?.username));
+  }, [user?.id, user?.username]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api("/api/terminal/workspaces/me");
+        if (cancelled || !data?.workspace) return;
+        setWorkspaceRevision(data.workspace.revision);
+        setPrefs((prev) => {
+          const merged = {
+            ...prev,
+            timeframe: data.workspace.timeframe || prev.timeframe,
+            watchlist: data.workspace.watchlist?.length ? data.workspace.watchlist : prev.watchlist,
+            drawings: data.workspace.drawings?.length ? data.workspace.drawings : prev.drawings,
+            chartHeight: data.workspace.layout?.chartHeight || prev.chartHeight,
+            showWorkspace: data.workspace.layout?.showWatchlist !== false,
+          };
+          savePrefs(user?.id || user?.username, merged);
+          return merged;
+        });
+      } catch (err) {
+        console.warn("[terminal-workspace]", err.message);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [user?.id, user?.username]);
 
   useEffect(() => {
@@ -959,6 +1004,68 @@ export default function TerminalPage() {
   const bookLabel = !book || book === "live" ? "live" : book;
   const showPanel = Boolean(selected && selectedRow && prefs.panelOpen);
 
+  const marketIdentity = useMemo(() => {
+    const symbol = (params.get("symbol") || selectedRow?.symbol || tradeDraft.symbol || "").toUpperCase();
+    if (!symbol) return null;
+    return {
+      exchange: selectedRow?.exchange || "binance",
+      marketType: "usdt_perp_linear",
+      instrumentId: selectedRow?.instrumentId || symbol,
+      symbol,
+    };
+  }, [params, selectedRow, tradeDraft.symbol]);
+
+  const chartLevels = useMemo(() => ({
+    entry: tradeDraft.entryPrice || selectedRow?.entry || null,
+    stopLoss: tradeDraft.stopLoss || null,
+    takeProfit: tradeDraft.takeProfit || null,
+  }), [tradeDraft, selectedRow]);
+
+  function selectMarket(item) {
+    const symbol = String(item.symbol || "").toUpperCase();
+    setTradeDraft((prev) => ({ ...prev, symbol, timeframe: prefs.timeframe || prev.timeframe }));
+    setTradePreview(null);
+    go((q) => {
+      q.set("symbol", symbol);
+    }, { replace: true });
+  }
+
+  async function persistWorkspace(patch) {
+    const nextPrefs = { ...prefs, ...patch };
+    updatePrefs(patch);
+    try {
+      const body = {
+        expectedRevision: workspaceRevision,
+        timeframe: nextPrefs.timeframe,
+        watchlist: nextPrefs.watchlist,
+        drawings: nextPrefs.drawings,
+        layout: {
+          chartHeight: nextPrefs.chartHeight,
+          showWatchlist: nextPrefs.showWorkspace !== false,
+          showChart: true,
+        },
+      };
+      const data = await api("/api/terminal/workspaces/me", { method: "PUT", body });
+      if (data?.workspace?.revision != null) setWorkspaceRevision(data.workspace.revision);
+    } catch (err) {
+      console.warn("[terminal-workspace-save]", err.message);
+    }
+  }
+
+  function onTradePlaced(result) {
+    const protect = result?.command?.protection;
+    if (protect?.status) setProtectionNotice(protect);
+    setTradePreview(null);
+    setMutation({
+      phase: result?.command?.status === "succeeded" ? "accepted" : "failed",
+      message: protect?.status
+        ? `Receipt ${result?.command?.requestId || ""} · ${protect.status}`
+        : (result?.command?.requestId || "Đã gửi"),
+      requestId: result?.command?.requestId,
+      exchangeStatus: result?.command?.status,
+    });
+  }
+
   // Params bridge for reused history/orders tabs (book=live → empty)
   const childParams = useMemo(() => {
     const next = new URLSearchParams(params);
@@ -1144,6 +1251,112 @@ export default function TerminalPage() {
       {tab === "positions" && perms.canPositions ? (
         <>
           <TerminalSummary summary={summary} bookLabel={bookLabel} />
+          {prefs.showWorkspace !== false ? (
+            <div className="term-quant-workspace">
+              <TerminalWatchlist
+                items={prefs.watchlist || []}
+                selectedSymbol={marketIdentity?.symbol || ""}
+                positions={rows}
+                onSelect={selectMarket}
+                onAddSymbol={(item) => {
+                  const watchlist = [...(prefs.watchlist || []).filter((w) => w.symbol !== item.symbol), item];
+                  persistWorkspace({ watchlist });
+                  selectMarket(item);
+                }}
+                onRemove={(sym) => {
+                  persistWorkspace({
+                    watchlist: (prefs.watchlist || []).filter((w) => w.symbol !== sym),
+                  });
+                }}
+              />
+              <div className="term-quant-center">
+                <div className="term-chart-modes" role="toolbar" aria-label="Chế độ chart">
+                  {[
+                    { id: null, label: "Xem" },
+                    { id: "entry", label: "Entry" },
+                    { id: "stopLoss", label: "SL" },
+                    { id: "takeProfit", label: "TP" },
+                    { id: "hline", label: "H-line" },
+                  ].map((mode) => (
+                    <button
+                      key={String(mode.id)}
+                      type="button"
+                      className={drawMode === mode.id ? "active" : ""}
+                      onClick={() => setDrawMode(mode.id)}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => persistWorkspace({ showWorkspace: false })}
+                    title="Ẩn workspace chart"
+                  >
+                    Ẩn
+                  </button>
+                </div>
+                <TerminalChart
+                  market={marketIdentity}
+                  timeframe={prefs.timeframe || "15m"}
+                  onTimeframeChange={(tf) => {
+                    setTradeDraft((prev) => ({ ...prev, timeframe: tf }));
+                    persistWorkspace({ timeframe: tf });
+                  }}
+                  levels={chartLevels}
+                  drawings={prefs.drawings || []}
+                  drawMode={drawMode}
+                  onDrawingsChange={(next) => persistWorkspace({ drawings: next })}
+                  onLevelDrag={(patch) => {
+                    setTradeDraft((prev) => ({ ...prev, ...patch }));
+                    setTradePreview(null);
+                    setDirty(true);
+                  }}
+                  height={prefs.chartHeight || 280}
+                />
+              </div>
+              <div className="term-quant-right">
+                <TradePlanPanel
+                  market={marketIdentity}
+                  account={selectedRow?.account || account}
+                  draft={{ ...tradeDraft, timeframe: prefs.timeframe }}
+                  onDraftChange={(next) => {
+                    setTradeDraft(next);
+                    setDirty(true);
+                  }}
+                  plan={tradePlan}
+                  onPlanChange={setTradePlan}
+                  preview={tradePreview}
+                  onPreviewChange={setTradePreview}
+                  canPreview={perms.canCreateOrder || perms.canOpen}
+                  protection={protectionNotice}
+                />
+                {(perms.canCreateOrder || ticketOpen) ? (
+                  <OrderTicket
+                    accounts={payload?.accounts || []}
+                    defaultAccount={selectedRow?.account || account}
+                    defaultSymbol={marketIdentity?.symbol || ""}
+                    draft={tradeDraft}
+                    preview={tradePreview}
+                    onDraftChange={(next) => {
+                      setTradeDraft((prev) => ({ ...prev, ...next }));
+                      setTradePreview(null);
+                      setDirty(true);
+                    }}
+                    canCreate={perms.canCreateOrder}
+                    onPlaced={onTradePlaced}
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <p className="muted">
+              Workspace chart đang ẩn.{" "}
+              <button type="button" className="ghost" onClick={() => persistWorkspace({ showWorkspace: true })}>
+                Hiện lại
+              </button>
+            </p>
+          )}
           <div
             className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""} ${showPanel && overlay ? "with-overlay" : ""}`}
             style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 480}px` } : undefined}
@@ -1227,6 +1440,14 @@ export default function TerminalPage() {
                   q.set("ai", "1");
                 }, { replace: true })}
                 onAiClose={() => go((q) => q.delete("ai"), { replace: true })}
+                tradeDraft={tradeDraft}
+                tradePreview={tradePreview}
+                onTradeDraftChange={(next) => {
+                  setTradeDraft((prev) => ({ ...prev, ...next }));
+                  setTradePreview(null);
+                  setDirty(true);
+                }}
+                onTradePlaced={onTradePlaced}
               />
             ) : null}
           </div>

@@ -1,4 +1,4 @@
-const VERSION = 4;
+const VERSION = 5;
 const PREFIX = "web-bot.terminal.v1";
 
 export const DEFAULT_COLUMNS = {
@@ -55,10 +55,22 @@ export function loadPrefs(userId) {
       columns,
       customViews: Array.isArray(data.customViews) ? data.customViews : [],
       panelWidth: clampPanelWidth(migratePanelWidth(data)),
+      showWorkspace: data.showWorkspace !== false,
+      chartHeight: clampChartHeight(data.chartHeight),
+      timeframe: data.timeframe || "15m",
+      watchlist: Array.isArray(data.watchlist) ? data.watchlist : [],
+      drawings: Array.isArray(data.drawings) ? data.drawings : [],
+      drawMode: data.drawMode || null,
     };
   } catch {
     return defaultPrefs();
   }
+}
+
+function clampChartHeight(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 280;
+  return Math.min(480, Math.max(180, Math.round(n)));
 }
 
 function migratePanelWidth(data) {
@@ -103,6 +115,12 @@ export function savePrefs(userId, prefs) {
     panelWidth: clampPanelWidth(prefs.panelWidth),
     panelOpen: prefs.panelOpen !== false,
     notifyOptIn: Boolean(prefs.notifyOptIn),
+    showWorkspace: prefs.showWorkspace !== false,
+    chartHeight: clampChartHeight(prefs.chartHeight),
+    timeframe: prefs.timeframe || "15m",
+    watchlist: (prefs.watchlist || []).slice(0, 50),
+    drawings: (prefs.drawings || []).slice(0, 200),
+    drawMode: prefs.drawMode || null,
     customViews: (prefs.customViews || []).slice(0, 20).map((view) => ({
       id: String(view.id),
       name: String(view.name || "View").slice(0, 40),
@@ -125,6 +143,12 @@ export function defaultPrefs() {
     panelWidth: 480,
     panelOpen: true,
     notifyOptIn: false,
+    showWorkspace: true,
+    chartHeight: 280,
+    timeframe: "15m",
+    watchlist: [],
+    drawings: [],
+    drawMode: null,
     customViews: [],
   };
 }

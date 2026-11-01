@@ -1546,3 +1546,160 @@ main:has(.term-screen) {
 .ledger-ai-risk {
   margin-bottom: 1.25rem;
 }
+
+/* Q1 Quant workspace: watchlist | chart | plan/ticket */
+.term-quant-workspace {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr) minmax(260px, 320px);
+  gap: 10px;
+  align-items: stretch;
+  min-height: 0;
+}
+.term-watchlist {
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface-2, #1a1a22) 70%, transparent);
+  max-height: 420px;
+  overflow: auto;
+}
+.term-watchlist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.term-watchlist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.term-watchlist-list li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.term-watchlist-list button {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.term-watchlist-list button.active {
+  background: color-mix(in srgb, var(--accent, #7a9e7e) 25%, transparent);
+}
+.term-watchlist-x { flex: 0; padding: 2px 6px; }
+.term-quant-center {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.term-chart-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.term-chart-modes button,
+.term-chart-tfs button {
+  border: 1px solid var(--term-line);
+  background: transparent;
+  color: var(--muted, #888);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.term-chart-modes button.active,
+.term-chart-tfs button.active {
+  color: var(--text, #eee);
+  border-color: var(--accent, #7a9e7e);
+}
+.term-chart-wrap {
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  padding: 8px;
+  min-height: 0;
+}
+.term-chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.term-chart-host { width: 100%; min-height: 180px; }
+.term-chart-hint { margin: 6px 0 0; font-size: 12px; }
+.term-quant-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-height: 640px;
+  overflow: auto;
+}
+.term-plan-panel {
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.term-plan-head { display: flex; justify-content: space-between; gap: 8px; }
+.term-plan-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.term-plan-panel label,
+.term-plan-panel textarea {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted, #888);
+}
+.term-plan-panel input,
+.term-plan-panel select,
+.term-plan-panel textarea {
+  font: inherit;
+  color: var(--text, #eee);
+  background: var(--surface, #111);
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.term-plan-actions { display: flex; gap: 8px; }
+.term-plan-preview { font-size: 13px; }
+.term-protect-banner {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--term-line);
+}
+.term-protect-entry_filled_protection_pending {
+  border-color: #c4a35a;
+  color: #e0c88a;
+}
+.term-protect-entry_filled_protection_failed {
+  border-color: #c45c5c;
+  color: #e8a0a0;
+}
+.order-ticket-preview-id { margin: 0 0 8px; font-size: 12px; }
+
+@media (max-width: 1100px) {
+  .term-quant-workspace {
+    grid-template-columns: 1fr;
+  }
+  .term-watchlist { max-height: 160px; }
+  .term-quant-right { max-height: none; }
+}

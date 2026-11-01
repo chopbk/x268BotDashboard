@@ -14,6 +14,7 @@ function sendError(res, error, method) {
     }
     const body = { error: status >= 500 ? "Internal error" : error.message };
     if (error.missing) body.missing = error.missing;
+    if (error.code) body.code = error.code;
     res.status(status).json(body);
 }
 

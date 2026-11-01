@@ -9,6 +9,14 @@ const {
     listReports,
     latestAccountReport,
 } = require("../lib/decision-support/run-decision");
+const {
+    createPlan,
+    getPlan,
+    listPlans,
+    patchPlan,
+} = require("../lib/trade-plan");
+const { getWorkspace, putWorkspace } = require("../lib/terminal-workspace");
+const { getTerminalCandles } = require("../lib/terminal-candles");
 
 const router = express.Router();
 
@@ -156,6 +164,79 @@ router.post("/coach", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW)
             return;
         }
         sendError(res, error, "POST /api/terminal/coach");
+    }
+});
+
+/**
+ * GET /api/terminal/workspaces/me
+ * Layout / watchlist / drawings theo actor.
+ */
+router.get("/workspaces/me", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json({ workspace: await getWorkspace(req.webUser) });
+    } catch (error) {
+        sendError(res, error, "GET /api/terminal/workspaces/me");
+    }
+});
+
+router.put("/workspaces/me", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json({ workspace: await putWorkspace(req.webUser, req.body || {}) });
+    } catch (error) {
+        sendError(res, error, "PUT /api/terminal/workspaces/me");
+    }
+});
+
+/**
+ * Trade plans — draft trước submit.
+ */
+router.get("/plans", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json(await listPlans(req.webUser, req.query));
+    } catch (error) {
+        sendError(res, error, "GET /api/terminal/plans");
+    }
+});
+
+router.post("/plans", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        const plan = await createPlan(req.webUser, req.body || {});
+        res.status(201).json({ plan });
+    } catch (error) {
+        sendError(res, error, "POST /api/terminal/plans");
+    }
+});
+
+router.get("/plans/:id", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json({ plan: await getPlan(req.webUser, req.params.id) });
+    } catch (error) {
+        sendError(res, error, "GET /api/terminal/plans/:id");
+    }
+});
+
+router.patch("/plans/:id", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        res.json({ plan: await patchPlan(req.webUser, req.params.id, req.body || {}) });
+    } catch (error) {
+        sendError(res, error, "PATCH /api/terminal/plans/:id");
+    }
+});
+
+/**
+ * GET /api/terminal/candles?symbol=&timeframe=&limit=
+ * Nến đóng + provenance cho chart Terminal.
+ */
+router.get("/candles", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
+    try {
+        const data = await getTerminalCandles({
+            symbol: req.query.symbol,
+            timeframe: req.query.timeframe || req.query.interval,
+            limit: req.query.limit,
+        });
+        res.json(data);
+    } catch (error) {
+        sendError(res, error, "GET /api/terminal/candles");
     }
 });
 

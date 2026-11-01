@@ -19,8 +19,38 @@ const {
     getTradingCommand,
     createTradingRequest,
 } = require("../lib/trading-bridge");
+const { createPreview, getPreview } = require("../lib/trading-preview");
 
 const router = express.Router();
+
+/**
+ * POST /api/trading/preview
+ * Preview có version/expiry — không tạo lệnh, không qua MQTT config bridge.
+ */
+router.post("/preview", requireAuth, async (req, res) => {
+    try {
+        const action = String(req.body?.action || "ORDER_CREATE").toUpperCase();
+        const needOpen = action === "POSITION_OPEN";
+        const permission = needOpen ? PERMISSIONS.POSITIONS_OPEN : PERMISSIONS.ORDERS_CREATE;
+        const { hasPermission } = require("../auth/access-control");
+        if (!hasPermission(req.webUser, permission)) {
+            throw httpError(403, "Không có quyền");
+        }
+        const preview = await createPreview(req.webUser, req.body || {});
+        res.status(201).json({ preview });
+    } catch (error) {
+        sendError(res, error, "POST /api/trading/preview");
+    }
+});
+
+router.get("/preview/:previewId", requireAuth, async (req, res) => {
+    try {
+        const preview = await getPreview(req.webUser, req.params.previewId);
+        res.json({ preview });
+    } catch (error) {
+        sendError(res, error, "GET /api/trading/preview/:previewId");
+    }
+});
 
 /**
  * POST /api/trading/orders/cancel
@@ -270,7 +300,10 @@ router.post("/positions/close", requireAuth, requirePermission(PERMISSIONS.POSIT
  */
 router.post("/positions/open", requireAuth, requirePermission(PERMISSIONS.POSITIONS_OPEN), async (req, res) => {
     try {
-        const { username, symbol, positionSide, env, orderType, quantity, price, expected, idempotencyKey } = req.body || {};
+        const {
+            username, symbol, positionSide, env, orderType, quantity, price,
+            stopLoss, takeProfit, expected, idempotencyKey, previewId,
+        } = req.body || {};
 
         if (!username) throw httpError(400, "Thiếu username");
         if (!symbol) throw httpError(400, "Thiếu symbol");
@@ -290,9 +323,12 @@ router.post("/positions/open", requireAuth, requirePermission(PERMISSIONS.POSITI
                 orderType: orderType || "MARKET",
                 quantity,
                 price,
+                stopLoss,
+                takeProfit,
             },
             expected,
             idempotencyKey,
+            previewId,
         });
 
         if (!result.duplicate) {
@@ -382,7 +418,7 @@ router.post("/orders", requireAuth, requirePermission(PERMISSIONS.ORDERS_CREATE)
         const {
             username, env, symbol, kind, side, positionSide, type, quantity, price,
             triggerPrice, callbackRate, reduceOnly, closePosition, workingType, timeInForce,
-            expected, idempotencyKey,
+            stopLoss, takeProfit, expected, idempotencyKey, previewId,
         } = req.body || {};
 
         if (!username) throw httpError(400, "Thiếu username");
@@ -409,9 +445,12 @@ router.post("/orders", requireAuth, requirePermission(PERMISSIONS.ORDERS_CREATE)
                 closePosition,
                 workingType,
                 timeInForce,
+                stopLoss,
+                takeProfit,
             },
             expected,
             idempotencyKey,
+            previewId,
         });
 
         if (!result.duplicate) {

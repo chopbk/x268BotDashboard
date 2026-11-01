@@ -13,7 +13,7 @@ function num(value) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function ingestMarkPrices(payload, store = marks) {
+function ingestMarkPrices(payload, store = marks, at = Date.now()) {
     const body = payload?.data && !payload.s ? payload.data : payload;
     const rows = Array.isArray(body) ? body : [body];
     for (const row of rows) {
@@ -22,7 +22,8 @@ function ingestMarkPrices(payload, store = marks) {
         const symbol = String(row.s || row.symbol || "").toUpperCase();
         const price = num(row.p ?? row.markPrice);
         if (!symbol || !price) continue;
-        store.set(symbol, price);
+        // Lưu object có receivedAt; markOf() vẫn trả số để tương thích callers cũ.
+        store.set(symbol, { mark: price, receivedAt: at, sourceAt: at });
     }
     return store;
 }
@@ -39,8 +40,23 @@ async function seedMarkPrices(deps = {}) {
     }
 }
 
+function readMarkEntry(symbol) {
+    const raw = marks.get(String(symbol || "").toUpperCase());
+    if (raw == null) return null;
+    if (typeof raw === "number") return { mark: raw, receivedAt: null, sourceAt: null };
+    if (typeof raw === "object" && num(raw.mark)) {
+        return { mark: num(raw.mark), receivedAt: raw.receivedAt ?? null, sourceAt: raw.sourceAt ?? raw.receivedAt ?? null };
+    }
+    return null;
+}
+
 function markOf(symbol) {
-    return marks.get(String(symbol || "").toUpperCase()) || null;
+    return readMarkEntry(symbol)?.mark || null;
+}
+
+/** Quote kèm freshness cho trading preview (quant.provenance.v1). */
+function markQuoteOf(symbol) {
+    return readMarkEntry(symbol);
 }
 
 function connectMarkSocket(deps = {}) {
@@ -118,6 +134,7 @@ module.exports = {
     ingestMarkPrices,
     seedMarkPrices,
     markOf,
+    markQuoteOf,
     startMarkPrices,
     stopMarkPrices,
 };

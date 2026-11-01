@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status (P0)
 
-Ngày audit: **2026-11-01**. Milestone hiện tại: **P0 hoàn thành artifact** (chưa implement P1).  
+Ngày audit: **2026-11-01**. Milestone hiện tại: **P1 (Q1) đã implement foundation** — chart/plan/preview; P2 chưa.  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts đã chốt: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -80,7 +80,7 @@ Chi tiết surfaces: [entry-surfaces.v1.json](contracts/quant-terminal/entry-sur
 
 | ID | Theme | Status | Evidence chính | Spec liên quan | Gap lớn |
 |---|---|---|---|---|---|
-| Q1 | Workspace / chart / trade plan | **partial** | `TerminalPage.jsx`, `OrderTicket.jsx`, `terminal/*`, `trade-preview.js` (client), prefs localStorage; chart chỉ `market-dash/CandleChart.jsx` | terminal-workspace, R1/R2, trading-terminal, master §4 | Không layout watchlist+chart+ticket; không plan API; không `POST /api/trading/preview`; không overlay/drawing trên Terminal |
+| Q1 | Workspace / chart / trade plan | **partial→implemented foundation** | Terminal quant strip: Watchlist/Chart/Plan/Ticket; `POST /api/terminal/plans`, `POST /api/trading/preview`, `GET /api/terminal/candles`, workspace prefs; overlay + hline drawings; bracket `entry_filled_protection_pending` | terminal-workspace, master §4, contracts P0 | UI QA browser chưa chạy trong CI; fills overlay từ live stream còn mỏng; multi-chart sync optional chưa làm |
 | Q2 | Portfolio risk / gate | **partial** | `lib/risk-profile.js`, `decision-support/account-metrics.js`, `AccountRiskAi.jsx`; **không** `/api/risk/*` | master §5, ai-decision-support | Không policy versioned, reservation, enforce, 3 controls độc lập; web+bot entry bypass |
 | Q3 | Market scanner / alerts | **partial** | `lib/market/*`, `market-dash/*`, `smart-money/*`, MarketHub; Telegram dash alerts | market-hub, intelligence, research-tracking-inbox | Không Inbox/tracking UI; không predicate scanner builder; không worker dedup Inbox |
 | Q4 | Timeline / journal / TCA | **partial** | `web_trading_receipts`, `web_exchange_fills`, `web_exchange_order_events`, journal CRUD, decision-support | master §7, R2, AI decision | Không timeline event stream + taxonomy; thiếu `tradeInstanceId`; không slippage/latency chuẩn |
@@ -191,14 +191,14 @@ Mỗi task: repo, entry files, dependency, contract, test. **Không ETA.**
 
 ### P1 — Q1 workspace/chart/plan (+ freshness)
 
-| Task | Repo | Entry | Dep | Contract | Test |
-|---|---|---|---|---|---|
-| P1.1 Terminal layout watchlist/chart/ticket | web-bot | `TerminalPage.jsx`, `components/terminal/` | P0 | provenance | client build + UI QA |
-| P1.2 Chart overlays + drawings prefs | web-bot | reuse `CandleChart` / lightweight-charts | P1.1 | identity market | fixture signal→chart |
-| P1.3 Trade plan API | web-bot | routes/terminal + model `web_trade_plans` | P0 identity | identity/plan | server tests |
-| P1.4 `POST /api/trading/preview` | web-bot | trading routes + bridge (no place) | P1.3, quote TTL | provenance | stale/expiry tests |
-| P1.5 Submit revalidate preview + bracket states | web-bot | OrderTicket + trading-bridge | P1.4, capability | capability | protection pending/failed |
-| P1.6 Keep legacy tabs/URL/dirty/RBAC | web-bot | TerminalPage | — | — | regression |
+| Task | Repo | Entry | Dep | Contract | Test | Status |
+|---|---|---|---|---|---|---|
+| P1.1 Terminal layout watchlist/chart/ticket | web-bot | `TerminalPage.jsx`, `components/terminal/` | P0 | provenance | client build + UI QA | **done** (UI QA tay còn) |
+| P1.2 Chart overlays + drawings prefs | web-bot | `TerminalChart.jsx` + workspace | P1.1 | identity market | fixture signal→chart | **done** |
+| P1.3 Trade plan API | web-bot | routes/terminal + model `web_trade_plans` | P0 identity | identity/plan | server tests | **done** |
+| P1.4 `POST /api/trading/preview` | web-bot | trading routes + bridge (no place) | P1.3, quote TTL | provenance | stale/expiry tests | **done** |
+| P1.5 Submit revalidate preview + bracket states | web-bot | OrderTicket + trading-bridge | P1.4, capability | capability | protection pending/failed | **done** |
+| P1.6 Keep legacy tabs/URL/dirty/RBAC | web-bot | TerminalPage | — | — | regression | **done** (build) |
 
 ### P2 — Q2 risk
 
@@ -305,12 +305,14 @@ Map controls: pause → trade-policy/risk.manage explicit; cancel pending → `o
 | Check | Kết quả |
 |---|---|
 | `node --test server/test/quant-terminal-contracts.test.js` | **pass** (11) 2026-11-01 |
-| Full `npm --prefix server test` | **chưa** bắt buộc P0 (không đổi runtime) |
-| `npm --prefix client run build` | **chưa** (không đổi client) |
-| Bot module tests | **chưa** (không sửa bot) |
-| UI QA Terminal chart | **chưa** (P1) |
+| `node --test server/test/trading-preview.test.js` | **pass** (P1) |
+| `node --test client/.../workspace-flow.test.js` + protection/sizing | chạy ở bàn giao P1 |
+| `npm --prefix client run build` | **pass** P1 |
+| Full `npm --prefix server test` | chạy selective; suite đầy đủ tùy môi trường Mongo |
+| Bot module tests | **chưa** (P1 không sửa bot) |
+| UI QA Terminal chart (browser) | **chưa verify** — fixture `q1-workspace-flow` ghi acceptance; cần QA tay |
 | Concurrent reservation | **chưa** (P2) |
-| Production deploy / live order | **cấm** trong P0–P6 coding prompts |
+| Production deploy / live order | **cấm** trong coding prompt P1 |
 
 ---
 

@@ -374,6 +374,7 @@ async function createTradingRequest({
     params,
     expected,
     idempotencyKey,
+    previewId,
 }) {
     // Validate action
     const spec = TRADING_ACTIONS[action];
@@ -398,6 +399,12 @@ async function createTradingRequest({
     if (!validation.valid) {
         throw httpError(400, validation.error);
     }
+    const normalized = {
+        ...validation.normalized,
+        // SL/TP trên preview/plan — không gửi trong cùng lệnh entry (bracket non-atomic).
+        stopLoss: params.stopLoss != null && params.stopLoss !== "" ? String(params.stopLoss) : undefined,
+        takeProfit: params.takeProfit != null && params.takeProfit !== "" ? String(params.takeProfit) : undefined,
+    };
 
     // Generate IDs
     const requestId = crypto.randomUUID();
@@ -413,11 +420,43 @@ async function createTradingRequest({
         };
     }
 
-    // Thực hiện trading qua Binance API trực tiếp
+    // Revalidate versioned preview tại submit (Q1) — lazy require tránh cycle.
+    let previewMeta = null;
+    if (previewId && (action === "ORDER_CREATE" || action === "POSITION_OPEN")) {
+        const { assertPreviewForSubmit } = require("./trading-preview");
+        previewMeta = await assertPreviewForSubmit(actor, {
+            previewId,
+            action,
+            target,
+            params: normalized,
+        });
+    }
+
+    // Thực hiện trading qua Binance API trực tiếp (không qua MQTT config bridge)
     console.log(`[tradingBridge] ${action} for ${target.username}`);
     const now = Date.now();
     
-    const result = await executeDirectTrading(action, target, validation.normalized);
+    const result = await executeDirectTrading(action, target, normalized);
+
+    // Bracket không atomic: entry xong mà SL/TP trong preview chưa gắn → protection pending.
+    let protection = null;
+    const wantsProtect = normalized.stopLoss != null
+        || normalized.takeProfit != null
+        || previewMeta?.preview?.params?.stopLoss != null
+        || previewMeta?.preview?.params?.takeProfit != null;
+    if (result?.success && wantsProtect && (action === "ORDER_CREATE" || action === "POSITION_OPEN")) {
+        protection = {
+            status: "entry_filled_protection_pending",
+            reason: "bracket_not_atomic",
+            stopLoss: normalized.stopLoss || previewMeta?.preview?.params?.stopLoss || null,
+            takeProfit: normalized.takeProfit || previewMeta?.preview?.params?.takeProfit || null,
+        };
+    } else if (result?.success === false && wantsProtect) {
+        protection = {
+            status: "entry_filled_protection_failed",
+            reason: "entry_failed_before_protect",
+        };
+    }
     
     // Tạo receipt để track
     await TradingReceipt.create({
@@ -431,7 +470,7 @@ async function createTradingRequest({
             positionSide: target.positionSide,
         },
         status: result?.success ? "succeeded" : "failed",
-        result,
+        result: protection ? { ...result, protection, previewId: previewId || null } : result,
         actorUserId,
         actorUsername: actor?.username || actor?.email || "",
         expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
@@ -445,6 +484,8 @@ async function createTradingRequest({
             status: result?.success ? "succeeded" : "failed",
             terminal: true,
             result,
+            protection,
+            previewId: previewId || null,
         },
     };
 }

@@ -7,14 +7,15 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../auth/access-control");
 const { sendError } = require("../lib/http");
 const { loadOpenOrders, loadOrderHistory, getOrderDetail } = require("../lib/orders");
-const { markOf } = require("../lib/mark-prices");
+const { markOf, markQuoteOf } = require("../lib/mark-prices");
 const { getAccountBalance } = require("../lib/account-balance-read");
+const { envelope, quoteQuality, TTL, nowMs } = require("../lib/provenance");
 
 const router = express.Router();
 
 /**
  * GET /api/orders/mark?symbol=BTCUSDT
- * Mark price từ feed public (không secret).
+ * Mark price từ feed public (không secret) + freshness envelope.
  */
 router.get("/mark", requireAuth, requirePermission(PERMISSIONS.ORDERS_VIEW), async (req, res) => {
     try {
@@ -23,8 +24,26 @@ router.get("/mark", requireAuth, requirePermission(PERMISSIONS.ORDERS_VIEW), asy
             res.status(400).json({ error: "Thiếu symbol" });
             return;
         }
-        const mark = markOf(symbol);
-        res.json({ symbol, mark: mark == null ? null : Number(mark) });
+        const quote = markQuoteOf(symbol);
+        const mark = quote?.mark ?? markOf(symbol);
+        const receivedAt = quote?.receivedAt ?? null;
+        const quality = mark == null ? "missing" : quoteQuality(receivedAt, TTL.mark_quote_trading);
+        const expiresAt = receivedAt != null ? receivedAt + TTL.mark_quote_trading : null;
+        res.json({
+            symbol,
+            mark: mark == null ? null : Number(mark),
+            provenance: envelope({
+                source: "mark-prices",
+                sourceAt: quote?.sourceAt ?? receivedAt,
+                receivedAt: receivedAt ?? nowMs(),
+                quality,
+                missingFields: mark == null ? ["mark"] : [],
+                expiresAt,
+                coverage: { ttlMs: TTL.mark_quote_trading },
+            }),
+            expiresAt,
+            quality,
+        });
     } catch (error) {
         sendError(res, error, "GET /api/orders/mark");
     }

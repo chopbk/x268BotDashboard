@@ -1,0 +1,57 @@
+{
+  "fixtureId": "quant.q1.workspace_flow.v1",
+  "purpose": "Acceptance path signal → chart/setup → draft → preview → receipt → protection overlay",
+  "steps": [
+    {
+      "id": "select_signal_context",
+      "url": "/terminal?tab=positions&symbol=BTCUSDT&account=bot-demo",
+      "expect": ["marketIdentity.symbol=BTCUSDT", "chart request for BTCUSDT"]
+    },
+    {
+      "id": "chart_setup_overlay",
+      "levels": { "entry": 100, "stopLoss": 95, "takeProfit": 110 },
+      "expect": ["price lines Entry/SL/TP", "draw drag only mutates draft"]
+    },
+    {
+      "id": "save_plan",
+      "api": "POST /api/terminal/plans",
+      "expect": ["planRevision>=1", "state=draft"]
+    },
+    {
+      "id": "preview",
+      "api": "POST /api/trading/preview",
+      "expect": ["previewId", "expiresAt", "quote.quality", "capability.bracketAtomic=false"]
+    },
+    {
+      "id": "invalidate_on_qty_change",
+      "action": "change quantity",
+      "expect": ["client clears preview", "submit without matching hash → source_changed"]
+    },
+    {
+      "id": "stale_quote",
+      "action": "quote older than mark_quote_trading TTL",
+      "expect": ["preview_expired or client blocks"]
+    },
+    {
+      "id": "submit_with_preview",
+      "api": "POST /api/trading/orders",
+      "body": { "previewId": "<id>", "stopLoss": "95", "takeProfit": "110" },
+      "expect": ["receipt", "protection.status=entry_filled_protection_pending"]
+    },
+    {
+      "id": "chart_error_positions_ok",
+      "action": "candles fetch fail",
+      "expect": ["chart error banner", "PositionTable still rendered"]
+    },
+    {
+      "id": "fast_symbol_switch",
+      "action": "BTC→ETH before BTC candles return",
+      "expect": ["requestSeq drops BTC response"]
+    },
+    {
+      "id": "mobile_keyboard",
+      "expect": ["workspace stacks under 1100px", "no single-key market submit"]
+    }
+  ],
+  "notVia": ["MQTT config bridge", "bot-command-bridge APPLY_CONFIG"]
+}

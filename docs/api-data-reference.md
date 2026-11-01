@@ -134,6 +134,10 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/orders/balance` | [orders](../server/src/routes/orders.js) |
 | GET | `/api/orders/history` | [orders](../server/src/routes/orders.js) |
 | GET/POST/PATCH/DELETE | `/api/terminal/journal` | [terminal](../server/src/routes/terminal.js) |
+| GET/PUT | `/api/terminal/workspaces/me` | [terminal](../server/src/routes/terminal.js) — layout/watchlist/drawings theo actor |
+| GET/POST/PATCH | `/api/terminal/plans[/:id]` | [terminal](../server/src/routes/terminal.js) — trade plan draft (Q1) |
+| GET | `/api/terminal/candles` | [terminal](../server/src/routes/terminal.js) — nến đóng + provenance cho chart |
+| POST/GET | `/api/trading/preview[/:previewId]` | [trading](../server/src/routes/trading.js) — preview version/expiry, không đặt lệnh |
 | POST | `/api/terminal/decision/position` | [terminal](../server/src/routes/terminal.js) |
 | POST | `/api/terminal/decision/account` | [terminal](../server/src/routes/terminal.js) |
 | GET | `/api/terminal/decision/reports` | [terminal](../server/src/routes/terminal.js) |
@@ -166,6 +170,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/market/dash/symbols/:symbol` | [market-dash](../server/src/routes/market-dash.js) — candles + checklist + MTF |
 | POST | `/api/market/dash/refresh` | [market-dash](../server/src/routes/market-dash.js) — `market.manage` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
+| POST | `/api/trading/preview` | [trading](../server/src/routes/trading.js) — xem thêm dòng Terminal Q1 |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders/cancel-batch` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders` | [trading](../server/src/routes/trading.js) |

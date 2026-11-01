@@ -58,6 +58,8 @@ Phân biệt mode new/replace/sync. User xem được nguồn chưa chắc sửa
 
 `TerminalPage` (`/terminal`) là UI vị thế chính; `/positions` redirect sang `/terminal`. REST/WS/refresh/case/trading dùng chung API. URL `tab=positions|open-orders|…`, `selected`, `panelTab`, `book=live` (adapter → API không gửi book), preferences localStorage namespace Terminal.
 
+Q1 Quant strip (watchlist | chart | trade plan | ticket): nến qua `GET /api/terminal/candles` (provenance); plan ` /api/terminal/plans`; preview version/expiry `POST /api/trading/preview` rồi submit ` /api/trading/*` kèm `previewId` (revalidate hash/quote). Drag chart chỉ sửa draft. Bracket không atomic → `entry_filled_protection_pending`. Không đi MQTT config bridge.
+
 Terminal DetailPanel → PositionCasePanel với `embedded` + `section=orders|monitor|timeline` → API case/reconcile hiện hành. Chuyển ba tab giữ case đang tải và chỉ đổi phần render; đổi vị thế/audience remount case để không hiện dữ liệu của context cũ. Position cũ không truyền `embedded`, giữ modal đầy đủ. Desktop/tablet hiển thị chi tiết dưới bảng; mobile dùng drawer.
 
 ```mermaid

@@ -23,7 +23,16 @@ function fmt(value, digits = 4) {
 /**
  * Khung đặt lệnh kiểu Binance Futures: Buy/Sell, Market/Limit/Stop, hedge side.
  */
-export default function OrderTicket({ accounts = [], defaultAccount = "", defaultSymbol = "", onPlaced, canCreate }) {
+export default function OrderTicket({
+  accounts = [],
+  defaultAccount = "",
+  defaultSymbol = "",
+  draft = null,
+  preview = null,
+  onDraftChange,
+  onPlaced,
+  canCreate,
+}) {
   const [account, setAccount] = useState(defaultAccount || accounts[0]?.username || "");
   const [symbol, setSymbol] = useState(defaultSymbol || "BTCUSDT");
   const [side, setSide] = useState("BUY");
@@ -32,9 +41,12 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
+  const [takeProfit, setTakeProfit] = useState("");
   const [sizeForm, setSizeForm] = useState({ sizeMode: "qty", quantity: "", percent: "", usdt: "", riskBudget: "", stop: "" });
   const [reduceOnly, setReduceOnly] = useState(false);
   const [mark, setMark] = useState(null);
+  const [quoteQuality, setQuoteQuality] = useState("missing");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -51,9 +63,24 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
   }, [defaultSymbol]);
 
   useEffect(() => {
+    if (!draft) return;
+    if (draft.symbol) setSymbol(String(draft.symbol).toUpperCase());
+    if (draft.positionSide) {
+      setPositionSide(draft.positionSide);
+      setSide(draft.positionSide === "SHORT" ? "SELL" : "BUY");
+    }
+    if (draft.entryType) setType(draft.entryType);
+    if (draft.entryPrice != null) setPrice(String(draft.entryPrice));
+    if (draft.quantity != null) setQuantity(String(draft.quantity));
+    if (draft.stopLoss != null) setStopLoss(String(draft.stopLoss));
+    if (draft.takeProfit != null) setTakeProfit(String(draft.takeProfit));
+  }, [draft]);
+
+  useEffect(() => {
     const sym = String(symbol || "").trim().toUpperCase();
     if (!sym || sym.length < 4) {
       setMark(null);
+      setQuoteQuality("missing");
       return undefined;
     }
     let cancelled = false;
@@ -62,6 +89,7 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
         const data = await api(`/api/orders/mark?symbol=${encodeURIComponent(sym)}`);
         if (cancelled) return;
         setMark(data.mark);
+        setQuoteQuality(data.quality || data.provenance?.quality || (data.mark == null ? "missing" : "fresh"));
         if (data.mark != null && type === "LIMIT" && !price) {
           setPrice(String(data.mark));
         }
@@ -77,6 +105,19 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
       clearTimeout(timer);
     };
   }, [symbol, type]); // eslint-disable-line react-hooks/exhaustive-deps -- chỉ refetch khi symbol/type đổi
+
+  function emitDraft(patch) {
+    onDraftChange?.({
+      symbol,
+      positionSide,
+      entryType: type,
+      entryPrice: price,
+      quantity,
+      stopLoss,
+      takeProfit,
+      ...patch,
+    });
+  }
 
   const notional = useMemo(() => {
     const qty = num(quantity);
@@ -127,6 +168,10 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
       return;
     }
     setError("");
+    if (quoteQuality === "stale") {
+      setError("Quote stale — đợi mark mới rồi preview lại");
+      return;
+    }
     setConfirm({
       account,
       symbol: sym,
@@ -136,7 +181,10 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
       quantity: String(quantity),
       price: price ? String(price) : undefined,
       triggerPrice: triggerPrice ? String(triggerPrice) : undefined,
+      stopLoss: stopLoss || undefined,
+      takeProfit: takeProfit || undefined,
       reduceOnly,
+      previewId: preview?.previewId,
     });
   }
 
@@ -152,6 +200,9 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
         type: confirm.type,
         quantity: confirm.quantity,
         reduceOnly: confirm.reduceOnly,
+        stopLoss: confirm.stopLoss,
+        takeProfit: confirm.takeProfit,
+        previewId: confirm.previewId,
       };
       if (confirm.type === "LIMIT") body.price = confirm.price;
       if (confirm.type === "STOP" || confirm.type === "STOP_MARKET") {
@@ -161,10 +212,13 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
       }
       const result = await api("/api/trading/orders", { method: "POST", body });
       const orderId = result?.command?.result?.orderId || result?.command?.result?.algoId;
+      const protect = result?.command?.protection;
       setNote(
         result?.duplicate
           ? `Trùng request trước · ${confirm.symbol}`
-          : `Đã đặt ${confirm.type} ${confirm.side} ${confirm.symbol} ${confirm.positionSide}${orderId ? ` · #${orderId}` : ""}`
+          : `Đã đặt ${confirm.type} ${confirm.side} ${confirm.symbol} ${confirm.positionSide}${orderId ? ` · #${orderId}` : ""}${
+            protect?.status ? ` · ${protect.status}` : ""
+          }`
       );
       setConfirm(null);
       setError("");
@@ -192,16 +246,31 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
         <div className="order-ticket-mark">
           <span className="muted">Mark</span>
           <strong>{fmt(mark, 6)}</strong>
+          <span className={`term-badge ${quoteQuality === "fresh" ? "" : "term-badge-warn"}`}>{quoteQuality}</span>
           <button type="button" className="ghost order-ticket-mark-btn" disabled={mark == null} onClick={applyMark} title="Điền mark vào giá">
             Dùng mark
           </button>
         </div>
       </header>
+      {preview?.previewId ? (
+        <p className="muted order-ticket-preview-id">
+          Preview {preview.previewId.slice(0, 8)} · {preview.quote?.quality || "?"}
+          {preview.status !== "valid" ? " (invalid)" : ""}
+        </p>
+      ) : (
+        <p className="muted">Chưa gắn preview server — submit không revalidate plan/quote.</p>
+      )}
 
       <div className="order-ticket-grid">
         <label>
           Tài khoản
-          <select value={account} onChange={(e) => setAccount(e.target.value)}>
+          <select
+            value={account}
+            onChange={(e) => {
+              setAccount(e.target.value);
+              emitDraft({ account: e.target.value });
+            }}
+          >
             {!account ? <option value="">Chọn…</option> : null}
             {accounts.map((item) => (
               <option key={item.username} value={item.username}>{item.username}</option>
@@ -213,17 +282,35 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
           <input
             value={symbol}
             spellCheck={false}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+            onChange={(e) => {
+              const next = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+              setSymbol(next);
+              emitDraft({ symbol: next });
+            }}
             placeholder="BTCUSDT"
           />
         </label>
       </div>
 
       <div className="order-ticket-sides" role="group" aria-label="Buy hoặc Sell">
-        <button type="button" className={`order-side-buy ${side === "BUY" ? "active" : ""}`} onClick={() => syncHedge("BUY")}>
+        <button
+          type="button"
+          className={`order-side-buy ${side === "BUY" ? "active" : ""}`}
+          onClick={() => {
+            syncHedge("BUY");
+            emitDraft({ positionSide: "LONG" });
+          }}
+        >
           Buy / Long
         </button>
-        <button type="button" className={`order-side-sell ${side === "SELL" ? "active" : ""}`} onClick={() => syncHedge("SELL")}>
+        <button
+          type="button"
+          className={`order-side-sell ${side === "SELL" ? "active" : ""}`}
+          onClick={() => {
+            syncHedge("SELL");
+            emitDraft({ positionSide: "SHORT" });
+          }}
+        >
           Sell / Short
         </button>
       </div>
@@ -270,7 +357,7 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
         account={account}
         price={type === "MARKET" ? mark : (price || triggerPrice || mark)}
         disabled={busy}
-        value={{ ...sizeForm, quantity }}
+        value={{ ...sizeForm, quantity, stop: stopLoss || sizeForm.stop }}
         onChange={(next) => {
           setSizeForm({
             sizeMode: next.sizeMode,
@@ -284,8 +371,40 @@ export default function OrderTicket({ accounts = [], defaultAccount = "", defaul
             ? next.quantity
             : (next.estimate?.ready ? String(next.estimate.quantity) : "");
           setQuantity(qty || "");
+          if (next.stop != null) setStopLoss(String(next.stop));
+          emitDraft({
+            quantity: qty || "",
+            stopLoss: next.stop != null ? String(next.stop) : stopLoss,
+          });
         }}
       />
+
+      <div className="order-ticket-grid">
+        <label>
+          SL (draft)
+          <input
+            inputMode="decimal"
+            value={stopLoss}
+            onChange={(e) => {
+              setStopLoss(e.target.value);
+              emitDraft({ stopLoss: e.target.value });
+            }}
+            placeholder="Stop loss"
+          />
+        </label>
+        <label>
+          TP (draft)
+          <input
+            inputMode="decimal"
+            value={takeProfit}
+            onChange={(e) => {
+              setTakeProfit(e.target.value);
+              emitDraft({ takeProfit: e.target.value });
+            }}
+            placeholder="Take profit"
+          />
+        </label>
+      </div>
 
       <label className="order-ticket-check">
         <input type="checkbox" checked={reduceOnly} onChange={(e) => setReduceOnly(e.target.checked)} />
