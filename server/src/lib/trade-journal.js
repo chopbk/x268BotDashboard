@@ -22,12 +22,15 @@ function normalizeTags(tags) {
 
 function serialize(doc) {
     if (!doc) return null;
+    const tradeInstanceId = doc.tradeInstanceId || null;
     return {
         id: String(doc._id),
         tradeKey: doc.tradeKey,
         account: doc.account,
         symbol: doc.symbol,
         side: doc.side,
+        tradeInstanceId,
+        linkStatus: doc.linkStatus || (tradeInstanceId ? "linked" : "legacy_unresolved"),
         body: doc.body,
         tags: doc.tags || [],
         createdAt: doc.createdAt,
@@ -68,12 +71,15 @@ async function createNote(actor, input = {}) {
     if (!body) throw httpError(400, "Thiếu nội dung");
     if (body.length > 2000) throw httpError(400, "Journal tối đa 2000 ký tự");
     const tags = normalizeTags(input.tags);
+    const tradeInstanceId = input.tradeInstanceId ? String(input.tradeInstanceId).slice(0, 80) : null;
     const doc = await TradeJournal.create({
         actorId: String(actor.id),
         tradeKey: tradeKeyOf({ account, symbol, side }),
         account,
         symbol,
         side,
+        tradeInstanceId,
+        linkStatus: tradeInstanceId ? "linked" : "legacy_unresolved",
         body,
         tags,
     });

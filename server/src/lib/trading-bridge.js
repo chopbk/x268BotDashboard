@@ -432,11 +432,38 @@ async function createTradingRequest({
         });
     }
 
+    // P2 risk gate — tăng exposure. Close/tpsl không vào. Reverse: không chặn cả saga
+    // (close phải chạy; open-leg partial gate còn P2 follow-up / bot).
+    let riskMeta = null;
+    if (["POSITION_OPEN", "ORDER_CREATE", "ORDER_REPLACE"].includes(action)) {
+        const { gateTradingIncrease, bindAfterSubmit } = require("./risk-gate");
+        riskMeta = await gateTradingIncrease({
+            actor,
+            action,
+            target,
+            params: normalized,
+        });
+        if (riskMeta.required && !riskMeta.allowed) {
+            throw httpError(409, riskMeta.reason || "Risk gate từ chối", {
+                code: riskMeta.code || "risk_rejected",
+            });
+        }
+        riskMeta.bindAfterSubmit = bindAfterSubmit;
+    }
+
     // Thực hiện trading qua Binance API trực tiếp (không qua MQTT config bridge)
     console.log(`[tradingBridge] ${action} for ${target.username}`);
     const now = Date.now();
     
     const result = await executeDirectTrading(action, target, normalized);
+
+    if (riskMeta?.reservation?.reservationId && riskMeta.bindAfterSubmit) {
+        await riskMeta.bindAfterSubmit(riskMeta.reservation.reservationId, {
+            requestId,
+            status: result?.success ? "submitted" : "unknown",
+            exchangeOrderId: result?.orderId || result?.algoId || null,
+        });
+    }
 
     // Bracket không atomic: entry xong mà SL/TP trong preview chưa gắn → protection pending.
     let protection = null;
@@ -476,6 +503,30 @@ async function createTradingRequest({
         expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
     });
 
+    // P3 timeline event (additive) — không đoán tradeInstanceId nếu thiếu
+    try {
+        const { appendTradeEvent } = require("./trade-events");
+        await appendTradeEvent({
+            source: "web-trading-bridge",
+            sourceEventId: requestId,
+            type: result?.success ? "submitted" : "exchange_rejected",
+            reasonCode: result?.success ? undefined : "exchange_rejected",
+            account: target.username,
+            env: target.env,
+            symbol: target.symbol,
+            side: target.positionSide,
+            requestId,
+            actorId: actorUserId,
+            producer: "web-trading-bridge",
+            tradeInstanceId: params?.tradeInstanceId || normalized?.tradeInstanceId || undefined,
+            planId: params?.planId,
+            signalEventId: params?.signalEventId,
+            evidence: { action, protection: protection?.status || null },
+        });
+    } catch (err) {
+        console.warn("[tradingBridge] timeline", err.message);
+    }
+
     return {
         duplicate: false,
         command: {
@@ -486,6 +537,7 @@ async function createTradingRequest({
             result,
             protection,
             previewId: previewId || null,
+            reservationId: riskMeta?.reservation?.reservationId || null,
         },
     };
 }

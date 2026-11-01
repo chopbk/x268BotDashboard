@@ -39,6 +39,7 @@ const PERMISSIONS = Object.freeze({
   SMART_MONEY_MANAGE: "smart_money.manage",
   MARKET_VIEW: "market.view",
   MARKET_MANAGE: "market.manage",
+  RISK_MANAGE: "risk.manage",
   USERS_MANAGE: "users.manage",
   SIGNALS_VIEW: "signals.view",
   SIGNALS_MANAGE: "signals.manage",
@@ -223,6 +224,12 @@ const DEFINITIONS = [
     "market",
     [SCOPES.ALL],
   ],
+  [
+    PERMISSIONS.RISK_MANAGE,
+    "Quản lý policy rủi ro, pause entry, flatten theo scope",
+    "risk",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
 ].map(([key, label, group, allowedScopes]) =>
   Object.freeze({ key, label, group, allowedScopes }),
 );
@@ -261,6 +268,7 @@ const OPERATOR_PERMISSIONS = [
   PERMISSIONS.ORDERS_CREATE,
   PERMISSIONS.ORDERS_EDIT,
   PERMISSIONS.ORDERS_CANCEL,
+  PERMISSIONS.RISK_MANAGE,
   PERMISSIONS.LOGS_VIEW,
 ];
 const PROCESS_PERMISSIONS = [

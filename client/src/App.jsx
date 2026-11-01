@@ -19,6 +19,7 @@ import ProfilePage from "./pages/ProfilePage";
 import ReportsPage from "./pages/ReportsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import TerminalPage from "./pages/TerminalPage";
+import InboxPage from "./pages/InboxPage";
 import MarketHubPage from "./pages/MarketHubPage";
 import { buildSmartMoneyRedirectPath } from "./lib/market-hub";
 
@@ -141,6 +142,7 @@ function Shell({ children }) {
           {canTerminal ? <NavLink to="/terminal">Terminal</NavLink> : null}
           {showNumbers ? <p className="nav-label">Số liệu</p> : null}
           {canMarketHub ? <NavLink to="/market">Thị trường</NavLink> : null}
+          {hasPermission(user, MARKET_VIEW) ? <NavLink to="/inbox">Inbox</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/reports">Báo cáo</NavLink> : null}
           {showOps ? <p className="nav-label">Vận hành</p> : null}
           {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
@@ -225,6 +227,16 @@ function AppRoutes() {
               <MarketHubPage />
             </Shell>
           </ProtectedAny>
+        }
+      />
+      <Route
+        path="/inbox"
+        element={
+          <Protected permission={MARKET_VIEW}>
+            <Shell>
+              <InboxPage />
+            </Shell>
+          </Protected>
         }
       />
       <Route

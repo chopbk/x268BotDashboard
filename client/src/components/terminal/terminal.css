@@ -1695,6 +1695,20 @@ main:has(.term-screen) {
   color: #e8a0a0;
 }
 .order-ticket-preview-id { margin: 0 0 8px; font-size: 12px; }
+.term-risk-cockpit {
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.term-risk-metrics {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 12px;
+  display: grid;
+  gap: 2px;
+}
 
 @media (max-width: 1100px) {
   .term-quant-workspace {

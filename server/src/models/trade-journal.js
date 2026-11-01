@@ -11,6 +11,12 @@ const tradeJournalSchema = new mongoose.Schema(
         account: { type: String, required: true },
         symbol: { type: String, required: true },
         side: { type: String, required: true },
+        tradeInstanceId: { type: String, index: true, default: null },
+        linkStatus: {
+            type: String,
+            enum: ["linked", "legacy_unresolved"],
+            default: "legacy_unresolved",
+        },
         body: { type: String, required: true, maxlength: 2000 },
         tags: {
             type: [String],

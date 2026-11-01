@@ -36,6 +36,7 @@ import TerminalCli from "../components/terminal/TerminalCli.jsx";
 import TerminalChart from "../components/terminal/TerminalChart.jsx";
 import TerminalWatchlist from "../components/terminal/TerminalWatchlist.jsx";
 import TradePlanPanel from "../components/terminal/TradePlanPanel.jsx";
+import RiskCockpit from "../components/terminal/RiskCockpit.jsx";
 import OrderTicket from "../components/OrderTicket.jsx";
 
 export default function TerminalPage() {
@@ -48,6 +49,7 @@ export default function TerminalPage() {
     canHistory: (user?.permissions || []).includes("statistics.view"),
     canOrders: (user?.permissions || []).includes("orders.view"),
     canCreateOrder: (user?.permissions || []).includes("orders.create"),
+    canRiskManage: (user?.permissions || []).includes("risk.manage"),
   };
 
   const location = useLocation();
@@ -1347,6 +1349,10 @@ export default function TerminalPage() {
                     onPlaced={onTradePlaced}
                   />
                 ) : null}
+                <RiskCockpit
+                  account={selectedRow?.account || account}
+                  canManage={perms.canRiskManage}
+                />
               </div>
             </div>
           ) : (
