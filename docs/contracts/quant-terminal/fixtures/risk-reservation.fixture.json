@@ -1,0 +1,59 @@
+{
+  "fixtureId": "quant.risk_reservation.sample.v1",
+  "purpose": "Shapes for P2 concurrent gate tests; offline only",
+  "policy": {
+    "policyId": "pol_demo",
+    "revision": 3,
+    "mode": "observe",
+    "limits": {
+      "maxGrossNotional": 100000,
+      "maxRiskAtStop": 2000,
+      "maxOpenPositions": 10
+    }
+  },
+  "cases": [
+    {
+      "name": "two_siblings_same_account_symbol",
+      "exchangeBookQty": 1.5,
+      "envs": [
+        { "env": "DEMO_1", "ownQty": 0.8 },
+        { "env": "DEMO_2", "ownQty": 0.7 }
+      ],
+      "assert": "account_gross_uses_1_5_once_not_1_5_plus_attribution"
+    },
+    {
+      "name": "web_and_bot_concurrent_reserve",
+      "budgetRemaining": 1000,
+      "requests": [
+        { "source": "web", "requestId": "req_w1", "riskNeed": 700 },
+        { "source": "bot", "requestId": "req_b1", "riskNeed": 700 }
+      ],
+      "assert": "only_one_succeeds_or_sum_within_budget"
+    },
+    {
+      "name": "lease_expire_unknown_order",
+      "reservationId": "rsv_u1",
+      "exchangeState": "unknown",
+      "assert": "do_not_auto_release"
+    },
+    {
+      "name": "idempotency_key_payload_mismatch",
+      "idempotencyKey": "idem_1",
+      "payloadA": { "quantity": "1" },
+      "payloadB": { "quantity": "2" },
+      "assert": "conflict"
+    },
+    {
+      "name": "reverse_close_ok_open_blocked",
+      "closeLeg": "succeeded",
+      "openLeg": "risk_rejected",
+      "assert": "partial_result"
+    },
+    {
+      "name": "entry_blocked_close_allowed",
+      "policyMode": "enforce",
+      "storeAvailable": false,
+      "assert": "block_increase_allow_reduce"
+    }
+  ]
+}

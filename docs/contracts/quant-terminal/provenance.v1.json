@@ -1,0 +1,32 @@
+{
+  "contractId": "quant.provenance.v1",
+  "schemaVersion": 1,
+  "status": "locked_p0",
+  "readModelEnvelope": {
+    "schemaVersion": "number",
+    "source": "string",
+    "sourceAt": "epoch_ms_utc",
+    "receivedAt": "epoch_ms_utc",
+    "computedAt": "epoch_ms_utc",
+    "snapshotId": "string|null",
+    "quality": ["fresh", "stale", "missing", "partial", "unsupported"],
+    "missingFields": "string[]",
+    "coverage": "object|null"
+  },
+  "rules": [
+    "Never coerce null/missing numeric to 0 for risk or PnL",
+    "Quote used for trading must carry expiresAt and be revalidated at submit",
+    "Collector cadence (e.g. 15s) must not be presented as tick feed",
+    "Do not use exchange A candle/mark for exchange B execution preview",
+    "Private cache keys must include account/scope",
+    "Latency negative => flag clock_uncertainty; do not clamp to 0 to hide skew"
+  ],
+  "qualityTtlHintsMs": {
+    "mark_quote_trading": 3000,
+    "balance_snapshot": 15000,
+    "position_book": 5000,
+    "market_score_collector": 15000,
+    "oi_funding_history_bar": null
+  },
+  "notes": "TTL hints are starting proposals for P1 preview/risk; measure before treating as SLA."
+}

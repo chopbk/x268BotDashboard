@@ -1,0 +1,76 @@
+{
+  "contractId": "quant.reservation.v1",
+  "schemaVersion": 1,
+  "status": "locked_p0",
+  "defaultPolicyMode": "observe",
+  "store": {
+    "proposedCollection": "web_risk_reservations",
+    "durability": "mongo_primary",
+    "leaseField": "leaseUntil",
+    "bindFields": ["reservationId", "requestId", "clientOrderId", "account", "policyRevision", "payloadHash"]
+  },
+  "lifecycle": [
+    "check_auth_capability_book",
+    "load_policy_revision_and_book",
+    "include_pending_orders_and_open_reservations",
+    "atomic_reserve",
+    "submit_via_existing_mutation_path",
+    "bind_exchange_identity",
+    "on_fill_partial_cancel_reject_reconcile",
+    "release_or_convert_to_actual"
+  ],
+  "unknownOrderRule": {
+    "onTimeoutAfterSubmit": "reconcile_by_exchange_order_identity_before_retry",
+    "onLeaseExpire": "do_not_auto_release_if_exchange_state_unknown",
+    "duplicateKeyDifferentPayload": "conflict"
+  },
+  "entrySurfacesMustCover": {
+    "web": [
+      "POSITION_OPEN",
+      "ORDER_CREATE",
+      "ORDER_REPLACE_increase",
+      "POSITION_REVERSE_open_leg"
+    ],
+    "bot": [
+      "signal_handlers.callHandleSignalBot.open",
+      "command.handleOpen",
+      "command.handleLongShort",
+      "copy_open",
+      "copy_dca_add",
+      "dca_mtf.openEntry",
+      "dca_mtf.tryDca",
+      "mtf_publish_signal_secondary_open"
+    ]
+  },
+  "mustRemainUnblockedWhenEntryBlocked": [
+    "POSITION_CLOSE",
+    "positions.reduce_only",
+    "POSITION_SET_TPSL",
+    "POSITION_CANCEL_TPSL",
+    "ORDER_CANCEL_protection",
+    "monitor_sl_tp_loop",
+    "copy_reduce",
+    "mtf_exit_sl",
+    "post_open_filter_own_close"
+  ],
+  "reversePartial": {
+    "closeSuccessOpenBlocked": "return_partial_result_with_both_legs",
+    "doNotHideOpenBlock": true
+  },
+  "controlsIndependent": [
+    "pause_new_entries",
+    "cancel_pending_entry_orders",
+    "flatten_selected_scope"
+  ],
+  "versionCompatibility": {
+    "writersMustAckPolicyRevision": true,
+    "uiEnforceCompleteOnlyIfAllProducersAck": true,
+    "legacyWriterWithoutHook": "coverage_gap_not_safe_label",
+    "matrixFile": "docs/contracts/quant-terminal/compatibility.v1.json"
+  },
+  "accountingBasis": {
+    "accountExposure": "exchange_book_once",
+    "configAttribution": "own_qty_only",
+    "forbid": "summing_exchange_qty_per_monitor"
+  }
+}

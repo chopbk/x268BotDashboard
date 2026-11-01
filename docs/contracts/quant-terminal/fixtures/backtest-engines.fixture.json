@@ -1,0 +1,61 @@
+{
+  "fixtureId": "quant.backtest_engines.audit.v1",
+  "auditedAt": "2026-11-01",
+  "engines": [
+    {
+      "id": "signal_config_bt",
+      "repo": "binance-bot",
+      "paths": ["services/backtest/", "scripts/backtest.js"],
+      "supported": [
+        "replay_by_account_OPEN_SL_TP_margin",
+        "command_/bt",
+        "checkBacktestConfigStatus_skips_ON"
+      ],
+      "gaps": [
+        "no_live_mqtt",
+        "entry_hl2_1s_or_1m_approx",
+        "no_sibling_leftover_exchange_semantics",
+        "no_parity_fixture_declared_for_quant_lab"
+      ],
+      "parityReady": false
+    },
+    {
+      "id": "dca_mtf_bt",
+      "repo": "binance-bot",
+      "paths": [
+        "services/dca-mtf-bot/backtest/backtest-engine.js",
+        "scripts/dca-mtf-backtest.js",
+        "services/dca-mtf-bot/backtest/README.md"
+      ],
+      "supported": [
+        "cron_like_replay",
+        "pullback_production_path",
+        "candleMode_confirmed_no_lookahead",
+        "intrabar_CONSERVATIVE",
+        "vision_csv_or_fapi_fallback"
+      ],
+      "gaps": [
+        "funding_not_simulated",
+        "no_forming_candle_partial_ohlc",
+        "precision_min_notional_approx",
+        "breakout_reversal_skeleton",
+        "margin_model_simple"
+      ],
+      "parityReady": false,
+      "strategies": {
+        "pullback": "primary",
+        "breakout": "skeleton",
+        "reversal": "skeleton"
+      }
+    },
+    {
+      "id": "paper_live_signal",
+      "repo": "binance-bot",
+      "paths": ["services/monitors/position/paper-trading-manager.js"],
+      "supported": ["PAPER_config_sim_fill"],
+      "gaps": ["not_research_runner", "must_not_receive_live_credentials_in_quant_lab"],
+      "parityReady": false
+    }
+  ],
+  "quantLabRule": "Only expose strategies with explicit parity fixtures; missing history must not be replaced by today snapshot"
+}

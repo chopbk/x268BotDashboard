@@ -1,0 +1,61 @@
+{
+  "contractId": "quant.compatibility.v1",
+  "schemaVersion": 1,
+  "status": "locked_p0",
+  "repos": ["web-bot", "binance-bot"],
+  "matrix": [
+    {
+      "producer": "web-trading-bridge",
+      "consumes": "reservation.v1",
+      "minVersion": 1,
+      "ackChannel": "web_risk_reservations + trading receipt",
+      "p0Status": "missing_hook"
+    },
+    {
+      "producer": "bot-signal-trader",
+      "consumes": "reservation.v1",
+      "minVersion": 1,
+      "ackChannel": "proposed bot_risk_gate_ack",
+      "p0Status": "missing_hook"
+    },
+    {
+      "producer": "bot-dca-mtf",
+      "consumes": "reservation.v1",
+      "minVersion": 1,
+      "ackChannel": "proposed bot_risk_gate_ack",
+      "p0Status": "missing_hook"
+    },
+    {
+      "producer": "bot-command-manual-open",
+      "consumes": "reservation.v1",
+      "minVersion": 1,
+      "notes": "handleOpen bypasses checkBotStatus today — must still hit reservation",
+      "p0Status": "missing_hook"
+    },
+    {
+      "producer": "bot-config-bridge",
+      "consumes": "bot-command-bridge allowlist",
+      "notes": "NOT an order path; APPLY_CONFIG only",
+      "p0Status": "existing_separate"
+    },
+    {
+      "producer": "signal-payload-v2",
+      "consumes": "identity.v1 signalEventId alias eventId",
+      "p0Status": "partial"
+    }
+  ],
+  "rolloutOrder": [
+    "compatibility_readers",
+    "producer_additive_fields",
+    "indexes_bounded_backfill",
+    "new_ui",
+    "observe_gate",
+    "user_activate_enforce"
+  ],
+  "rollback": [
+    "disable_new_ui_workers",
+    "keep_additive_data",
+    "drain_or_reconcile_in_flight_before_removing_enforce_writers",
+    "never_drop_data_or_toggle_PAPER_INVERT_as_migration"
+  ]
+}

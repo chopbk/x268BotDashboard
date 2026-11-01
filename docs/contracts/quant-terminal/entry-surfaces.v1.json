@@ -1,0 +1,92 @@
+{
+  "contractId": "quant.entry_surfaces.v1",
+  "schemaVersion": 1,
+  "auditedAt": "2026-11-01",
+  "webTradingPath": {
+    "chain": [
+      "client TerminalPage|OrderTicket|Positions",
+      "POST /api/trading/*",
+      "server/src/routes/trading.js",
+      "server/src/lib/trading-bridge.js#createTradingRequest",
+      "web_trading_receipts",
+      "server/src/lib/direct-trading.js#executeDirectTrading",
+      "server/src/lib/exchanges/factory.js#getExchangeAdapter"
+    ],
+    "notViaMqttConfigBridge": true
+  },
+  "configMqttBridge": {
+    "chain": [
+      "Config Lab / bots API",
+      "server/src/lib/bot-command-bridge.js",
+      "web_bot_commands outbox",
+      "MQTT wakeup + command_response ACK"
+    ],
+    "allowlist": ["APPLY_CONFIG", "LOAD_ACCOUNT", "UNLOAD_ACCOUNT", "RENAME_ACCOUNT"]
+  },
+  "botExposureIncreasers": [
+    {
+      "id": "signal_open",
+      "path": "services/signal-handlers/index.js → traders → OrderHandler.openPosition",
+      "localGate": "checkBotStatus",
+      "reservation": "missing"
+    },
+    {
+      "id": "manual_open",
+      "path": "command-handler handleOpen → signal-handler.run",
+      "localGate": "bypasses checkBotStatus",
+      "reservation": "missing"
+    },
+    {
+      "id": "manual_long_short",
+      "path": "handleLong/handleShort → futuresOpen*",
+      "localGate": "none",
+      "reservation": "missing"
+    },
+    {
+      "id": "copy_open",
+      "path": "COPY new_signal → callHandleSignalBot",
+      "localGate": "checkBotStatus + COPY.ON",
+      "reservation": "missing"
+    },
+    {
+      "id": "copy_dca_add",
+      "path": "position-monitor handleEventSignalUpdate amountRate>0",
+      "localGate": "COPY.DCA caps",
+      "reservation": "missing"
+    },
+    {
+      "id": "dca_mtf_entry",
+      "path": "dca-mtf-bot scanner runTier2Entry → openEntry",
+      "localGate": "RiskControl.canOpenNewPosition",
+      "reservation": "missing"
+    },
+    {
+      "id": "dca_mtf_scale_in",
+      "path": "position-manager tryDca",
+      "localGate": "dca-gate",
+      "reservation": "missing"
+    },
+    {
+      "id": "mtf_publish_secondary",
+      "path": "signal-publish publishDcaOpenSignal → trader open",
+      "localGate": "checkBotStatus on mapped accounts",
+      "reservation": "missing",
+      "riskNote": "possible double exposure with MTF book"
+    },
+    {
+      "id": "rosei_reverse_open",
+      "path": "process-message ROSE close → ROSEI flip → open",
+      "localGate": "checkBotStatus if ROSEI mapped",
+      "reservation": "missing",
+      "splitLegs": "close_leg_vs_entry_leg"
+    }
+  ],
+  "protectReducePaths": [
+    "traders.orderStoploss / orderProfit",
+    "position-monitor.closeMarketPosition",
+    "COPY reduce amountRate<0",
+    "command CLOSE/CL",
+    "dca-mtf exit-engine / sl-manager",
+    "applyOpenFiltersAfterTp own-only close"
+  ]
+}

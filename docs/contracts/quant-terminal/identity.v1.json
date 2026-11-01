@@ -1,0 +1,80 @@
+{
+  "contractId": "quant.identity.v1",
+  "schemaVersion": 1,
+  "status": "locked_p0",
+  "notes": "Additive only. Do not conflate actorId, botUsername, and env. Symbol is display/compat; market identity is exchange+marketType+instrumentId.",
+  "fields": {
+    "actorId": {
+      "meaning": "Web user id (JWT subject / web_users._id string)",
+      "existing": ["TradingReceipt.actorUserId", "trade-journal.actorId"],
+      "requiredOn": ["workspace", "plan", "preview", "journal", "risk_controls"]
+    },
+    "botUsername": {
+      "meaning": "UserApi / RUN account username (exchange credential owner)",
+      "existing": ["TradingReceipt.target.username", "route body username", "wb:ex account key"],
+      "aliasesForbiddenAsPrimary": ["env", "actorId"]
+    },
+    "env": {
+      "meaning": "Config / monitor env name under an account",
+      "existing": ["TradingReceipt.target.env", "monitor_positions.env", "bot Account_Config env"],
+      "notes": "Sibling monitors = same API credentials + symbol + side, different env"
+    },
+    "exchange": {
+      "meaning": "Venue id from UserApi / adapter factory",
+      "existing": ["exchanges/factory", "position feed exchange stamp"],
+      "enumHint": ["binance", "bybit", "aster", "okx"]
+    },
+    "marketType": {
+      "meaning": "Contract class for linear USDT-M first",
+      "defaultP1": "usdt_perp_linear",
+      "unsupportedUntilAdapter": ["inverse", "multi_collateral", "spot"]
+    },
+    "instrumentId": {
+      "meaning": "Canonical instrument; often equals symbol; OKX may keep SWAP id",
+      "existing": ["adapters instrumentId", "positions monitorIdentity"],
+      "displayField": "symbol"
+    },
+    "side": {
+      "meaning": "Position side LONG|SHORT|BOTH",
+      "existing": ["target.positionSide", "exchange-fill.positionSide"]
+    },
+    "positionIdx": {
+      "meaning": "Exchange hedge-mode index when required (Bybit)",
+      "existing": ["direct-trading.targetInput.positionIdx"],
+      "optional": true
+    },
+    "tradeInstanceId": {
+      "meaning": "One open→close lifecycle; never reuse account|symbol|side alone",
+      "existing": null,
+      "migration": "additive; journal legacy without it stays readable as legacy_unresolved"
+    },
+    "signalEventId": {
+      "meaning": "Source signal event / scanner eventId",
+      "existingPartial": ["binance-bot ensureSignalPayloadMeta.eventId", "V2 new_signal EVENTID"],
+      "renamePolicy": "prefer signalEventId in new events; keep eventId as alias on ingest"
+    },
+    "planId": {
+      "meaning": "Trade plan document id",
+      "existing": null
+    },
+    "requestId": {
+      "meaning": "Mutation / command request id",
+      "existing": ["TradingReceipt.requestId", "bot new_command requestId", "web_bot_commands"]
+    },
+    "clientOrderId": {
+      "meaning": "Client order id bound to reservation when placed",
+      "existing": ["exchange-order-event.clientOrderId"]
+    },
+    "messId": {
+      "meaning": "MQTT payload dedupe prefix only — NOT a trade id",
+      "existing": ["binance-bot MQTT messId"],
+      "mustNotReplace": ["tradeInstanceId", "signalEventId", "requestId"]
+    }
+  },
+  "positionKeyLegacy": "username|symbol|positionSide",
+  "journalTradeKeyLegacy": "account|symbol|side",
+  "livePaper": {
+    "rule": "Separate books in every cache, query, aggregate, export",
+    "existing": ["positions book=paper|live|all", "account_statics book", "PAPER / DCA_MTF_PAPER"]
+  }
+}

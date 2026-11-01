@@ -1,0 +1,62 @@
+{
+  "fixtureId": "quant.timeline.sample.v1",
+  "purpose": "Offline acceptance shapes for Q4; not production data",
+  "cases": [
+    {
+      "name": "signal_fanout_two_envs",
+      "signalEventId": "sig_demo_001",
+      "branches": [
+        {
+          "tradeInstanceId": "ti_demo_a",
+          "botUsername": "bot-demo",
+          "env": "DEMO_1",
+          "events": ["received", "eligible", "risk_check", "submitted", "fill", "protected"]
+        },
+        {
+          "tradeInstanceId": "ti_demo_b",
+          "botUsername": "bot-demo",
+          "env": "DEMO_2",
+          "events": ["received", "skipped"],
+          "reasonCode": "existing_position"
+        }
+      ]
+    },
+    {
+      "name": "two_rounds_same_symbol_side",
+      "note": "Must not join by account|symbol|side alone",
+      "rounds": [
+        { "tradeInstanceId": "ti_round_1", "symbol": "BTCUSDT", "side": "LONG", "closed": true },
+        { "tradeInstanceId": "ti_round_2", "symbol": "BTCUSDT", "side": "LONG", "closed": false }
+      ]
+    },
+    {
+      "name": "fill_after_cancel_request",
+      "requestId": "req_cancel_race_1",
+      "sequence": ["submitted", "cancel_requested", "fill", "reconciled_partial"]
+    },
+    {
+      "name": "legacy_journal_unresolved",
+      "tradeKey": "bot-demo|BTCUSDT|LONG",
+      "tradeInstanceId": null,
+      "linkStatus": "legacy_unresolved"
+    },
+    {
+      "name": "stale_preview_reject",
+      "previewId": "prev_expired_1",
+      "expiresAt": 0,
+      "submitErrorCode": "preview_expired"
+    }
+  ],
+  "reasonTaxonomy": [
+    "parse_invalid",
+    "duplicate",
+    "expired",
+    "account_disabled",
+    "symbol_blocked",
+    "existing_position",
+    "risk_rejected",
+    "stale_data",
+    "exchange_rejected",
+    "unknown"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "contractId": "quant.capability.v1",
+  "schemaVersion": 1,
+  "status": "locked_p0",
+  "existingAdapterPattern": {
+    "web": "server/src/lib/direct-trading.js withAdapter(account, capability, run)",
+    "factory": "server/src/lib/exchanges/factory.js"
+  },
+  "capabilities": {
+    "regularOrder": { "existing": true },
+    "conditionalOrder": { "existing": true },
+    "bracketAtomic": { "existing": false, "uiRequiredStates": ["entry_filled_protection_pending", "entry_filled_protection_failed"] },
+    "postOnly": { "existingPartial": true, "q7": true },
+    "ioc": { "existingPartial": true, "q7": true },
+    "fok": { "existingPartial": true, "q7": true },
+    "trailingStop": { "existingPartial": true, "q7": true },
+    "multiTp": { "existingPartial": true, "q7": true },
+    "twapServer": { "existing": false, "q7": true },
+    "vwapServer": { "existing": false, "requires": "volume_model", "q7": true },
+    "depthStream": { "existing": false, "q7": true, "blockerIfMissing": "unavailable" },
+    "liquidationTape": { "existing": false, "q7": true, "blockerIfMissing": "unavailable" }
+  },
+  "rules": [
+    "Missing capability => disable with reason; never silently rewrite order type",
+    "Adapter disabled or provider unavailable => backlog blocker, not completed feature",
+    "Linear USDT-M is first accounting basis; inverse unsupported until multiplier proven"
+  ]
+}
