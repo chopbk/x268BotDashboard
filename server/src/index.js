@@ -112,9 +112,13 @@ async function main() {
         app.use("/api/dashboard", require("./routes/dashboard"));
         app.use("/api/positions", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/positions"));
         app.use("/api/orders", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/orders"));
+        app.use("/api/trading/algo-orders", (req, res, next) => req.method === "GET" ? next() : tradingActionLimit(req, res, next), require("./routes/algo-orders"));
         app.use("/api/trading", (req, res, next) => req.method === "GET" ? next() : tradingActionLimit(req, res, next), require("./routes/trading"));
         app.use("/api/risk", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/risk"));
         app.use("/api/research", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/research"));
+        app.use("/api/analytics", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/analytics"));
+        app.use("/api/quant", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/quant"));
+        app.use("/api/portfolio", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/portfolio"));
         app.use("/api/summary", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/summary"));
         app.use("/api/signal-history", require("./routes/signal-history"));
         app.use("/api/signal-config", (req, res, next) => req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next), require("./routes/signal-setup"));

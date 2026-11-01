@@ -20,6 +20,8 @@ import ReportsPage from "./pages/ReportsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import TerminalPage from "./pages/TerminalPage";
 import InboxPage from "./pages/InboxPage";
+import QuantLabPage from "./pages/QuantLabPage";
+import StrategyAnalyticsPage from "./pages/StrategyAnalyticsPage";
 import MarketHubPage from "./pages/MarketHubPage";
 import { buildSmartMoneyRedirectPath } from "./lib/market-hub";
 
@@ -36,6 +38,7 @@ const POSITIONS_VIEW = "positions.view";
 const ORDERS_VIEW = "orders.view";
 const MARKET_VIEW = "market.view";
 const SMART_MONEY_VIEW = "smart_money.view";
+const RESEARCH_RUN = "research.run";
 
 function hasPermission(user, permission) {
   return (user?.permissions || []).includes(permission);
@@ -144,6 +147,8 @@ function Shell({ children }) {
           {canMarketHub ? <NavLink to="/market">Thị trường</NavLink> : null}
           {hasPermission(user, MARKET_VIEW) ? <NavLink to="/inbox">Inbox</NavLink> : null}
           {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/reports">Báo cáo</NavLink> : null}
+          {hasPermission(user, STATISTICS_VIEW) ? <NavLink to="/analytics">Analytics</NavLink> : null}
+          {hasPermission(user, RESEARCH_RUN) ? <NavLink to="/quant-lab">Quant Lab</NavLink> : null}
           {showOps ? <p className="nav-label">Vận hành</p> : null}
           {hasPermission(user, LOGS_VIEW) ? <NavLink to="/logs">Lịch sử</NavLink> : null}
           {hasPermission(user, LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all" ? <NavLink to="/system">Hệ thống</NavLink> : null}
@@ -235,6 +240,26 @@ function AppRoutes() {
           <Protected permission={MARKET_VIEW}>
             <Shell>
               <InboxPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <Protected permission={STATISTICS_VIEW}>
+            <Shell>
+              <StrategyAnalyticsPage />
+            </Shell>
+          </Protected>
+        }
+      />
+      <Route
+        path="/quant-lab"
+        element={
+          <Protected permission={RESEARCH_RUN}>
+            <Shell>
+              <QuantLabPage />
             </Shell>
           </Protected>
         }

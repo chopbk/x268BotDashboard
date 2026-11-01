@@ -40,6 +40,8 @@ const PERMISSIONS = Object.freeze({
   MARKET_VIEW: "market.view",
   MARKET_MANAGE: "market.manage",
   RISK_MANAGE: "risk.manage",
+  RESEARCH_RUN: "research.run",
+  PORTFOLIO_ALLOCATE: "portfolio.allocate",
   USERS_MANAGE: "users.manage",
   SIGNALS_VIEW: "signals.view",
   SIGNALS_MANAGE: "signals.manage",
@@ -230,6 +232,18 @@ const DEFINITIONS = [
     "risk",
     [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
   ],
+  [
+    PERMISSIONS.RESEARCH_RUN,
+    "Tạo/hủy job Quant Lab, đọc artifact research (không live trade)",
+    "research",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
+  [
+    PERMISSIONS.PORTFOLIO_ALLOCATE,
+    "Preview/activate allocation proposal (không tự place thiếu risk gate)",
+    "portfolio",
+    [SCOPES.ALL, SCOPES.OWN_ASSIGNED, SCOPES.ASSIGNED, SCOPES.OWN],
+  ],
 ].map(([key, label, group, allowedScopes]) =>
   Object.freeze({ key, label, group, allowedScopes }),
 );
@@ -269,6 +283,8 @@ const OPERATOR_PERMISSIONS = [
   PERMISSIONS.ORDERS_EDIT,
   PERMISSIONS.ORDERS_CANCEL,
   PERMISSIONS.RISK_MANAGE,
+  PERMISSIONS.RESEARCH_RUN,
+  PERMISSIONS.PORTFOLIO_ALLOCATE,
   PERMISSIONS.LOGS_VIEW,
 ];
 const PROCESS_PERMISSIONS = [

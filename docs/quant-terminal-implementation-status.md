@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-01**. Milestone hiện tại: **P2+P3 foundation đã merge code** (observe mặc định; chưa bật enforce live / deploy).  
+Ngày cập nhật: **2026-11-01**. Milestone hiện tại: **P4–P6 foundation đã merge code** (analytics/quant-lab/allocation/algo durable; không live exec / không deploy / không parity-ready engine).  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -84,9 +84,9 @@ Chi tiết surfaces: [entry-surfaces.v1.json](contracts/quant-terminal/entry-sur
 | Q2 | Portfolio risk / gate | **implemented foundation (observe)** | `/api/risk/*`, models policies/reservations/acks, trading-bridge gate, bot `services/risk-gate`, RiskCockpit UI | master §5 | Enforce live chưa bật; reverse open-leg partial; ACK coverage UI tối giản; concurrent stress chưa CI |
 | Q3 | Market scanner / alerts | **implemented foundation** | `/api/research/scanners|tracks|inbox`, predicate allowlist, Inbox UI `/inbox`, dedupe `sourceEventId` | research-tracking-inbox | Worker cron tự chạy scanner chưa; history OI/funding collector mới chưa (reuse market cache) |
 | Q4 | Timeline / journal / TCA | **implemented foundation** | `web_trade_events`, bridge append, journal `tradeInstanceId`/`legacy_unresolved`, `arrivalSlippageBps` | master §7 | Bot fill/signal-skip producers chưa đầy đủ; clock sync UI mỏng |
-| Q5 | Strategy analytics | **partial** | Reports, account-statics, ledger, provider-scorecard | provider-scorecard, master §8 | Thiếu net accounting thống nhất, R/MAE/MFE/Sharpe cadence, sample/uncertainty gates |
-| Q6 | Research Lab | **missing** | Không `/quant-lab` trong App; `/research` chưa code | master §9, research-tracking-inbox | Dataset/experiment/runner/paper promotion chưa có trên web |
-| Q7 | Allocation / microstructure / algos | **missing** | “allocation” Terminal = own vs exchange leftover; adapters có order types một phần | master §10 | Không portfolio allocation, depth/tape, TWAP parent/child |
+| Q5 | Strategy analytics | **implemented foundation** | `/api/analytics/*`, metric defs v1, Sharpe/Sortino/R/MAE-MFE fidelity, alerts no auto-off | master §8 | Load statics path còn mỏng; bootstrap CI đầy đủ hơn ở follow-up |
+| Q6 | Research Lab | **implemented foundation (stub only)** | `/quant-lab` + `/api/quant/*`; fixture_stub deterministic; dca_mtf_bt blocked | master §9 | Parity fixture pullback chưa — không expose live engine |
+| Q7 | Allocation / microstructure / algos | **implemented foundation** | `/api/portfolio/allocations/*`, `/api/trading/algo-orders*`, microstructure unavailable | master §10 | Depth/CVD backlog; live algo exec chặn; VWAP cần volume model |
 
 ### Identity / provenance / capability (cross-cutting)
 
@@ -226,29 +226,29 @@ Mỗi task: repo, entry files, dependency, contract, test. **Không ETA.**
 
 | Task | Repo | Entry | Dep | Contract | Test |
 |---|---|---|---|---|---|
-| P4.1 Shared metric definitions/version | web-bot | extend scorecard/reports | P3 facts | accounting basis | ledger vs fixture |
-| P4.2 Net PnL / R / PF / DD / Sharpe | web-bot | analytics routes | P4.1 | — | zero/all-win/all-lose/equity≤0 |
-| P4.3 MAE/MFE fidelity flags | web-bot | — | inventory path | — | partial/DCA incomplete |
-| P4.4 Alerts phân tích (không auto-off config) | web-bot | — | P4.2 | — | no side-effect config |
+| P4.1 Shared metric definitions/version | web-bot | `lib/analytics/metric-definitions.js` | P3 | accounting basis | **done** |
+| P4.2 Net PnL / R / PF / DD / Sharpe | web-bot | `/api/analytics/strategies*` | P4.1 | — | **done** unit |
+| P4.3 MAE/MFE fidelity flags | web-bot | strategy-metrics excursion | inventory | — | **done** DCA incomplete |
+| P4.4 Alerts phân tích (không auto-off config) | web-bot | `/api/analytics/alerts/evaluate` | P4.2 | — | **done** |
 
 ### P5 — Q6 quant-lab
 
 | Task | Repo | Entry | Dep | Contract | Test |
 |---|---|---|---|---|---|
-| P5.1 `/quant-lab` + datasets/experiments | web-bot | new routes/models | P0 D11 | — | RBAC artifact |
-| P5.2 Isolated job runner | both | worker process | engines audit | backtest fixture | cancel/crash/lease |
-| P5.3 Adapter pullback (+ chỉ parity-ready) | binance-bot | dca-mtf backtest adapter | P5.2 | engines | deterministic hash |
-| P5.4 OOS/walk-forward/bootstrap | web-bot | quant runs | P5.2 | — | no lookahead fixture |
-| P5.5 Paper deploy + promotion proposal | web-bot | Config Lab link | bot-command-bridge | compatibility | no auto PAPER/INVERT |
+| P5.1 `/quant-lab` + datasets/experiments | web-bot | `/api/quant/*` + UI | P0 D11 | — | **done** RBAC `research.run` |
+| P5.2 Isolated job runner | web-bot | lease on `web_quant_runs` (stub inline) | engines | — | **done** cancel/lease; process riêng follow-up |
+| P5.3 Adapter pullback (+ chỉ parity-ready) | binance-bot | **blocked** catalog | P5.2 | engines | **blocked** parityReady=false |
+| P5.4 OOS/walk-forward/bootstrap | web-bot | stub-engine | P5.2 | — | **done** unit |
+| P5.5 Paper deploy + promotion proposal | web-bot | `POST /api/quant/promotions` | Config Lab | — | **done** proposal only |
 
 ### P6 — Q7 allocation / microstructure / algos
 
 | Task | Repo | Entry | Dep | Contract | Test |
 |---|---|---|---|---|---|
-| P6.1 Allocation proposals | web-bot | `/api/portfolio/*` | P2 risk | capability | stale preview |
-| P6.2 Depth/tape/CVD if provider | web-bot + feed | — | **provider availability** | capability | unavailable explicit |
-| P6.3 Server TWAP/participation/VWAP | web-bot | algo-orders durable | P2 reservation | capability | parent/child bound; restart reconcile |
-| P6.4 Full P0–P6 status audit | web-bot | this file | all | — | no false completed |
+| P6.1 Allocation proposals | web-bot | `/api/portfolio/allocations*` | P2 | capability | **done** stale 409 |
+| P6.2 Depth/tape/CVD if provider | web-bot | capabilities endpoint | **provider missing** | capability | **done** unavailable explicit |
+| P6.3 Server TWAP/participation/VWAP | web-bot | `/api/trading/algo-orders*` | P2 | capability | **done** bound/reconcile; live chặn |
+| P6.4 Full P0–P6 status audit | web-bot | this file | all | — | **done** (honest blocked items) |
 
 ---
 
@@ -262,10 +262,10 @@ Mỗi task: repo, entry files, dependency, contract, test. **Không ETA.**
 | `/api/risk/*` | **existing** (P2; risk-profile vẫn riêng) |
 | `/api/research/inbox` (+ scanners/tracks) | **existing** (P3; dash Telegram khác) |
 | `/api/research/timeline` | **existing** (alias trade timeline) |
-| `/api/analytics/strategies` | missing (scorecard/statics existing khác) |
-| `/api/quant/*` | missing |
-| `/api/portfolio/allocations` | missing |
-| `/api/trading/algo-orders` | missing |
+| `/api/analytics/strategies` | **existing** (P4; khác scorecard win-by-status) |
+| `/api/quant/*` | **existing** (P5 stub) |
+| `/api/portfolio/allocations` | **existing** (P6 preview/activate) |
+| `/api/trading/algo-orders` | **existing** (P6 durable; live blocked) |
 | `/api/trading/*` mutations | **existing** |
 | `/api/terminal/journal` | **existing** |
 | `/api/provider-scorecard` | **existing** |
@@ -278,9 +278,9 @@ Conflict codes đề xuất (chưa wire): `source_changed`, `preview_expired`, `
 
 | Permission | Trạng thái | Không suy ra |
 |---|---|---|
-| `risk.manage` | **đã merge** catalog + OPERATOR/admin/ops templates | không thay `positions.close` |
-| `research.run` | đề xuất (P5) | không live trade |
-| `portfolio.allocate` | đề xuất (P6) | không tự place thiếu risk gate |
+| `risk.manage` | **đã merge** catalog + OPERATOR templates | không thay `positions.close` |
+| `research.run` | **đã merge** catalog + OPERATOR templates | không live trade |
+| `portfolio.allocate` | **đã merge** catalog + OPERATOR templates | không tự place thiếu risk gate |
 
 Map controls: pause → trade-policy/risk.manage explicit; cancel pending → `orders.cancel`; flatten → `positions.close`.
 

@@ -149,6 +149,14 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET/POST/PATCH | `/api/research/scanners[/:id]` | [research](../server/src/routes/research.js) — predicate allowlist |
 | POST | `/api/research/scanners/:id/run` | [research](../server/src/routes/research.js) — evaluate + upsert Inbox |
 | GET/POST | `/api/research/timeline[/events]` | [research](../server/src/routes/research.js) — trade timeline + TCA helpers |
+| GET | `/api/analytics/definitions` | [analytics](../server/src/routes/analytics.js) — metric definitions versioned |
+| GET/POST | `/api/analytics/strategies[/compute]` | [analytics](../server/src/routes/analytics.js) — net/R/PF/DD/Sharpe; không edge từ mẫu nhỏ |
+| GET/POST | `/api/analytics/execution[/compute]` | [analytics](../server/src/routes/analytics.js) — TCA slippage/latency |
+| POST | `/api/analytics/alerts/evaluate` | [analytics](../server/src/routes/analytics.js) — alert phân tích; không tắt config |
+| GET/POST | `/api/quant/datasets\|experiments\|runs\|promotions` | [quant](../server/src/routes/quant.js) — Quant Lab; `research.run` |
+| POST | `/api/portfolio/allocations/preview\|activate` | [portfolio](../server/src/routes/portfolio.js) — `portfolio.allocate`; stale revision → 409 |
+| GET/POST | `/api/trading/algo-orders*` | [algo-orders](../server/src/routes/algo-orders.js) — TWAP/participation durable; live exec chặn |
+| GET | `/api/trading/algo-orders/microstructure/capabilities` | unavailable explicit khi thiếu provider |
 | POST | `/api/terminal/decision/position` | [terminal](../server/src/routes/terminal.js) |
 | POST | `/api/terminal/decision/account` | [terminal](../server/src/routes/terminal.js) |
 | GET | `/api/terminal/decision/reports` | [terminal](../server/src/routes/terminal.js) |

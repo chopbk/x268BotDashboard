@@ -75,7 +75,10 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | Position | `positions.view`, `positions.open`, `positions.close`, `positions.tpsl` |
 | Order | `orders.view`, `orders.create`, `orders.edit`, `orders.cancel` |
 | Risk (Quant Terminal P2) | `risk.manage` — policy write, producer ACK, controls pause/resume/flatten preview. Đọc portfolio/scenarios: `positions.view` \| `statistics.view` \| `risk.manage`. Không thay `positions.close` / `orders.cancel`. Default policy mode **observe**; không auto-enforce live. |
-| Research / Inbox (P3) | Đọc/ghi track, scanner, Inbox: `market.view`. Timeline events: `positions.view`. `research.run` (quant job) vẫn đề xuất, chưa cấp template. |
+| Research / Inbox (P3) | Đọc/ghi track, scanner, Inbox: `market.view`. Timeline events: `positions.view`. |
+| Quant Lab (P5) | `research.run` — datasets/experiments/runs/promotions; không live trade, không auto PAPER/INVERT. Có trong OPERATOR template. |
+| Portfolio (P6) | `portfolio.allocate` — preview/activate allocation proposal; không tự place thiếu risk gate. Có trong OPERATOR template. |
+| Analytics (P4) | Đọc `/api/analytics/*`: `statistics.view` (cùng Reports basis). |
 | API | `credentials.view`, `credentials.manage` |
 | User | `users.view`, `users.create`, `users.edit`, `users.permissions`, `users.disable`, `users.reset_password` |
 | Log | `logs.view` |
