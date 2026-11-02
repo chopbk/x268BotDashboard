@@ -230,6 +230,57 @@ test("analytics mode filters by closeTime, defaults closed live, and keeps listD
     }
 });
 
+test("analytics listSignal/listEnv/listSymbol only narrow the trade list", async () => {
+    const originals = { user: UserAccount.findOne, rows: AccountStatic.find, count: AccountStatic.countDocuments, aggregate: AccountStatic.aggregate, configs: AccountConfig.find };
+    let listFilter;
+    let aggregateMatch;
+    UserAccount.findOne = () => query({ username: "alpha", accounts: ["a1"], visibility: "public" });
+    AccountConfig.find = () => query([]);
+    AccountStatic.find = (filter) => {
+        const text = JSON.stringify(filter || {});
+        if (/SIGNAL_A|signal_a|BTCUSDT|"env":"a1"/i.test(text)) listFilter = filter;
+        return query([]);
+    };
+    AccountStatic.countDocuments = async () => 0;
+    AccountStatic.aggregate = async (pipeline) => {
+        if (pipeline[0]?.$match && !aggregateMatch) aggregateMatch = pipeline[0].$match;
+        if (pipeline[1]?.$facet) return [{ bySignal: [], byConfig: [], bySide: [], byStatus: [] }];
+        if (pipeline.some((stage) => stage.$group?._id?.$dateToString)) return [];
+        return [totalsRow({ count: 4, valid: 4, wins: 2, profit: 8 })];
+    };
+    try {
+        const result = await listAccountStatics(
+            { role: "viewer", botUsernames: ["alpha"] },
+            {
+                username: "alpha",
+                analytics: "1",
+                range: "7",
+                listSignal: "SIGNAL_A",
+                listEnv: "a1",
+                listSymbol: "BTCUSDT",
+            }
+        );
+        assert.ok(listFilter, "list query must include chart selection");
+        const listOnly = listFilter.$and?.[1];
+        const selection = listOnly?.$and || [];
+        assert.ok(selection.some((part) => part.typeSignal), "listSignal applied");
+        assert.ok(selection.some((part) => part.env === "a1"), "listEnv applied");
+        assert.ok(selection.some((part) => part.symbol instanceof RegExp && part.symbol.test("BTCUSDT")), "listSymbol applied");
+        assert.equal(aggregateMatch?.typeSignal, undefined);
+        assert.notEqual(aggregateMatch?.env, "a1");
+        assert.equal(result.listSignal, "SIGNAL_A");
+        assert.equal(result.listEnv, "a1");
+        assert.equal(result.listSymbol, "BTCUSDT");
+        assert.equal(result.stats.total, 4);
+    } finally {
+        UserAccount.findOne = originals.user;
+        AccountStatic.find = originals.rows;
+        AccountStatic.countDocuments = originals.count;
+        AccountStatic.aggregate = originals.aggregate;
+        AccountConfig.find = originals.configs;
+    }
+});
+
 test("a paper user opens on the paper book unless live is requested", async () => {
     const originals = { user: UserAccount.findOne, rows: AccountStatic.find, count: AccountStatic.countDocuments, aggregate: AccountStatic.aggregate, configs: AccountConfig.find };
     let rowFilter;

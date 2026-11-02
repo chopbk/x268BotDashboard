@@ -124,6 +124,8 @@ test("listProviderScorecard feed-only when missing statistics.view", async () =>
         assert.equal(result.rows[0].signal, "ROSE");
         assert.equal(result.rows[0].trades, 0);
         assert.equal(result.rows[0].feed, 3);
+        assert.equal(result.rows[0].winRate, null);
+        assert.equal(result.summary.winRate, null);
     } finally {
         SignalInfo.aggregate = originals.feed;
         AccountStatic.aggregate = originals.trades;

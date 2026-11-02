@@ -104,6 +104,7 @@ Không coi profit Account Static bằng income ví. Không cộng live với pap
 - Không có `statistics.view`: `canSeeTrades=false`, cột trades/profit = 0, `rows` vẫn có feed nếu có `signals.history`.
 - Không có `signals.history`: `canSeeFeed=false`, cột feed = 0, vẫn xếp theo trades nếu có `statistics.view`.
 - Thiếu cả hai quyền: 403.
+- Channel/`summary` chưa có lệnh: `winRate` là `null` (không gán 0). `lowSample=true` khi `0 < trades < 20` (ngưỡng UX). UI P0: bar xếp hạng mặc định + bubble so sánh — [data-visualization-spec](data-visualization-spec.md).
 
 ## 4. UI
 

@@ -383,6 +383,24 @@ function listDayFilter(input) {
     return { closeTime: { $gte: from, $lte: to } };
 }
 
+/** Lựa chọn chart chỉ lọc danh sách lệnh — không đụng aggregate/KPI/series. */
+function listSelectionFilter(input) {
+    const clauses = [];
+    const day = listDayFilter(input);
+    if (day) clauses.push(day);
+    const listSignal = String(input.listSignal || "").trim();
+    if (listSignal) {
+        const signal = signalMatch({ signal: listSignal });
+        if (Object.keys(signal).length) clauses.push(signal);
+    }
+    const listEnv = String(input.listEnv || "").trim();
+    if (listEnv) clauses.push({ env: listEnv });
+    const listSymbol = String(input.listSymbol || "").trim();
+    if (listSymbol) clauses.push({ symbol: new RegExp(`^${escapeRegex(listSymbol)}$`, "i") });
+    if (!clauses.length) return null;
+    return clauses.length === 1 ? clauses[0] : { $and: clauses };
+}
+
 function fillSeries(from, to, byDay) {
     const start = utcDayStart(from || new Date());
     const end = utcDayStart(to || new Date());
@@ -725,6 +743,9 @@ async function listAccountStatics(actor, input = {}) {
         from: range.from,
         to: range.to,
         listDay: null,
+        listSignal: null,
+        listEnv: null,
+        listSymbol: null,
         rangeLabel: formatRangeLabel(range, timeField),
         generatedAt: new Date().toISOString(),
     });
@@ -746,8 +767,8 @@ async function listAccountStatics(actor, input = {}) {
         }
     }
 
-    const dayOnly = listDayFilter(input);
-    const listFilter = dayOnly ? { $and: [filter, dayOnly] } : filter;
+    const listOnly = listSelectionFilter(input);
+    const listFilter = listOnly ? { $and: [filter, listOnly] } : filter;
     const sort = timeField === "closeTime"
         ? { closeTime: -1, _id: -1 }
         : { openTime: -1, _id: -1 };
@@ -930,7 +951,10 @@ async function listAccountStatics(actor, input = {}) {
         rangePreset: range.preset || null,
         from: range.from,
         to: range.to,
-        listDay: dayOnly ? String(input.listDay || input.day || "") : null,
+        listDay: listDayFilter(input) ? String(input.listDay || input.day || "") : null,
+        listSignal: String(input.listSignal || "").trim() || null,
+        listEnv: String(input.listEnv || "").trim() || null,
+        listSymbol: String(input.listSymbol || "").trim() || null,
         rangeLabel,
         generatedAt: new Date().toISOString(),
     };

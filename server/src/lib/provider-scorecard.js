@@ -55,7 +55,7 @@ function emptyRow(signal) {
         trades: 0,
         wins: 0,
         losses: 0,
-        winRate: 0,
+        winRate: null,
         profit: 0,
         volume: 0,
         cost: 0,
@@ -66,13 +66,18 @@ function emptyRow(signal) {
         shortCount: 0,
         longProfit: 0,
         shortProfit: 0,
+        lowSample: false,
         envs: [],
     };
 }
 
 function sortRows(rows, sort) {
     return [...rows].sort((a, b) => {
-        if (sort === "winRate") return (b.winRate || 0) - (a.winRate || 0) || (b.trades || 0) - (a.trades || 0) || a.signal.localeCompare(b.signal);
+        if (sort === "winRate") {
+            const aw = a.winRate == null ? -1 : a.winRate;
+            const bw = b.winRate == null ? -1 : b.winRate;
+            return bw - aw || (b.trades || 0) - (a.trades || 0) || a.signal.localeCompare(b.signal);
+        }
         if (sort === "trades") return (b.trades || 0) - (a.trades || 0) || (b.profit || 0) - (a.profit || 0) || a.signal.localeCompare(b.signal);
         if (sort === "feed") return (b.feed || 0) - (a.feed || 0) || (b.trades || 0) - (a.trades || 0) || a.signal.localeCompare(b.signal);
         if (sort === "volume") return (b.volume || 0) - (a.volume || 0) || (b.profit || 0) - (a.profit || 0) || a.signal.localeCompare(b.signal);
@@ -176,7 +181,7 @@ async function listProviderScorecard(actor, input = {}) {
                 bucket.trades = trades;
                 bucket.wins = wins;
                 bucket.losses = row.losses || 0;
-                bucket.winRate = trades ? (wins / trades) * 100 : 0;
+                bucket.winRate = trades ? (wins / trades) * 100 : null;
                 bucket.profit = roundMoney(profit);
                 bucket.volume = roundMoney(row.volume || 0);
                 bucket.cost = roundMoney(cost);
@@ -187,6 +192,7 @@ async function listProviderScorecard(actor, input = {}) {
                 bucket.shortCount = row.shortCount || 0;
                 bucket.longProfit = roundMoney(row.longProfit || 0);
                 bucket.shortProfit = roundMoney(row.shortProfit || 0);
+                bucket.lowSample = trades > 0 && trades < 20;
                 bucket.envs = envList;
                 bySignal.set(signal, bucket);
             }
@@ -228,7 +234,7 @@ async function listProviderScorecard(actor, input = {}) {
             feed: feedTotal,
             trades: tradesTotal,
             profit: roundMoney(profitTotal),
-            winRate: tradesTotal ? (winsTotal / tradesTotal) * 100 : 0,
+            winRate: tradesTotal ? (winsTotal / tradesTotal) * 100 : null,
         },
         rows,
     };

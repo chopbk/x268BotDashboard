@@ -1,17 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import AccountRiskAi from "../components/AccountRiskAi";
 import LedgerAttribution from "../components/LedgerAttribution";
+import TimeSeriesLines from "../components/charts/TimeSeriesLines.jsx";
+import "../components/charts/charts.css";
 
 function money(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  const text = n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${n > 0 ? "+" : ""}${text}$`.replace("+-", "-");
+  const text = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (n > 0) return `+${text}$`;
+  if (n < 0) return `−${text}$`;
+  return `${text}$`;
 }
 
 function plain(value) {
+  if (value == null || value === "") return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`;
@@ -31,18 +36,6 @@ function filterUsers(users, showOthers, showInactive) {
     if (!showOthers && !item.mine) return false;
     return true;
   });
-}
-
-function points(series, key, width, height, minValue, maxValue) {
-  const values = series.map((row) => Number(row[key]) || 0);
-  const min = minValue == null ? Math.min(...values) : minValue;
-  const max = maxValue == null ? Math.max(...values) : maxValue;
-  const span = max - min || 1;
-  return values.map((value, index) => {
-    const x = 12 + (index * (width - 24)) / Math.max(series.length - 1, 1);
-    const y = height - 12 - ((value - min) * (height - 24)) / span;
-    return `${x},${y}`;
-  }).join(" ");
 }
 
 export default function AccountLedgerPage() {
@@ -175,14 +168,27 @@ export default function AccountLedgerPage() {
   const totals = data?.totals || {};
   const live = data?.live || {};
   const compare = data?.compare || {};
-  const cashSeries = series.map((row, index) => ({
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const balancePoints = useMemo(() => series.map((row) => ({
     ymd: row.ymd,
-    cash: series.slice(0, index + 1).reduce((sum, item) => sum + (Number(item.cashIn) || 0) + (Number(item.cashOut) || 0), 0),
-    trading: series.slice(0, index + 1).reduce((sum, item) => sum + (Number(item.trading) || 0), 0),
-  }));
-  const flowValues = cashSeries.flatMap((row) => [row.cash, row.trading]);
-  const flowMin = flowValues.length ? Math.min(...flowValues) : 0;
-  const flowMax = flowValues.length ? Math.max(...flowValues) : 0;
+    balance: row.balance == null || row.balance === "" ? null : Number(row.balance),
+    missingBalance: row.balance == null || row.balance === "",
+  })), [series]);
+  const flowPoints = useMemo(() => {
+    let cash = 0;
+    let trading = 0;
+    return series.map((row) => {
+      cash += (Number(row.cashIn) || 0) + (Number(row.cashOut) || 0);
+      trading += Number(row.trading) || 0;
+      return { ymd: row.ymd, cash, trading };
+    });
+  }, [series]);
+  const balanceCoverage = balancePoints.filter((row) => row.balance != null).length;
+  const balanceKind = balancePoints.length
+    ? (balancePoints[balancePoints.length - 1]?.ymd === todayUtc
+      ? "snapshot có thể cập nhật trong ngày UTC hôm nay"
+      : "snapshot cuối ngày UTC đã lưu")
+    : "";
 
   if (book === "paper") {
     const back = new URLSearchParams(searchParams);
@@ -370,21 +376,33 @@ export default function AccountLedgerPage() {
             </article>
           </div>
 
-          <h2 className="summary-section-title">Đường số dư</h2>
-          {series.length < 2 ? <p className="muted">Chưa đủ ngày trong database để vẽ.</p> : (
-            <svg className="ledger-chart" viewBox="0 0 640 180" role="img" aria-label="Đường số dư">
-              <polyline fill="none" stroke="var(--accent)" strokeWidth="2" points={points(series, "balance", 640, 180)} />
-            </svg>
-          )}
-
-          <h2 className="summary-section-title">Trading PnL và dòng tiền</h2>
-          <p className="ledger-legend"><span className="ledger-trade">Trading PnL cộng dồn</span><span className="ledger-cash">Nạp, rút và chuyển cộng dồn</span></p>
-          {series.length < 2 ? null : (
-            <svg className="ledger-chart" viewBox="0 0 640 180" role="img" aria-label="Trading và dòng tiền">
-              <polyline fill="none" className="ledger-trade-line" strokeWidth="2" points={points(cashSeries, "trading", 640, 180, flowMin, flowMax)} />
-              <polyline fill="none" className="ledger-cash-line" strokeWidth="2" points={points(cashSeries, "cash", 640, 180, flowMin, flowMax)} />
-            </svg>
-          )}
+          <div className="dv-chart-grid two">
+            <TimeSeriesLines
+              title="Số dư ví thay đổi thế nào?"
+              subtitle={`${data.from} → ${data.to} UTC · USDT · futures_profits · ${balanceKind || "snapshot DB"} · ${balanceCoverage}/${balancePoints.length} ngày có số dư`}
+              summary={balanceCoverage
+                ? `Điểm cuối ${plain(balancePoints[balancePoints.length - 1]?.balance)} · khoảng trống = thiếu snapshot, không nối thành có dữ liệu`
+                : "Chưa có snapshot số dư trong kỳ"}
+              points={balancePoints}
+              loading={loading && !data}
+              empty="Chưa có ngày trong database để vẽ số dư."
+              series={[
+                { key: "balance", label: "Số dư ví", className: "dv-ts-line balance", legendClass: "balance" },
+              ]}
+            />
+            <TimeSeriesLines
+              title="Trading và dòng tiền ảnh hưởng ra sao?"
+              subtitle={`${data.from} → ${data.to} UTC · USDT · income sàn cộng dồn · cùng scale · không gồm uPnL`}
+              summary={`Trading cộng dồn ${money(totals.trading)} · nạp/rút/chuyển cộng dồn ${money((Number(totals.cashIn) || 0) + (Number(totals.cashOut) || 0))}`}
+              points={flowPoints}
+              loading={loading && !data}
+              empty="Chưa có ngày để vẽ dòng tiền."
+              series={[
+                { key: "trading", label: "Trading PnL cộng dồn", className: "dv-ts-line trade", legendClass: "trade" },
+                { key: "cash", label: "Nạp/rút/chuyển cộng dồn", className: "dv-ts-line cash", legendClass: "cash" },
+              ]}
+            />
+          </div>
           <div className="stats-grid">
             <article className={`card summary-stat ${tone(totals.trading)}`}><small>Trading PnL · income sàn, {data.from} → {data.to} UTC</small><strong>{money(totals.trading)}</strong></article>
             <article className="card summary-stat"><small>Phí</small><strong>{money(totals.fee)}</strong></article>
@@ -412,7 +430,7 @@ export default function AccountLedgerPage() {
                 {series.map((row) => (
                   <tr key={row.ymd}>
                     <td>{row.ymd}</td>
-                    <td>{plain(row.balance)}</td>
+                    <td>{row.balance == null || row.balance === "" ? <span className="muted">Thiếu dữ liệu</span> : plain(row.balance)}</td>
                     <td className={tone(row.trading)}>{money(row.trading)}</td>
                     <td>{money(row.fee)}</td>
                     <td>{money(row.funding)}</td>

@@ -1,6 +1,8 @@
 # Spec trực quan hóa dữ liệu web-bot
 
-Ngày: 2026-11-02. Trạng thái: **đề xuất triển khai**, chưa thay đổi UI/API/runtime.
+Ngày: 2026-11-02. Cập nhật triển khai: **2026-11-02**.
+
+Trạng thái: **P0 đã triển khai** (Hiệu quả lệnh, Scorecard, Ví & dòng tiền). P1/P2 vẫn là đề xuất — chưa waterfall, chưa chart Tổng quan/Terminal/Hệ thống theo bảng giai đoạn.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -49,12 +51,12 @@ Không thêm hàng chart khiến bảng bị đẩy qua nhiều màn hình. Desk
 
 ## 3. Phạm vi triển khai theo giai đoạn
 
-| Giai đoạn | Màn | Kết quả chính | Điều kiện dữ liệu |
-|---|---|---|---|
-| P0 | Hiệu quả lệnh | Bar PnL theo nhóm + lịch PnL thay phiên chart ngày | Dùng aggregate/series hiện tại, xác minh giới hạn |
-| P0 | Scorecard | Bar xếp hạng mặc định, bubble so sánh tùy chọn | Dùng profit/winRate/trades cùng response |
-| P0 | Ví & dòng tiền | Nâng chart hiện có: trục, tooltip, gap, bảng dữ liệu | Không đổi định nghĩa balance/trading |
-| P1 | Ví & dòng tiền | Waterfall phân rã income | Bắt buộc metadata xác nhận thành phần không trùng |
+| Giai đoạn | Màn | Kết quả chính | Điều kiện dữ liệu | Trạng thái |
+|---|---|---|---|---|
+| P0 | Hiệu quả lệnh | Bar PnL theo nhóm + lịch PnL thay phiên chart ngày | Aggregate/`series` `account-statics`; `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng | **Đã làm** |
+| P0 | Scorecard | Bar xếp hạng mặc định, bubble so sánh tùy chọn | Cùng response; `winRate=null` khi 0 lệnh | **Đã làm** |
+| P0 | Ví & dòng tiền | Nâng chart hiện có: trục, tooltip, gap, bảng dữ liệu | Không đổi định nghĩa balance/trading; chưa waterfall | **Đã làm** |
+| P1 | Ví & dòng tiền | Waterfall phân rã income | Bắt buộc metadata xác nhận thành phần không trùng | Đề xuất |
 | P1 | Tổng quan/Thống kê | Đóng góp PnL bot/user; Long/Short | Dùng đúng nguồn từng màn |
 | P1 | Terminal | Tỷ trọng notional + phân bổ symbol | Snapshot sàn đầy đủ, đơn vị đã chuẩn hóa |
 | P2 | Signal thống kê | Top lỗi parse, mức sử dụng signal | Aggregate hiện có; ghi rõ kỳ/coverage |
@@ -243,4 +245,20 @@ Mobile xếp hai vùng chart theo chiều dọc; chart nhóm gập được. Kh�
 
 ## 9. Checklist giao việc
 
-Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời, nguồn/công thức, filter nền/selection, dữ liệu thiếu xử lý ra sao, ảnh desktop/mobile và kiểm chứng tổng số. P0 hoàn thành trước khi bắt đầu mở rộng time-series vận hành. Không cần sửa runtime hoặc deploy để tài liệu này có hiệu lực như một đề xuất.
+Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời, nguồn/công thức, filter nền/selection, dữ liệu thiếu xử lý ra sao, ảnh desktop/mobile và kiểm chứng tổng số. P0 hoàn thành trước khi bắt đầu mở rộng time-series vận hành.
+
+### P0 đã giao (2026-11-02)
+
+| Màn | Chart | Nguồn | Filter nền / selection |
+|---|---|---|---|
+| Báo cáo → Hiệu quả lệnh | Bar ngang nhóm Signal/Config/Symbol (+ user/side); Biểu đồ ngày / Lịch PnL (một chế độ) | `GET /api/account-statics` → `stats.by*` + `series` | Nền: kỳ/account/book/side/…; selection URL `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng lệnh |
+| Signal → Scorecard | Xếp hạng bar (mặc định); bubble win rate × profit × diện tích lệnh | `GET /api/provider-scorecard` | Highlight `scoreSelect`; channel 0 lệnh tách mục, không gán win rate 0 trên bubble |
+| Báo cáo → Ví & dòng tiền | Đường số dư + Trading/dòng tiền cộng dồn (trục, tooltip, gap, Xem dữ liệu) | `GET /api/account-ledger` → `series` | Giữ filter user/days; null balance = gap/“Thiếu dữ liệu”; chưa waterfall |
+
+Component dùng chung: `client/src/components/charts/*` (SVG/HTML, không thêm dependency). Fixture trực quan: `scripts/chart-p0-fixture.html`.
+
+Ảnh fixture (không phải dữ liệu production):
+
+- Desktop 1440: [assets/p0-charts-1440.png](assets/p0-charts-1440.png)
+- Tablet 768: [assets/p0-charts-768.png](assets/p0-charts-768.png)
+- Mobile 360: [assets/p0-charts-360.png](assets/p0-charts-360.png)

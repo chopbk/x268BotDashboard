@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import HorizontalPnlBars from "../components/charts/HorizontalPnlBars.jsx";
+import BubbleCompare from "../components/charts/BubbleCompare.jsx";
+import "../components/charts/charts.css";
 
 const STATISTICS_VIEW = "statistics.view";
 const SIGNALS_HISTORY = "signals.history";
@@ -9,22 +12,26 @@ const CONFIG_VIEW = "config.view";
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const LOW = 20;
 
 function money(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  const text = n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  return `${n > 0 ? "+" : ""}${text}$`.replace("+-", "-");
+  const text = Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (n > 0) return `+${text}$`;
+  if (n < 0) return `−${text}$`;
+  return `${text}$`;
 }
 
 function pct(value) {
+  if (value == null || value === "") return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${Math.round(n * 10) / 10}%`;
 }
 
 function fmtTime(value) {
-  return value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "—";
+  return value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" }).format(new Date(value)) + " UTC" : "—";
 }
 
 function toLocalInput(value) {
@@ -63,6 +70,8 @@ export default function SignalScorecardPanel({ onFindConfig }) {
   const sort = ["profit", "winRate", "trades", "feed", "volume"].includes(params.get("sort")) ? params.get("sort") : "profit";
   const minTrades = params.get("minTrades") || "";
   const q = params.get("q") || "";
+  const chartMode = params.get("scoreChart") === "bubble" ? "bubble" : "rank";
+  const selected = params.get("scoreSelect") || "";
 
   const historyAllowed = can(user, SIGNALS_HISTORY);
   const staticAllowed = can(user, STATISTICS_VIEW);
@@ -104,6 +113,8 @@ export default function SignalScorecardPanel({ onFindConfig }) {
   const rows = data?.rows || [];
   const summary = data?.summary || {};
   const formula = data?.formula || {};
+  const tradedRows = rows.filter((row) => (Number(row.trades) || 0) > 0);
+  const selectedRow = rows.find((row) => row.signal === selected) || null;
 
   function hrefFor(signal, tab) {
     const next = new URLSearchParams();
@@ -123,6 +134,10 @@ export default function SignalScorecardPanel({ onFindConfig }) {
     return `/signals?${next}`;
   }
 
+  function selectSignal(name) {
+    update({ scoreSelect: selected === name ? "" : name });
+  }
+
   return (
     <div className="signal-setup">
       <form
@@ -138,6 +153,7 @@ export default function SignalScorecardPanel({ onFindConfig }) {
             sort: form.get("sort") || "profit",
             minTrades: String(form.get("minTrades") || "").trim(),
             q: String(form.get("q") || "").trim(),
+            scoreSelect: "",
           });
         }}
       >
@@ -205,6 +221,54 @@ export default function SignalScorecardPanel({ onFindConfig }) {
         </p>
       </section>
 
+      <div className="dv-mode-tabs" role="group" aria-label="Chế độ scorecard chart">
+        <button type="button" className={chartMode === "rank" ? "active" : "ghost"} aria-pressed={chartMode === "rank"} onClick={() => update({ scoreChart: "rank" })}>
+          Xếp hạng
+        </button>
+        <button type="button" className={chartMode === "bubble" ? "active" : "ghost"} aria-pressed={chartMode === "bubble"} onClick={() => update({ scoreChart: "bubble" })}>
+          So sánh (bubble)
+        </button>
+      </div>
+
+      {chartMode === "bubble" ? (
+        <BubbleCompare
+          rows={rows}
+          selected={selected}
+          onSelect={selectSignal}
+          loading={busy && !data}
+          error=""
+          subtitle={`USDT · sổ ${book} · openTime · UTC · diện tích = số lệnh`}
+        />
+      ) : (
+        <HorizontalPnlBars
+          title="Channel nào lời/lỗ nhiều nhất?"
+          subtitle={`USDT · sổ ${book} · openTime · UTC · top theo trị tuyệt đối PnL`}
+          rows={tradedRows}
+          nameKey="signal"
+          selected={selected}
+          onSelect={selectSignal}
+          loading={busy && !data}
+          empty={busy ? "" : "Không có channel có lệnh trong kỳ."}
+        />
+      )}
+
+      {selected ? (
+        <div className="dv-selection-bar card">
+          <span className="muted">Đang chọn:</span>
+          <span className="perf-chip">
+            {selected}
+            <button type="button" aria-label="Bỏ chọn channel" onClick={() => update({ scoreSelect: "" })}>×</button>
+          </span>
+          <button type="button" className="ghost" onClick={() => update({ scoreSelect: "" })}>Bỏ chọn biểu đồ</button>
+          {selectedRow ? (
+            <span className="muted">
+              profit {money(selectedRow.profit)} · win rate {pct(selectedRow.winRate)} · {selectedRow.trades || 0} lệnh
+              {(selectedRow.trades || 0) > 0 && (selectedRow.trades || 0) < LOW ? " · Ít dữ liệu" : ""}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <section className="card">
         <h2>Bảng xếp hạng</h2>
         {rows.length === 0 ? <p className="muted">{busy ? "Đang tải…" : "Không có channel trong khoảng này."}</p> : (
@@ -227,9 +291,13 @@ export default function SignalScorecardPanel({ onFindConfig }) {
               </thead>
               <tbody>
                 {rows.map((row, index) => (
-                  <tr key={row.signal}>
+                  <tr key={row.signal} className={selected === row.signal ? "trade-row active" : undefined}>
                     <td>{index + 1}</td>
-                    <td>{row.signal}</td>
+                    <td>
+                      <button type="button" className="perf-linkish" onClick={() => selectSignal(row.signal)}>{row.signal}</button>
+                      {(row.trades || 0) > 0 && (row.trades || 0) < LOW ? <span className="dv-badge warn">Ít dữ liệu</span> : null}
+                      {(row.trades || 0) === 0 ? <span className="dv-badge">Chưa có lệnh</span> : null}
+                    </td>
                     <td>{row.channel ? "Có" : "Không"}</td>
                     <td>{row.feed}{row.feed ? ` · ${row.feedLong}L/${row.feedShort}S` : ""}</td>
                     <td>{row.wins}/{row.trades}</td>

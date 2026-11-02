@@ -20,7 +20,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Theo dõi kịch bản & Inbox cá nhân — spec đề xuất P0/P1, chưa triển khai | [Research tracking & Inbox](research-tracking-inbox-spec.md) |
 | Config Lab (thay UI config cũ) | [Spec Config](config-lab-spec.md) |
 | Xếp hạng channel theo feed + PnL thật | [Provider Scorecard](provider-scorecard-spec.md) |
-| Bổ sung biểu đồ dễ đọc cho Báo cáo, Signal, Tổng quan, Terminal và Hệ thống (đề xuất P0–P2) | [Spec trực quan hóa dữ liệu](data-visualization-spec.md) |
+| Biểu đồ dễ đọc: P0 đã làm (Hiệu quả lệnh, Scorecard, Ví); P1/P2 còn đề xuất | [Spec trực quan hóa dữ liệu](data-visualization-spec.md) |
 | Nâng trang Tổng quan (health, uPnL, triage) | [Dashboard overview spec](dashboard-overview-spec.md) |
 | Process env / restart trên tab Hệ thống | [Remote process env admin](remote-process-env-admin-spec.md) — Phase 1 trên `/system` (admin panel) |
 | Terminal Futures cho Bybit, Aster và OKX | [Multi-exchange Futures](multi-exchange-futures-spec.md) |

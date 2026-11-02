@@ -5,6 +5,10 @@ import useDebouncedValue from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth";
 import { ownsBot } from "../access";
 import { useEscape } from "../navigation";
+import HorizontalPnlBars from "../components/charts/HorizontalPnlBars.jsx";
+import DayPnlBars from "../components/charts/DayPnlBars.jsx";
+import PnlCalendar from "../components/charts/PnlCalendar.jsx";
+import "../components/charts/charts.css";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 const ALL_USERS = "__all__";
@@ -140,95 +144,6 @@ function sortGroups(rows, key) {
     if (right == null) return -1;
     return Number(right) - Number(left) || (b.count || 0) - (a.count || 0);
   });
-}
-
-function PnlChart({ series, selectedDay, onSelectDay, timeField }) {
-  const rows = series || [];
-  const activeDays = rows.filter((row) => (row.trades || 0) > 0 || Number(row.profit)).length;
-  const spanDays = rows.length;
-  const slim = Math.min(activeDays || spanDays, spanDays) <= 3 || spanDays <= 3;
-  const tiny = activeDays <= 1 || spanDays <= 1;
-  const width = tiny ? 360 : slim ? 480 : 640;
-  const height = tiny ? 100 : slim ? 140 : 220;
-  const pad = { top: 12, right: 12, bottom: tiny ? 18 : 28, left: tiny ? 40 : 48 };
-  if (!rows.length) {
-    return <div className="card perf-chart empty"><p className="muted">Chưa có chuỗi PnL để vẽ.</p></div>;
-  }
-  const profits = rows.map((row) => Number(row.profit) || 0);
-  const cumulatives = rows.map((row) => Number(row.cumulative) || 0);
-  const minBar = Math.min(0, ...profits);
-  const maxBar = Math.max(0, ...profits);
-  const minLine = Math.min(0, ...cumulatives);
-  const maxLine = Math.max(0, ...cumulatives);
-  const barSpan = maxBar - minBar || 1;
-  const lineSpan = maxLine - minLine || 1;
-  const innerW = width - pad.left - pad.right;
-  const innerH = height - pad.top - pad.bottom;
-  const zeroY = pad.top + ((maxBar - 0) / barSpan) * innerH;
-  const barW = Math.max(2, innerW / Math.max(rows.length, 1) * 0.62);
-  const points = rows.map((row, index) => {
-    const x = pad.left + ((index + 0.5) * innerW) / Math.max(rows.length, 1);
-    const y = pad.top + ((maxLine - (Number(row.cumulative) || 0)) / lineSpan) * innerH;
-    return `${x},${y}`;
-  }).join(" ");
-
-  return (
-    <div className={`card perf-chart${slim ? " compact" : ""}${tiny ? " tiny" : ""}`}>
-      <div className="perf-chart-head">
-        <div>
-          <h2>PnL theo ngày đóng (UTC)</h2>
-          {activeDays > 1 ? (
-            <p className="muted">
-              Đường là PnL lũy kế của tập lệnh đang xem, bắt đầu từ 0 — không phải balance/equity tài khoản.
-              {timeField === "openTime" ? " Đang lọc theo ngày mở; trục vẫn theo ngày đóng của nhóm lệnh đó." : ""}
-            </p>
-          ) : (
-            <p className="muted">Một ngày trong kỳ — cột = PnL ngày (Account Static).</p>
-          )}
-        </div>
-      </div>
-      <svg className="perf-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Biểu đồ PnL theo ngày">
-        <line x1={pad.left} y1={zeroY} x2={width - pad.right} y2={zeroY} className="perf-chart-zero" />
-        {rows.map((row, index) => {
-          const x = pad.left + ((index + 0.5) * innerW) / Math.max(rows.length, 1) - barW / 2;
-          const value = Number(row.profit) || 0;
-          const y = value >= 0
-            ? pad.top + ((maxBar - value) / barSpan) * innerH
-            : zeroY;
-          const h = Math.abs(((value) / barSpan) * innerH);
-          const active = selectedDay === row.day;
-          return (
-            <rect
-              key={row.day}
-              x={x}
-              y={y}
-              width={barW}
-              height={Math.max(h, value === 0 ? 1 : 0)}
-              className={`perf-bar ${value >= 0 ? "up" : "down"}${active ? " active" : ""}`}
-              tabIndex={0}
-              role="button"
-              aria-label={`${row.day}: ${row.trades} lệnh, PnL ngày ${money(row.profit)}, lũy kế ${money(row.cumulative)}`}
-              onClick={() => onSelectDay(selectedDay === row.day ? "" : row.day)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelectDay(selectedDay === row.day ? "" : row.day);
-                }
-              }}
-            >
-              <title>{`${row.day} UTC · ${row.trades} lệnh · ngày ${money(row.profit)} · lũy kế ${money(row.cumulative)}`}</title>
-            </rect>
-          );
-        })}
-        <polyline fill="none" className="perf-line" strokeWidth="2" points={points} />
-        {rows.filter((_, index) => index === 0 || index === rows.length - 1 || index % Math.ceil(rows.length / 6) === 0).map((row, _, list) => {
-          const index = rows.indexOf(row);
-          const x = pad.left + ((index + 0.5) * innerW) / Math.max(rows.length, 1);
-          return <text key={`label-${row.day}`} x={x} y={height - 8} textAnchor="middle" className="perf-chart-label">{row.day.slice(5)}</text>;
-        })}
-      </svg>
-    </div>
-  );
 }
 
 function GroupTable({ rows, nameKey, nameLabel, username, active, onPick, onPeek, sortKey, onSort, book, showIncome }) {
@@ -453,8 +368,9 @@ export default function TradePerformancePage() {
   const [audience, setAudience] = useState("mine");
   const [data, setData] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [groupTab, setGroupTab] = useState("user");
+  const [groupTab, setGroupTab] = useState("signal");
   const [groupSort, setGroupSort] = useState("profit");
+  const [groupChartOpen, setGroupChartOpen] = useState(true);
   const [error, setError] = useState("");
   const [refreshNote, setRefreshNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -486,6 +402,10 @@ export default function TradePerformancePage() {
   const from = params.get("from") || "";
   const to = params.get("to") || "";
   const listDay = params.get("listDay") || "";
+  const listSignal = params.get("listSignal") || "";
+  const listEnv = params.get("listEnv") || "";
+  const listSymbol = params.get("listSymbol") || "";
+  const dayView = params.get("dayView") === "calendar" ? "calendar" : "chart";
   const trade = params.get("trade") || "";
   const tradeUser = params.get("tradeUser") || "";
   const scopeParam = params.get("scope") || "";
@@ -494,6 +414,7 @@ export default function TradePerformancePage() {
   const minPnlText = params.get("minPnl") || "";
   const gain = params.get("gain") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
+  const chartSelection = Boolean(listDay || listSignal || listEnv || listSymbol);
   useEscape(Boolean(peek), () => setPeek(null));
   const debouncedQ = useDebouncedValue(q);
   const debouncedSignal = useDebouncedValue(signalDraft);
@@ -519,7 +440,14 @@ export default function TradePerformancePage() {
       if (value === "" || value == null || value === false) next.delete(key);
       else next.set(key, String(value));
     });
-    if (!Object.hasOwn(values, "page") && !Object.hasOwn(values, "trade") && !Object.hasOwn(values, "listDay")) next.set("page", "1");
+    if (
+      !Object.hasOwn(values, "page")
+      && !Object.hasOwn(values, "trade")
+      && !Object.hasOwn(values, "listDay")
+      && !Object.hasOwn(values, "listSignal")
+      && !Object.hasOwn(values, "listEnv")
+      && !Object.hasOwn(values, "listSymbol")
+    ) next.set("page", "1");
     if (onReports) {
       next.set("tab", "performance");
       next.delete("view");
@@ -546,6 +474,9 @@ export default function TradePerformancePage() {
       from: "",
       to: "",
       listDay: "",
+      listSignal: "",
+      listEnv: "",
+      listSymbol: "",
       trade: "",
       tradeUser: "",
       minWin: "",
@@ -555,6 +486,34 @@ export default function TradePerformancePage() {
       page: "1",
     });
     setSignalDraft("");
+  }
+
+  function clearChartSelection() {
+    update({ listDay: "", listSignal: "", listEnv: "", listSymbol: "", page: "1" });
+  }
+
+  function selectChartGroup(tab, value) {
+    const next = {
+      listDay: "",
+      listSignal: "",
+      listEnv: "",
+      listSymbol: "",
+      page: "1",
+      trade: "",
+      tradeUser: "",
+    };
+    if (tab === "signal") next.listSignal = listSignal === value ? "" : value;
+    else if (tab === "config") next.listEnv = listEnv === value ? "" : value;
+    else if (tab === "symbol") next.listSymbol = listSymbol === value ? "" : value;
+    else if (tab === "user") {
+      update({ username: value, scope: "", env: "", listSignal: "", listEnv: "", listSymbol: "", listDay: "", trade: "", tradeUser: "", page: "1" });
+      return;
+    } else if (tab === "side") {
+      update({ side: side === value ? "" : value, listSignal: "", listEnv: "", listSymbol: "", page: "1" });
+      return;
+    }
+    setGroupTab(tab);
+    update(next);
   }
 
   async function softRefresh() {
@@ -690,6 +649,9 @@ export default function TradePerformancePage() {
     if (profit) query.set("profit", profit);
     if (copy) query.set("copy", copy);
     if (listDay) query.set("listDay", listDay);
+    if (listSignal) query.set("listSignal", listSignal);
+    if (listEnv) query.set("listEnv", listEnv);
+    if (listSymbol) query.set("listSymbol", listSymbol);
     api(`/api/account-statics?${query}`, { signal: controller.signal }).then((result) => {
       if (cancelled || reqId !== requestIdRef.current) return;
       setData(result);
@@ -703,7 +665,7 @@ export default function TradePerformancePage() {
       setRefreshing(false);
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [username, allUsers, audienceScope, scopeParam, env, debouncedQ, side, signal, status, profit, book, copy, closed, timeField, range, from, to, page, listDay, tick]);
+  }, [username, allUsers, audienceScope, scopeParam, env, debouncedQ, side, signal, status, profit, book, copy, closed, timeField, range, from, to, page, listDay, listSignal, listEnv, listSymbol, tick]);
 
   useEffect(() => {
     if (!peek?.username || !peek?.env || !configAllowed) return undefined;
@@ -791,7 +753,6 @@ export default function TradePerformancePage() {
     profit === "loss" ? { key: "profit", label: "Thua", clear: { profit: "" } } : null,
     profit === "flat" ? { key: "profit", label: "Hòa vốn", clear: { profit: "" } } : null,
     timeField === "open" ? { key: "time", label: "Theo ngày mở", clear: { time: "close" } } : { key: "time", label: "Theo ngày đóng", clear: null },
-    listDay ? { key: "listDay", label: `Đang xem lệnh đóng ngày ${listDay}`, clear: { listDay: "" } } : null,
     groupRules.minWin != null ? { key: "minWin", label: `WR nhóm ≥ ${groupRules.minWin}%`, clear: { minWin: "" } } : null,
     groupRules.minTrades != null ? { key: "minTrades", label: `≥ ${groupRules.minTrades} lệnh/nhóm`, clear: { minTrades: "" } } : null,
     groupRules.minPnl != null ? { key: "minPnl", label: `PnL nhóm ≥ ${groupRules.minPnl}`, clear: { minPnl: "" } } : null,
@@ -812,6 +773,35 @@ export default function TradePerformancePage() {
       : groupTab === "symbol" ? "symbol"
         : groupTab === "side" ? "side"
           : "signal";
+  const chartGroupSelected = groupTab === "config" ? listEnv
+    : groupTab === "symbol" ? listSymbol
+      : groupTab === "signal" ? listSignal
+        : "";
+  const chartGroupTitle = groupTab === "config"
+    ? "Config nào đóng góp PnL nhiều nhất?"
+    : groupTab === "symbol"
+      ? "Symbol nào đóng góp PnL nhiều nhất?"
+      : groupTab === "user"
+        ? "Tài khoản nào đóng góp PnL nhiều nhất?"
+        : groupTab === "side"
+          ? "Long/Short đóng góp PnL ra sao?"
+          : "Signal nào đóng góp PnL nhiều nhất?";
+  const seriesLen = (data?.series || []).length;
+  const preferCalendar = seriesLen >= 7 && seriesLen <= 90;
+
+  useEffect(() => {
+    if (!data?.stats) return;
+    const signals = new Set((data.stats.bySignal || []).map((row) => row.signal));
+    const envs = new Set((data.stats.byConfig || []).map((row) => row.env));
+    const symbols = new Set((data.stats.bySymbol || []).map((row) => row.symbol));
+    const days = new Set((data.series || []).map((row) => row.day));
+    const patch = {};
+    if (listSignal && !signals.has(listSignal)) patch.listSignal = "";
+    if (listEnv && !envs.has(listEnv)) patch.listEnv = "";
+    if (listSymbol && !symbols.has(listSymbol)) patch.listSymbol = "";
+    if (listDay && days.size && !days.has(listDay)) patch.listDay = "";
+    if (Object.keys(patch).length) update(patch);
+  }, [data?.generatedAt, listSignal, listEnv, listSymbol, listDay]);
   const formulas = data?.formulas || {};
   const resultFilterNote = [
     groupRules.minWin != null ? `WR ≥ ${groupRules.minWin}%` : "",
@@ -946,32 +936,111 @@ export default function TradePerformancePage() {
                 />
               </div>
 
-              <div className="perf-analysis">
-                <div className="perf-analysis-main">
-                  <PnlChart
-                    series={data?.series || []}
-                    selectedDay={listDay}
-                    timeField={data?.timeField}
-                    onSelectDay={(day) => update({ listDay: day, page: "1" })}
-                  />
+              <div className="dv-chart-grid two">
+                <div className={`dv-group-collapsible${groupChartOpen ? "" : " collapsed"}`}>
+                  <div className="dv-shell-actions" style={{ marginBottom: 8 }}>
+                    <button type="button" className="ghost" onClick={() => setGroupChartOpen((open) => !open)}>
+                      {groupChartOpen ? "Thu gọn chart nhóm" : "Mở chart nhóm"}
+                    </button>
+                  </div>
+                  {groupChartOpen ? (
+                    <HorizontalPnlBars
+                      title={chartGroupTitle}
+                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · lệnh đóng · sổ ${book === "paper" ? "Paper" : "Live"} · UTC`}
+                      rows={groupRows}
+                      nameKey={groupNameKey}
+                      selected={chartGroupSelected}
+                      onSelect={(value) => selectChartGroup(groupTab, value)}
+                      loading={false}
+                    />
+                  ) : null}
                 </div>
-                <aside className="card perf-insights">
-                  <h2>Điểm đáng chú ý</h2>
-                  <p className="muted">Nhận xét theo quy tắc — mô tả số liệu, không khuyên tăng vốn.</p>
-                  {(data?.insights || []).length === 0 ? <p className="muted">Không đủ điều kiện để tạo nhận xét.</p> : null}
-                  <ul>
-                    {(data?.insights || []).map((item) => (
-                      <li key={item.code}>
-                        <strong>{item.title}</strong>
-                        <p>{item.text}</p>
-                        {item.action?.type === "signal" ? <button type="button" className="ghost" onClick={() => update({ signal: item.action.value })}>Xem signal</button> : null}
-                        {item.action?.type === "env" ? <button type="button" className="ghost" onClick={() => update({ env: item.action.value })}>Xem config</button> : null}
-                        {item.action?.type === "side" ? <button type="button" className="ghost" onClick={() => update({ side: item.action.value })}>Xem {item.action.value}</button> : null}
-                      </li>
-                    ))}
-                  </ul>
-                </aside>
+                <div>
+                  <div className="dv-mode-tabs" role="group" aria-label="Chế độ PnL theo ngày" style={{ marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className={dayView === "chart" ? "active" : "ghost"}
+                      aria-pressed={dayView === "chart"}
+                      onClick={() => update({ dayView: "chart" })}
+                    >
+                      Biểu đồ
+                    </button>
+                    <button
+                      type="button"
+                      className={dayView === "calendar" ? "active" : "ghost"}
+                      aria-pressed={dayView === "calendar"}
+                      onClick={() => update({ dayView: "calendar" })}
+                      title={preferCalendar ? "Kỳ 7–90 ngày phù hợp lịch" : seriesLen < 7 ? "Dưới 7 ngày: ưu tiên biểu đồ cột" : "Trên 90 ngày: cân nhắc bucket tháng/tuần"}
+                    >
+                      Lịch PnL
+                    </button>
+                  </div>
+                  {dayView === "calendar" ? (
+                    <PnlCalendar
+                      series={data?.series || []}
+                      selectedDay={listDay}
+                      onSelectDay={(day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })}
+                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · ngày đóng · UTC`}
+                    />
+                  ) : (
+                    <DayPnlBars
+                      series={data?.series || []}
+                      selectedDay={listDay}
+                      timeField={data?.timeField}
+                      onSelectDay={(day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })}
+                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · PnL lũy kế lệnh từ 0 · UTC`}
+                    />
+                  )}
+                </div>
               </div>
+
+              {chartSelection ? (
+                <div className="dv-selection-bar card" aria-label="Lựa chọn biểu đồ">
+                  <span className="muted">Chi tiết theo chart:</span>
+                  {listSignal ? (
+                    <span className="perf-chip">
+                      Signal {listSignal}
+                      <button type="button" aria-label="Bỏ chọn signal" onClick={() => update({ listSignal: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  {listEnv ? (
+                    <span className="perf-chip">
+                      Config {listEnv}
+                      <button type="button" aria-label="Bỏ chọn config" onClick={() => update({ listEnv: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  {listSymbol ? (
+                    <span className="perf-chip">
+                      Symbol {listSymbol}
+                      <button type="button" aria-label="Bỏ chọn symbol" onClick={() => update({ listSymbol: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  {listDay ? (
+                    <span className="perf-chip">
+                      Ngày {listDay} UTC
+                      <button type="button" aria-label="Bỏ chọn ngày" onClick={() => update({ listDay: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  <button type="button" className="ghost" onClick={clearChartSelection}>Bỏ chọn biểu đồ</button>
+                </div>
+              ) : null}
+
+              <aside className="card perf-insights">
+                <h2>Điểm đáng chú ý</h2>
+                <p className="muted">Nhận xét theo quy tắc — mô tả số liệu, không khuyên tăng vốn.</p>
+                {(data?.insights || []).length === 0 ? <p className="muted">Không đủ điều kiện để tạo nhận xét.</p> : null}
+                <ul>
+                  {(data?.insights || []).map((item) => (
+                    <li key={item.code}>
+                      <strong>{item.title}</strong>
+                      <p>{item.text}</p>
+                      {item.action?.type === "signal" ? <button type="button" className="ghost" onClick={() => update({ signal: item.action.value })}>Lọc nền signal</button> : null}
+                      {item.action?.type === "env" ? <button type="button" className="ghost" onClick={() => update({ env: item.action.value })}>Lọc nền config</button> : null}
+                      {item.action?.type === "side" ? <button type="button" className="ghost" onClick={() => update({ side: item.action.value })}>Xem {item.action.value}</button> : null}
+                    </li>
+                  ))}
+                </ul>
+              </aside>
 
               <section className="card perf-groups">
                 <div className="perf-tabs" role="tablist" aria-label="Nhóm phân tích">
@@ -988,7 +1057,7 @@ export default function TradePerformancePage() {
                 <p className="muted">
                   {groupRows.length}/{rawGroupRows.length} nhóm
                   {resultFilterNote ? ` · lọc kết quả: ${resultFilterNote}` : " · chưa lọc kết quả nhóm"}.
-                  Bấm một nhóm để lọc danh sách lệnh (giữ sổ {book === "paper" ? "Paper" : "Live"} và kỳ hiện tại).
+                  Bấm nhóm/ngày trên chart chỉ lọc bảng lệnh bên dưới — KPI và chart nền giữ nguyên (sổ {book === "paper" ? "Paper" : "Live"}).
                   {(groupTab === "user" || groupTab === "config")
                     ? " PnL Static = profit lệnh account_statics; Income DB = trading income futures_profits (gần /i) cùng kỳ UTC."
                     : ""}
@@ -1000,19 +1069,13 @@ export default function TradePerformancePage() {
                   username={allUsers ? "" : username}
                   book={book}
                   showIncome={groupTab === "user" || groupTab === "config"}
-                  active={groupTab === "config" ? env : groupTab === "signal" ? signal : groupTab === "side" ? side : groupTab === "user" ? "" : q}
+                  active={groupTab === "config" ? (listEnv || env) : groupTab === "signal" ? (listSignal || signal) : groupTab === "side" ? side : groupTab === "user" ? "" : (listSymbol || q)}
                   sortKey={groupSort === "avgProfit" || groupSort === "volume" || groupSort === "income" ? groupSort : groupSort}
                   onSort={setGroupSort}
                   onPeek={groupTab === "config" && configAllowed
                     ? (value, row) => openConfigPeek(value, row?.username)
                     : null}
-                  onPick={(value) => {
-                    if (groupTab === "user") update({ username: value, scope: "", env: "", trade: "", tradeUser: "" });
-                    else if (groupTab === "signal") update({ signal: signal === value ? "" : value });
-                    else if (groupTab === "config") update({ env: env === value ? "" : value });
-                    else if (groupTab === "side") update({ side: side === value ? "" : value });
-                    else update({ q: q === value ? "" : value });
-                  }}
+                  onPick={(value) => selectChartGroup(groupTab, value)}
                 />
               </section>
 
@@ -1021,8 +1084,11 @@ export default function TradePerformancePage() {
                   <h2>Danh sách lệnh</h2>
                   <p className="muted">
                     Phân trang phía server · {data?.listTotal ?? data?.total ?? 0} lệnh
-                    {listDay ? ` · đang xem ngày đóng ${listDay}` : ""}.
-                    Tổng kết phía trên không đổi khi sang trang.
+                    {listDay ? ` · ngày đóng ${listDay}` : ""}
+                    {listSignal ? ` · signal ${listSignal}` : ""}
+                    {listEnv ? ` · config ${listEnv}` : ""}
+                    {listSymbol ? ` · symbol ${listSymbol}` : ""}
+                    {chartSelection ? " · KPI/chart phía trên vẫn theo filter nền." : ""}.
                   </p>
                 </div>
                 <div className="perf-trades-layout">

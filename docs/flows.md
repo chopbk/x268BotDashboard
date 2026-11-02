@@ -52,7 +52,7 @@ Config: `/config-lab` → GET `/api/bots/assigned-configs` → tạo/bulk/xoá a
 
 Phân biệt mode new/replace/sync. User xem được nguồn chưa chắc sửa được đích. Tab Thống kê/Cấu hình Signal gọi [signal-setup](../server/src/lib/signal-setup.js), không đi qua config-search.
 
-**Provider Scorecard** (`tab=scorecard`): [SignalScorecardPanel](../client/src/pages/SignalScorecardPanel.jsx) → GET `/api/provider-scorecard` → [provider-scorecard](../server/src/lib/provider-scorecard.js) → đếm feed `signal_infos` (nếu `signals.history`) + group trades `account_statics` theo `typeSignal` trong scope bot (nếu `statistics.view`) → gắn cờ channel từ `telegram_clients` → bảng xếp hạng. Không ghi Mongo. Chi tiết [spec](provider-scorecard-spec.md).
+**Provider Scorecard** (`tab=scorecard`): [SignalScorecardPanel](../client/src/pages/SignalScorecardPanel.jsx) → GET `/api/provider-scorecard` → [provider-scorecard](../server/src/lib/provider-scorecard.js) → đếm feed `signal_infos` (nếu `signals.history`) + group trades `account_statics` theo `typeSignal` trong scope bot (nếu `statistics.view`) → gắn cờ channel từ `telegram_clients` → bar xếp hạng / bubble + bảng. Channel chưa có lệnh: `winRate=null`, không đặt vào bubble như hòa vốn. Không ghi Mongo. Chi tiết [spec](provider-scorecard-spec.md), [trực quan hóa P0](data-visualization-spec.md).
 
 ## 4. Position live
 
@@ -106,7 +106,7 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 ## 6. Lãi lỗ ví và AI
 
-[AccountLedgerPage](../client/src/pages/AccountLedgerPage.jsx) → GET `/api/account-ledger` đọc DB. Nút **Cập nhật hôm nay**: một user → POST `/:username/refresh`; Tất cả → POST `/refresh-all` → [refreshCombinedLedgers](../server/src/lib/account-ledger.js) lần lượt từng ví (thiếu API key thì ghi failed, không dừng batch) → ghi `futures_profits` → trả ledger tổng hợp. Tab Hiệu quả lệnh **Làm mới** (sổ Live) cũng gọi refresh income hôm nay rồi tải lại `account-statics` (cột Income DB). Không trả API key cho browser.
+[AccountLedgerPage](../client/src/pages/AccountLedgerPage.jsx) → GET `/api/account-ledger` đọc DB → chart số dư và Trading/dòng tiền (trục, tooltip, gap khi thiếu snapshot, bảng “Xem dữ liệu”). Nút **Cập nhật hôm nay**: một user → POST `/:username/refresh`; Tất cả → POST `/refresh-all` → [refreshCombinedLedgers](../server/src/lib/account-ledger.js) lần lượt từng ví (thiếu API key thì ghi failed, không dừng batch) → ghi `futures_profits` → trả ledger tổng hợp. Tab Hiệu quả lệnh **Làm mới** (sổ Live) cũng gọi refresh income hôm nay rồi tải lại `account-statics` (cột Income DB); chart nhóm/ngày dùng selection `list*` chỉ lọc bảng. Không trả API key cho browser. P0 chart: [data-visualization-spec](data-visualization-spec.md).
 
 [DashboardPage](../client/src/pages/DashboardPage.jsx) → GET `/api/dashboard` (cache memory theo actor; `?refresh=1` tính lại; client sessionStorage 60s) → [dashboard](../server/src/lib/dashboard.js): bot scope + series 7 ngày profit/income + compare hôm qua + heartbeat + uPnL Redis + activity + attention (severity, lọc noise). POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) → [dashboard-brief](../server/src/lib/dashboard-brief.js). Timeout 12 giây; rate limit 15 giây/user.
 

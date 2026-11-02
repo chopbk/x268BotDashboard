@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P0 chart fixture · web-bot</title>
+  <style>
+    :root {
+      --surface: #161e2e; --surface-2: #1e293b; --line: #334155; --text: #e2e8f0;
+      --muted: #94a3b8; --accent: #f59e0b; --ok: #34d399; --danger: #f87171; --ink: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; background: #0b1220; color: var(--text); }
+    .page { padding: 16px; display: grid; gap: 12px; max-width: 1440px; margin: 0 auto; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+    h1 { margin: 0; font-size: 1.25rem; }
+    h2 { margin: 0 0 6px; font-size: 1rem; }
+    .muted { color: var(--muted); font-size: 0.82rem; }
+    .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+    @media (min-width: 1200px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+    .hbar { display: grid; gap: 6px; }
+    .row { display: grid; grid-template-columns: 90px 1fr 70px; gap: 8px; align-items: center; font-size: 0.85rem; }
+    .track { position: relative; height: 14px; background: var(--surface-2); border-radius: 4px; }
+    .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
+    .bar { position: absolute; top: 2px; height: 10px; border-radius: 2px; }
+    .bar.pos { left: 50%; background: color-mix(in srgb, var(--ok) 70%, transparent); }
+    .bar.neg { right: 50%; background: color-mix(in srgb, var(--danger) 70%, transparent); }
+    .pos { color: var(--ok); } .neg { color: var(--danger); }
+    .cal { display: grid; gap: 4px; }
+    .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cell { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); font-size: 0.7rem; padding: 2px; }
+    .p5 { background: color-mix(in srgb, var(--ok) 80%, var(--surface)); }
+    .p3 { background: color-mix(in srgb, var(--ok) 50%, var(--surface)); }
+    .n4 { background: color-mix(in srgb, var(--danger) 65%, var(--surface)); }
+    .z { background: color-mix(in srgb, var(--muted) 25%, var(--surface)); }
+    .chip { display: inline-flex; gap: 6px; border: 1px solid var(--accent); border-radius: 999px; padding: 3px 9px; font-size: 0.8rem; }
+    .badge { font-size: 0.68rem; border: 1px solid #fbbf24; color: #fbbf24; border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+    svg { width: 100%; height: auto; max-height: 240px; display: block; }
+    .section-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="page" id="fixture">
+    <header class="card">
+      <p class="section-label">Fixture P0 · không phải dữ liệu production</p>
+      <h1>Hiệu quả lệnh · chart P0</h1>
+      <p class="muted">30 ngày · USDT · lệnh đóng · UTC · cập nhật 2026-11-02</p>
+      <p><span class="chip">Signal SIGNAL_A ×</span> <span class="chip">Ngày 2026-10-28 UTC ×</span> <button type="button">Bỏ chọn biểu đồ</button></p>
+    </header>
+    <div class="grid two">
+      <section class="card" id="group-chart">
+        <h2>Signal nào đóng góp PnL nhiều nhất?</h2>
+        <p class="muted">Top 3/5 nhóm theo |PnL| · USDT · UTC</p>
+        <p><strong>SIGNAL_A đóng góp +120.00 USDT từ 35 lệnh</strong></p>
+        <div class="hbar">
+          <div class="row"><span>SIGNAL_A</span><span class="track"><span class="zero"></span><span class="bar pos" style="width:50%"></span></span><span class="pos">+120$</span></div>
+          <div class="row"><span>SIGNAL_B<span class="badge">Ít dữ liệu</span></span><span class="track"><span class="zero"></span><span class="bar neg" style="width:35%"></span></span><span class="neg">−84$</span></div>
+          <div class="row"><span>SIGNAL_C</span><span class="track"><span class="zero"></span><span class="bar pos" style="width:18%"></span></span><span class="pos">+42$</span></div>
+        </div>
+      </section>
+      <section class="card" id="day-chart">
+        <h2>Ngày nào lãi/lỗ nhiều nhất?</h2>
+        <p class="muted">Lịch PnL · USDT · UTC</p>
+        <div class="cal">
+          <div class="week muted"><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span></div>
+          <div class="week">
+            <span class="cell z">26</span><span class="cell p3">27</span><span class="cell n4">28</span><span class="cell p5">29</span><span class="cell z">30</span><span class="cell z">31</span><span class="cell p3">01</span>
+          </div>
+        </div>
+      </section>
+    </div>
+    <section class="card" id="score-chart">
+      <p class="section-label">Scorecard</p>
+      <h2>Win rate và profit quan hệ thế nào?</h2>
+      <p class="muted">X = win rate · Y = profit · diện tích = số lệnh · UTC</p>
+      <svg viewBox="0 0 640 240" role="img" aria-label="Bubble fixture">
+        <line x1="52" y1="120" x2="620" y2="120" stroke="#334155" stroke-dasharray="4 4" />
+        <circle cx="420" cy="70" r="28" fill="color-mix(in srgb, #34d399 45%, transparent)" stroke="#f59e0b" stroke-width="2" />
+        <text x="420" y="38" text-anchor="middle" fill="#e2e8f0" font-size="11">SIGNAL_A</text>
+        <circle cx="180" cy="160" r="16" fill="color-mix(in srgb, #f87171 45%, transparent)" stroke="#334155" stroke-dasharray="3 2" />
+        <text x="52" y="230" fill="#94a3b8" font-size="10">0%</text>
+        <text x="620" y="230" text-anchor="end" fill="#94a3b8" font-size="10">100%</text>
+      </svg>
+    </section>
+    <section class="card" id="ledger-chart">
+      <p class="section-label">Ví & dòng tiền</p>
+      <h2>Số dư ví thay đổi thế nào?</h2>
+      <p class="muted">2026-10-01 → 2026-11-02 UTC · USDT · gap = thiếu snapshot</p>
+      <svg viewBox="0 0 640 200" role="img" aria-label="Balance fixture">
+        <polyline fill="none" stroke="#f59e0b" stroke-width="2" points="52,140 150,120 250,90 350,100" />
+        <line x1="450" y1="20" x2="450" y2="180" stroke="#94a3b8" stroke-dasharray="3 4" />
+        <polyline fill="none" stroke="#f59e0b" stroke-width="2" points="520,110 620,80" />
+        <text x="450" y="195" text-anchor="middle" fill="#94a3b8" font-size="10">gap</text>
+      </svg>
+    </section>
+  </div>
+</body>
+</html>
