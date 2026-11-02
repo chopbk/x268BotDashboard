@@ -1349,6 +1349,8 @@ export default function TerminalPage() {
                 <RiskCockpit
                   account={selectedRow?.account || account}
                   canManage={perms.canRiskManage}
+                  selectedSymbol={(params.get("symbol") || "").toUpperCase()}
+                  onSelectSymbol={(symbol) => setFilter("symbol", symbol || "")}
                 />
               </div>
             </div>

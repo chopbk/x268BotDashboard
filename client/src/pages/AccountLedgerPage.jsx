@@ -4,6 +4,7 @@ import { api } from "../api";
 import AccountRiskAi from "../components/AccountRiskAi";
 import LedgerAttribution from "../components/LedgerAttribution";
 import TimeSeriesLines from "../components/charts/TimeSeriesLines.jsx";
+import IncomeWaterfall from "../components/charts/IncomeWaterfall.jsx";
 import "../components/charts/charts.css";
 
 function money(value) {
@@ -401,6 +402,17 @@ export default function AccountLedgerPage() {
                 { key: "trading", label: "Trading PnL cộng dồn", className: "dv-ts-line trade", legendClass: "trade" },
                 { key: "cash", label: "Nạp/rút/chuyển cộng dồn", className: "dv-ts-line cash", legendClass: "cash" },
               ]}
+            />
+          </div>
+
+          <div className="dv-chart-grid" style={{ marginBottom: 16 }}>
+            <IncomeWaterfall
+              title="Income trading tách thành phần thế nào?"
+              subtitle={`${data.from} → ${data.to} UTC · USDT · chỉ bật khi mọi ngày có incomeByType và đối soát khớp · không gồm uPnL`}
+              breakdown={data.incomeBreakdown}
+              from={data.from}
+              to={data.to}
+              loading={loading && !data}
             />
           </div>
           <div className="stats-grid">

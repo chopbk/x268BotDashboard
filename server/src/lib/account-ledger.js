@@ -82,13 +82,24 @@ function ledgerEnv(user) {
 }
 
 function classifyIncome(incomeByType) {
-    const out = { trading: 0, fee: 0, funding: 0, rebate: 0, cashIn: 0, cashOut: 0, transferIn: 0, transferOut: 0, conversion: 0 };
+    const out = {
+        trading: 0,
+        realizedPnl: 0,
+        fee: 0,
+        funding: 0,
+        rebate: 0,
+        cashIn: 0,
+        cashOut: 0,
+        transferIn: 0,
+        transferOut: 0,
+        conversion: 0,
+    };
     for (const [type, raw] of Object.entries(incomeByType || {})) {
         const value = toNum(raw);
         const name = String(type).toUpperCase();
         if (name === "COMMISSION") out.fee += value;
         else if (name === "FUNDING_FEE") out.funding += value;
-        else if (name === "REALIZED_PNL") out.trading += value;
+        else if (name === "REALIZED_PNL") out.realizedPnl += value;
         else if (TRADING_TYPES.has(name)) out.rebate += value;
         else if (CONVERSION_TYPES.has(name)) out.conversion += value;
         else if (CASH_TYPES.has(name)) {
@@ -100,7 +111,8 @@ function classifyIncome(incomeByType) {
             }
         }
     }
-    out.trading += out.fee + out.funding + out.rebate;
+    // trading = net trading income (realized + fee + funding + rebate). Không dùng fallback profit ở đây.
+    out.trading = out.realizedPnl + out.fee + out.funding + out.rebate;
     return out;
 }
 
@@ -120,6 +132,8 @@ function dayRow(doc) {
         funding: r3(hasTypes ? classified.funding : doc.funding),
         rebate: r3(hasTypes ? classified.rebate : doc.ref),
         trading: r3(hasTypes ? classified.trading : doc.profit),
+        realizedPnl: hasTypes ? r3(classified.realizedPnl) : null,
+        incomeTyped: !!hasTypes,
         cashIn: r3(wallet.cashIn != null ? wallet.cashIn : classified.cashIn),
         cashOut: r3(wallet.cashOut != null ? wallet.cashOut : classified.cashOut),
         transferIn: r3(wallet.transferIn != null ? wallet.transferIn : classified.transferIn),
@@ -152,6 +166,15 @@ function mergeDayRows(rows) {
         }
     }
     const asOf = source.map((row) => row.asOf).filter(Boolean).sort().at(-1) || null;
+    const typedFlags = source.map((row) => (
+        row.incomeTyped != null
+            ? !!row.incomeTyped
+            : Object.keys(row.incomeByType || {}).length > 0
+    ));
+    const incomeTyped = typedFlags.length > 0 && typedFlags.every(Boolean);
+    const realizedPnl = incomeTyped
+        ? r3(source.reduce((sum, row) => sum + toNum(row.realizedPnl != null ? row.realizedPnl : classifyIncome(row.incomeByType).realizedPnl), 0))
+        : null;
     return {
         ymd: source[0].ymd,
         balance: sumPresent(source.map((row) => row.balance)),
@@ -160,6 +183,8 @@ function mergeDayRows(rows) {
         funding: r3(source.reduce((sum, row) => sum + toNum(row.funding), 0)),
         rebate: r3(source.reduce((sum, row) => sum + toNum(row.rebate), 0)),
         trading: r3(source.reduce((sum, row) => sum + toNum(row.trading), 0)),
+        realizedPnl,
+        incomeTyped,
         cashIn: r3(source.reduce((sum, row) => sum + toNum(row.cashIn), 0)),
         cashOut: r3(source.reduce((sum, row) => sum + toNum(row.cashOut), 0)),
         transferIn: r3(source.reduce((sum, row) => sum + toNum(row.transferIn), 0)),
@@ -173,6 +198,66 @@ function mergeDayRows(rows) {
         dbBalanceBefore: sumPresent(source.map((row) => row.dbBalanceBefore)),
         asOf,
         cashEntries: source.flatMap((row) => row.cashEntries || []).slice(-80),
+    };
+}
+
+/**
+ * Coverage typed + thành phần waterfall không trùng.
+ * waterfallEligible chỉ khi mọi ngày typed và realized+fee+funding+rebate === trading.
+ */
+function buildIncomeBreakdown(days) {
+    const list = days || [];
+    const totalDays = list.length;
+    const typedDays = list.filter((day) => day.incomeTyped).length;
+    const legacyDays = totalDays - typedDays;
+    let quality = "empty";
+    if (totalDays === 0) quality = "empty";
+    else if (typedDays === totalDays) quality = "complete";
+    else if (typedDays === 0) quality = "legacy";
+    else quality = "mixed";
+
+    const cashComponents = {
+        cashIn: r3(list.reduce((sum, day) => sum + toNum(day.cashIn), 0)),
+        cashOut: r3(list.reduce((sum, day) => sum + toNum(day.cashOut), 0)),
+    };
+
+    const coverage = { typedDays, legacyDays, totalDays, quality };
+    if (quality !== "complete") {
+        return {
+            coverage,
+            waterfallEligible: false,
+            components: null,
+            cashComponents,
+            note: quality === "empty"
+                ? "Chưa có ngày trong kỳ."
+                : "Chưa đủ dữ liệu tách phí/funding cho toàn kỳ",
+        };
+    }
+
+    const realizedPnl = r3(list.reduce((sum, day) => sum + toNum(day.realizedPnl), 0));
+    const fee = r3(list.reduce((sum, day) => sum + toNum(day.fee), 0));
+    const funding = r3(list.reduce((sum, day) => sum + toNum(day.funding), 0));
+    const rebate = r3(list.reduce((sum, day) => sum + toNum(day.rebate), 0));
+    const netTrading = r3(realizedPnl + fee + funding + rebate);
+    const expectedTrading = r3(list.reduce((sum, day) => sum + toNum(day.trading), 0));
+    const reconciled = Math.abs(netTrading - expectedTrading) < 0.002;
+
+    if (!reconciled) {
+        return {
+            coverage,
+            waterfallEligible: false,
+            components: null,
+            cashComponents,
+            note: "Thành phần typed chưa đối soát khớp tổng trading — ẩn waterfall",
+        };
+    }
+
+    return {
+        coverage,
+        waterfallEligible: true,
+        components: { realizedPnl, fee, funding, rebate, netTrading },
+        cashComponents,
+        note: null,
     };
 }
 
@@ -272,6 +357,7 @@ function summarizeFromDays(days, staticProfit = 0) {
             diff: exchange == null || last?.dbBalanceBefore == null ? null : r3(exchange - last.dbBalanceBefore),
         },
         flows: (days || []).filter((day) => day.cashIn || day.cashOut || day.conversion || day.cashEntries.length),
+        incomeBreakdown: buildIncomeBreakdown(days),
     };
 }
 
@@ -464,6 +550,7 @@ async function loadLedger(actor, query = {}) {
         live: summary.live,
         compare: summary.compare,
         flows: summary.flows,
+        incomeBreakdown: summary.incomeBreakdown,
         attribution,
     };
 }
@@ -522,6 +609,7 @@ async function loadCombinedLedger(actor, query = {}) {
         live: rebuilt.live,
         compare: rebuilt.compare,
         flows: rebuilt.flows,
+        incomeBreakdown: rebuilt.incomeBreakdown,
         attribution,
     };
 }
@@ -793,6 +881,7 @@ module.exports = {
     usersForAudience,
     assignedUsers,
     classifyIncome,
+    buildIncomeBreakdown,
     summarizeLedger,
     loadLedger,
     loadCombinedLedger,

@@ -1702,6 +1702,31 @@ main:has(.term-screen) {
   display: grid;
   gap: 8px;
 }
+.term-risk-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.term-risk-stale {
+  margin: 0;
+  font-size: 12px;
+  color: #c9a227;
+}
+.term-risk-share,
+.term-risk-symbols {
+  display: grid;
+  gap: 6px;
+}
+.term-risk-share-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.term-risk-net {
+  margin: 0;
+  font-size: 11px;
+}
 .term-risk-metrics {
   margin: 0;
   padding-left: 1.1rem;

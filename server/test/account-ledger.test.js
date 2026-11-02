@@ -180,11 +180,36 @@ test("stored days separate trading pnl from cash flow", () => {
         },
     ], 10);
     assert.equal(summary.days[0].trading, 12);
+    assert.equal(summary.days[0].realizedPnl, 13.1);
+    assert.equal(summary.days[0].incomeTyped, true);
     assert.equal(summary.days[0].cashIn, 50);
     assert.equal(summary.days[0].cashOut, -20);
     assert.equal(summary.totals.staticProfit, 10);
     assert.equal(summary.totals.staticDiff, 2);
     assert.equal(summary.flows.length, 1);
+    assert.equal(summary.incomeBreakdown.waterfallEligible, true);
+    assert.equal(summary.incomeBreakdown.components.realizedPnl, 13.1);
+    assert.equal(summary.incomeBreakdown.components.netTrading, 12);
+    assert.equal(summary.incomeBreakdown.cashComponents.cashIn, 50);
+});
+
+test("incomeBreakdown ẩn waterfall khi kỳ mixed typed/legacy", () => {
+    const { buildIncomeBreakdown } = require("../src/lib/account-ledger");
+    const mixed = buildIncomeBreakdown([
+        { incomeTyped: true, realizedPnl: 10, fee: -1, funding: 0, rebate: 0, trading: 9, cashIn: 0, cashOut: 0 },
+        { incomeTyped: false, realizedPnl: null, fee: 0, funding: 0, rebate: 0, trading: 3, cashIn: 5, cashOut: 0 },
+    ]);
+    assert.equal(mixed.coverage.quality, "mixed");
+    assert.equal(mixed.waterfallEligible, false);
+    assert.equal(mixed.components, null);
+    assert.match(mixed.note, /Chưa đủ dữ liệu/);
+    assert.equal(mixed.cashComponents.cashIn, 5);
+
+    const legacy = buildIncomeBreakdown([
+        { incomeTyped: false, trading: 2, fee: 0, funding: 0, rebate: 0, cashIn: 0, cashOut: 0 },
+    ]);
+    assert.equal(legacy.coverage.quality, "legacy");
+    assert.equal(legacy.waterfallEligible, false);
 });
 
 test("refresh stores today's exchange wallet and does not return the API secret", async () => {

@@ -559,11 +559,200 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
   }
 }
 
+/* Long/Short share + exposure (Terminal Risk) — category colors, not PnL tone */
+.dv-share-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--muted) 15%, var(--surface));
+}
+
+.dv-share-seg {
+  display: block;
+  min-width: 0;
+  height: 100%;
+}
+
+.dv-share-seg.long,
+.dv-share-swatch.long {
+  background: #2563eb;
+}
+
+.dv-share-seg.short,
+.dv-share-swatch.short {
+  background: #d97706;
+}
+
+.dv-share-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.78rem;
+}
+
+.dv-share-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.dv-exposure-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dv-exposure-hit {
+  display: grid;
+  grid-template-columns: minmax(56px, 28%) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dv-exposure-hit.active,
+.dv-exposure-hit:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.dv-exposure-label {
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-exposure-track {
+  position: relative;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--muted) 18%, var(--surface));
+  overflow: hidden;
+}
+
+.dv-exposure-bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: color-mix(in srgb, #2563eb 70%, var(--muted));
+}
+
+.dv-exposure-bar.other {
+  background: color-mix(in srgb, var(--muted) 55%, var(--surface));
+}
+
+.dv-exposure-value {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Income waterfall */
+.dv-waterfall {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dv-waterfall-hit {
+  display: grid;
+  grid-template-columns: minmax(88px, 32%) minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: help;
+  position: relative;
+}
+
+.dv-waterfall-row {
+  position: relative;
+}
+
+.dv-waterfall-label {
+  font-size: 0.8rem;
+}
+
+.dv-waterfall-track {
+  position: relative;
+  height: 12px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--muted) 12%, var(--surface));
+  overflow: hidden;
+}
+
+.dv-waterfall-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.dv-waterfall-bar.pos {
+  background: color-mix(in srgb, var(--ok) 70%, var(--surface));
+}
+
+.dv-waterfall-bar.neg {
+  background: color-mix(in srgb, var(--danger) 70%, var(--surface));
+}
+
+.dv-waterfall-bar.net {
+  outline: 1px solid var(--line);
+}
+
+.dv-waterfall-value {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dv-waterfall-meta {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.dv-waterfall-row.net .dv-waterfall-hit {
+  border-top: 1px dashed var(--line);
+  margin-top: 4px;
+  padding-top: 8px;
+  font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dv-shell,
   .dv-hbar-bar,
   .dv-day-bar,
-  .dv-bubble {
+  .dv-bubble,
+  .dv-exposure-bar,
+  .dv-waterfall-bar,
+  .dv-share-seg {
     transition: none !important;
   }
 }
