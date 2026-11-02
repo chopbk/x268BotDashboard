@@ -1,7 +1,7 @@
 const express = require("express");
-const { requireAuth, requirePermission } = require("../middleware/auth");
+const { requireAuth, requirePermission, canAccessBot } = require("../middleware/auth");
 const { PERMISSIONS } = require("../auth/access-control");
-const { sendError } = require("../lib/http");
+const { sendError, httpError } = require("../lib/http");
 const {
     createTrack,
     listTracks,
@@ -45,10 +45,23 @@ router.patch("/tracks/:id", requireAuth, requirePermission(PERMISSIONS.MARKET_VI
     }
 });
 
-/** Worker/test hook — đánh giá observation (không gọi sàn). */
+/**
+ * Observation user-facing: chỉ owner.
+ * Không nhận entryTouched/setupStatus từ client — producer nội bộ gọi lib trực tiếp.
+ */
 router.post("/tracks/:id/observe", requireAuth, requirePermission(PERMISSIONS.MARKET_VIEW), async (req, res) => {
     try {
-        res.json(await evaluateTrackObservation(req.params.id, req.body || {}));
+        const observation = {
+            quality: req.body?.quality,
+            missing: req.body?.missing === true,
+            candleClosed: false,
+            // Cấm client tự tạo inbox/terminal
+            entryTouched: false,
+            setupStatus: undefined,
+            source: "user_poll",
+            trustedProducer: false,
+        };
+        res.json(await evaluateTrackObservation(req.params.id, observation, req.webUser));
     } catch (error) {
         sendError(res, error, "POST /api/research/tracks/:id/observe");
     }
@@ -109,7 +122,11 @@ router.post("/scanners/:id/run", requireAuth, requirePermission(PERMISSIONS.MARK
 
 router.get("/timeline", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
     try {
-        res.json(await listTimeline(req.query));
+        const account = String(req.query.account || "").trim();
+        if (account && !canAccessBot(req.webUser, account, PERMISSIONS.POSITIONS_VIEW)) {
+            throw httpError(403, "Không có quyền với tài khoản này");
+        }
+        res.json(await listTimeline(req.query, { actor: req.webUser, canAccessBot }));
     } catch (error) {
         sendError(res, error, "GET /api/research/timeline");
     }
@@ -117,10 +134,14 @@ router.get("/timeline", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
 
 router.post("/timeline/events", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
     try {
+        const account = String(req.body?.account || "").trim();
+        if (account && !canAccessBot(req.webUser, account, PERMISSIONS.POSITIONS_VIEW)) {
+            throw httpError(403, "Không có quyền với tài khoản này");
+        }
         const result = await appendTradeEvent({
             ...req.body,
             actorId: req.webUser?.id,
-            producer: req.body?.producer || "web",
+            producer: "web",
         });
         res.status(result.created ? 201 : 200).json(result);
     } catch (error) {

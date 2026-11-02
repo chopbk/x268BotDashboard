@@ -1,12 +1,63 @@
 const crypto = require("crypto");
 const RiskReservation = require("../models/risk-reservation");
+const RiskAccountLock = require("../models/risk-account-lock");
 const { getPolicyForAccount } = require("./risk-policy");
 const { buildPortfolioSnapshot } = require("./risk-portfolio");
 const { hashPayload, nowMs } = require("./provenance");
 const { httpError } = require("./http");
 
 const LEASE_MS = 60_000;
+const LOCK_MS = 5_000;
 const ACTIVE = new Set(["reserved", "submitted", "unknown", "partial"]);
+const BINDABLE = new Set(["reserved", "observed", "submitted", "partial", "unknown"]);
+const RELEASABLE = new Set(["reserved", "observed", "submitted", "partial", "filled"]);
+
+async function withAccountLock(account, fn) {
+    const token = crypto.randomUUID();
+    const now = new Date();
+    await RiskAccountLock.updateOne(
+        { account },
+        { $setOnInsert: { account, leaseOwner: null, leaseUntil: null } },
+        { upsert: true }
+    );
+    let acquired = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        acquired = await RiskAccountLock.findOneAndUpdate(
+            {
+                account,
+                $or: [
+                    { leaseUntil: null },
+                    { leaseUntil: { $lte: new Date() } },
+                ],
+            },
+            {
+                $set: {
+                    leaseOwner: token,
+                    leaseUntil: new Date(Date.now() + LOCK_MS),
+                },
+            },
+            { new: true }
+        );
+        if (acquired?.leaseOwner === token) break;
+        await new Promise((r) => setTimeout(r, 25 + attempt * 15));
+        acquired = null;
+    }
+    if (!acquired || acquired.leaseOwner !== token) {
+        throw httpError(409, "Risk reservation lock bận — thử lại", { code: "risk_rejected" });
+    }
+    try {
+        return await fn();
+    } finally {
+        await RiskAccountLock.updateOne(
+            { account, leaseOwner: token },
+            { $set: { leaseOwner: null, leaseUntil: null } }
+        );
+    }
+}
+
+async function getReservation(reservationId) {
+    return RiskReservation.findOne({ reservationId: String(reservationId || "") }).lean();
+}
 
 function publicReservation(doc) {
     if (!doc) return null;
@@ -154,40 +205,87 @@ async function reserveBudget({
         };
     }
 
-    const policy = await getPolicyForAccount(username);
-    const mode = policy?.mode || "observe";
-    const active = await loadActiveReservations(username);
-    const snapshot = buildPortfolioSnapshot({
-        username,
-        positions,
-        wallet,
-        openOrders,
-        reservations: active,
-    });
+    return withAccountLock(username, async () => {
+        const policy = await getPolicyForAccount(username);
+        const mode = policy?.mode || "observe";
+        const active = await loadActiveReservations(username);
+        const snapshot = buildPortfolioSnapshot({
+            username,
+            positions,
+            wallet,
+            openOrders,
+            reservations: active,
+        });
 
-    // Incomplete risk data under enforce → unknown/partial block for increases
-    if (mode === "enforce" && snapshot.provenance?.quality === "missing") {
-        return {
-            allowed: false,
-            code: "data_unavailable",
-            reason: "risk_data_missing",
-            snapshot,
-            policy,
+        if (mode === "enforce" && snapshot.provenance?.quality === "missing") {
+            return {
+                allowed: false,
+                code: "data_unavailable",
+                reason: "risk_data_missing",
+                snapshot,
+                policy,
+            };
+        }
+
+        const need = {
+            notionalNeed: Number(notionalNeed) || 0,
+            riskNeed: riskNeed != null ? Number(riskNeed) : null,
+            quantity,
+            symbol,
+            notionalIncomplete: !(Number(notionalNeed) > 0),
         };
-    }
+        if (mode === "enforce" && need.notionalIncomplete) {
+            return {
+                allowed: false,
+                code: "data_unavailable",
+                reason: "notional_need_missing",
+                snapshot,
+                policy,
+            };
+        }
+        const breaches = policy ? evaluateLimits(policy, snapshot, need) : [];
 
-    const need = {
-        notionalNeed: Number(notionalNeed) || 0,
-        riskNeed: riskNeed != null ? Number(riskNeed) : null,
-        quantity,
-        symbol,
-    };
-    const breaches = policy ? evaluateLimits(policy, snapshot, need) : [];
+        const reservationId = crypto.randomUUID();
+        const leaseUntil = new Date(nowMs() + LEASE_MS);
 
-    const reservationId = crypto.randomUUID();
-    const leaseUntil = new Date(nowMs() + LEASE_MS);
+        if (mode === "enforce" && breaches.length) {
+            const doc = await RiskReservation.create({
+                reservationId,
+                account: username,
+                env,
+                producer: producer || "web",
+                producerVersion,
+                action,
+                symbol: symbol ? String(symbol).toUpperCase() : undefined,
+                side,
+                positionSide,
+                notionalNeed: need.notionalNeed,
+                riskNeed: need.riskNeed,
+                quantity: quantity != null ? String(quantity) : undefined,
+                policyId: policy?.policyId,
+                policyRevision: policy?.revision,
+                policyMode: mode,
+                requestId,
+                clientOrderId,
+                payloadHash,
+                idempotencyKey: idempotencyKey || undefined,
+                status: "rejected",
+                leaseUntil,
+                reason: breaches.map((b) => b.code).join(","),
+                book,
+            });
+            return {
+                allowed: false,
+                code: "risk_rejected",
+                reason: breaches[0].detail,
+                breaches,
+                reservation: publicReservation(doc),
+                snapshot,
+                policy,
+            };
+        }
 
-    if (mode === "enforce" && breaches.length) {
+        const status = mode === "enforce" ? "reserved" : "observed";
         const doc = await RiskReservation.create({
             reservationId,
             account: username,
@@ -208,71 +306,39 @@ async function reserveBudget({
             clientOrderId,
             payloadHash,
             idempotencyKey: idempotencyKey || undefined,
-            status: "rejected",
+            status,
             leaseUntil,
-            reason: breaches.map((b) => b.code).join(","),
+            reason: breaches.length ? `observe:${breaches.map((b) => b.code).join(",")}` : null,
             book,
         });
+
         return {
-            allowed: false,
-            code: "risk_rejected",
-            reason: breaches[0].detail,
-            breaches,
+            allowed: true,
             reservation: publicReservation(doc),
+            breaches: mode === "observe" ? breaches : [],
             snapshot,
             policy,
+            observedOnly: mode !== "enforce",
         };
-    }
-
-    const status = mode === "enforce" ? "reserved" : "observed";
-    const doc = await RiskReservation.create({
-        reservationId,
-        account: username,
-        env,
-        producer: producer || "web",
-        producerVersion,
-        action,
-        symbol: symbol ? String(symbol).toUpperCase() : undefined,
-        side,
-        positionSide,
-        notionalNeed: need.notionalNeed,
-        riskNeed: need.riskNeed,
-        quantity: quantity != null ? String(quantity) : undefined,
-        policyId: policy?.policyId,
-        policyRevision: policy?.revision,
-        policyMode: mode,
-        requestId,
-        clientOrderId,
-        payloadHash,
-        idempotencyKey: idempotencyKey || undefined,
-        status,
-        leaseUntil,
-        reason: breaches.length ? `observe:${breaches.map((b) => b.code).join(",")}` : null,
-        book,
     });
-
-    return {
-        allowed: true,
-        reservation: publicReservation(doc),
-        breaches: mode === "observe" ? breaches : [],
-        snapshot,
-        policy,
-        observedOnly: mode !== "enforce",
-    };
 }
 
 async function bindReservation(reservationId, { requestId, clientOrderId, exchangeOrderId, status } = {}) {
     const doc = await RiskReservation.findOne({ reservationId: String(reservationId || "") });
     if (!doc) throw httpError(404, "Không tìm thấy reservation");
+    if (!BINDABLE.has(doc.status) && doc.status !== "rejected") {
+        throw httpError(409, `Không bind từ status ${doc.status}`, { code: "conflict" });
+    }
+    if (doc.status === "rejected") {
+        throw httpError(409, "Reservation đã rejected", { code: "risk_rejected" });
+    }
     if (requestId) doc.requestId = String(requestId);
     if (clientOrderId) doc.clientOrderId = String(clientOrderId);
     if (exchangeOrderId) doc.exchangeOrderId = String(exchangeOrderId);
-    if (status && ["submitted", "filled", "partial", "released", "unknown"].includes(status)) {
-        doc.status = status;
-    } else if (doc.status === "reserved" || doc.status === "observed") {
-        doc.status = "submitted";
-    }
-    // Lease expire + unknown → không auto release
+    const next = status && ["submitted", "filled", "partial", "unknown"].includes(status)
+        ? status
+        : (doc.status === "reserved" || doc.status === "observed" ? "submitted" : doc.status);
+    doc.status = next;
     if (doc.status === "unknown") {
         doc.leaseUntil = new Date(nowMs() + LEASE_MS * 10);
     }
@@ -280,15 +346,27 @@ async function bindReservation(reservationId, { requestId, clientOrderId, exchan
     return publicReservation(doc);
 }
 
-async function releaseReservation(reservationId, { force = false, status = "released" } = {}) {
+/**
+ * Release — không nhận force từ client. Unknown chỉ reconcile nội bộ (allowUnknownRelease).
+ */
+async function releaseReservation(reservationId, {
+    status = "released",
+    allowUnknownRelease = false,
+} = {}) {
     const doc = await RiskReservation.findOne({ reservationId: String(reservationId || "") });
     if (!doc) throw httpError(404, "Không tìm thấy reservation");
-    if (doc.status === "unknown" && !force) {
+    if (doc.status === "unknown" && !allowUnknownRelease) {
         throw httpError(409, "Không giải phóng reservation unknown — cần reconcile", {
             code: "risk_rejected",
         });
     }
-    doc.status = status;
+    if (doc.status === "released" || doc.status === "rejected") {
+        return publicReservation(doc);
+    }
+    if (!RELEASABLE.has(doc.status) && doc.status !== "unknown") {
+        throw httpError(409, `Không release từ status ${doc.status}`, { code: "conflict" });
+    }
+    doc.status = status === "released" ? "released" : "released";
     await doc.save();
     return publicReservation(doc);
 }
@@ -314,8 +392,10 @@ module.exports = {
     releaseReservation,
     expireIdleLeases,
     loadActiveReservations,
+    getReservation,
     publicReservation,
     evaluateLimits,
+    withAccountLock,
     LEASE_MS,
     ACTIVE,
 };

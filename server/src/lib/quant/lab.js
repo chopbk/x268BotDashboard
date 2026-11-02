@@ -179,12 +179,32 @@ async function processRun(runId) {
         await leased.save();
         return leased;
     }
+    const budgetMs = Number(leased.resourceBudgetMs) || 60_000;
+    const started = Date.now();
     try {
-        const exp = await QuantExperiment.findOne({ experimentId: leased.experimentId }).lean();
-        const ds = await QuantDataset.findOne({ datasetId: exp.datasetId }).lean();
+        const exp = await QuantExperiment.findOne({
+            experimentId: leased.experimentId,
+            actorId: leased.actorId,
+        }).lean();
+        if (!exp) throw new Error("experiment_missing_or_wrong_actor");
+        const ds = await QuantDataset.findOne({
+            datasetId: exp.datasetId,
+            actorId: leased.actorId,
+        }).lean();
         if (!ds?.bars?.length) {
             throw new Error("dataset_bars_missing — không thay bằng snapshot hôm nay");
         }
+        if (Date.now() - started > budgetMs) throw new Error("budget_exceeded_before_run");
+
+        const fresh = await QuantRun.findOne({ runId }).lean();
+        if (fresh?.cancelRequested) {
+            await QuantRun.updateOne(
+                { runId, status: { $in: ["queued", "running"] } },
+                { $set: { status: "cancelled", leaseUntil: null } }
+            );
+            return QuantRun.findOne({ runId }).lean();
+        }
+
         const result = runFixtureStub({
             dataset: ds,
             config: exp.config,
@@ -192,13 +212,24 @@ async function processRun(runId) {
             codeRevision: exp.codeRevision,
             engineVersion: exp.engineVersion,
         });
-        const wf = walkForwardStub(ds, exp.config?.walkForward || {});
+        const wf = walkForwardStub(ds, {
+            ...(exp.config?.walkForward || {}),
+            maxFolds: Math.min(50, Number(exp.config?.walkForward?.maxFolds) || 50),
+        });
         const stress = blockBootstrapStress(
             result.decisions.map((d) => d.pnl),
             { seed: exp.seed }
         );
-        await QuantRun.updateOne(
-            { runId, leaseOwner: WORKER_ID },
+        if (Date.now() - started > budgetMs) throw new Error("budget_exceeded");
+
+        // Không ghi đè cancelled
+        const written = await QuantRun.findOneAndUpdate(
+            {
+                runId,
+                leaseOwner: WORKER_ID,
+                cancelRequested: { $ne: true },
+                status: "running",
+            },
             {
                 $set: {
                     status: "succeeded",
@@ -206,15 +237,23 @@ async function processRun(runId) {
                     result: { ...result, walkForward: wf, stress },
                     leaseUntil: null,
                 },
-            }
+            },
+            { new: true }
         );
+        if (!written) {
+            await QuantRun.updateOne(
+                { runId, cancelRequested: true, status: "running" },
+                { $set: { status: "cancelled", leaseUntil: null } }
+            );
+            return QuantRun.findOne({ runId }).lean();
+        }
         await QuantExperiment.updateOne(
-            { experimentId: exp.experimentId },
+            { experimentId: exp.experimentId, actorId: leased.actorId },
             { $set: { immutable: true } }
         );
     } catch (error) {
         await QuantRun.updateOne(
-            { runId },
+            { runId, status: { $in: ["queued", "running"] }, cancelRequested: { $ne: true } },
             {
                 $set: {
                     status: "failed",
@@ -222,6 +261,10 @@ async function processRun(runId) {
                     leaseUntil: null,
                 },
             }
+        );
+        await QuantRun.updateOne(
+            { runId, cancelRequested: true, status: { $in: ["queued", "running"] } },
+            { $set: { status: "cancelled", leaseUntil: null } }
         );
     }
     return QuantRun.findOne({ runId }).lean();

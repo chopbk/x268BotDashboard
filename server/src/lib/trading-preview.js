@@ -50,23 +50,54 @@ function buildPayloadHash({ action, target, params }) {
     });
 }
 
-async function resolveCapability(username, symbol) {
+async function resolveCapability(username, symbol, action = "ORDER_CREATE") {
     try {
         const account = await UserAccount.findOne({ username }).lean();
         if (!account) return { supported: false, reason: "account_missing", quality: "missing" };
-        const adapter = getExchangeAdapter(account);
-        const caps = {
-            regularOrder: true,
-            conditionalOrder: typeof adapter?.requireCapability === "function",
-            bracketAtomic: false,
-        };
+        const { capabilitiesForExchange, resolveAccountExchange } = require("./exchanges/factory");
+        const exchangeId = await resolveAccountExchange(username);
+        const caps = capabilitiesForExchange(exchangeId);
+        let adapter = null;
+        try {
+            adapter = await getExchangeAdapter(username);
+        } catch (err) {
+            return {
+                supported: false,
+                reason: err.message || "adapter_unavailable",
+                quality: "unsupported",
+                code: "unsupported_capability",
+                exchange: exchangeId,
+                caps,
+            };
+        }
+        const needOpen = action === "POSITION_OPEN" || action === "ORDER_CREATE";
+        const supported = needOpen
+            ? Boolean(caps.open || caps.regularOrder)
+            : true;
+        if (!supported) {
+            return {
+                supported: false,
+                reason: "exchange_capability_missing",
+                quality: "unsupported",
+                code: "unsupported_capability",
+                exchange: adapter?.exchangeId || exchangeId,
+                caps,
+                instrumentId: String(symbol || "").toUpperCase(),
+            };
+        }
         return {
             supported: true,
-            exchange: adapter?.exchangeId || adapter?.id || account.exchange || "unknown",
-            caps,
+            exchange: adapter?.exchangeId || exchangeId || account.exchange || "unknown",
+            caps: {
+                regularOrder: Boolean(caps.regularOrder),
+                conditionalOrder: Boolean(caps.conditionalOrder),
+                open: Boolean(caps.open),
+                reverse: Boolean(caps.reverse),
+                bracketAtomic: false,
+            },
             bracketAtomic: false,
             protectionStates: ["entry_filled_protection_pending", "entry_filled_protection_failed"],
-            quality: "partial",
+            quality: caps.regularOrder ? "fresh" : "partial",
             instrumentId: String(symbol || "").toUpperCase(),
         };
     } catch (error) {
@@ -144,7 +175,7 @@ async function createPreview(actor, body = {}) {
         positionSide: params.positionSide,
     };
 
-    const capability = await resolveCapability(username, symbol);
+    const capability = await resolveCapability(username, symbol, action);
     if (capability.supported === false && capability.quality === "unsupported") {
         throw httpError(400, capability.reason || "Sàn không hỗ trợ", { code: "unsupported_capability" });
     }

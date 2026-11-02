@@ -31,27 +31,69 @@ router.get("/definitions", requireAuth, requireStats, (_req, res) => {
  */
 router.get("/strategies", requireAuth, requireStats, async (req, res) => {
     try {
-        let trades = [];
-        if (typeof req.query.fixture === "string" && req.query.fixture === "1") {
-            throw httpError(400, "Dùng POST /strategies/compute với fixture body");
-        }
         const username = String(req.query.username || "").trim();
-        if (username) {
-            try {
-                const { listAccountStatics } = require("../lib/account-statics");
-                const data = await listAccountStatics(req.webUser, {
-                    username,
-                    closed: "closed",
-                    book: req.query.book || "live",
-                    range: req.query.range || "30",
-                });
-                trades = data?.rows || data?.items || data?.list || [];
-                if (!Array.isArray(trades) && Array.isArray(data?.trades)) trades = data.trades;
-            } catch (err) {
-                // fallback empty — client có thể POST compute
-                trades = [];
+        if (!username) throw httpError(400, "Thiếu username");
+
+        let trades = [];
+        let sourceStatus = "ok";
+        let sourceError = null;
+        let truncated = false;
+        const ANALYTICS_CAP = Math.min(5000, Math.max(100, Number(req.query.cap) || 2000));
+
+        try {
+            const { listAccountStatics } = require("../lib/account-statics");
+            // Lấy metadata phạm vi (envs/filter) qua list, rồi query đủ tập (không dùng 1 trang 50 làm toàn bộ).
+            const meta = await listAccountStatics(req.webUser, {
+                username,
+                closed: req.query.closed || "closed",
+                book: req.query.book || "live",
+                range: req.query.range || "30",
+                page: 1,
+                limit: 10,
+                analytics: "1",
+            });
+            const envs = meta?.envs || [];
+            if (!envs.length) {
+                sourceStatus = "empty_scope";
+            } else {
+                const AccountStatic = require("../models/account-static");
+                const total = Number(meta.listTotal ?? meta.total ?? 0);
+                truncated = total > ANALYTICS_CAP;
+                const filter = {
+                    env: { $in: envs },
+                    ...(meta.book === "paper"
+                        ? { isPaper: true }
+                        : meta.book === "all"
+                            ? {}
+                            : { isPaper: { $ne: true } }),
+                };
+                if (meta.from || meta.to) {
+                    filter.closeTime = {};
+                    if (meta.from) filter.closeTime.$gte = new Date(meta.from);
+                    if (meta.to) filter.closeTime.$lte = new Date(meta.to);
+                }
+                trades = await AccountStatic.find(filter)
+                    .select("profit fees funding commission entryPrice symbol side positionSide typeSignal env closeTime openTime initialPlannedRisk dcaCount maxRoe minRoe maxPrice minPrice stats pnlIncludesFees isPaper")
+                    .sort({ closeTime: 1, _id: 1 })
+                    .limit(ANALYTICS_CAP)
+                    .lean();
+                if (!trades.length && total === 0) sourceStatus = "no_trades";
             }
+        } catch (err) {
+            sourceStatus = "load_failed";
+            sourceError = err.message || "load_failed";
+            trades = [];
         }
+
+        if (sourceStatus === "load_failed") {
+            return res.status(502).json({
+                error: "Không tải được account_statics",
+                sourceStatus,
+                sourceError,
+                username,
+            });
+        }
+
         const summary = computeStrategyMetrics(trades, {
             accountingBasis: req.query.basis === "wallet"
                 ? ACCOUNTING_BASES.WALLET_TRADING_NET
@@ -70,8 +112,11 @@ router.get("/strategies", requireAuth, requireStats, async (req, res) => {
             minSample: Number(req.query.minSample) || 20,
         });
         res.json({
-            username: username || null,
+            username,
             tradeCount: trades.length,
+            sourceStatus,
+            truncated,
+            cap: ANALYTICS_CAP,
             summary,
             breakdown,
             alerts,

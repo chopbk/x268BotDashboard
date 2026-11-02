@@ -6,12 +6,19 @@ function actorIdOf(actor) {
     return actor?.id || (actor?._id ? String(actor._id) : "");
 }
 
+function childOutstanding(child) {
+    if (!["pending", "submitted", "unknown"].includes(child.status)) return 0;
+    const qty = Number(child.quantity) || 0;
+    const filled = Number(child.filledQty) || 0;
+    return Math.max(0, qty - filled);
+}
+
 function publicAlgo(doc) {
     if (!doc) return null;
-    const filled = Number(doc.filledQty) || 0;
-    const outstanding = (doc.children || [])
-        .filter((c) => ["pending", "submitted", "unknown"].includes(c.status))
-        .reduce((s, c) => s + (Number(c.quantity) || 0), 0);
+    const children = doc.children || [];
+    const filledFromChildren = children.reduce((s, c) => s + (Number(c.filledQty) || 0), 0);
+    const filled = Math.max(Number(doc.filledQty) || 0, filledFromChildren);
+    const outstanding = children.reduce((s, c) => s + childOutstanding(c), 0);
     return {
         algoId: doc.algoId,
         account: doc.account,

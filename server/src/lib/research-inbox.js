@@ -172,9 +172,16 @@ async function markInboxRead(actor, id) {
  * Đánh giá tối giản: chỉ emit entry_touched khi baseline chưa có firstTouchedAt
  * và observation có entryTouched=true từ closed candle — không suy fill.
  */
-async function evaluateTrackObservation(trackId, observation = {}) {
+async function evaluateTrackObservation(trackId, observation = {}, actor = null) {
     const doc = await ResearchTrack.findById(String(trackId || ""));
     if (!doc) throw httpError(404, "Không tìm thấy track");
+    if (actor) {
+        const owner = actorIdOf(actor);
+        if (!owner || doc.ownerUserId !== owner) {
+            throw httpError(403, "Không có quyền với track này");
+        }
+    }
+    const trusted = observation.trustedProducer === true;
     if (doc.status !== "watching") {
         return { skipped: true, reason: "not_watching" };
     }
@@ -205,7 +212,8 @@ async function evaluateTrackObservation(trackId, observation = {}) {
         return { skipped: true, reason: "missing_data", events };
     }
 
-    if (observation.entryTouched === true
+    if (trusted
+        && observation.entryTouched === true
         && observation.candleClosed === true
         && !doc.baseline?.firstTouchedAt) {
         doc.baseline = { ...(doc.baseline || {}), firstTouchedAt: observation.sourceAt || nowMs() };
@@ -224,7 +232,8 @@ async function evaluateTrackObservation(trackId, observation = {}) {
         events.push(inbox);
     }
 
-    if (observation.setupStatus === "invalidated" || observation.setupStatus === "expired") {
+    if (trusted
+        && (observation.setupStatus === "invalidated" || observation.setupStatus === "expired")) {
         doc.status = "terminal";
         doc.terminalReason = observation.setupStatus === "invalidated" ? "setup_invalidated" : "setup_expired";
         const inbox = await upsertInboxEvent({

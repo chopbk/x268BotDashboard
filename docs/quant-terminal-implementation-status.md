@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-01**. Milestone hiện tại: **P4–P6 foundation đã merge code** (analytics/quant-lab/allocation/algo durable; không live exec / không deploy / không parity-ready engine).  
+Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy hardening** (auth/scope, preview await, WF hang, enforce locked; foundation P0–P6 chưa nghiệm thu đầy đủ).  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -84,9 +84,9 @@ Chi tiết surfaces: [entry-surfaces.v1.json](contracts/quant-terminal/entry-sur
 | Q2 | Portfolio risk / gate | **implemented foundation (observe)** | `/api/risk/*`, models policies/reservations/acks, trading-bridge gate, bot `services/risk-gate`, RiskCockpit UI | master §5 | Enforce live chưa bật; reverse open-leg partial; ACK coverage UI tối giản; concurrent stress chưa CI |
 | Q3 | Market scanner / alerts | **implemented foundation** | `/api/research/scanners|tracks|inbox`, predicate allowlist, Inbox UI `/inbox`, dedupe `sourceEventId` | research-tracking-inbox | Worker cron tự chạy scanner chưa; history OI/funding collector mới chưa (reuse market cache) |
 | Q4 | Timeline / journal / TCA | **implemented foundation** | `web_trade_events`, bridge append, journal `tradeInstanceId`/`legacy_unresolved`, `arrivalSlippageBps` | master §7 | Bot fill/signal-skip producers chưa đầy đủ; clock sync UI mỏng |
-| Q5 | Strategy analytics | **implemented foundation** | `/api/analytics/*`, metric defs v1, Sharpe/Sortino/R/MAE-MFE fidelity, alerts no auto-off | master §8 | Load statics path còn mỏng; bootstrap CI đầy đủ hơn ở follow-up |
-| Q6 | Research Lab | **implemented foundation (stub only)** | `/quant-lab` + `/api/quant/*`; fixture_stub deterministic; dca_mtf_bt blocked | master §9 | Parity fixture pullback chưa — không expose live engine |
-| Q7 | Allocation / microstructure / algos | **implemented foundation** | `/api/portfolio/allocations/*`, `/api/trading/algo-orders*`, microstructure unavailable | master §10 | Depth/CVD backlog; live algo exec chặn; VWAP cần volume model |
+| Q5 | Strategy analytics | **integrated (partial verified)** | `/api/analytics/*` + account load phân biệt no_trades/load_failed/truncated | master §8 | Browser QA; full-suite tích hợp chưa |
+| Q6 | Research Lab | **implemented (stub) / blocked parity** | lease + actor-scoped dataset; cancel không bị ghi đè succeeded; WF validate | master §9 | Worker process tách + pullback parity |
+| Q7 | Allocation / microstructure / algos | **implemented (dry) / blocked live** | allocation preview; algo outstanding đúng partial; depth unavailable | master §10 | Scheduler TWAP; provider depth |
 
 ### Identity / provenance / capability (cross-cutting)
 
@@ -205,12 +205,12 @@ Mỗi task: repo, entry files, dependency, contract, test. **Không ETA.**
 | Task | Repo | Entry | Dep | Contract | Test |
 |---|---|---|---|---|---|
 | P2.1 Risk read cockpit + scenarios | web-bot | `/api/risk/*` + RiskCockpit | positions/balance scope | provenance | **done** unit snapshot/scenarios |
-| P2.2 Policy versioned observe | web-bot | `web_risk_policies` + `risk.manage` | auth | reservation | **done** CAS in upsert |
-| P2.3 Durable reservation store | web-bot | `web_risk_reservations` | P2.2 | reservation | **done** lease unknown rule in lib |
-| P2.4 Hook web increase paths | web-bot | trading-bridge before execute | P2.3 | entry-surfaces | **done** open/create/replace; reverse deferred |
-| P2.5 Hook bot entry surfaces | binance-bot | signal/command/COPY DCA/MTF entry+tryDca | shared Mongo collections | entry-surfaces | **done** observe; unit mustBypass |
-| P2.6 Three controls | both | `/api/risk/controls` + bot pause honor | P2.4–5 | reservation | **done** pause/resume; cancel/flatten preview |
-| P2.7 Producer ACK coverage UI | web-bot | API acks + matrix doc | P2.5 | compatibility | **partial** API; UI coverage matrix chưa |
+| P2.2 Policy versioned observe | web-bot | `web_risk_policies` + CAS + scope doc | auth | reservation | **verified** unit; enforce locked unless RISK_ENFORCE_READY |
+| P2.3 Durable reservation store | web-bot | account lock + bind/release auth | P2.2 | reservation | **integrated**; concurrent stress còn thiếu |
+| P2.4 Hook web increase paths | web-bot | book load + reverse open-leg after close | P2.3 | entry-surfaces | **integrated** |
+| P2.5 Hook bot entry surfaces | binance-bot | username identity + notional estimate | shared Mongo | entry-surfaces | **integrated** observe; enforce fail-closed khi ready |
+| P2.6 Three controls | both | `/api/risk/controls` + bot pause honor | P2.4–5 | reservation | **implemented** |
+| P2.7 Producer ACK coverage UI | web-bot | API acks + matrix doc | P2.5 | compatibility | **partial** |
 
 ### P3 — Q3 + Q4
 

@@ -110,7 +110,7 @@ async function appendTradeEvent(input = {}) {
     }
 }
 
-async function listTimeline(query = {}) {
+async function listTimeline(query = {}, { actor = null, canAccessBot = null } = {}) {
     const filter = {};
     if (query.tradeInstanceId) filter.tradeInstanceId = String(query.tradeInstanceId);
     if (query.account) filter.account = String(query.account);
@@ -119,7 +119,32 @@ async function listTimeline(query = {}) {
     if (query.symbol) filter.symbol = String(query.symbol).toUpperCase();
     if (!Object.keys(filter).length) throw httpError(400, "Cần tradeInstanceId|account|signalEventId|requestId");
 
-    const rows = await TradeEvent.find(filter).sort({ sourceAt: 1, createdAt: 1 }).limit(200).lean();
+    // User API: bắt buộc có account trong filter hoặc lọc sau theo scope
+    if (actor && typeof canAccessBot === "function") {
+        if (filter.account) {
+            if (!canAccessBot(actor, filter.account, "positions.view")
+                && !canAccessBot(actor, filter.account, "statistics.view")) {
+                throw httpError(403, "Không có quyền với tài khoản này");
+            }
+        }
+    }
+
+    let rows = await TradeEvent.find(filter).sort({ sourceAt: 1, createdAt: 1 }).limit(200).lean();
+    if (actor && typeof canAccessBot === "function" && !filter.account) {
+        rows = rows.filter((r) => {
+            if (!r.account) return false;
+            return canAccessBot(actor, r.account, "positions.view")
+                || canAccessBot(actor, r.account, "statistics.view");
+        });
+        if (!rows.length) {
+            return {
+                events: [],
+                quality: "missing",
+                missingIdentity: ["account_scope"],
+                note: "Không có sự kiện trong phạm vi quyền",
+            };
+        }
+    }
     const unresolved = rows.filter((r) => !r.tradeInstanceId).map(() => "legacy_unresolved");
     return {
         events: rows.map(publicEvent),

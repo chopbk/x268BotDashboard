@@ -707,6 +707,28 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         if (!closeResult?.success) return { success: false, error: "Close failed", closeResult, exchange: "binance" };
 
         const newSide = positionSide === "LONG" ? "SHORT" : "LONG";
+        // Risk: close luôn chạy; open-leg có thể bị chặn bởi beforeOpen gate
+        if (typeof input.beforeOpen === "function") {
+            const gate = await input.beforeOpen({
+                symbol,
+                openQty,
+                newSide,
+                phase: "open_leg",
+            });
+            if (gate && gate.allowed === false) {
+                return {
+                    success: false,
+                    partial: true,
+                    closeOk: true,
+                    openBlocked: true,
+                    reason: gate.reason || "risk_rejected",
+                    closeResult,
+                    openQty,
+                    newSide,
+                    exchange: "binance",
+                };
+            }
+        }
         const openResult = await this.openPosition({
             ...input,
             symbol,

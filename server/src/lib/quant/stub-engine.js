@@ -90,20 +90,47 @@ function runFixtureStub({
 /**
  * Walk-forward folds theo thời gian — fit chỉ quá khứ (stub: không optimize, chỉ split).
  */
-function walkForwardStub(dataset, { trainBars = 50, testBars = 20, purge = 5 } = {}) {
+function positiveInt(value, fallback, { min = 1, max = 10_000 } = {}) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < min) return fallback;
+    return Math.min(n, max);
+}
+
+function walkForwardStub(dataset, {
+    trainBars = 50,
+    testBars = 20,
+    purge = 5,
+    maxFolds = 50,
+} = {}) {
     const bars = Array.isArray(dataset?.bars) ? dataset.bars : [];
+    const trainN = Number(trainBars);
+    const testN = Number(testBars);
+    // testBars=0 / NaN → fail closed (tránh vòng lặp không tiến)
+    if (!Number.isInteger(trainN) || trainN < 1 || !Number.isInteger(testN) || testN < 1) {
+        return {
+            folds: [],
+            method: "walk_forward_time_purge",
+            optimizedOnTest: false,
+            error: "invalid_train_or_test_bars",
+        };
+    }
+    const train = Math.min(trainN, 5000);
+    const test = Math.min(testN, 5000);
+    const purgeN = positiveInt(purge, 5, { min: 0, max: 1000 });
+    const foldCap = positiveInt(maxFolds, 50, { min: 1, max: 200 });
     const folds = [];
     let start = 0;
-    while (start + trainBars + purge + testBars <= bars.length) {
-        const trainEnd = start + trainBars;
-        const testStart = trainEnd + purge;
-        const testEnd = testStart + testBars;
-        const train = runFixtureStub({
+    let guard = 0;
+    while (start + train + purgeN + test <= bars.length && folds.length < foldCap) {
+        const trainEnd = start + train;
+        const testStart = trainEnd + purgeN;
+        const testEnd = testStart + test;
+        const trainRun = runFixtureStub({
             dataset: { ...dataset, bars: bars.slice(start, trainEnd) },
             config: { warmup: 3, capital: 10000, notional: 100, feeBps: 2 },
             seed: start + 1,
         });
-        const test = runFixtureStub({
+        const testRun = runFixtureStub({
             dataset: { ...dataset, bars: bars.slice(testStart, testEnd) },
             config: { warmup: 3, capital: 10000, notional: 100, feeBps: 2 },
             seed: start + 1,
@@ -111,14 +138,21 @@ function walkForwardStub(dataset, { trainBars = 50, testBars = 20, purge = 5 } =
         folds.push({
             trainRange: [start, trainEnd],
             testRange: [testStart, testEnd],
-            purge,
-            trainHash: train.outputHash,
-            testHash: test.outputHash,
-            testEquityEnd: test.equityEnd,
+            purge: purgeN,
+            trainHash: trainRun.outputHash,
+            testHash: testRun.outputHash,
+            testEquityEnd: testRun.equityEnd,
         });
-        start += testBars;
+        start += test;
+        guard += 1;
+        if (guard > foldCap + 5) break;
     }
-    return { folds, method: "walk_forward_time_purge", optimizedOnTest: false };
+    return {
+        folds,
+        method: "walk_forward_time_purge",
+        optimizedOnTest: false,
+        truncated: folds.length >= foldCap,
+    };
 }
 
 function blockBootstrapStress(returns, { block = 5, samples = 20, seed = 1 } = {}) {

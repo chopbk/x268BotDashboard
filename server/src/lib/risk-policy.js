@@ -3,6 +3,11 @@ const RiskPolicy = require("../models/risk-policy");
 const RiskProducerAck = require("../models/risk-producer-ack");
 const { httpError } = require("./http");
 
+/** Enforce chỉ bật khi vận hành xác nhận sẵn sàng (atomic + book + ACK). */
+function enforceReady() {
+    return String(process.env.RISK_ENFORCE_READY || "").toLowerCase() === "true";
+}
+
 function publicPolicy(doc) {
     if (!doc) return null;
     return {
@@ -17,6 +22,7 @@ function publicPolicy(doc) {
         valuationCurrency: doc.valuationCurrency,
         updatedBy: doc.updatedBy || null,
         updatedAt: doc.updatedAt,
+        enforceReady: enforceReady(),
     };
 }
 
@@ -36,38 +42,68 @@ async function listPolicies({ username, actorId } = {}) {
     if (username) filter["scope.username"] = String(username);
     if (actorId) filter["scope.actorId"] = String(actorId);
     const rows = await RiskPolicy.find(filter).sort({ updatedAt: -1 }).limit(50).lean();
-    return { policies: rows.map(publicPolicy) };
+    return { policies: rows.map(publicPolicy), enforceReady: enforceReady() };
 }
 
 async function upsertPolicy(actor, body = {}) {
     const username = String(body.username || body.scope?.username || "").trim();
     if (!username) throw httpError(400, "Thiếu username scope");
     const policyId = String(body.policyId || `pol_${username}`).slice(0, 80);
-    let doc = await RiskPolicy.findOne({ policyId });
-    if (!doc) {
-        doc = new RiskPolicy({
-            policyId,
-            revision: 0,
-            scope: { type: "account", username },
-        });
-    } else if (body.expectedRevision != null && Number(body.expectedRevision) !== doc.revision) {
-        throw httpError(409, "Policy revision đã đổi", { code: "source_changed" });
-    }
 
     if (body.mode != null) {
         if (!["observe", "enforce"].includes(body.mode)) throw httpError(400, "mode phải observe|enforce");
-        doc.mode = body.mode;
+        if (body.mode === "enforce" && !enforceReady()) {
+            throw httpError(409, "Enforce chưa sẵn sàng — cần RISK_ENFORCE_READY=true sau nghiệm thu", {
+                code: "unsupported_capability",
+            });
+        }
     }
-    if (body.enabled != null) doc.enabled = Boolean(body.enabled);
-    if (body.limits && typeof body.limits === "object") {
-        doc.limits = { ...(doc.limits?.toObject?.() || doc.limits || {}), ...body.limits };
+
+    const existing = await RiskPolicy.findOne({ policyId }).lean();
+    if (existing) {
+        const docUser = String(existing.scope?.username || "").trim();
+        if (docUser && docUser !== username) {
+            throw httpError(403, "policyId không thuộc username đã gửi", { code: "conflict" });
+        }
+        const expected = body.expectedRevision != null
+            ? Number(body.expectedRevision)
+            : Number(existing.revision);
+        const prevLimits = existing.limits || {};
+        const nextLimits = body.limits && typeof body.limits === "object"
+            ? { ...prevLimits, ...body.limits }
+            : prevLimits;
+        const updated = await RiskPolicy.findOneAndUpdate(
+            { policyId, revision: expected },
+            {
+                $set: {
+                    mode: body.mode != null ? body.mode : existing.mode,
+                    enabled: body.enabled != null ? Boolean(body.enabled) : existing.enabled,
+                    limits: nextLimits,
+                    equityBasis: body.equityBasis != null ? String(body.equityBasis) : existing.equityBasis,
+                    updatedBy: actor?.username || actor?.id || "",
+                    effectiveAt: body.effectiveAt ? new Date(body.effectiveAt) : new Date(),
+                    scope: { type: "account", username: docUser || username },
+                },
+                $inc: { revision: 1 },
+            },
+            { new: true }
+        );
+        if (!updated) throw httpError(409, "Policy revision đã đổi", { code: "source_changed" });
+        return publicPolicy(updated);
     }
-    if (body.equityBasis) doc.equityBasis = String(body.equityBasis);
-    doc.updatedBy = actor?.username || actor?.id || "";
-    doc.revision += 1;
-    doc.effectiveAt = body.effectiveAt ? new Date(body.effectiveAt) : new Date();
-    await doc.save();
-    return publicPolicy(doc);
+
+    const created = await RiskPolicy.create({
+        policyId,
+        revision: 1,
+        scope: { type: "account", username },
+        mode: body.mode || "observe",
+        enabled: body.enabled != null ? Boolean(body.enabled) : true,
+        limits: body.limits || {},
+        equityBasis: body.equityBasis,
+        updatedBy: actor?.username || actor?.id || "",
+        effectiveAt: body.effectiveAt ? new Date(body.effectiveAt) : new Date(),
+    });
+    return publicPolicy(created);
 }
 
 async function ackProducer({ producerId, account, env, policyId, policyRevision, producerVersion }) {
@@ -127,4 +163,5 @@ module.exports = {
     listProducerAcks,
     publicPolicy,
     newPolicyId,
+    enforceReady,
 };

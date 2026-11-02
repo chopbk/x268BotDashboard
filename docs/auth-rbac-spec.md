@@ -394,7 +394,9 @@ Các invariant:
 | `POST /api/risk/scenarios` | `requireAuth` | Cùng quyền đọc risk. Shock scenarios partial |
 | `GET/PUT /api/risk/policies[/:id]` | `requireAuth` | `risk.manage` + scope. Policy versioned; CAS `expectedRevision` |
 | `GET /api/risk/policies/:id/acks` / `POST /api/risk/acks` | `requireAuth` | `risk.manage`. Producer ACK coverage |
-| `POST /api/risk/reservations` (+ bind/release) | `requireAuth` | Trade tăng exposure (`positions.open` \| `orders.create`) hoặc `risk.manage`. Default observe |
+| `POST /api/risk/reservations` | `requireAuth` | Trade tăng exposure (`positions.open` \| `orders.create`) hoặc `risk.manage`. Default observe |
+| `POST /api/risk/reservations/:id/bind\|release` | `requireAuth` | Load reservation → scope account (`positions.open` \| `orders.create` \| `risk.manage`). Release **không** nhận `force` từ client; unknown cần reconcile nội bộ |
+| `PUT /api/risk/policies` mode=enforce | `risk.manage` | Chỉ khi `RISK_ENFORCE_READY=true`; CAS `revision`; scope theo username của document |
 | `POST /api/risk/controls` | `requireAuth` | `risk.manage`. pause/resume entries; cancel-pending & flatten trả preview targets (cần `orders.cancel` / `positions.close` để thực thi) |
 | `GET/POST/PATCH /api/research/tracks*` | `requireAuth` | `market.view`. Research tracks actor-scoped |
 | `GET/PATCH /api/research/inbox*` | `requireAuth` | `market.view`. Inbox; không gửi Telegram/email |

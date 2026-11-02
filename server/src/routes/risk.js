@@ -15,6 +15,7 @@ const {
     bindReservation,
     releaseReservation,
     loadActiveReservations,
+    getReservation,
 } = require("../lib/risk-reservation");
 const { runRiskControl } = require("../lib/risk-controls");
 const { loadPositions } = require("../lib/positions");
@@ -180,9 +181,26 @@ router.post("/reservations", requireAuth, async (req, res) => {
     }
 });
 
+async function assertReservationAccess(actor, reservationId) {
+    const doc = await getReservation(reservationId);
+    if (!doc) throw httpError(404, "Không tìm thấy reservation");
+    const account = String(doc.account || "").trim();
+    const can = canAccessBot(actor, account, PERMISSIONS.POSITIONS_OPEN)
+        || canAccessBot(actor, account, PERMISSIONS.ORDERS_CREATE)
+        || canAccessBot(actor, account, PERMISSIONS.RISK_MANAGE);
+    if (!can) throw httpError(403, "Không có quyền với reservation này");
+    return doc;
+}
+
 router.post("/reservations/:id/bind", requireAuth, async (req, res) => {
     try {
-        res.json({ reservation: await bindReservation(req.params.id, req.body || {}) });
+        await assertReservationAccess(req.webUser, req.params.id);
+        const body = { ...(req.body || {}) };
+        // Client không tự chọn status tùy ý ngoài submitted/partial/filled/unknown
+        if (body.status && !["submitted", "filled", "partial", "unknown"].includes(body.status)) {
+            delete body.status;
+        }
+        res.json({ reservation: await bindReservation(req.params.id, body) });
     } catch (error) {
         sendError(res, error, "POST /api/risk/reservations/:id/bind");
     }
@@ -190,7 +208,14 @@ router.post("/reservations/:id/bind", requireAuth, async (req, res) => {
 
 router.post("/reservations/:id/release", requireAuth, async (req, res) => {
     try {
-        res.json({ reservation: await releaseReservation(req.params.id, req.body || {}) });
+        await assertReservationAccess(req.webUser, req.params.id);
+        // Không nhận force từ client — unknown phải reconcile nội bộ
+        res.json({
+            reservation: await releaseReservation(req.params.id, {
+                status: "released",
+                allowUnknownRelease: false,
+            }),
+        });
     } catch (error) {
         sendError(res, error, "POST /api/risk/reservations/:id/release");
     }

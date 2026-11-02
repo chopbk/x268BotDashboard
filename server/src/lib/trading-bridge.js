@@ -432,16 +432,17 @@ async function createTradingRequest({
         });
     }
 
-    // P2 risk gate — tăng exposure. Close/tpsl không vào. Reverse: không chặn cả saga
-    // (close phải chạy; open-leg partial gate còn P2 follow-up / bot).
+    // Risk gate — tăng exposure. Close/tpsl không vào.
+    // POSITION_REVERSE: không hard-gate cả saga; open-leg gate qua beforeOpen sau close.
     let riskMeta = null;
+    const { gateTradingIncrease, bindAfterSubmit } = require("./risk-gate");
     if (["POSITION_OPEN", "ORDER_CREATE", "ORDER_REPLACE"].includes(action)) {
-        const { gateTradingIncrease, bindAfterSubmit } = require("./risk-gate");
         riskMeta = await gateTradingIncrease({
             actor,
             action,
             target,
             params: normalized,
+            loadBook: true,
         });
         if (riskMeta.required && !riskMeta.allowed) {
             throw httpError(409, riskMeta.reason || "Risk gate từ chối", {
@@ -451,11 +452,35 @@ async function createTradingRequest({
         riskMeta.bindAfterSubmit = bindAfterSubmit;
     }
 
+    const execParams = action === "POSITION_REVERSE"
+        ? {
+            ...normalized,
+            beforeOpen: async ({ openQty, newSide, symbol }) => {
+                const gate = await gateTradingIncrease({
+                    actor,
+                    action: "POSITION_REVERSE",
+                    target: { ...target, symbol, positionSide: newSide },
+                    params: {
+                        ...normalized,
+                        quantity: openQty,
+                        phase: "open_leg",
+                        positionSide: newSide,
+                    },
+                    loadBook: true,
+                });
+                if (gate.required && gate.allowed && gate.reservation?.reservationId) {
+                    riskMeta = { ...gate, bindAfterSubmit };
+                }
+                return gate;
+            },
+        }
+        : normalized;
+
     // Thực hiện trading qua Binance API trực tiếp (không qua MQTT config bridge)
     console.log(`[tradingBridge] ${action} for ${target.username}`);
     const now = Date.now();
     
-    const result = await executeDirectTrading(action, target, normalized);
+    const result = await executeDirectTrading(action, target, execParams);
 
     if (riskMeta?.reservation?.reservationId && riskMeta.bindAfterSubmit) {
         await riskMeta.bindAfterSubmit(riskMeta.reservation.reservationId, {
