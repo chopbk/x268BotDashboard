@@ -55,3 +55,10 @@ test("null profit points are not coerced to zero in ranking", () => {
   assert.equal(ranked.shown.length, 0);
   assert.equal(ranked.totalGroups, 0);
 });
+
+test("rankGroups keeps null trade counts instead of forcing zero", () => {
+  const ranked = rankGroups([{ username: "bot-a", profit: 12, count: null }], { nameKey: "username" });
+  assert.equal(ranked.shown[0].count, null);
+  assert.match(summarizeTop(ranked), /bot-a đóng góp/);
+  assert.doesNotMatch(summarizeTop(ranked), /từ .* lệnh/);
+});

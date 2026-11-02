@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import HorizontalPnlBars from "../components/charts/HorizontalPnlBars.jsx";
+import ChartShell from "../components/charts/ChartShell.jsx";
+import { moneyShort, toneClass } from "../components/charts/format.js";
+import "../components/charts/charts.css";
 
 const RANGES = new Set(["today", "3d", "7d", "30d", "90d", "all"]);
 const can = (user, permission) => (user?.permissions || []).includes(permission);
@@ -81,6 +85,7 @@ function sortedUsers(rows, key, dir) {
 
 export default function SummaryPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const range = RANGES.has(params.get("range")) ? params.get("range") : "today";
   const audience = params.get("audience") === "mine" || params.get("audience") === "system"
@@ -212,8 +217,69 @@ export default function SummaryPage() {
           <Stat rank label="User hiệu suất tốt nhất" value={rankValue(summary.bestUser)} href={userHref(summary.bestUser?.name)} note={rankNote(summary.bestUser)} tone={rankTone(summary.bestUser)} />
           <Stat rank label="Symbol lãi nhất" value={rankValue(summary.bestSymbol)} href={symbolHref(summary.bestSymbol?.name)} note={rankNote(summary.bestSymbol)} tone={rankTone(summary.bestSymbol)} />
         </div>
+        <div className="dv-chart-grid two" style={{ marginBottom: 16 }}>
+          <HorizontalPnlBars
+            title="User nào đóng góp profit ví nhiều nhất?"
+            subtitle={`Nguồn: futures_profits (income ví) · kỳ summary · USDT · UTC · không gộp với Long/Short Account Static`}
+            rows={(summary.userRanks || []).map((row) => ({
+              name: row.name,
+              profit: row.profit,
+              count: row.trades,
+              winRate: row.winRate,
+              wins: row.wins,
+              losses: row.losses,
+            }))}
+            nameKey="name"
+            selected=""
+            onSelect={(name) => {
+              const href = userHref(name);
+              if (href) navigate(href);
+            }}
+            limit={10}
+            empty="Chưa có user có profit ví trong kỳ."
+          />
+          <ChartShell
+            title="Long và Short đóng góp PnL lệnh ra sao?"
+            subtitle="Nguồn: Account Static · cùng kỳ closeTime · USDT · UTC · không cộng với profit ví phía trái"
+            summary={`Long ${money(summary.longProfit)} · Short ${money(summary.shortProfit)}`}
+            empty={summary.longProfit == null && summary.shortProfit == null ? "Chưa có Long/Short trong kỳ." : ""}
+            dataRows={[
+              { id: "LONG", name: "LONG", profit: summary.longProfit },
+              { id: "SHORT", name: "SHORT", profit: summary.shortProfit },
+            ]}
+            dataColumns={[
+              { key: "name", label: "Side" },
+              { key: "profit", label: "PnL Static", num: true, render: (row) => moneyShort(row.profit), tone: (row) => toneClass(row.profit) },
+            ]}
+          >
+            <ul className="dv-hbar-list" role="list">
+              {[
+                { name: "LONG", profit: summary.longProfit },
+                { name: "SHORT", profit: summary.shortProfit },
+              ].map((row) => {
+                const maxAbs = Math.max(1, Math.abs(Number(summary.longProfit) || 0), Math.abs(Number(summary.shortProfit) || 0));
+                const width = `${Math.max(2, (Math.abs(Number(row.profit) || 0) / maxAbs) * 50)}%`;
+                const side = (Number(row.profit) || 0) >= 0 ? "pos" : "neg";
+                return (
+                  <li key={row.name} className="dv-hbar-row">
+                    <div className="dv-hbar-hit" style={{ cursor: "default" }}>
+                      <span className="dv-hbar-label">{row.name}</span>
+                      <span className="dv-hbar-track" aria-hidden="true">
+                        <span className="dv-hbar-zero" />
+                        <span className={`dv-hbar-bar ${side}`} style={{ width, [side === "pos" ? "left" : "right"]: "50%" }} />
+                      </span>
+                      <span className={`dv-hbar-value ${toneClass(row.profit)}`}>{moneyShort(row.profit)}</span>
+                      <span className="dv-hbar-meta muted">Static</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </ChartShell>
+        </div>
+
         <h2 className="summary-section-title">Bảng xếp hạng user</h2>
-        <p className="muted">Bấm tiêu đề cột để sắp xếp. Bấm lại để đảo chiều.</p>
+        <p className="muted">Bấm tiêu đề cột để sắp xếp. Bấm lại để đảo chiều. Chart phía trên dùng cùng userRanks (ví) và longProfit/shortProfit (Static) — không trộn hai nguồn thành một tổng.</p>
         {sortedUsers(summary.userRanks, sort.key, sort.dir).length ? (
           <div className="table-wrap signal-table">
             <table>

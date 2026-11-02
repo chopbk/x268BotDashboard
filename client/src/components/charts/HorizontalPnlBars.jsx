@@ -100,7 +100,7 @@ export default function HorizontalPnlBars({
                 className="dv-hbar-hit"
                 aria-pressed={active}
                 aria-describedby={tip === row.name ? tipId : undefined}
-                aria-label={`${row.name}: PnL ${money(row.profit)}, ${row.count} lệnh, win rate ${pct(row.winRate)}`}
+                aria-label={`${row.name}: PnL ${money(row.profit)}${row.count == null ? "" : `, ${row.count} lệnh`}, win rate ${pct(row.winRate)}`}
                 onClick={() => pick(row.name)}
                 onKeyDown={(event) => onKey(event, row.name)}
                 onFocus={() => setTip(row.name)}
@@ -117,14 +117,14 @@ export default function HorizontalPnlBars({
                   <span className={`dv-hbar-bar ${side}`} style={{ width, [side === "pos" ? "left" : "right"]: "50%" }} />
                 </span>
                 <span className={`dv-hbar-value ${toneClass(row.profit)}`}>{moneyShort(row.profit)}</span>
-                <span className="dv-hbar-meta muted">{row.count} lệnh</span>
+                <span className="dv-hbar-meta muted">{row.count == null ? "—" : `${row.count} lệnh`}</span>
               </button>
               {tip === row.name ? (
                 <div role="tooltip" id={tipId} className="dv-tooltip">
                   <strong>{row.name}</strong>
                   <span>PnL {money(row.profit)}</span>
-                  <span>{row.count} lệnh · win rate {pct(row.winRate)}</span>
-                  {row.wins != null || row.losses != null ? <span>Thắng/thua {row.wins}/{row.losses}</span> : null}
+                  <span>{row.count == null ? "Số lệnh: —" : `${row.count} lệnh`} · win rate {pct(row.winRate)}</span>
+                  {row.count != null && (row.wins != null || row.losses != null) ? <span>Thắng/thua {row.wins}/{row.losses}</span> : null}
                 </div>
               ) : null}
             </li>

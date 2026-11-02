@@ -142,7 +142,7 @@ export default function DayPnlBars({
                   <>
                     <strong>{row.day} UTC</strong>
                     <span>PnL ngày {money(row.profit)}</span>
-                    <span>{row.trades || 0} lệnh · lũy kế lệnh {money(row.cumulative)}</span>
+                    <span>{row.trades || 0} lệnh{row.wins != null ? ` · thắng/thua ${row.wins}/${row.losses}` : ""} · lũy kế lệnh {money(row.cumulative)}</span>
                   </>
                 );
               })()}

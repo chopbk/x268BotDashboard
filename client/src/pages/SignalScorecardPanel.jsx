@@ -77,14 +77,15 @@ export default function SignalScorecardPanel({ onFindConfig }) {
   const staticAllowed = can(user, STATISTICS_VIEW);
   const searchAllowed = can(user, CONFIG_VIEW);
 
-  function update(patch) {
+  function update(patch, { replace = false } = {}) {
     const next = new URLSearchParams(params);
     next.set("tab", "scorecard");
     for (const [key, value] of Object.entries(patch)) {
       if (value == null || value === "") next.delete(key);
       else next.set(key, String(value));
     }
-    setParams(next, { replace: true });
+    // Selection/mode chart đẩy history để Back/Forward khôi phục; filter form dùng replace.
+    setParams(next, { replace });
   }
 
   useEffect(() => {
@@ -154,7 +155,7 @@ export default function SignalScorecardPanel({ onFindConfig }) {
             minTrades: String(form.get("minTrades") || "").trim(),
             q: String(form.get("q") || "").trim(),
             scoreSelect: "",
-          });
+          }, { replace: true });
         }}
       >
         <label>

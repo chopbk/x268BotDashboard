@@ -320,13 +320,19 @@ test("profit factor label and missing profit stay null instead of zero", () => {
 test("longest losing streak follows close order and insights stay rule-based", () => {
     assert.equal(longestLosingStreak([{ profit: 1 }, { profit: -1 }, { profit: -2 }, { profit: -3 }, { profit: 4 }, { profit: -1 }]), 3);
     const series = fillSeries(new Date("2026-10-01T00:00:00Z"), new Date("2026-10-03T00:00:00Z"), [
-        { day: "2026-10-01", count: 2, profit: 5 },
-        { day: "2026-10-03", count: 1, profit: -2 },
+        { day: "2026-10-01", count: 2, profit: 5, wins: 2, losses: 0 },
+        { day: "2026-10-03", count: 1, profit: -2, wins: 0, losses: 1 },
     ]);
     assert.equal(series.length, 3);
     assert.equal(series[1].profit, 0);
+    assert.equal(series[1].trades, 0);
+    assert.equal(series[1].wins, 0);
+    assert.equal(series[1].losses, 0);
+    assert.equal(series[1].missing, undefined);
     assert.equal(series[1].cumulative, 5);
     assert.equal(series[2].cumulative, 3);
+    assert.equal(series[0].wins, 2);
+    assert.equal(series[2].losses, 1);
     const notes = buildInsights({
         stats: { valid: 5, wins: 4, losses: 1, flats: 0, winRate: 80, profit: 3, maxProfit: 10, avgWin: 2, avgLoss: -5, excludedMissingClose: 0, missingProfit: 0 },
         bySignal: [{ signal: "SIGNAL_A", profit: 12, valid: 4 }],

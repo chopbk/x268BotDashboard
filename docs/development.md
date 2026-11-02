@@ -11,7 +11,7 @@
 | Tìm signal | SignalSearchPage → config-search → account_statics | config-search |
 | Provider Scorecard | SignalScorecardPanel → provider-scorecard → signal_infos + account_statics (+ chart P0) | provider-scorecard |
 | Thêm/gỡ signal | SignalSetupPanel → routes/signal-setup → lib/signal-setup | signal-setup |
-| Hiệu quả giao dịch / ví / chart P0 | TradePerformancePage / AccountLedgerPage → account-statics / account-ledger; charts `client/src/components/charts` | account-statics, provider-scorecard, `node --test client/src/components/charts/rankGroups.test.js` |
+| Hiệu quả giao dịch / ví / chart P0–P1 | TradePerformancePage / AccountLedgerPage / DashboardPage / SummaryPage → account-statics / account-ledger / dashboard / summary; charts `client/src/components/charts` | account-statics, provider-scorecard, `node --test client/src/components/charts/rankGroups.test.js` |
 | Position / REST Binance | PositionsPage → routes/positions → position-live + binance-rest-queue → position-feed | positions, binance-rest-queue, position-sync |
 | Thị trường hub + Vị trí & Setup + Intelligence P0 | MarketHubPage → MarketPage (location/scores, context/brief/panel) / SmartMoneyPage → `/api/market/*` \| `/api/smart-money/*` | `node --test server/test/market-hub-url.test.js server/test/market-location.test.js server/test/market-read-context.test.js` |
 | Terminal workspace R1 | TerminalPage + components/terminal → cùng API Position/Orders/Trading | `node --test client/src/components/terminal/protection.test.js` (+ trade-preview / position-sort / position-alerts) |

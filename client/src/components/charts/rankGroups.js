@@ -25,7 +25,7 @@ export function rankGroups(rows, {
       id: String(name),
       name: String(name),
       profit,
-      count: Number(row[countKey]) || 0,
+      count: row[countKey] == null || row[countKey] === "" ? null : Number(row[countKey]) || 0,
       winRate: finite(row[winRateKey]),
       wins: Number(row.wins) || 0,
       losses: Number(row.losses) || 0,
@@ -33,13 +33,14 @@ export function rankGroups(rows, {
     };
   }).filter((row) => row.profit != null);
 
+  const byCount = (a, b) => (Number(b.count) || 0) - (Number(a.count) || 0);
   let ranked;
   if (mode === "gain") {
-    ranked = list.filter((row) => row.profit > 0).sort((a, b) => b.profit - a.profit || b.count - a.count);
+    ranked = list.filter((row) => row.profit > 0).sort((a, b) => b.profit - a.profit || byCount(a, b));
   } else if (mode === "loss") {
-    ranked = list.filter((row) => row.profit < 0).sort((a, b) => a.profit - b.profit || b.count - a.count);
+    ranked = list.filter((row) => row.profit < 0).sort((a, b) => a.profit - b.profit || byCount(a, b));
   } else {
-    ranked = [...list].sort((a, b) => Math.abs(b.profit) - Math.abs(a.profit) || b.count - a.count);
+    ranked = [...list].sort((a, b) => Math.abs(b.profit) - Math.abs(a.profit) || byCount(a, b));
   }
 
   const shown = ranked.slice(0, Math.max(1, limit));
@@ -67,7 +68,8 @@ export function summarizeTop(rank) {
   const rest = rank.restCount
     ? ` · còn ${rank.restCount} nhóm: lãi ${signMoney(rank.restGain)}, lỗ ${signMoney(rank.restLoss)}`
     : "";
-  return `${top.name} đóng góp ${signMoney(top.profit)} từ ${top.count} lệnh · top ${rank.shownCount}/${rank.totalGroups}${rest}`;
+  const fromTrades = top.count == null ? "" : ` từ ${top.count} lệnh`;
+  return `${top.name} đóng góp ${signMoney(top.profit)}${fromTrades} · top ${rank.shownCount}/${rank.totalGroups}${rest}`;
 }
 
 function signMoney(value) {

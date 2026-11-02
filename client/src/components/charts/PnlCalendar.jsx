@@ -34,7 +34,7 @@ export default function PnlCalendar({
   return (
     <ChartShell
       title="Ngày nào lãi/lỗ nhiều nhất?"
-      subtitle={subtitle || "Lịch PnL theo ngày đóng · USDT · UTC · ô trống trong kỳ = 0 lệnh"}
+      subtitle={subtitle || "Lịch PnL theo ngày đóng · USDT · UTC · ngày không có lệnh trong tập lọc = 0 (đã xác nhận aggregate). Chưa có tín hiệu coverage thiếu snapshot — không tô “Thiếu dữ liệu” giả."}
       summary={summary}
       loading={loading}
       error={error}

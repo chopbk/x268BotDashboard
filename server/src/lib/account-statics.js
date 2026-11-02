@@ -413,7 +413,16 @@ function fillSeries(from, to, byDay) {
         const dayPnl = row?.profit != null ? round3(row.profit) : 0;
         const trades = row?.count || 0;
         cumulative = round3(cumulative + dayPnl);
-        series.push({ day: key, trades, profit: dayPnl, cumulative });
+        // Ngày không có bản ghi trong tập đang lọc = 0 lệnh (đã xác nhận bởi aggregate).
+        // Không gắn missing: backend chưa có tín hiệu coverage/thiếu snapshot riêng.
+        series.push({
+            day: key,
+            trades,
+            profit: dayPnl,
+            cumulative,
+            wins: row?.wins != null ? Number(row.wins) || 0 : 0,
+            losses: row?.losses != null ? Number(row.losses) || 0 : 0,
+        });
     }
     return series;
 }
@@ -802,6 +811,8 @@ async function listAccountStatics(actor, input = {}) {
                     _id: { $dateToString: { format: "%Y-%m-%d", date: "$closeTime", timezone: "UTC" } },
                     count: { $sum: 1 },
                     profit: { $sum: { $cond: [profitTypeOk, "$profit", 0] } },
+                    wins: { $sum: { $cond: [winCond, 1, 0] } },
+                    losses: { $sum: { $cond: [lossCond, 1, 0] } },
                 },
             },
             { $sort: { _id: 1 } },
@@ -903,7 +914,13 @@ async function listAccountStatics(actor, input = {}) {
     const series = fillSeries(
         range.from,
         range.to || new Date(),
-        (dayRows || []).map((row) => ({ day: row._id, count: row.count, profit: round3(row.profit || 0) }))
+        (dayRows || []).map((row) => ({
+            day: row._id,
+            count: row.count,
+            profit: round3(row.profit || 0),
+            wins: row.wins || 0,
+            losses: row.losses || 0,
+        }))
     );
 
     const rangeLabel = formatRangeLabel(range, timeField);

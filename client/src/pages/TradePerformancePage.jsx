@@ -980,7 +980,7 @@ export default function TradePerformancePage() {
                       series={data?.series || []}
                       selectedDay={listDay}
                       onSelectDay={(day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })}
-                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · ngày đóng · UTC`}
+                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · ngày đóng · UTC · 0 lệnh = không có bản ghi trong tập lọc (đã xác nhận). Coverage thiếu snapshot: chưa xác minh.`}
                     />
                   ) : (
                     <DayPnlBars
@@ -988,7 +988,7 @@ export default function TradePerformancePage() {
                       selectedDay={listDay}
                       timeField={data?.timeField}
                       onSelectDay={(day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })}
-                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · PnL lũy kế lệnh từ 0 · UTC`}
+                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · PnL lũy kế lệnh từ 0 · UTC · tooltip có thắng/thua theo ngày`}
                     />
                   )}
                 </div>

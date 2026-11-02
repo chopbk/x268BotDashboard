@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import HorizontalPnlBars from "../components/charts/HorizontalPnlBars.jsx";
+import { rankGroups } from "../components/charts/rankGroups.js";
+import "../components/charts/charts.css";
 
 const LOGS_VIEW = "logs.view";
+const STATISTICS_VIEW = "statistics.view";
 const CLIENT_CACHE_MS = 60 * 1000;
+const can = (user, permission) => (user?.permissions || []).includes(permission);
 
 function money(value) {
   if (value == null) return "—";
@@ -98,6 +103,9 @@ function SparkBars({ values, days, label }) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [botPnlMode, setBotPnlMode] = useState("closed"); // closed | upnl
+  const statsAllowed = can(user, STATISTICS_VIEW);
   const canSystem = (user?.permissions || []).includes(LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all";
   const healthHref = canSystem ? "/system" : "/logs?kind=runtime";
   const [data, setData] = useState(() => readClientCache(user?.id));
@@ -167,6 +175,34 @@ export default function DashboardPage() {
   const series = data?.series;
   const activity = data?.activity || [];
   const ai = data?.ai;
+  const snapshotAt = openRisk?.asOf || data?.generatedAt || null;
+
+  const botContribution = useMemo(() => {
+    const rows = (data?.mine || []).map((row) => ({
+      username: row.username,
+      profit: botPnlMode === "upnl" ? row.unrealized : row.profitToday,
+      count: null,
+      winRate: null,
+    })).filter((row) => row.profit != null && Number.isFinite(Number(row.profit)));
+    const gain = rankGroups(rows, { nameKey: "username", mode: "gain", limit: 5 });
+    const loss = rankGroups(rows, { nameKey: "username", mode: "loss", limit: 5 });
+    return {
+      rows: [...gain.shown, ...loss.shown].map((row) => row.raw),
+      empty: !rows.length,
+    };
+  }, [data?.mine, botPnlMode]);
+
+  function reportHref(username) {
+    if (!statsAllowed || !username) return "";
+    const query = new URLSearchParams({
+      tab: "performance",
+      username,
+      range: "today",
+      analytics: "1",
+      book: "live",
+    });
+    return `/reports?${query}`;
+  }
 
   async function sendToAi() {
     if (!ai?.configured) {
@@ -324,6 +360,53 @@ export default function DashboardPage() {
                   <SparkBars values={series.income} days={series.days} label="Income 7 ngày" />
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {data?.mine?.length ? (
+            <section className="dash-block">
+              <div className="dv-mode-tabs" role="group" aria-label="Chế độ PnL bot" style={{ marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className={botPnlMode === "closed" ? "active" : "ghost"}
+                  aria-pressed={botPnlMode === "closed"}
+                  onClick={() => setBotPnlMode("closed")}
+                >
+                  Đã chốt hôm nay
+                </button>
+                <button
+                  type="button"
+                  className={botPnlMode === "upnl" ? "active" : "ghost"}
+                  aria-pressed={botPnlMode === "upnl"}
+                  onClick={() => setBotPnlMode("upnl")}
+                >
+                  Chưa chốt · uPnL
+                </button>
+              </div>
+              <HorizontalPnlBars
+                title={botPnlMode === "upnl"
+                  ? "Bot nào đang có uPnL lớn nhất?"
+                  : "Bot nào đóng góp PnL đã chốt?"}
+                subtitle={botPnlMode === "upnl"
+                  ? `Chưa chốt · snapshot ${snapshotAt ? new Date(snapshotAt).toISOString() : "—"} · USDT · không cộng vào profit đã chốt · UTC`
+                  : "Hôm nay UTC · USDT · Account Static đã chốt · top 5 lãi + top 5 lỗ · không gồm uPnL"}
+                rows={botContribution.rows}
+                nameKey="username"
+                selected=""
+                onSelect={(name) => {
+                  const href = reportHref(name);
+                  if (href) navigate(href);
+                }}
+                limit={10}
+                empty={botContribution.empty
+                  ? (botPnlMode === "upnl" ? "Chưa có uPnL trên bot của bạn." : "Chưa có PnL đã chốt hôm nay trên bot của bạn.")
+                  : "Không có bot lãi/lỗ để xếp trong chế độ này."}
+              />
+              {botPnlMode === "upnl" ? (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  uPnL là snapshot hiện tại — không suy ra lịch sử chưa chốt. Bấm bot mở Báo cáo hôm nay khi có quyền statistics.view.
+                </p>
+              ) : null}
             </section>
           ) : null}
 

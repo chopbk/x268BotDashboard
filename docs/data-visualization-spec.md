@@ -2,7 +2,7 @@
 
 Ngày: 2026-11-02. Cập nhật triển khai: **2026-11-02**.
 
-Trạng thái: **P0 đã triển khai** (Hiệu quả lệnh, Scorecard, Ví & dòng tiền). P1/P2 vẫn là đề xuất — chưa waterfall, chưa chart Tổng quan/Terminal/Hệ thống theo bảng giai đoạn.
+Trạng thái: **P0 đạt, còn gap** (đã deploy; chưa hoàn tất toàn bộ nghiệm thu §8). **P1 một phần:** Tổng quan + Thống kê đã có chart đóng góp; **waterfall Ví chưa bật** (chờ typed đầy đủ + đối soát). P2 và Terminal/Hệ thống/Log vẫn đề xuất.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -53,11 +53,11 @@ Không thêm hàng chart khiến bảng bị đẩy qua nhiều màn hình. Desk
 
 | Giai đoạn | Màn | Kết quả chính | Điều kiện dữ liệu | Trạng thái |
 |---|---|---|---|---|
-| P0 | Hiệu quả lệnh | Bar PnL theo nhóm + lịch PnL thay phiên chart ngày | Aggregate/`series` `account-statics`; `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng | **Đã làm** |
-| P0 | Scorecard | Bar xếp hạng mặc định, bubble so sánh tùy chọn | Cùng response; `winRate=null` khi 0 lệnh | **Đã làm** |
-| P0 | Ví & dòng tiền | Nâng chart hiện có: trục, tooltip, gap, bảng dữ liệu | Không đổi định nghĩa balance/trading; chưa waterfall | **Đã làm** |
-| P1 | Ví & dòng tiền | Waterfall phân rã income | Bắt buộc metadata xác nhận thành phần không trùng | Đề xuất |
-| P1 | Tổng quan/Thống kê | Đóng góp PnL bot/user; Long/Short | Dùng đúng nguồn từng màn |
+| P0 | Hiệu quả lệnh | Bar PnL theo nhóm + lịch PnL thay phiên chart ngày | Aggregate/`series` `account-statics`; `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng | **Đạt, còn gap** |
+| P0 | Scorecard | Bar xếp hạng mặc định, bubble so sánh tùy chọn | Cùng response; `winRate=null` khi 0 lệnh; selection đẩy history | **Đạt, còn gap** |
+| P0 | Ví & dòng tiền | Nâng chart hiện có: trục, tooltip, gap, bảng dữ liệu | Không đổi định nghĩa balance/trading; chưa waterfall | **Đạt, còn gap** |
+| P1 | Ví & dòng tiền | Waterfall phân rã income | Bắt buộc metadata xác nhận thành phần không trùng; legacy/mixed ẩn waterfall | **Chưa** — chờ typed |
+| P1 | Tổng quan/Thống kê | Đóng góp PnL bot/user; Long/Short | Dùng đúng nguồn từng màn | **Đã làm** |
 | P1 | Terminal | Tỷ trọng notional + phân bổ symbol | Snapshot sàn đầy đủ, đơn vị đã chuẩn hóa |
 | P2 | Signal thống kê | Top lỗi parse, mức sử dụng signal | Aggregate hiện có; ghi rõ kỳ/coverage |
 | P2 | Hệ thống/Log | Trạng thái process, RAM, số lỗi theo thời gian | Snapshot cho status; API aggregate mới cho log |
@@ -247,17 +247,34 @@ Mobile xếp hai vùng chart theo chiều dọc; chart nhóm gập được. Kh�
 
 Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời, nguồn/công thức, filter nền/selection, dữ liệu thiếu xử lý ra sao, ảnh desktop/mobile và kiểm chứng tổng số. P0 hoàn thành trước khi bắt đầu mở rộng time-series vận hành.
 
-### P0 đã giao (2026-11-02)
+### P0 đã giao — trạng thái nghiệm thu: **đạt, còn gap** (không gọi là hoàn tất §8)
 
 | Màn | Chart | Nguồn | Filter nền / selection |
 |---|---|---|---|
-| Báo cáo → Hiệu quả lệnh | Bar ngang nhóm Signal/Config/Symbol (+ user/side); Biểu đồ ngày / Lịch PnL (một chế độ) | `GET /api/account-statics` → `stats.by*` + `series` | Nền: kỳ/account/book/side/…; selection URL `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng lệnh |
-| Signal → Scorecard | Xếp hạng bar (mặc định); bubble win rate × profit × diện tích lệnh | `GET /api/provider-scorecard` | Highlight `scoreSelect`; channel 0 lệnh tách mục, không gán win rate 0 trên bubble |
-| Báo cáo → Ví & dòng tiền | Đường số dư + Trading/dòng tiền cộng dồn (trục, tooltip, gap, Xem dữ liệu) | `GET /api/account-ledger` → `series` | Giữ filter user/days; null balance = gap/“Thiếu dữ liệu”; chưa waterfall |
+| Báo cáo → Hiệu quả lệnh | Bar ngang nhóm Signal/Config/Symbol (+ user/side); Biểu đồ ngày / Lịch PnL (một chế độ) | `GET /api/account-statics` → `stats.by*` + `series` (có `wins`/`losses` theo ngày) | Nền: kỳ/account/book/side/…; selection URL `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng lệnh |
+| Signal → Scorecard | Xếp hạng bar (mặc định); bubble win rate × profit × diện tích lệnh | `GET /api/provider-scorecard` | `scoreSelect`/`scoreChart` đẩy history (Back/Forward); filter form `replace` |
+| Báo cáo → Ví & dòng tiền | Đường số dư + Trading/dòng tiền cộng dồn (trục, tooltip, gap, Xem dữ liệu) | `GET /api/account-ledger` → `series` | Giữ filter user/days; null balance = gap; chưa waterfall |
+
+**Coverage ngày (Hiệu quả lệnh):** ngày không có bản ghi trong tập đang lọc = **0 lệnh** (aggregate xác nhận). **Chưa xác minh** tín hiệu “thiếu snapshot/coverage” riêng từ backend — UI **không** tô “Thiếu dữ liệu” giả khi chỉ vắng hàng ngày.
+
+**Nợ kỹ thuật P0 (checklist, không chặn P1 overview):**
+
+- Bucket tuần/tháng khi kỳ >90 ngày
+- Benchmark chọn chart <100ms với fixture 90 ngày / 100 nhóm / 1.000 dòng
+- User trial formal “10 giây đọc được lãi/lỗ lớn nhất”
+- Lỗi request tách panel (bảng vẫn dùng khi chart lỗi) — còn thiên page-level
+- Waterfall Ví: chỉ bật khi typed đầy đủ, thành phần không trùng, tổng đối soát khớp; legacy/mixed → ẩn + fallback bảng/tổng cũ
+
+### P1 đã giao một phần
+
+| Màn | Chart | Nguồn | Ghi chú |
+|---|---|---|---|
+| Tổng quan | Bot đóng góp PnL đã chốt (top 5 lãi + top 5 lỗ); chế độ uPnL snapshot riêng | `/api/dashboard` → `mine.profitToday` / `mine.unrealized` | Không cộng uPnL vào đã chốt; bấm bot → Báo cáo hôm nay khi có quyền |
+| Thống kê tổng hợp | Bar user theo `userRanks.profit`; hai cột Long/Short | `/api/summary` | Nhãn nguồn: user = income ví; Long/Short = Account Static — không gộp |
 
 Component dùng chung: `client/src/components/charts/*` (SVG/HTML, không thêm dependency). Fixture trực quan: `scripts/chart-p0-fixture.html`.
 
-Ảnh fixture (không phải dữ liệu production):
+Ảnh fixture P0 (không phải dữ liệu production):
 
 - Desktop 1440: [assets/p0-charts-1440.png](assets/p0-charts-1440.png)
 - Tablet 768: [assets/p0-charts-768.png](assets/p0-charts-768.png)
