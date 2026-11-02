@@ -110,6 +110,8 @@ REST dùng `account`, `audience`, `book` và các filter; chi tiết monitor dù
 
 [DashboardPage](../client/src/pages/DashboardPage.jsx) → GET `/api/dashboard` (cache memory theo actor; `?refresh=1` tính lại; client sessionStorage 60s) → [dashboard](../server/src/lib/dashboard.js): bot scope + series 7 ngày profit/income + compare hôm qua + heartbeat + uPnL Redis + activity + attention (severity, lọc noise). POST `/api/dashboard/attention` → [dashboard-ai](../server/src/lib/dashboard-ai.js) → [dashboard-brief](../server/src/lib/dashboard-brief.js). Timeout 12 giây; rate limit 15 giây/user.
 
+[SignalStatsPanel](../client/src/pages/SignalStatsPanel.jsx) → GET `/api/signal-config` → bar top lỗi parse (7 ngày) và config đang bật (snapshot hiện có); selection `signals` lọc bảng. [SystemHealthPage](../client/src/pages/SystemHealthPage.jsx) → GET `/api/system-health` → ô process theo host + bar RAM MB; stale 90s. [AuditLogsPage](../client/src/pages/AuditLogsPage.jsx) runtime → GET `/api/runtime-logs` kèm `histogram` aggregate (mặc định 24h UTC); bấm bucket/mức lọc bảng qua `bucketFrom`/`level`. Chi tiết [data-visualization-spec](data-visualization-spec.md).
+
 ## 7. Thị trường hub + Vị trí & Setup + scoring
 
 ```

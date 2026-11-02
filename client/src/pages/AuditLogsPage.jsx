@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import LogHistogram from "../components/charts/LogHistogram.jsx";
+import "../components/charts/charts.css";
 
 const ACTION_LABELS = {
   "user.registered": "Đăng ký user",
@@ -43,16 +45,54 @@ const RUNTIME_LABELS = {
   process: "PM2 process",
 };
 
+function defaultRuntimeWindow() {
+  const to = new Date();
+  const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function bucketRange(bucketKey, grain) {
+  if (!bucketKey) return { from: "", to: "" };
+  if (grain === "hour" || String(bucketKey).includes("T")) {
+    const start = new Date(bucketKey);
+    if (Number.isNaN(start.getTime())) return { from: "", to: "" };
+    return { from: start.toISOString(), to: new Date(start.getTime() + 60 * 60 * 1000).toISOString() };
+  }
+  const start = new Date(`${String(bucketKey).slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return { from: "", to: "" };
+  return { from: start.toISOString(), to: new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString() };
+}
+
+function toDatetimeLocal(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+function fromDatetimeLocal(value) {
+  if (!value) return "";
+  const d = new Date(`${value}:00.000Z`);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
 function RuntimeLogs({ initialCategory = "" }) {
+  const initial = useMemo(() => defaultRuntimeWindow(), []);
   const [logs, setLogs] = useState([]);
+  const [histogram, setHistogram] = useState(null);
   const [query, setQuery] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [category, setCategory] = useState(initialCategory);
   const [level, setLevel] = useState("");
+  const [from, setFrom] = useState(initial.from);
+  const [to, setTo] = useState(initial.to);
+  const [selectedBucket, setSelectedBucket] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [chartError, setChartError] = useState("");
   const limit = 50;
 
   useEffect(() => {
@@ -60,18 +100,30 @@ function RuntimeLogs({ initialCategory = "" }) {
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    setChartError("");
+    const params = new URLSearchParams({ page: String(page), limit: String(limit), histogram: "1" });
     if (appliedQuery) params.set("q", appliedQuery);
     if (category) params.set("category", category);
     if (level) params.set("level", level);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (selectedBucket) {
+      const range = bucketRange(selectedBucket);
+      if (range.from) params.set("bucketFrom", range.from);
+      if (range.to) params.set("bucketTo", range.to);
+    }
     api(`/api/runtime-logs?${params}`, { signal: controller.signal })
       .then((data) => {
         if (cancelled) return;
         setLogs(data.logs || []);
         setTotal(data.total || 0);
+        setHistogram(data.histogram || null);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) {
+          setError(err.message);
+          setChartError(err.message || "Không tải histogram");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -80,28 +132,103 @@ function RuntimeLogs({ initialCategory = "" }) {
       cancelled = true;
       controller.abort();
     };
-  }, [appliedQuery, category, level, page]);
+  }, [appliedQuery, category, level, page, from, to, selectedBucket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   return (
     <>
-      <p className="muted">Lỗi runtime của binance-bot, giữ 30 ngày. Log cũ trước khi bật ghi sẽ không có ở đây.</p>
-      <form className="audit-search" onSubmit={(event) => { event.preventDefault(); setPage(1); setAppliedQuery(query.trim()); }}>
+      <p className="muted">Lỗi runtime của binance-bot, giữ 30 ngày. Kỳ mặc định 24 giờ UTC; histogram aggregate toàn query (không lấy từ trang bảng).</p>
+      <form
+        className="audit-search ledger-tools"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setPage(1);
+          setSelectedBucket("");
+          setAppliedQuery(query.trim());
+        }}
+      >
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nội dung, config, symbol, signal…" />
+        <label>
+          Từ (UTC)
+          <input
+            type="datetime-local"
+            value={toDatetimeLocal(from)}
+            onChange={(event) => {
+              setFrom(fromDatetimeLocal(event.target.value));
+              setSelectedBucket("");
+              setPage(1);
+            }}
+          />
+        </label>
+        <label>
+          Đến (UTC)
+          <input
+            type="datetime-local"
+            value={toDatetimeLocal(to)}
+            onChange={(event) => {
+              setTo(fromDatetimeLocal(event.target.value));
+              setSelectedBucket("");
+              setPage(1);
+            }}
+          />
+        </label>
+        <button type="button" className="ghost" onClick={() => {
+          const next = defaultRuntimeWindow();
+          setFrom(next.from);
+          setTo(next.to);
+          setSelectedBucket("");
+          setPage(1);
+        }}>
+          24 giờ
+        </button>
         <button type="submit">Tìm</button>
       </form>
       <div className="chips signal-chips">
-        <button type="button" className={category === "" ? "symbol-chip active" : "symbol-chip"} onClick={() => { setCategory(""); setPage(1); }}>Tất cả</button>
+        <button type="button" className={category === "" ? "symbol-chip active" : "symbol-chip"} onClick={() => { setCategory(""); setPage(1); setSelectedBucket(""); }}>Tất cả</button>
         {Object.entries(RUNTIME_LABELS).map(([id, label]) => (
-          <button type="button" className={category === id ? "symbol-chip active" : "symbol-chip"} key={id} onClick={() => { setCategory(id); setPage(1); }}>{label}</button>
+          <button type="button" className={category === id ? "symbol-chip active" : "symbol-chip"} key={id} onClick={() => { setCategory(id); setPage(1); setSelectedBucket(""); }}>{label}</button>
         ))}
-        <select value={level} onChange={(event) => { setLevel(event.target.value); setPage(1); }}>
-          <option value="">Mọi mức</option>
-          <option value="error">Error</option>
-          <option value="warn">Warn</option>
-          <option value="info">Info</option>
-        </select>
       </div>
+
+      <div style={{ margin: "12px 0" }}>
+        <LogHistogram
+          subtitle={`${histogram?.from || from || "?"} → ${histogram?.to || to || "?"} UTC · bucket ${histogram?.bucket === "day" ? "ngày" : "1 giờ"} · ${histogram?.note || "Số log đã ghi nhận"}`}
+          points={histogram?.points || []}
+          bucket={histogram?.bucket || "hour"}
+          total={histogram?.total}
+          selectedBucket={selectedBucket}
+          selectedLevel={level}
+          onSelectBucket={(bucket) => {
+            setSelectedBucket(bucket);
+            setPage(1);
+          }}
+          onSelectLevel={(next) => {
+            setLevel(next);
+            setPage(1);
+          }}
+          loading={loading && !histogram}
+          error={chartError}
+        />
+      </div>
+      {(selectedBucket || level) ? (
+        <div className="dv-selection-bar card" style={{ marginBottom: 12 }}>
+          <span className="muted">Chi tiết theo chart:</span>
+          {selectedBucket ? (
+            <span className="perf-chip">
+              Bucket {selectedBucket}
+              <button type="button" aria-label="Bỏ chọn bucket" onClick={() => { setSelectedBucket(""); setPage(1); }}>×</button>
+            </span>
+          ) : null}
+          {level ? (
+            <span className="perf-chip">
+              Mức {level}
+              <button type="button" aria-label="Bỏ chọn mức" onClick={() => { setLevel(""); setPage(1); }}>×</button>
+            </span>
+          ) : null}
+          <button type="button" className="ghost" onClick={() => { setSelectedBucket(""); setLevel(""); setPage(1); }}>Bỏ chọn biểu đồ</button>
+        </div>
+      ) : null}
+
       {error ? <p className="form-error">{error}</p> : null}
       <div className="table-wrap audit-table-wrap">
         <table>

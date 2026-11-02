@@ -2,7 +2,7 @@
 
 Ngày: 2026-11-02. Cập nhật triển khai: **2026-11-02**.
 
-Trạng thái: **P0 đạt, còn gap** (đã deploy; chưa hoàn tất toàn bộ nghiệm thu §8). **P1 gần đủ:** Tổng quan + Thống kê + Terminal Risk (Long/Short + top symbol) + waterfall Ví có gate typed/đối soát. P2 và Hệ thống/Log/Signal stats vẫn đề xuất.
+Trạng thái: **P0 đạt, còn gap nhỏ** (bucket >90d + bench đã có; user trial formal vẫn nợ). **P1 đủ.** **P2 đã làm:** Signal thống kê, Hệ thống process/RAM, Log histogram aggregate.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -59,8 +59,8 @@ Không thêm hàng chart khiến bảng bị đẩy qua nhiều màn hình. Desk
 | P1 | Ví & dòng tiền | Waterfall phân rã income | Bắt buộc metadata xác nhận thành phần không trùng; legacy/mixed ẩn waterfall | **Đã làm** — `incomeBreakdown` + gate |
 | P1 | Tổng quan/Thống kê | Đóng góp PnL bot/user; Long/Short | Dùng đúng nguồn từng màn | **Đã làm** |
 | P1 | Terminal | Tỷ trọng notional + phân bổ symbol | Snapshot sàn đầy đủ, đơn vị đã chuẩn hóa | **Đã làm** |
-| P2 | Signal thống kê | Top lỗi parse, mức sử dụng signal | Aggregate hiện có; ghi rõ kỳ/coverage |
-| P2 | Hệ thống/Log | Trạng thái process, RAM, số lỗi theo thời gian | Snapshot cho status; API aggregate mới cho log |
+| P2 | Signal thống kê | Top lỗi parse, mức sử dụng signal | Aggregate hiện có; ghi rõ kỳ/coverage | **Đã làm** |
+| P2 | Hệ thống/Log | Trạng thái process, RAM, số lỗi theo thời gian | Snapshot cho status; API aggregate mới cho log | **Đã làm** |
 
 Mỗi giai đoạn có thể bàn giao riêng; không chặn P0 vì chưa có lịch sử RAM hoặc dữ liệu waterfall chuẩn.
 
@@ -257,12 +257,13 @@ Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời,
 
 **Coverage ngày (Hiệu quả lệnh):** ngày không có bản ghi trong tập đang lọc = **0 lệnh** (aggregate xác nhận). **Chưa xác minh** tín hiệu “thiếu snapshot/coverage” riêng từ backend — UI **không** tô “Thiếu dữ liệu” giả khi chỉ vắng hàng ngày.
 
-**Nợ kỹ thuật P0 (checklist, không chặn P1 overview):**
+**Nợ kỹ thuật P0 còn lại:**
 
-- Bucket tuần/tháng khi kỳ >90 ngày
-- Benchmark chọn chart <100ms với fixture 90 ngày / 100 nhóm / 1.000 dòng
 - User trial formal “10 giây đọc được lãi/lỗ lớn nhất”
-- Lỗi request tách panel (bảng vẫn dùng khi chart lỗi) — còn thiên page-level
+- Lỗi request tách panel đầy đủ (một số màn đã tách chartError; TradePerformance vẫn chung một GET)
+
+**P0 đã vá thêm:** bucket tuần/tháng khi series >90 ngày (`bucketSeries`); bench transform local trong `client/src/components/charts/bench.test.js` (mục tiêu <100ms, ngưỡng CI mềm 250ms).
+
 ### P1 đã giao
 
 | Màn | Chart | Nguồn | Ghi chú |
@@ -271,6 +272,14 @@ Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời,
 | Thống kê tổng hợp | Bar user theo `userRanks.profit`; hai cột Long/Short | `/api/summary` | Nhãn nguồn: user = income ví; Long/Short = Account Static — không gộp |
 | Terminal → Risk | Thanh Long/Short notional; top 5 symbol + Khác | `/api/risk/portfolio` → `longNotional`/`shortNotional`/`bySymbol` | Màu phân loại (không dùng màu lãi/lỗ); bấm symbol → filter bảng; stale giữ cảnh báo; margin usage hoãn (chưa contract) |
 | Báo cáo → Ví | Waterfall Trading (realized/fee/funding/rebate) + chế độ Dòng tiền | `/api/account-ledger` → `incomeBreakdown` | Chỉ `waterfallEligible` khi typed đủ + đối soát; mixed/legacy ẩn + ghi chú |
+
+### P2 đã giao
+
+| Màn | Chart | Nguồn | Ghi chú |
+|---|---|---|---|
+| Signal → Thống kê | Top 10 lỗi parse (7 ngày); top 10 config đang bật | `/api/signal-config` → `parseErrors` / `usage` | Kỳ ghi rõ; không tự gắn tỷ lệ lỗi; bấm signal → `signals` filter bảng |
+| Hệ thống | Process theo host; bar RAM MB hiện tại | `/api/system-health` | Stale 90s backend; không % host; bấm ô/process → `?process=` |
+| Log runtime | Histogram chồng error/warn/info | `/api/runtime-logs` → `histogram` | Aggregate trước phân trang; mặc định 24h; ≤48h bucket giờ; selection `bucketFrom`/`level` lọc bảng |
 
 Component dùng chung: `client/src/components/charts/*` (SVG/HTML, không thêm dependency). Fixture trực quan: `scripts/chart-p0-fixture.html`.
 

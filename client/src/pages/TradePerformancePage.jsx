@@ -8,6 +8,7 @@ import { useEscape } from "../navigation";
 import HorizontalPnlBars from "../components/charts/HorizontalPnlBars.jsx";
 import DayPnlBars from "../components/charts/DayPnlBars.jsx";
 import PnlCalendar from "../components/charts/PnlCalendar.jsx";
+import { bucketSeries } from "../components/charts/bucketSeries.js";
 import "../components/charts/charts.css";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
@@ -788,6 +789,9 @@ export default function TradePerformancePage() {
           : "Signal nào đóng góp PnL nhiều nhất?";
   const seriesLen = (data?.series || []).length;
   const preferCalendar = seriesLen >= 7 && seriesLen <= 90;
+  const dayBuckets = useMemo(() => bucketSeries(data?.series || [], "auto"), [data?.series]);
+  const dayChartSeries = dayBuckets.points;
+  const daySelectable = dayBuckets.selectable;
 
   useEffect(() => {
     if (!data?.stats) return;
@@ -970,12 +974,13 @@ export default function TradePerformancePage() {
                       className={dayView === "calendar" ? "active" : "ghost"}
                       aria-pressed={dayView === "calendar"}
                       onClick={() => update({ dayView: "calendar" })}
-                      title={preferCalendar ? "Kỳ 7–90 ngày phù hợp lịch" : seriesLen < 7 ? "Dưới 7 ngày: ưu tiên biểu đồ cột" : "Trên 90 ngày: cân nhắc bucket tháng/tuần"}
+                      title={preferCalendar ? "Kỳ 7–90 ngày phù hợp lịch" : seriesLen < 7 ? "Dưới 7 ngày: ưu tiên biểu đồ cột" : "Trên 90 ngày: lịch vẫn ngày — biểu đồ đã bucket tuần/tháng"}
+                      disabled={seriesLen > 90}
                     >
                       Lịch PnL
                     </button>
                   </div>
-                  {dayView === "calendar" ? (
+                  {dayView === "calendar" && seriesLen <= 90 ? (
                     <PnlCalendar
                       series={data?.series || []}
                       selectedDay={listDay}
@@ -984,11 +989,13 @@ export default function TradePerformancePage() {
                     />
                   ) : (
                     <DayPnlBars
-                      series={data?.series || []}
-                      selectedDay={listDay}
+                      series={dayChartSeries}
+                      selectedDay={daySelectable ? listDay : ""}
                       timeField={data?.timeField}
-                      onSelectDay={(day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })}
-                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · PnL lũy kế lệnh từ 0 · UTC · tooltip có thắng/thua theo ngày`}
+                      onSelectDay={daySelectable
+                        ? (day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })
+                        : undefined}
+                      subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · PnL lũy kế lệnh từ 0 · UTC · bucket ${dayBuckets.label}${daySelectable ? "" : " (kỳ >90 ngày — tắt lọc ngày; chọn kỳ ≤90 để lọc bảng theo ngày)"}`}
                     />
                   )}
                 </div>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import CountBars from "../components/charts/CountBars.jsx";
+import "../components/charts/charts.css";
 
 const fmtTime = (value) => value ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "—";
 
@@ -27,13 +29,28 @@ function namesOf(value) {
 }
 
 export default function SignalStatsPanel({ onFindConfig }) {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [chartError, setChartError] = useState("");
   const [loadedAt, setLoadedAt] = useState(null);
   const fromUser = params.get("fromUser") || "";
   const fromEnv = params.get("fromEnv") || "";
+  const selectedSignal = String(params.get("signals") || params.get("signal") || "").split(/[,\s]+/)[0]?.toUpperCase() || "";
   const signalSet = namesOf(params.get("signals") || params.get("signal"));
+
+  function selectChartSignal(name) {
+    const next = new URLSearchParams(params);
+    if (!name) {
+      next.delete("signals");
+      next.delete("signal");
+    } else {
+      next.set("signals", name);
+      next.delete("signal");
+    }
+    if (!next.get("tab")) next.set("tab", "stats");
+    setParams(next);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,10 +58,14 @@ export default function SignalStatsPanel({ onFindConfig }) {
     api(`/api/signal-config${query}`, { signal: controller.signal })
       .then((next) => {
         setData(next);
+        setChartError("");
         setLoadedAt(new Date().toISOString());
       })
       .catch((err) => {
-        if (!controller.signal.aborted) setError(err.message || "Không tải được thống kê signal");
+        if (!controller.signal.aborted) {
+          setError(err.message || "Không tải được thống kê signal");
+          setChartError(err.message || "Không tải được biểu đồ signal");
+        }
       });
     return () => controller.abort();
   }, [fromUser]);
@@ -77,6 +98,56 @@ export default function SignalStatsPanel({ onFindConfig }) {
           <Link className="trail-link" to={historyHref}>Lịch sử signal</Link>
         </p>
       ) : <p className="muted">Nguồn: log parse 7 ngày và log tự gỡ 14 ngày{loadedAt ? `. Tải lúc ${fmtTime(loadedAt)}` : ""}.</p>}
+
+      <div className="dv-chart-grid two" style={{ marginBottom: 16 }}>
+        <CountBars
+          title="Signal nào lỗi parse nhiều nhất?"
+          subtitle="7 ngày gần nhất · log source=parse · số lần đã ghi nhận · không gắn tỷ lệ lỗi (thiếu mẫu số message)"
+          rows={(data?.parseErrors || []).map((row) => ({
+            name: row.signal || "(không tên)",
+            count: row.count,
+            meta: row.lastAt ? `gần nhất ${fmtTime(row.lastAt)}` : "",
+          }))}
+          nameKey="name"
+          valueKey="count"
+          valueLabel="Lỗi parse"
+          selected={selectedSignal}
+          onSelect={selectChartSignal}
+          limit={10}
+          error={chartError}
+          empty="Chưa có lỗi parse trong 7 ngày."
+        />
+        <CountBars
+          title="Signal nào đang gắn nhiều config bật?"
+          subtitle="Theo dữ liệu hiện có · config bạn sở hữu/được gán · cột Đang bật (ON) · không tự gắn 24h"
+          rows={(data?.usage || []).map((row) => ({
+            name: row.signal,
+            count: row.on,
+            meta: `${row.configs} config · tổng ON hệ thống đang xem`,
+          }))}
+          nameKey="name"
+          valueKey="count"
+          valueLabel="Config đang bật"
+          selected={selectedSignal}
+          onSelect={selectChartSignal}
+          limit={10}
+          error={chartError}
+          empty="Chưa có signal trên account trong phạm vi."
+          summary={data?.summary ? `Tổng ${data.summary.signals || 0} signal · ${data.summary.channels || 0} channel` : ""}
+        />
+      </div>
+      {selectedSignal ? (
+        <div className="dv-selection-bar card" style={{ marginBottom: 12 }}>
+          <span className="muted">Chi tiết theo chart:</span>
+          <span className="perf-chip">
+            Signal {selectedSignal}
+            <button type="button" aria-label="Bỏ chọn signal" onClick={() => selectChartSignal("")}>×</button>
+          </span>
+          <button type="button" className="ghost" onClick={() => selectChartSignal("")}>Bỏ chọn biểu đồ</button>
+          {onFindConfig ? <button type="button" className="ghost" onClick={() => onFindConfig(selectedSignal)}>Tìm config</button> : null}
+        </div>
+      ) : null}
+
       <section className="card">
         <h2>Tổng quan</h2>
         <p className="muted">

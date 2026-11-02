@@ -3,6 +3,9 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import PeerProxyPanel from "../components/PeerProxyPanel";
+import CountBars from "../components/charts/CountBars.jsx";
+import ChartShell from "../components/charts/ChartShell.jsx";
+import "../components/charts/charts.css";
 
 function when(value) {
   if (!value) return "—";
@@ -161,6 +164,32 @@ export default function SystemHealthPage() {
     return list;
   }, [data, filter]);
 
+  const hostGroups = useMemo(() => {
+    const map = new Map();
+    for (const row of rows) {
+      const host = row.hostId || row.host || "unknown";
+      const list = map.get(host) || [];
+      list.push(row);
+      map.set(host, list);
+    }
+    return [...map.entries()]
+      .map(([host, processes]) => ({ host, processes }))
+      .sort((a, b) => a.host.localeCompare(b.host));
+  }, [rows]);
+
+  const ramRows = useMemo(
+    () => rows
+      .filter((row) => row.memoryMb != null && Number(row.memoryMb) > 0)
+      .map((row) => ({
+        name: row.processName || row.key || "?",
+        count: Number(row.memoryMb),
+        meta: row.hostId || row.host || "",
+      })),
+    [rows]
+  );
+
+  const staleMs = data?.staleMs ?? 90_000;
+
   const selectedRow = useMemo(() => {
     if (!selectedProcess) return null;
     return (data?.processes || []).find(
@@ -225,6 +254,68 @@ export default function SystemHealthPage() {
                 <span className="muted">{item.detail}</span>
               </article>
             ))}
+          </div>
+
+          <div className="dv-chart-grid two" style={{ margin: "16px 0" }}>
+            <ChartShell
+              title="Process theo host đang thế nào?"
+              subtitle={`Snapshot hiện tại · stale ${(staleMs / 1000) | 0}s (backend) · bấm ô để mở process · không tạo ngưỡng khác`}
+              summary={`${rows.length} process · ${hostGroups.length} host · ${staleCount} stale`}
+              empty={!rows.length ? "Chưa có heartbeat process." : ""}
+              height="rank"
+            >
+              <div className="dv-host-grid">
+                {hostGroups.map((group) => (
+                  <article key={group.host} className="dv-host-card">
+                    <h3>{group.host}</h3>
+                    <div className="dv-process-tiles">
+                      {group.processes.map((row) => {
+                        const key = row.profileEnv || row.processName;
+                        const active = selectedProcess
+                          && (String(row.processName).toLowerCase() === selectedProcess.toLowerCase()
+                            || String(row.profileEnv || "").toLowerCase() === selectedProcess.toLowerCase());
+                        const ageSec = row.ageMs != null ? Math.round(row.ageMs / 1000) : row.elapsedMs != null ? Math.round(row.elapsedMs / 1000) : null;
+                        return (
+                          <button
+                            key={row.key || key}
+                            type="button"
+                            className={`dv-process-tile${active ? " active" : ""}${row.status === "down" ? " down" : ""}`}
+                            onClick={() => openProcess(row)}
+                          >
+                            <strong>{row.processName || key}</strong>
+                            <span>{row.role || (row.flags ? Object.keys(row.flags).filter((k) => row.flags[k]).join("/") : "") || "—"}</span>
+                            <span>
+                              {row.status === "down" ? "Stale" : "Online"}
+                              {ageSec != null ? ` · ${ageSec}s` : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </ChartShell>
+            <CountBars
+              title="Process nào đang dùng nhiều RAM?"
+              subtitle="Giá trị hiện tại theo process (MB) · không phải lịch sử · không phải % RAM host (thiếu total host memory)"
+              rows={ramRows}
+              nameKey="name"
+              valueKey="count"
+              valueLabel="RAM"
+              unit="MB"
+              selected={selectedProcess}
+              onSelect={(name) => {
+                if (!name) {
+                  closeProcess();
+                  return;
+                }
+                const row = rows.find((item) => item.processName === name);
+                if (row) openProcess(row);
+              }}
+              limit={10}
+              empty="Chưa có memoryMb trong snapshot."
+            />
           </div>
 
           <div className="page-head" style={{ marginTop: 24, alignItems: "center" }}>
