@@ -98,38 +98,59 @@ async function gateTradingIncrease({
         price: params?.price || params?.triggerPrice || params?.markPrice,
     });
 
-    const result = await reserveBudget({
-        account: username,
-        env: target.env,
-        producer: "web-trading-bridge",
-        producerVersion: "p2-fix",
-        action,
-        symbol,
-        side: params?.side,
-        positionSide: target.positionSide || params?.positionSide,
-        notionalNeed: notionalNeed || 0,
-        riskNeed: null,
-        quantity,
-        requestId: null,
-        idempotencyKey: params?.riskIdempotencyKey,
-        payload: {
+    try {
+        const result = await reserveBudget({
+            account: username,
+            env: target.env,
+            producer: "web-trading-bridge",
+            producerVersion: "p2-fix",
             action,
-            username,
             symbol,
-            quantity,
-            price: params?.price,
+            side: params?.side,
             positionSide: target.positionSide || params?.positionSide,
-            actorId: actor?.id || null,
-            phase: params?.phase || null,
-        },
-        book: params?.book === "paper" ? "paper" : "live",
-        positions: book.positions,
-        wallet: book.wallet,
-        openOrders: book.openOrders,
-        storeAvailable: true,
-    });
-
-    return { required: true, ...result, bookLoaded: true };
+            notionalNeed: notionalNeed || 0,
+            riskNeed: null,
+            quantity,
+            requestId: null,
+            idempotencyKey: params?.riskIdempotencyKey,
+            payload: {
+                action,
+                username,
+                symbol,
+                quantity,
+                price: params?.price,
+                positionSide: target.positionSide || params?.positionSide,
+                actorId: actor?.id || null,
+                phase: params?.phase || null,
+            },
+            book: params?.book === "paper" ? "paper" : "live",
+            positions: book.positions,
+            wallet: book.wallet,
+            openOrders: book.openOrders,
+            storeAvailable: true,
+        });
+        return { required: true, ...result, bookLoaded: true };
+    } catch (error) {
+        // Validation (400) vẫn ném; lỗi hạ tầng không được chặn observe.
+        if (error?.status === 400) throw error;
+        const { enforceReady } = require("./risk-policy");
+        if (enforceReady()) {
+            return {
+                required: true,
+                allowed: false,
+                reason: error.message || "risk_gate_error",
+                code: "risk_rejected",
+                bookLoaded: true,
+            };
+        }
+        return {
+            required: true,
+            allowed: true,
+            reason: `observe_continue:${error.message || "risk_gate_error"}`,
+            observedOnly: true,
+            bookLoaded: true,
+        };
+    }
 }
 
 async function bindAfterSubmit(reservationId, meta) {

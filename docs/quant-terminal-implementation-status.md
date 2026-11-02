@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix3** (receipt `partial` xuyên UI + lock/DB theo observe/enforce). **Chưa deploy / enforce vẫn khóa.** Atomic reservation+lock **chưa nghiệm thu**.  
+Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix4** (web observe infra + bot fence-after-write). **Chưa deploy / enforce vẫn khóa.** Atomic reservation+lock **chưa nghiệm thu**. Receipt retry-safe khi `receiptPersisted:false` **chưa chứng minh**.  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -10,18 +10,26 @@ Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
 | Repo | Git | Ghi chú |
 |---|---|---|
-| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit fix3; push; **không deploy** |
-| `binance-bot` | risk-gate observe/enforce infra | Không commit dirty sẵn |
+| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit fix4; push; **không deploy** |
+| `binance-bot` | risk-gate fence-after-write | Không commit dirty sẵn |
 
 Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration production / lệnh thật.
 
-### Fix3 (vòng hiện tại)
+### Fix4 (vòng hiện tại)
+
+| Mục | Trạng thái | Trước mốc |
+|---|---|---|
+| Web lock/DB throw chặn observe | `withAccountLock` → `{ok:false}`; `decideInfraOutcome`; gate catch | **trước deploy** |
+| Bot enforce + `lock_fenced_after` vẫn `allowed:true` | `decideFenceAfterWrite` ép `allowed:false`, giữ `reservationId` | **trước enforce** |
+| Atomic fence+insert | Vẫn chưa nghiệm thu | trước enforce |
+| Receipt `receiptPersisted:false` retry-safe | Chưa chứng minh | trước production trading |
+
+### Fix3
 
 | Mục | Trạng thái |
 |---|---|
-| Receipt enum + `partial` | Model + `receiptStatusFromResult` + `publicTradingCommand` + UI `classifyMutationResult` / MutationStatus |
-| Observe không throw khi lock/DB lỗi | `onInfraFailure` / `withAccountLock` không ném; enforce từ chối; insert enforce fail → reject |
-| Atomic reservation vs fence | **Chưa nghiệm thu** — renew trước ghi chỉ giảm cửa sổ; `lock_fenced_after` vẫn có thể sau khi đã insert. Bắt buộc trước enforce |
+| Receipt enum + `partial` xuyên UI | Đã xác nhận mock |
+| Bot observe/enforce lock upsert | Đã xác nhận một phần; fix4 bổ sung web + fence-after |
 
 ### Fix2 regression (đã đóng trước đó)
 

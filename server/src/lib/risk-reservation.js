@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const RiskReservation = require("../models/risk-reservation");
 const RiskAccountLock = require("../models/risk-account-lock");
-const { getPolicyForAccount } = require("./risk-policy");
+const { getPolicyForAccount, enforceReady } = require("./risk-policy");
 const { buildPortfolioSnapshot } = require("./risk-portfolio");
 const { hashPayload, nowMs } = require("./provenance");
 const { httpError } = require("./http");
@@ -58,67 +58,153 @@ function decideReleaseTransition(currentStatus, { reconcile = false } = {}) {
 
 /**
  * Soft lock chung web/bot (collection web_risk_account_locks).
- * Fencing: chỉ owner token+fence được renew/release; lease hết hạn mới acquire lại.
+ * Không throw lỗi hạ tầng Mongo — trả { ok, reason, result }.
+ * Atomic reservation+lock vẫn chưa nghiệm thu trước enforce.
  */
+function decideInfraOutcome({ mode, reason, reservation = null } = {}) {
+    const msg = String(reason || "infra_error");
+    if (mode === "enforce") {
+        return {
+            allowed: false,
+            reason: msg,
+            code: "risk_rejected",
+            reservation: reservation || null,
+            fenceWarning: msg,
+            observedOnly: false,
+        };
+    }
+    return {
+        allowed: true,
+        reason: `observe_continue:${msg}`,
+        observedOnly: true,
+        reservation: reservation || null,
+        fenceWarning: msg,
+    };
+}
+
+function decideFenceAfterWrite({ mode, reason, priorResult } = {}) {
+    const msg = String(reason || "lock_fenced_after");
+    if (priorResult && priorResult.allowed === false) {
+        return { ...priorResult, fenceWarning: msg };
+    }
+    const enforce = mode === "enforce" || priorResult?.mode === "enforce" || priorResult?.policy?.mode === "enforce";
+    if (enforce) {
+        return {
+            ...priorResult,
+            allowed: false,
+            reason: msg,
+            code: "risk_rejected",
+            mode: "enforce",
+            fenceWarning: msg,
+            // giữ reservation / reservationId để reconcile
+        };
+    }
+    return {
+        ...priorResult,
+        allowed: true,
+        reason: priorResult?.reason || `observe_continue:${msg}`,
+        fenceWarning: msg,
+        observedOnly: true,
+    };
+}
+
+function effectivePolicyMode(policy) {
+    let mode = policy?.mode || "observe";
+    if (!enforceReady()) mode = "observe";
+    return mode;
+}
+
 async function withAccountLock(account, fn) {
     const token = crypto.randomUUID();
-    await RiskAccountLock.updateOne(
-        { account },
-        { $setOnInsert: { account, leaseOwner: null, leaseUntil: null, fence: 0 } },
-        { upsert: true }
-    );
-    let acquired = null;
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-        acquired = await RiskAccountLock.findOneAndUpdate(
-            {
-                account,
-                $or: [
-                    { leaseUntil: null },
-                    { leaseUntil: { $lte: new Date() } },
-                ],
-            },
-            {
-                $set: {
-                    leaseOwner: token,
-                    leaseUntil: new Date(Date.now() + LOCK_MS),
-                },
-                $inc: { fence: 1 },
-            },
-            { new: true }
+    try {
+        await RiskAccountLock.updateOne(
+            { account },
+            { $setOnInsert: { account, leaseOwner: null, leaseUntil: null, fence: 0 } },
+            { upsert: true }
         );
-        if (acquired?.leaseOwner === token) break;
-        await new Promise((r) => setTimeout(r, 25 + attempt * 15));
-        acquired = null;
+    } catch (error) {
+        return { ok: false, reason: `lock_upsert_error:${error.message}` };
     }
+
+    let acquired = null;
+    try {
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+            acquired = await RiskAccountLock.findOneAndUpdate(
+                {
+                    account,
+                    $or: [
+                        { leaseUntil: null },
+                        { leaseUntil: { $lte: new Date() } },
+                    ],
+                },
+                {
+                    $set: {
+                        leaseOwner: token,
+                        leaseUntil: new Date(Date.now() + LOCK_MS),
+                    },
+                    $inc: { fence: 1 },
+                },
+                { new: true }
+            );
+            if (acquired?.leaseOwner === token) break;
+            await new Promise((r) => setTimeout(r, 25 + attempt * 15));
+            acquired = null;
+        }
+    } catch (error) {
+        return { ok: false, reason: `lock_acquire_error:${error.message}` };
+    }
+
     if (!acquired || acquired.leaseOwner !== token) {
-        throw httpError(409, "Risk reservation lock bận — thử lại", { code: "risk_rejected" });
+        return { ok: false, reason: "lock_busy" };
     }
     const fence = acquired.fence;
     const renew = async () => {
-        const row = await RiskAccountLock.findOneAndUpdate(
-            { account, leaseOwner: token, fence },
-            { $set: { leaseUntil: new Date(Date.now() + LOCK_MS) } },
-            { new: true }
-        );
-        if (!row || row.leaseOwner !== token) {
-            throw httpError(409, "Risk lock fence mất — dừng ghi", { code: "risk_rejected" });
+        try {
+            const row = await RiskAccountLock.findOneAndUpdate(
+                { account, leaseOwner: token, fence },
+                { $set: { leaseUntil: new Date(Date.now() + LOCK_MS) } },
+                { new: true }
+            );
+            if (!row || row.leaseOwner !== token) {
+                return { ok: false, reason: "lock_fenced" };
+            }
+            return { ok: true, row };
+        } catch (error) {
+            return { ok: false, reason: `lock_renew_error:${error.message}` };
         }
-        return row;
     };
     try {
-        const out = await fn({ token, fence, renew, lockMs: LOCK_MS });
-        const still = await RiskAccountLock.findOne({ account, leaseOwner: token, fence }).lean();
-        if (!still) {
-            throw httpError(409, "Risk lock fence mất sau tác vụ — không tin kết quả ghi", {
-                code: "risk_rejected",
-            });
+        let still;
+        try {
+            still = await RiskAccountLock.findOne({ account, leaseOwner: token, fence }).lean();
+        } catch (error) {
+            return { ok: false, reason: `lock_read_error:${error.message}` };
         }
-        return out;
+        if (!still) return { ok: false, reason: "lock_fenced" };
+
+        const out = await fn({ token, fence, renew, lockMs: LOCK_MS });
+
+        let after;
+        try {
+            after = await RiskAccountLock.findOne({ account, leaseOwner: token, fence }).lean();
+        } catch (error) {
+            return { ok: false, reason: `lock_read_after_error:${error.message}`, result: out };
+        }
+        if (!after) {
+            return { ok: false, reason: "lock_fenced_after", result: out };
+        }
+        return { ok: true, result: out };
+    } catch (error) {
+        return { ok: false, reason: `lock_fn_error:${error.message}` };
     } finally {
-        await RiskAccountLock.updateOne(
-            { account, leaseOwner: token, fence },
-            { $set: { leaseOwner: null, leaseUntil: null } }
-        );
+        try {
+            await RiskAccountLock.updateOne(
+                { account, leaseOwner: token, fence },
+                { $set: { leaseOwner: null, leaseUntil: null } }
+            );
+        } catch {
+            /* release best-effort */
+        }
     }
 }
 
@@ -273,12 +359,18 @@ async function reserveBudget({
     }
 
     // renew trước ghi giảm cửa sổ mất lease; atomic reservation+lock **chưa nghiệm thu** trước enforce.
-    return withAccountLock(username, async (lockCtx = {}) => {
+    let locked;
+    try {
+        locked = await withAccountLock(username, async (lockCtx = {}) => {
         if (typeof lockCtx.renew === "function") {
-            await lockCtx.renew();
+            const renewed = await lockCtx.renew();
+            if (renewed && renewed.ok === false) {
+                // mode chưa biết — trả sentinel để tầng ngoài map observe/enforce
+                return { __lockPreempt: true, reason: renewed.reason };
+            }
         }
         const policy = await getPolicyForAccount(username);
-        const mode = policy?.mode || "observe";
+        const mode = effectivePolicyMode(policy);
         const active = await loadActiveReservations(username);
         const snapshot = buildPortfolioSnapshot({
             username,
@@ -358,9 +450,29 @@ async function reserveBudget({
 
         const status = mode === "enforce" ? "reserved" : "observed";
         if (typeof lockCtx.renew === "function") {
-            await lockCtx.renew();
+            const renewed = await lockCtx.renew();
+            if (renewed && renewed.ok === false) {
+                if (mode === "enforce") {
+                    return {
+                        allowed: false,
+                        reason: renewed.reason || "lock_fenced",
+                        code: "risk_rejected",
+                        mode,
+                        policy,
+                    };
+                }
+                return {
+                    allowed: true,
+                    reason: `observe_continue:${renewed.reason || "lock_fenced"}`,
+                    observedOnly: true,
+                    mode,
+                    policy,
+                };
+            }
         }
-        const doc = await RiskReservation.create({
+        let doc;
+        try {
+            doc = await RiskReservation.create({
             reservationId,
             account: username,
             env,
@@ -385,6 +497,24 @@ async function reserveBudget({
             reason: breaches.length ? `observe:${breaches.map((b) => b.code).join(",")}` : null,
             book,
         });
+        } catch (error) {
+            if (mode === "enforce") {
+                return {
+                    allowed: false,
+                    reason: `reservation_write_error:${error.message}`,
+                    code: "risk_rejected",
+                    mode,
+                    policy,
+                };
+            }
+            return {
+                allowed: true,
+                reason: `reservation_write_skip_observe:${error.message}`,
+                observedOnly: true,
+                mode,
+                policy,
+            };
+        }
 
         return {
             allowed: true,
@@ -392,9 +522,47 @@ async function reserveBudget({
             breaches: mode === "observe" ? breaches : [],
             snapshot,
             policy,
+            mode,
             observedOnly: mode !== "enforce",
         };
     });
+    } catch (error) {
+        locked = { ok: false, reason: `lock_throw:${error.message}` };
+    }
+
+    if (!locked || !locked.ok) {
+        const reason = locked?.reason || "lock_busy";
+        const prior = locked?.result;
+        if (prior && prior.__lockPreempt) {
+            const policy = await getPolicyForAccount(username).catch(() => null);
+            return decideInfraOutcome({
+                mode: effectivePolicyMode(policy),
+                reason: prior.reason || reason,
+            });
+        }
+        if (prior && typeof prior === "object" && "allowed" in prior) {
+            return decideFenceAfterWrite({
+                mode: prior.mode || effectivePolicyMode(prior.policy),
+                reason,
+                priorResult: prior,
+            });
+        }
+        const policy = await getPolicyForAccount(username).catch(() => null);
+        return decideInfraOutcome({
+            mode: effectivePolicyMode(policy),
+            reason,
+            reservation: prior?.reservation || null,
+        });
+    }
+
+    if (locked.result && locked.result.__lockPreempt) {
+        const policy = await getPolicyForAccount(username).catch(() => null);
+        return decideInfraOutcome({
+            mode: effectivePolicyMode(policy),
+            reason: locked.result.reason || "lock_fenced",
+        });
+    }
+    return locked.result;
 }
 
 /**
@@ -491,6 +659,9 @@ module.exports = {
     withAccountLock,
     decideBindTransition,
     decideReleaseTransition,
+    decideInfraOutcome,
+    decideFenceAfterWrite,
+    effectivePolicyMode,
     LEASE_MS,
     LOCK_MS,
     ACTIVE,
