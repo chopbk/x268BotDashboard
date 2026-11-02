@@ -23,10 +23,12 @@ const {
     markReceiptSubmitted,
     finalizeTradingReceipt,
     isInFlightStatus,
+    receiptExpiresAtForStatus,
+    reconcileStaleReceipt,
+    recoveryStatusOf,
 } = require("./trading-receipt-claim");
 const UserAccount = require("../models/user-account");
 const { executeDirectTrading } = require("./direct-trading");
-const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Trading action catalog.
@@ -403,7 +405,6 @@ async function createTradingRequest({
     const requestId = crypto.randomUUID();
     const finalIdempotencyKey = idempotencyKey || requestId;
     const actorUserId = actor?.id || (actor?._id ? String(actor._id) : "");
-    const now = Date.now();
     const payloadHash = buildTradingPayloadHash({
         action,
         target,
@@ -419,7 +420,7 @@ async function createTradingRequest({
         payloadHash,
         actorUserId,
         actorUsername: actor?.username || actor?.email || "",
-        expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
+        expiresAt: receiptExpiresAtForStatus("claimed"),
     });
     if (!claim.claimed) {
         return {
@@ -633,6 +634,7 @@ function publicTradingCommand(doc) {
         status,
         terminal: doc.terminal != null ? !!doc.terminal : isTerminalReceiptStatus(status),
         inFlight: isInFlightStatus(status),
+        recoveryStatus: recoveryStatusOf(doc),
         payloadHash: doc.payloadHash || null,
         error: doc.error || null,
         result: doc.result || null,
@@ -660,12 +662,13 @@ async function assertCanViewReceipt(actor, doc) {
  * Get trading command status by requestId.
  */
 async function getTradingCommand(actor, requestId) {
-    const doc = await TradingReceipt.findOne({
+    let doc = await TradingReceipt.findOne({
         requestId: String(requestId || ""),
     }).lean();
 
     if (!doc) throw httpError(404, "Không tìm thấy lệnh");
     await assertCanViewReceipt(actor, doc);
+    doc = await reconcileStaleReceipt(doc);
     return publicTradingCommand(doc);
 }
 
@@ -679,7 +682,7 @@ async function getTradingCommandByIdempotencyKey(actor, idempotencyKey) {
     const actorUserId = actor?.id || (actor?._id ? String(actor._id) : "");
     if (!actorUserId) throw httpError(401, "Thiếu actor");
 
-    const doc = await TradingReceipt.findOne({
+    let doc = await TradingReceipt.findOne({
         actorUserId,
         idempotencyKey: key,
         expiresAt: { $gt: new Date() },
@@ -687,6 +690,7 @@ async function getTradingCommandByIdempotencyKey(actor, idempotencyKey) {
 
     if (!doc) throw httpError(404, "Không tìm thấy lệnh theo idempotencyKey");
     await assertCanViewReceipt(actor, doc);
+    doc = await reconcileStaleReceipt(doc);
     return publicTradingCommand(doc);
 }
 

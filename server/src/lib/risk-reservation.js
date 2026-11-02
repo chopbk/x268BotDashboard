@@ -1,10 +1,11 @@
 const crypto = require("crypto");
 const RiskReservation = require("../models/risk-reservation");
 const RiskAccountLock = require("../models/risk-account-lock");
-const { getPolicyForAccount, enforceReady } = require("./risk-policy");
+const { getPolicyForAccount, enforceReady, ackProducer } = require("./risk-policy");
 const { buildPortfolioSnapshot } = require("./risk-portfolio");
 const { hashPayload, nowMs } = require("./provenance");
 const { httpError } = require("./http");
+const { decideCommitUnderFence } = require("./risk-lock-commit");
 
 const LEASE_MS = 60_000;
 const LOCK_MS = 5_000;
@@ -59,8 +60,24 @@ function decideReleaseTransition(currentStatus, { reconcile = false } = {}) {
 /**
  * Soft lock chung web/bot (collection web_risk_account_locks).
  * Không throw lỗi hạ tầng Mongo — trả { ok, reason, result }.
- * Atomic reservation+lock vẫn chưa nghiệm thu trước enforce.
+ * Commit: renew → write → renew; mất fence sau write → orphan reservation (không ACTIVE).
  */
+async function orphanReservation(reservationId, reason = "fence_lost_after_write") {
+    if (!reservationId) return null;
+    return RiskReservation.findOneAndUpdate(
+        {
+            reservationId: String(reservationId),
+            status: { $in: ["reserved", "observed", "submitted", "partial", "unknown"] },
+        },
+        {
+            $set: {
+                status: "released",
+                reason: String(reason).slice(0, 200),
+            },
+        },
+        { new: true }
+    ).lean();
+}
 function decideInfraOutcome({ mode, reason, reservation = null } = {}) {
     const msg = String(reason || "infra_error");
     if (mode === "enforce") {
@@ -516,6 +533,43 @@ async function reserveBudget({
             };
         }
 
+        // Post-write fence: mất lease sau insert → orphan, không để reservation ACTIVE
+        const post = typeof lockCtx.renew === "function"
+            ? await lockCtx.renew()
+            : { ok: true };
+        const commit = decideCommitUnderFence({
+            preOk: true,
+            postOk: !(post && post.ok === false),
+            mode,
+            reservationId: doc.reservationId,
+        });
+        if (!commit.commitOk) {
+            await orphanReservation(doc.reservationId, commit.reason);
+            if (mode === "enforce") {
+                return {
+                    allowed: false,
+                    reason: commit.reason,
+                    code: "risk_rejected",
+                    mode,
+                    policy,
+                    orphaned: true,
+                    reservation: publicReservation({
+                        ...doc.toObject?.() || doc,
+                        status: "released",
+                        reason: commit.reason,
+                    }),
+                };
+            }
+            return {
+                allowed: true,
+                reason: `observe_continue:${commit.reason}`,
+                observedOnly: true,
+                mode,
+                policy,
+                orphaned: true,
+            };
+        }
+
         return {
             allowed: true,
             reservation: publicReservation(doc),
@@ -541,6 +595,10 @@ async function reserveBudget({
             });
         }
         if (prior && typeof prior === "object" && "allowed" in prior) {
+            const rid = prior.reservation?.reservationId;
+            if (rid && /fenced_after|fence/.test(String(reason))) {
+                await orphanReservation(rid, reason).catch(() => null);
+            }
             return decideFenceAfterWrite({
                 mode: prior.mode || effectivePolicyMode(prior.policy),
                 reason,
@@ -562,7 +620,20 @@ async function reserveBudget({
             reason: locked.result.reason || "lock_fenced",
         });
     }
-    return locked.result;
+
+    const out = locked.result;
+    // ACK policy revision khi reserve thành công (coverage trước enforce)
+    if (out?.allowed && out?.policy?.policyId != null && out?.policy?.revision != null) {
+        ackProducer({
+            producerId: producer || "web-trading-bridge",
+            account: username,
+            env,
+            policyId: out.policy.policyId,
+            policyRevision: out.policy.revision,
+            producerVersion: producerVersion || "web-p2",
+        }).catch(() => null);
+    }
+    return out;
 }
 
 /**
@@ -662,6 +733,7 @@ module.exports = {
     decideInfraOutcome,
     decideFenceAfterWrite,
     effectivePolicyMode,
+    orphanReservation,
     LEASE_MS,
     LOCK_MS,
     ACTIVE,

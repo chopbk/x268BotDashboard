@@ -11,9 +11,39 @@ const {
 } = require("./trading-receipt-status");
 
 const IN_FLIGHT = new Set(["claimed", "submitted"]);
+/** Claim không progress → unknown (reconcile), không re-execute. */
+const CLAIM_STALE_MS = 60_000;
+const SUBMITTED_STALE_MS = 120_000;
+/** Unresolved giữ recovery metadata lâu hơn cửa sổ idempotency 24h. */
+const RECOVERY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TERMINAL_TTL_MS = 24 * 60 * 60 * 1000;
 
 function isInFlightStatus(status) {
     return IN_FLIGHT.has(String(status || ""));
+}
+
+function receiptExpiresAtForStatus(status, now = Date.now()) {
+    if (isInFlightStatus(status) || status === "unknown") {
+        return new Date(now + RECOVERY_TTL_MS);
+    }
+    return new Date(now + TERMINAL_TTL_MS);
+}
+
+function isStaleInFlight(doc, now = Date.now()) {
+    if (!doc || !isInFlightStatus(doc.status)) return false;
+    const start = new Date(doc.submittedAt || doc.claimedAt || doc.createdAt || 0).getTime();
+    if (!Number.isFinite(start) || start <= 0) return false;
+    const limit = doc.status === "submitted" ? SUBMITTED_STALE_MS : CLAIM_STALE_MS;
+    return now - start >= limit;
+}
+
+function recoveryStatusOf(doc, now = Date.now()) {
+    if (!doc) return null;
+    if (isTerminalReceiptStatus(doc.status)) return "complete";
+    if (doc.status === "unknown") return "needs_reconcile";
+    if (isStaleInFlight(doc, now)) return "stale_in_flight";
+    if (isInFlightStatus(doc.status)) return "in_flight";
+    return null;
 }
 
 function buildTradingPayloadHash({ action, target = {}, params = {} } = {}) {
@@ -93,8 +123,33 @@ async function claimTradingReceipt({
         if (cls.kind === "conflict") {
             throw httpError(409, cls.message, { code: "conflict" });
         }
-        return { claimed: false, duplicate: true, receipt: existing };
+        const reconciled = await reconcileStaleReceipt(existing);
+        return { claimed: false, duplicate: true, receipt: reconciled || existing };
     }
+}
+
+/**
+ * Receipt in-flight quá hạn → unknown + needs_reconcile; tuyệt đối không execute lại.
+ */
+async function reconcileStaleReceipt(doc) {
+    if (!doc || !isStaleInFlight(doc)) return doc;
+    const updated = await finalizeTradingReceipt(doc.requestId, {
+        status: "unknown",
+        result: doc.result || null,
+        error: {
+            message: "stale_in_flight_reconcile",
+            code: "needs_reconcile",
+            previousStatus: doc.status,
+        },
+        exchangeIds: doc.exchangeIds || [],
+    });
+    if (updated) {
+        await TradingReceipt.updateOne(
+            { requestId: doc.requestId },
+            { $set: { expiresAt: receiptExpiresAtForStatus("unknown") } }
+        ).catch(() => null);
+    }
+    return updated || doc;
 }
 
 async function markReceiptSubmitted(requestId) {
@@ -124,6 +179,7 @@ async function finalizeTradingReceipt(requestId, {
     if (next !== "claimed") {
         set.submittedAt = new Date();
     }
+    set.expiresAt = receiptExpiresAtForStatus(next);
     return TradingReceipt.findOneAndUpdate(
         { requestId: String(requestId) },
         { $set: set },
@@ -133,10 +189,18 @@ async function finalizeTradingReceipt(requestId, {
 
 module.exports = {
     IN_FLIGHT,
+    CLAIM_STALE_MS,
+    SUBMITTED_STALE_MS,
+    RECOVERY_TTL_MS,
+    TERMINAL_TTL_MS,
     isInFlightStatus,
+    isStaleInFlight,
+    recoveryStatusOf,
+    receiptExpiresAtForStatus,
     buildTradingPayloadHash,
     classifyClaimReplay,
     claimTradingReceipt,
     markReceiptSubmitted,
     finalizeTradingReceipt,
+    reconcileStaleReceipt,
 };

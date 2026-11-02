@@ -45,7 +45,7 @@ State đề xuất: `workspaceMode = position | new-position`, `ticketDraft`, `s
 
 ### B1. Hiện trạng cần sửa
 
-`classifyMutationResult` phân biệt partial/failed/unknown/in-flight. `createTradingRequest` **claim** receipt (`status=claimed`, `payloadHash`) **trước** risk/exchange; thua unique → replay, không gọi sàn lần hai; cùng key khác hash → 409. Finalize sau execute. Còn mở: recovery khi `claimed` treo lâu không evidence; TTL unresolved; exactly-once tuyệt đối không tuyên bố.
+`classifyMutationResult` phân biệt partial/failed/unknown/in-flight. `createTradingRequest` **claim** receipt (`status=claimed`, `payloadHash`) **trước** risk/exchange; thua unique → replay, không gọi sàn lần hai; cùng key khác hash → 409. Finalize sau execute. Stale in-flight → `unknown` + `recoveryStatus=needs_reconcile` (không re-execute). Unresolved TTL 7d. Exactly-once tuyệt đối không tuyên bố. UI poll backoff B5 vẫn backlog.
 
 `GET /api/trading/commands/:requestId` tra requestId do server tạo; **idempotencyKey của client không phải requestId**. Không gán key vào trường requestId để giả tra receipt được. Receipt cũ có thể thiếu field terminal; serializer hiện dùng `!!doc.terminal`, cần chuẩn hóa từ status cho record legacy.
 

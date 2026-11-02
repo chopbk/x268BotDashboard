@@ -65,9 +65,12 @@ describe("quant-terminal P0 contracts", () => {
         assert.ok(engines.engines.every((e) => e.parityReady === false));
     });
 
-    it("compatibility treats legacy writers as coverage gaps", () => {
+    it("compatibility tracks observe hooks and keeps rollback invariant", () => {
         const compat = readJson(path.join(CONTRACT_DIR, "compatibility.v1.json"));
-        assert.ok(compat.matrix.some((row) => row.p0Status === "missing_hook"));
+        assert.ok(compat.matrix.some((row) => row.p0Status === "observe_hooked"));
+        assert.ok(compat.matrix.every((row) => row.p0Status !== "missing_hook"
+            || row.notes?.includes("legacy")));
+        assert.equal(compat.enforceGate?.RISK_ENFORCE_READY, false);
         assert.ok(compat.rollback.includes("never_drop_data_or_toggle_PAPER_INVERT_as_migration"));
     });
 });

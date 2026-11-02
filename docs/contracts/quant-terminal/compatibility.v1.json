@@ -2,35 +2,39 @@
   "contractId": "quant.compatibility.v1",
   "schemaVersion": 1,
   "status": "locked_p0",
+  "updated": "2026-11-02",
   "repos": ["web-bot", "binance-bot"],
   "matrix": [
     {
       "producer": "web-trading-bridge",
       "consumes": "reservation.v1",
       "minVersion": 1,
-      "ackChannel": "web_risk_reservations + trading receipt",
-      "p0Status": "missing_hook"
+      "ackChannel": "web_risk_producer_acks",
+      "p0Status": "observe_hooked",
+      "notes": "reserveBudget + ackProducer on success; claim receipt before execute"
     },
     {
       "producer": "bot-signal-trader",
       "consumes": "reservation.v1",
       "minVersion": 1,
-      "ackChannel": "proposed bot_risk_gate_ack",
-      "p0Status": "missing_hook"
+      "ackChannel": "web_risk_producer_acks",
+      "p0Status": "observe_hooked",
+      "notes": "risk-gate checkIncrease + ackPolicy; username identity"
     },
     {
       "producer": "bot-dca-mtf",
       "consumes": "reservation.v1",
       "minVersion": 1,
-      "ackChannel": "proposed bot_risk_gate_ack",
-      "p0Status": "missing_hook"
+      "ackChannel": "web_risk_producer_acks",
+      "p0Status": "observe_hooked"
     },
     {
       "producer": "bot-command-manual-open",
       "consumes": "reservation.v1",
       "minVersion": 1,
-      "notes": "handleOpen bypasses checkBotStatus today — must still hit reservation",
-      "p0Status": "missing_hook"
+      "ackChannel": "web_risk_producer_acks",
+      "p0Status": "observe_hooked",
+      "notes": "handleOpen/long/short + COPY DCA use botUsername"
     },
     {
       "producer": "bot-config-bridge",
@@ -44,6 +48,16 @@
       "p0Status": "partial"
     }
   ],
+  "enforceGate": {
+    "RISK_ENFORCE_READY": false,
+    "requires": [
+      "all_entry_producers_observe_hooked",
+      "ack_coverage_for_policy_revision",
+      "atomic_reserve_orphan_on_fence_loss",
+      "operator_ack"
+    ],
+    "atomicReservation": "renew_write_renew_orphan — capable for reject-on-fence-loss; not multi-doc transaction"
+  },
   "rolloutOrder": [
     "compatibility_readers",
     "producer_additive_fields",

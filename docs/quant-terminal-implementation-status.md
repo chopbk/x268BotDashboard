@@ -1,28 +1,35 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix5** (receipt claim-before-execute). **Chưa deploy / enforce vẫn khóa.** Atomic reservation+lock **chưa nghiệm thu**.  
+Ngày cập nhật: **2026-11-02**. Milestone: **pre-deploy fix6** (atomic orphan-on-fence + receipt stale recovery). **Chưa deploy / enforce vẫn khóa** cho đến vận hành xác nhận ACK.  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
-> Inventory + evidence. Không tuyên bố enforce production hay collector trả phí đã bật.
+> Inventory + evidence. Không tuyên bố enforce production hay collector trả phí đã bật. Lab parity / TWAP live vẫn blocked.
 
 ## 0. Git / phạm vi lần này
 
 | Repo | Git | Ghi chú |
 |---|---|---|
-| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` + dirty charts nếu có — **giữ nguyên** | Commit fix5; push; **không deploy** |
-| `binance-bot` | Không đổi vòng này | — |
+| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` + chart WIP — **giữ nguyên** | Commit fix6; push; **không deploy** |
+| `binance-bot` | Post-write fence orphan + ACK | Không commit dirty session/config |
 
 Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration production / lệnh thật.
 
-### Fix5 (vòng hiện tại)
+### Fix6 (vòng hiện tại)
 
 | Mục | Trạng thái | Trước mốc |
 |---|---|---|
-| Claim receipt trước execute + payloadHash | `claimTradingReceipt` → risk → exchange → `finalize`; conflict hash → 409; replay không gọi sàn | trước production trading |
-| Lookup `GET /api/trading/commands?idempotencyKey=` | Actor-scoped | trước production trading |
-| Atomic fence+insert reservation | Vẫn chưa nghiệm thu | trước enforce |
-| Receipt treo `claimed` lâu / TTL unresolved | Chưa recovery worker | trước production trading |
+| Atomic renew→write→renew + orphan nếu mất fence | Capable (`decideCommitUnderFence` + orphan `released`) — không multi-doc txn | trước enforce (cần mock 2 worker) |
+| Receipt stale in-flight → unknown / needs_reconcile | `reconcileStaleReceipt` + TTL 7d unresolved | trước production trading |
+| Producer ACK trên reserve thành công | web + bot; matrix `observe_hooked` | trước UI enforce complete |
+| UI poll B5 đầy đủ | Chưa (GET đã có `recoveryStatus`) | backlog UI |
+
+### Fix5
+
+| Mục | Trạng thái | Trước mốc |
+|---|---|---|
+| Claim receipt trước execute + payloadHash | Đã | trước production trading |
+| Lookup idempotencyKey | Đã | trước production trading |
 
 ### Fix4
 
@@ -30,7 +37,6 @@ Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration produc
 |---|---|---|
 | Web lock/DB throw chặn observe | Đã sửa | trước deploy |
 | Bot enforce + `lock_fenced_after` | Đã sửa xử lý kết quả | trước enforce |
-| Atomic fence+insert | Chưa | trước enforce |
 
 ### Fix3
 
