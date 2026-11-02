@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy hardening** (auth/scope, preview await, WF hang, enforce locked; foundation P0–P6 chưa nghiệm thu đầy đủ).  
+Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix2** (timeline scope, reservation transition, reverse gate throw, bot identity, shared lock fencing, wallet shape). **Chưa nghiệm thu / chưa deploy / enforce vẫn khóa.**  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -10,10 +10,21 @@ Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
 | Repo | Git | Ghi chú |
 |---|---|---|
-| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit P2/P3 + docs; push; **không deploy** |
-| `binance-bot` | Chỉ stage `services/risk-gate/**` + hooks entry đã liệt kê | Không commit dirty sẵn (config/session/…) |
+| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit fix2 + docs; push; **không deploy** |
+| `binance-bot` | risk-gate + command/COPY/MTF callers | Không commit dirty sẵn (config/session/…) |
 
 Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration production / lệnh thật.
+
+### Fix2 regression (audit mock)
+
+| Lỗi | Trạng thái |
+|---|---|
+| Timeline duplicate leak cross-account | User POST 403; `assertEventAccess` trên duplicate; client không đặt source |
+| `unknown → bind(submitted) → release` | Public bind/release không nhận status; transition pure + API |
+| Reverse gate throw mất close | `guardOpenLegAfterClose` + receipt `partial` / `closeOk` |
+| Bot identity env-as-account | Callers truyền `botUsername`; `resolveAccount` ưu tiên username + map FuturesAccount |
+| Soft lock web-only | Bot dùng `web_risk_account_locks` + fence; lease 5s + renew/fencing check |
+| Wallet `balance` vs `equity` | Snapshot giữ `walletBalance` + `equityBasis` + stale/error |
 
 ---
 

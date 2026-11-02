@@ -195,12 +195,14 @@ async function assertReservationAccess(actor, reservationId) {
 router.post("/reservations/:id/bind", requireAuth, async (req, res) => {
     try {
         await assertReservationAccess(req.webUser, req.params.id);
-        const body = { ...(req.body || {}) };
-        // Client không tự chọn status tùy ý ngoài submitted/partial/filled/unknown
-        if (body.status && !["submitted", "filled", "partial", "unknown"].includes(body.status)) {
-            delete body.status;
-        }
-        res.json({ reservation: await bindReservation(req.params.id, body) });
+        // Public: chỉ gắn requestId sau submit; không nhận status client (đặc biệt unknown→submitted)
+        res.json({
+            reservation: await bindReservation(req.params.id, {
+                requestId: req.body?.requestId,
+                clientOrderId: req.body?.clientOrderId,
+                exchangeOrderId: req.body?.exchangeOrderId,
+            }, { reconcile: false }),
+        });
     } catch (error) {
         sendError(res, error, "POST /api/risk/reservations/:id/bind");
     }
@@ -209,12 +211,9 @@ router.post("/reservations/:id/bind", requireAuth, async (req, res) => {
 router.post("/reservations/:id/release", requireAuth, async (req, res) => {
     try {
         await assertReservationAccess(req.webUser, req.params.id);
-        // Không nhận force từ client — unknown phải reconcile nội bộ
+        // Public chỉ release reserved/observed; unknown/submitted/partial → reconcile nội bộ
         res.json({
-            reservation: await releaseReservation(req.params.id, {
-                status: "released",
-                allowUnknownRelease: false,
-            }),
+            reservation: await releaseReservation(req.params.id, {}, { reconcile: false }),
         });
     } catch (error) {
         sendError(res, error, "POST /api/risk/reservations/:id/release");

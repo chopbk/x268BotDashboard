@@ -12,12 +12,59 @@ const ACTIVE = new Set(["reserved", "submitted", "unknown", "partial"]);
 const BINDABLE = new Set(["reserved", "observed", "submitted", "partial", "unknown"]);
 const RELEASABLE = new Set(["reserved", "observed", "submitted", "partial", "filled"]);
 
+/**
+ * Quyết định transition public/reconcile — pure để regression test.
+ */
+function decideBindTransition(currentStatus, { status, reconcile = false } = {}) {
+    if (currentStatus === "rejected") {
+        return { ok: false, code: "risk_rejected", message: "Reservation đã rejected" };
+    }
+    if (currentStatus === "released" || currentStatus === "filled") {
+        return { ok: true, nextStatus: currentStatus, touchOnly: true };
+    }
+    if (currentStatus === "unknown" && !reconcile) {
+        return { ok: false, code: "risk_rejected", message: "Unknown reservation chỉ reconcile nội bộ" };
+    }
+    if (["submitted", "partial"].includes(currentStatus) && status && !reconcile) {
+        return { ok: true, nextStatus: currentStatus, touchOnly: true };
+    }
+    if (!BINDABLE.has(currentStatus) && !reconcile) {
+        return { ok: false, code: "conflict", message: `Không bind từ status ${currentStatus}` };
+    }
+    if (reconcile && status && ["submitted", "filled", "partial", "unknown", "released"].includes(status)) {
+        return { ok: true, nextStatus: status };
+    }
+    if (currentStatus === "reserved" || currentStatus === "observed") {
+        return { ok: true, nextStatus: "submitted" };
+    }
+    return { ok: true, nextStatus: currentStatus, touchOnly: true };
+}
+
+function decideReleaseTransition(currentStatus, { reconcile = false } = {}) {
+    if (currentStatus === "released" || currentStatus === "rejected") {
+        return { ok: true, nextStatus: currentStatus, touchOnly: true };
+    }
+    if (currentStatus === "unknown" && !reconcile) {
+        return { ok: false, code: "risk_rejected", message: "Không giải phóng reservation unknown — cần reconcile" };
+    }
+    if (["submitted", "partial", "filled"].includes(currentStatus) && !reconcile) {
+        return { ok: false, code: "risk_rejected", message: "Không giải phóng submitted/partial từ client — cần reconcile sàn" };
+    }
+    if (!RELEASABLE.has(currentStatus) && currentStatus !== "unknown" && !reconcile) {
+        return { ok: false, code: "conflict", message: `Không release từ status ${currentStatus}` };
+    }
+    return { ok: true, nextStatus: "released" };
+}
+
+/**
+ * Soft lock chung web/bot (collection web_risk_account_locks).
+ * Fencing: chỉ owner token+fence được renew/release; lease hết hạn mới acquire lại.
+ */
 async function withAccountLock(account, fn) {
     const token = crypto.randomUUID();
-    const now = new Date();
     await RiskAccountLock.updateOne(
         { account },
-        { $setOnInsert: { account, leaseOwner: null, leaseUntil: null } },
+        { $setOnInsert: { account, leaseOwner: null, leaseUntil: null, fence: 0 } },
         { upsert: true }
     );
     let acquired = null;
@@ -35,6 +82,7 @@ async function withAccountLock(account, fn) {
                     leaseOwner: token,
                     leaseUntil: new Date(Date.now() + LOCK_MS),
                 },
+                $inc: { fence: 1 },
             },
             { new: true }
         );
@@ -45,11 +93,30 @@ async function withAccountLock(account, fn) {
     if (!acquired || acquired.leaseOwner !== token) {
         throw httpError(409, "Risk reservation lock bận — thử lại", { code: "risk_rejected" });
     }
+    const fence = acquired.fence;
+    const renew = async () => {
+        const row = await RiskAccountLock.findOneAndUpdate(
+            { account, leaseOwner: token, fence },
+            { $set: { leaseUntil: new Date(Date.now() + LOCK_MS) } },
+            { new: true }
+        );
+        if (!row || row.leaseOwner !== token) {
+            throw httpError(409, "Risk lock fence mất — dừng ghi", { code: "risk_rejected" });
+        }
+        return row;
+    };
     try {
-        return await fn();
+        const out = await fn({ token, fence, renew, lockMs: LOCK_MS });
+        const still = await RiskAccountLock.findOne({ account, leaseOwner: token, fence }).lean();
+        if (!still) {
+            throw httpError(409, "Risk lock fence mất sau tác vụ — không tin kết quả ghi", {
+                code: "risk_rejected",
+            });
+        }
+        return out;
     } finally {
         await RiskAccountLock.updateOne(
-            { account, leaseOwner: token },
+            { account, leaseOwner: token, fence },
             { $set: { leaseOwner: null, leaseUntil: null } }
         );
     }
@@ -323,23 +390,34 @@ async function reserveBudget({
     });
 }
 
-async function bindReservation(reservationId, { requestId, clientOrderId, exchangeOrderId, status } = {}) {
+/**
+ * Bind sau submit.
+ * Client/public: chỉ reserved|observed → submitted (kèm requestId). Không nhận status tùy ý.
+ * Unknown / submitted / partial → chỉ internal reconcile (opts.reconcile=true).
+ */
+async function bindReservation(reservationId, {
+    requestId,
+    clientOrderId,
+    exchangeOrderId,
+    status,
+} = {}, opts = {}) {
+    const reconcile = opts.reconcile === true;
     const doc = await RiskReservation.findOne({ reservationId: String(reservationId || "") });
     if (!doc) throw httpError(404, "Không tìm thấy reservation");
-    if (!BINDABLE.has(doc.status) && doc.status !== "rejected") {
-        throw httpError(409, `Không bind từ status ${doc.status}`, { code: "conflict" });
+
+    const decision = decideBindTransition(doc.status, { status, reconcile });
+    if (!decision.ok) {
+        throw httpError(409, decision.message, { code: decision.code });
     }
-    if (doc.status === "rejected") {
-        throw httpError(409, "Reservation đã rejected", { code: "risk_rejected" });
-    }
+
     if (requestId) doc.requestId = String(requestId);
     if (clientOrderId) doc.clientOrderId = String(clientOrderId);
     if (exchangeOrderId) doc.exchangeOrderId = String(exchangeOrderId);
-    const next = status && ["submitted", "filled", "partial", "unknown"].includes(status)
-        ? status
-        : (doc.status === "reserved" || doc.status === "observed" ? "submitted" : doc.status);
-    doc.status = next;
-    if (doc.status === "unknown") {
+
+    if (!decision.touchOnly && decision.nextStatus) {
+        doc.status = decision.nextStatus;
+    }
+    if (reconcile && decision.nextStatus === "unknown") {
         doc.leaseUntil = new Date(nowMs() + LEASE_MS * 10);
     }
     await doc.save();
@@ -347,28 +425,35 @@ async function bindReservation(reservationId, { requestId, clientOrderId, exchan
 }
 
 /**
- * Release — không nhận force từ client. Unknown chỉ reconcile nội bộ (allowUnknownRelease).
+ * Release.
+ * Public: chỉ reserved|observed.
+ * submitted/partial/unknown: chỉ reconcile nội bộ.
  */
 async function releaseReservation(reservationId, {
     status = "released",
-    allowUnknownRelease = false,
-} = {}) {
+} = {}, opts = {}) {
+    const reconcile = opts.reconcile === true;
     const doc = await RiskReservation.findOne({ reservationId: String(reservationId || "") });
     if (!doc) throw httpError(404, "Không tìm thấy reservation");
-    if (doc.status === "unknown" && !allowUnknownRelease) {
-        throw httpError(409, "Không giải phóng reservation unknown — cần reconcile", {
-            code: "risk_rejected",
-        });
+
+    const decision = decideReleaseTransition(doc.status, { reconcile });
+    if (!decision.ok) {
+        throw httpError(409, decision.message, { code: decision.code });
     }
-    if (doc.status === "released" || doc.status === "rejected") {
-        return publicReservation(doc);
-    }
-    if (!RELEASABLE.has(doc.status) && doc.status !== "unknown") {
-        throw httpError(409, `Không release từ status ${doc.status}`, { code: "conflict" });
-    }
-    doc.status = status === "released" ? "released" : "released";
+    if (decision.touchOnly) return publicReservation(doc);
+
+    doc.status = "released";
+    doc.reason = reconcile ? (doc.reason || "internal_reconcile_release") : "client_release_unused";
     await doc.save();
     return publicReservation(doc);
+}
+
+/** Đánh dấu unknown sau timeout — chỉ nội bộ. */
+async function markReservationUnknown(reservationId, meta = {}) {
+    return bindReservation(reservationId, {
+        ...meta,
+        status: "unknown",
+    }, { reconcile: true });
 }
 
 async function expireIdleLeases(account) {
@@ -390,12 +475,16 @@ module.exports = {
     reserveBudget,
     bindReservation,
     releaseReservation,
+    markReservationUnknown,
     expireIdleLeases,
     loadActiveReservations,
     getReservation,
     publicReservation,
     evaluateLimits,
     withAccountLock,
+    decideBindTransition,
+    decideReleaseTransition,
     LEASE_MS,
+    LOCK_MS,
     ACTIVE,
 };

@@ -44,6 +44,18 @@ describe("risk-portfolio snapshot", () => {
         assert.ok(snap.provenance.missingFields.includes("equityStartUtc"));
     });
 
+    it("accepts account-balance-read shape (balance/available) without inventing uPnL equity", () => {
+        const snap = buildPortfolioSnapshot({
+            username: "acc1",
+            positions: [],
+            wallet: { balance: 250, available: 200, stale: false, source: "redis" },
+        });
+        assert.equal(snap.walletBalance, 250);
+        assert.equal(snap.equity, 250);
+        assert.equal(snap.equityBasis, "wallet_balance_only");
+        assert.equal(snap.available, 200);
+    });
+
     it("shock scenarios stay partial and do not invent liquidation odds", () => {
         const snap = buildPortfolioSnapshot({
             username: "a",

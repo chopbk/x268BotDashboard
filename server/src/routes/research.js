@@ -132,21 +132,12 @@ router.get("/timeline", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIE
     }
 });
 
-router.post("/timeline/events", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (req, res) => {
-    try {
-        const account = String(req.body?.account || "").trim();
-        if (account && !canAccessBot(req.webUser, account, PERMISSIONS.POSITIONS_VIEW)) {
-            throw httpError(403, "Không có quyền với tài khoản này");
-        }
-        const result = await appendTradeEvent({
-            ...req.body,
-            actorId: req.webUser?.id,
-            producer: "web",
-        });
-        res.status(result.created ? 201 : 200).json(result);
-    } catch (error) {
-        sendError(res, error, "POST /api/research/timeline/events");
-    }
+/** User thường không ghi timeline — producer nội bộ (trading-bridge) gọi lib trực tiếp. */
+router.post("/timeline/events", requireAuth, requirePermission(PERMISSIONS.POSITIONS_VIEW), async (_req, res) => {
+    return res.status(403).json({
+        error: "User không được ghi timeline event trực tiếp",
+        code: "forbidden",
+    });
 });
 
 module.exports = router;

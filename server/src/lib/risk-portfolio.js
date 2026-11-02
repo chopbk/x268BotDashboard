@@ -82,10 +82,24 @@ function buildPortfolioSnapshot({
         }
     }
 
-    const equity = num(wallet?.equity ?? wallet?.walletBalance);
+    // Reader: balance = walletBalance (không gồm uPnL). equity chỉ dùng khi nguồn cung cấp rõ.
+    const walletBalance = num(wallet?.walletBalance ?? wallet?.balance);
+    const hasExplicitEquity = wallet?.equity != null || wallet?.equityBalance != null;
+    const equity = hasExplicitEquity
+        ? num(wallet?.equity ?? wallet?.equityBalance)
+        : walletBalance;
+    const equityBasis = hasExplicitEquity ? "equity_incl_upnl_or_provided" : "wallet_balance_only";
     const available = num(wallet?.available ?? wallet?.availableBalance);
+    if (walletBalance == null) missingFields.push("walletBalance");
     if (equity == null) missingFields.push("equity");
     if (available == null) missingFields.push("available");
+    if (!hasExplicitEquity && walletBalance != null) {
+        missingFields.push("equity_not_provided_used_wallet");
+    }
+    if (wallet?.stale === true || wallet?.source === "none") {
+        missingFields.push("wallet_stale_or_missing");
+    }
+    if (wallet?.error) missingFields.push("wallet_error");
 
     const leverageEff = equity != null && equity > 0 ? round(gross / equity, 4) : null;
 
@@ -126,8 +140,14 @@ function buildPortfolioSnapshot({
 
     return {
         username: username || null,
-        equity,
-        available,
+        walletBalance: walletBalance != null ? round(walletBalance, 4) : null,
+        equity: equity != null ? round(equity, 4) : null,
+        equityBasis,
+        available: available != null ? round(available, 4) : null,
+        walletStale: wallet?.stale === true || wallet?.source === "none",
+        walletError: wallet?.error ? String(wallet.error).slice(0, 200) : null,
+        walletSource: wallet?.source || null,
+        walletAt: wallet?.at || null,
         gross: round(gross, 4),
         net: round(net, 4),
         longNotional: round(longNotional, 4),
@@ -157,6 +177,7 @@ function buildPortfolioSnapshot({
                 accountingBasis: "exchange_book_once",
                 attribution: "own_qty_only",
                 livePaperSeparated: true,
+                equityBasis,
             },
         }),
     };

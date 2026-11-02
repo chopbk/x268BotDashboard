@@ -521,7 +521,9 @@ async function createTradingRequest({
             symbol: target.symbol,
             positionSide: target.positionSide,
         },
-        status: result?.success ? "succeeded" : "failed",
+        status: result?.success
+            ? "succeeded"
+            : (result?.partial || result?.closeOk ? "partial" : "failed"),
         result: protection ? { ...result, protection, previewId: previewId || null } : result,
         actorUserId,
         actorUsername: actor?.username || actor?.email || "",
@@ -534,8 +536,10 @@ async function createTradingRequest({
         await appendTradeEvent({
             source: "web-trading-bridge",
             sourceEventId: requestId,
-            type: result?.success ? "submitted" : "exchange_rejected",
-            reasonCode: result?.success ? undefined : "exchange_rejected",
+            type: result?.success
+                ? "submitted"
+                : (result?.partial ? "partial_reverse" : "exchange_rejected"),
+            reasonCode: result?.success ? undefined : (result?.openBlocked ? "risk_rejected" : "exchange_rejected"),
             account: target.username,
             env: target.env,
             symbol: target.symbol,
@@ -546,18 +550,26 @@ async function createTradingRequest({
             tradeInstanceId: params?.tradeInstanceId || normalized?.tradeInstanceId || undefined,
             planId: params?.planId,
             signalEventId: params?.signalEventId,
-            evidence: { action, protection: protection?.status || null },
-        });
+            evidence: {
+                action,
+                protection: protection?.status || null,
+                closeOk: result?.closeOk,
+                openBlocked: result?.openBlocked,
+            },
+        }, { trustedProducer: true });
     } catch (err) {
         console.warn("[tradingBridge] timeline", err.message);
     }
 
+    const commandStatus = result?.success
+        ? "succeeded"
+        : (result?.partial || result?.closeOk ? "partial" : "failed");
     return {
         duplicate: false,
         command: {
             requestId,
             action,
-            status: result?.success ? "succeeded" : "failed",
+            status: commandStatus,
             terminal: true,
             result,
             protection,

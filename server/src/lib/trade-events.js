@@ -17,6 +17,13 @@ const REASON_CODES = new Set([
     "legacy_unresolved",
 ]);
 
+const TRUSTED_PRODUCERS = new Set([
+    "web-trading-bridge",
+    "bot-signal",
+    "bot-risk-gate",
+    "internal-reconcile",
+]);
+
 function publicEvent(doc) {
     if (!doc) return null;
     return {
@@ -50,9 +57,44 @@ function publicEvent(doc) {
     };
 }
 
-async function appendTradeEvent(input = {}) {
-    const source = String(input.source || "web").slice(0, 64);
-    const sourceEventId = String(input.sourceEventId || crypto.randomUUID()).slice(0, 120);
+function assertEventAccess(existing, { actor, canAccessBot, expectedAccount } = {}) {
+    if (!existing) return;
+    if (expectedAccount && existing.account && String(existing.account) !== String(expectedAccount)) {
+        throw httpError(403, "Duplicate event thuộc account khác", { code: "forbidden" });
+    }
+    if (actor && typeof canAccessBot === "function" && existing.account) {
+        const ok = canAccessBot(actor, existing.account, "positions.view")
+            || canAccessBot(actor, existing.account, "statistics.view");
+        if (!ok) throw httpError(403, "Không có quyền với timeline event này");
+    }
+}
+
+/**
+ * @param {object} input
+ * @param {{ trustedProducer?: boolean, actor?: object, canAccessBot?: Function }} [opts]
+ * trustedProducer=true: bridge/bot nội bộ — được đặt source/sourceEventId.
+ * User path: không tin source/producer client; bắt buộc kiểm quyền trên duplicate.
+ */
+async function appendTradeEvent(input = {}, opts = {}) {
+    const trusted = opts.trustedProducer === true
+        || TRUSTED_PRODUCERS.has(String(input.producer || ""));
+
+    if (!trusted && opts.allowUserWrite !== true) {
+        throw httpError(403, "User không được ghi timeline event trực tiếp", {
+            code: "forbidden",
+        });
+    }
+
+    const source = trusted
+        ? String(input.source || "web").slice(0, 64)
+        : "web-user";
+    const sourceEventId = trusted
+        ? String(input.sourceEventId || crypto.randomUUID()).slice(0, 120)
+        : crypto.randomUUID();
+    const producer = trusted
+        ? String(input.producer || "internal").slice(0, 64)
+        : "web-user";
+
     const type = String(input.type || "unknown");
     const reasonCode = input.reasonCode && REASON_CODES.has(input.reasonCode)
         ? input.reasonCode
@@ -86,7 +128,7 @@ async function appendTradeEvent(input = {}) {
             clientOrderId: input.clientOrderId,
             orderId: input.orderId,
             fillId: input.fillId,
-            producer: input.producer,
+            producer,
             producerVersion: input.producerVersion,
             sourceAt,
             receivedAt,
@@ -104,6 +146,11 @@ async function appendTradeEvent(input = {}) {
     } catch (error) {
         if (error?.code === 11000) {
             const existing = await TradeEvent.findOne({ source, sourceEventId }).lean();
+            assertEventAccess(existing, {
+                actor: opts.actor,
+                canAccessBot: opts.canAccessBot,
+                expectedAccount: input.account,
+            });
             return { created: false, duplicate: true, event: publicEvent(existing) };
         }
         throw error;
@@ -119,7 +166,6 @@ async function listTimeline(query = {}, { actor = null, canAccessBot = null } = 
     if (query.symbol) filter.symbol = String(query.symbol).toUpperCase();
     if (!Object.keys(filter).length) throw httpError(400, "Cần tradeInstanceId|account|signalEventId|requestId");
 
-    // User API: bắt buộc có account trong filter hoặc lọc sau theo scope
     if (actor && typeof canAccessBot === "function") {
         if (filter.account) {
             if (!canAccessBot(actor, filter.account, "positions.view")
@@ -167,5 +213,7 @@ module.exports = {
     listTimeline,
     publicEvent,
     arrivalSlippageBps,
+    assertEventAccess,
     REASON_CODES,
+    TRUSTED_PRODUCERS,
 };

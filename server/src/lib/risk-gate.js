@@ -135,7 +135,14 @@ async function gateTradingIncrease({
 async function bindAfterSubmit(reservationId, meta) {
     if (!reservationId) return null;
     try {
-        return await bindReservation(reservationId, meta);
+        // Bridge nội bộ: submitted sau lệnh; unknown khi exchange không rõ — reconcile=true
+        const status = meta?.status === "unknown" ? "unknown" : "submitted";
+        return await bindReservation(reservationId, {
+            requestId: meta?.requestId,
+            clientOrderId: meta?.clientOrderId,
+            exchangeOrderId: meta?.exchangeOrderId,
+            status,
+        }, { reconcile: status === "unknown" || status === "submitted" });
     } catch {
         return null;
     }

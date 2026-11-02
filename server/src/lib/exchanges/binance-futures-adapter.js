@@ -10,6 +10,7 @@ const { canonicalizePosition, canonicalizeOrder, buildSnapshotEnvelope } = requi
 const { exchangeError, fromFetchFailure } = require("./errors");
 const { enqueueExchangeRest } = require("./rate-limiters");
 const { httpError } = require("../http");
+const { guardOpenLegAfterClose } = require("./reverse-open-leg");
 
 const ALGO_ORDER_TYPES = new Set([
     "STOP",
@@ -707,37 +708,50 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         if (!closeResult?.success) return { success: false, error: "Close failed", closeResult, exchange: "binance" };
 
         const newSide = positionSide === "LONG" ? "SHORT" : "LONG";
-        // Risk: close luôn chạy; open-leg có thể bị chặn bởi beforeOpen gate
-        if (typeof input.beforeOpen === "function") {
-            const gate = await input.beforeOpen({
-                symbol,
+        // Risk: close luôn chạy; open-leg gate — catch throw (Mongo/lock) để không mất closeResult
+        const gated = await guardOpenLegAfterClose(input.beforeOpen, {
+            symbol,
+            openQty,
+            newSide,
+            phase: "open_leg",
+        });
+        if (!gated.proceed) {
+            return {
+                success: false,
+                partial: true,
+                closeOk: true,
+                openBlocked: true,
+                gateError: Boolean(gated.gateError),
+                reason: gated.reason,
+                closeResult,
                 openQty,
                 newSide,
-                phase: "open_leg",
-            });
-            if (gate && gate.allowed === false) {
-                return {
-                    success: false,
-                    partial: true,
-                    closeOk: true,
-                    openBlocked: true,
-                    reason: gate.reason || "risk_rejected",
-                    closeResult,
-                    openQty,
-                    newSide,
-                    exchange: "binance",
-                };
-            }
+                exchange: "binance",
+            };
         }
-        const openResult = await this.openPosition({
-            ...input,
-            symbol,
-            positionSide: newSide,
-            side: newSide,
-            orderType: input.openOrderType || "MARKET",
-            quantity: openQty,
-        });
-        return { success: true, closeResult, openResult, openQty, newSide, exchange: "binance" };
+        try {
+            const openResult = await this.openPosition({
+                ...input,
+                symbol,
+                positionSide: newSide,
+                side: newSide,
+                orderType: input.openOrderType || "MARKET",
+                quantity: openQty,
+            });
+            return { success: true, closeResult, openResult, openQty, newSide, exchange: "binance" };
+        } catch (error) {
+            return {
+                success: false,
+                partial: true,
+                closeOk: true,
+                openBlocked: true,
+                reason: error.message || "open_leg_failed",
+                closeResult,
+                openQty,
+                newSide,
+                exchange: "binance",
+            };
+        }
     }
 
     tpslTriggerOf(params, kind) {
