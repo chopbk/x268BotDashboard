@@ -26,7 +26,8 @@ const HISTORY_CHUNK_MS = 7 * DAY_MS;
 /** Gộp các lần REALIZED_PNL cùng symbol trong burst đóng. */
 const REALIZED_GROUP_MS = 5 * 60 * 1000;
 const QTY_EPS = 1e-8;
-const MAX_HISTORY_SYMBOLS = 40;
+/** Giới hạn symbol tái tạo từ userTrades — quá cao làm /positions/history vượt nginx timeout. */
+const MAX_HISTORY_SYMBOLS = 12;
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -349,11 +350,17 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
      * Lịch sử vị thế đóng gần với menu Binance Position History.
      * Nguồn: userTrades (tái tạo vòng đóng) + fallback income REALIZED_PNL.
      */
-    async fetchPositionHistory({ startTime, endTime, limit = 100 } = {}) {
+    async fetchPositionHistory({
+        startTime,
+        endTime,
+        limit = 100,
+        maxSymbols = MAX_HISTORY_SYMBOLS,
+    } = {}) {
         this.requireCapability("history");
         const end = Number.isFinite(Number(endTime)) ? Number(endTime) : Date.now();
         const start = Number.isFinite(Number(startTime)) ? Number(startTime) : end - 3 * DAY_MS;
         if (!(end >= start)) return [];
+        const symbolCap = Math.max(1, Math.min(MAX_HISTORY_SYMBOLS, Number(maxSymbols) || MAX_HISTORY_SYMBOLS));
 
         let incomes = [];
         try {
@@ -376,12 +383,12 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         const symbols = [...score.entries()]
             .sort((a, b) => b[1] - a[1])
             .map(([symbol]) => symbol)
-            .slice(0, MAX_HISTORY_SYMBOLS);
+            .slice(0, symbolCap);
 
         const reconstructed = [];
         const seen = new Set();
+        // Không sleep thêm giữa symbol — hàng đợi signed (`queued`) đã giới hạn tốc độ theo account.
         for (let i = 0; i < symbols.length; i += 1) {
-            if (i > 0) await sleep(250);
             try {
                 const trades = await this.fetchUserTradesRange(symbols[i], start, end);
                 for (const row of reconstructClosedFromTrades(trades)) {

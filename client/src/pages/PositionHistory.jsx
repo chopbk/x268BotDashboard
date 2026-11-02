@@ -84,7 +84,8 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
     let gone = false;
     const controller = new AbortController();
     setLoading(true);
-    api(`/api/positions/history?${queryString()}`, { signal: controller.signal })
+    // Kéo Binance nhiều account có thể >20s — timeout riêng, nginx proxy_read_timeout ≥ 90s.
+    api(`/api/positions/history?${queryString()}`, { signal: controller.signal, timeoutMs: 75_000 })
       .then((body) => {
         if (gone) return;
         setData(body);
@@ -93,7 +94,13 @@ export default function PositionHistory({ params, go, canStats, onAccounts }) {
         onAccounts?.(body.accounts || []);
       })
       .catch((err) => {
-        if (!gone) setError(err.message || "Không tải được lịch sử");
+        if (gone) return;
+        const reason = controller.signal.reason;
+        const timedOut = /timeout/i.test(String(reason?.message || err?.message || ""));
+        if (controller.signal.aborted && !timedOut) return;
+        setError(timedOut
+          ? "Tải lịch sử quá lâu (timeout). Thử chọn một tài khoản hoặc kỳ ngắn hơn, rồi Làm mới."
+          : (err.message || "Không tải được lịch sử"));
       })
       .finally(() => {
         if (!gone) setLoading(false);

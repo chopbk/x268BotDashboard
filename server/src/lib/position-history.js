@@ -6,6 +6,11 @@ const { usersForAudience } = require("./account-ledger");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAGE_LIMIT = 30;
+/** Cache ngắn cho tab Lịch sử — tránh mỗi lần mở tab kéo lại toàn bộ Binance (nginx 40–90s). */
+const LIST_CACHE_MS = 90 * 1000;
+const listHistoryCache = new Map();
+const HISTORY_ACCOUNT_CONCURRENCY = 3;
+const HISTORY_ACCOUNT_GAP_MS = 80;
 const SNAPSHOT_KEYS = [
     "openType", "tpType", "slType", "trailingOn", "trailingType", "hold", "tpCount", "tpPrices",
     "slPriceOpen", "leverage", "costAmount", "entryPrice", "isCopy", "isLimit", "isPaper", "signal",
@@ -533,9 +538,10 @@ async function listBinanceLiveHistory(selected, owners, window, query, errors) {
     const envs = envFilter ? [envFilter] : [...owners.keys()];
     const statics = await loadConfigStaticsForMatch(envs, window);
     const accounts = selected.map((bot) => bot.username);
+    // Song song theo account (mỗi key sàn riêng); tránh tuần tự 1+gap khiến vượt proxy_read_timeout.
     const fetched = await eachLimit(
         accounts,
-        1,
+        HISTORY_ACCOUNT_CONCURRENCY,
         async (username) => {
             try {
                 const adapter = await getExchangeAdapter(username);
@@ -556,7 +562,7 @@ async function listBinanceLiveHistory(selected, owners, window, query, errors) {
                 return { username, rows: [], error: error.message || "Không lấy được positionHistory" };
             }
         },
-        { gapMs: 400 }
+        { gapMs: HISTORY_ACCOUNT_GAP_MS }
     );
 
     const presented = [];
@@ -616,7 +622,27 @@ async function listPaperHistoryMongo(owners, window, query) {
     });
 }
 
+function listHistoryCacheKey(actor, query = {}) {
+    const actorId = String(actor?._id || actor?.id || actor?.username || "");
+    const keys = [
+        "audience", "account", "env", "symbol", "side", "signal", "profit", "reason", "copy",
+        "book", "range", "from", "to", "page", "sort", "dir",
+    ];
+    const parts = keys.map((key) => `${key}=${String(query[key] ?? "").trim()}`);
+    return `${actorId}|${parts.join("&")}`;
+}
+
+function resetListHistoryCacheForTests() {
+    listHistoryCache.clear();
+}
+
 async function listPositionHistory(actor, query = {}) {
+    const cacheKey = listHistoryCacheKey(actor, query);
+    const hit = listHistoryCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < LIST_CACHE_MS) {
+        return { ...hit.data, cached: true, cachedAt: new Date(hit.at).toISOString() };
+    }
+
     const bots = await historyBots(actor, query.audience);
     const account = String(query.account || "").trim();
     const selected = account ? bots.filter((bot) => bot.username === account) : bots;
@@ -643,7 +669,7 @@ async function listPositionHistory(actor, query = {}) {
     const rows = book === "paper" ? paperRows : book === "all" ? [...liveRows, ...paperRows] : liveRows;
     const sorted = sortPresented(rows, sortKey, dir);
     const slice = sorted.slice((page - 1) * PAGE_LIMIT, page * PAGE_LIMIT);
-    return {
+    const data = {
         accounts: bots.map((bot) => ({ username: bot.username, accounts: bot.accounts || [] })),
         rows: slice,
         page,
@@ -665,6 +691,12 @@ async function listPositionHistory(actor, query = {}) {
             hold: "Trung bình closeTime − openTime khi có giờ mở từ userTrades hoặc config khớp.",
         },
     };
+    listHistoryCache.set(cacheKey, { at: Date.now(), data });
+    if (listHistoryCache.size > 200) {
+        const oldest = [...listHistoryCache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 50);
+        for (const [key] of oldest) listHistoryCache.delete(key);
+    }
+    return data;
 }
 
 async function readBinanceTrade(row, account, match, actor, bots) {
@@ -816,4 +848,5 @@ module.exports = {
     presentBinanceHistoryRow,
     listPositionHistory,
     getPositionHistory,
+    resetListHistoryCacheForTests,
 };
