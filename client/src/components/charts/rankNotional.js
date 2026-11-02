@@ -14,7 +14,8 @@ export function topNotionalGroups(rows, {
   valueKey = "notional",
   limit = 5,
 } = {}) {
-  const list = (rows || []).map((row, index) => {
+  const source = Array.isArray(rows) ? rows : [];
+  const list = source.map((row, index) => {
     const name = row[nameKey] ?? row.symbol ?? `#${index + 1}`;
     const raw = finite(row[valueKey]);
     const value = raw == null ? null : Math.abs(raw);

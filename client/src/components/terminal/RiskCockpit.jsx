@@ -72,7 +72,7 @@ export default function RiskCockpit({
   const longPct = grossSide > 0 ? (longN / grossSide) * 100 : 0;
   const shortPct = grossSide > 0 ? (shortN / grossSide) * 100 : 0;
   const netSide = longN - shortN;
-  const ranked = topNotionalGroups(snap?.bySymbol || [], { limit: 5 });
+  const ranked = topNotionalGroups(Array.isArray(snap?.bySymbol) ? snap.bySymbol : [], { limit: 5 });
   const stale = snap?.walletStale === true;
   const quality = snap?.provenance?.quality || "?";
 

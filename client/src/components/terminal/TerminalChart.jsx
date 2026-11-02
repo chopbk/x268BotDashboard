@@ -37,42 +37,56 @@ export default function TerminalChart({
 
   useEffect(() => {
     if (!hostRef.current) return undefined;
-    const chart = createChart(hostRef.current, {
-      layout: {
-        background: { color: "transparent" },
-        textColor: "var(--muted, #a8a8b4)",
-      },
-      grid: {
-        vertLines: { color: "rgba(80,80,100,0.25)" },
-        horzLines: { color: "rgba(80,80,100,0.25)" },
-      },
-      rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false },
-      width: hostRef.current.clientWidth,
-      height,
-      crosshair: { mode: 0 },
-    });
-    const series = chart.addCandlestickSeries({
-      upColor: "#5a9e6f",
-      downColor: "#c45c5c",
-      borderVisible: false,
-      wickUpColor: "#5a9e6f",
-      wickDownColor: "#c45c5c",
-    });
-    const volume = chart.addHistogramSeries({
-      priceFormat: { type: "volume" },
-      priceScaleId: "",
-      scaleMargins: { top: 0.8, bottom: 0 },
-    });
-    chartRef.current = { chart, series, volume, priceLines: [], markers: [] };
+    // lightweight-charts chỉ nhận màu hex/rgb — không parse CSS var (crash trắng cả Terminal).
+    let chart;
+    try {
+      chart = createChart(hostRef.current, {
+        layout: {
+          background: { color: "transparent" },
+          textColor: "#94a3b8",
+        },
+        grid: {
+          vertLines: { color: "rgba(80,80,100,0.25)" },
+          horzLines: { color: "rgba(80,80,100,0.25)" },
+        },
+        rightPriceScale: { borderVisible: false },
+        timeScale: { borderVisible: false },
+        width: hostRef.current.clientWidth,
+        height,
+        crosshair: { mode: 0 },
+      });
+      const series = chart.addCandlestickSeries({
+        upColor: "#5a9e6f",
+        downColor: "#c45c5c",
+        borderVisible: false,
+        wickUpColor: "#5a9e6f",
+        wickDownColor: "#c45c5c",
+      });
+      const volume = chart.addHistogramSeries({
+        priceFormat: { type: "volume" },
+        priceScaleId: "",
+        scaleMargins: { top: 0.8, bottom: 0 },
+      });
+      chartRef.current = { chart, series, volume, priceLines: [], markers: [] };
+    } catch (err) {
+      console.error("[TerminalChart] createChart", err);
+      setError(err?.message || "Không khởi tạo được chart");
+      setQuality("missing");
+      chartRef.current = null;
+      return undefined;
+    }
 
     const onResize = () => {
-      if (hostRef.current) chart.applyOptions({ width: hostRef.current.clientWidth, height });
+      if (hostRef.current && chart) chart.applyOptions({ width: hostRef.current.clientWidth, height });
     };
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
-      chart.remove();
+      try {
+        chart.remove();
+      } catch {
+        /* ignore */
+      }
       chartRef.current = null;
     };
   }, [height]);

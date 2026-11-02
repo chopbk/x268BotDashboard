@@ -32,3 +32,8 @@ test("topNotionalGroups uses absolute notional and skips zeros", () => {
   assert.equal(ranked.shown[0].value, 50);
   assert.equal(ranked.other, null);
 });
+
+test("topNotionalGroups tolerates non-array bySymbol", () => {
+  assert.equal(topNotionalGroups(null).shown.length, 0);
+  assert.equal(topNotionalGroups({ BTCUSDT: { notional: 1 } }).shown.length, 0);
+});
