@@ -355,11 +355,14 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         endTime,
         limit = 100,
         maxSymbols = MAX_HISTORY_SYMBOLS,
+        /** list = chỉ income (nhanh, đủ tab Lịch sử); full = tái tạo userTrades (chi tiết). */
+        mode = "full",
     } = {}) {
         this.requireCapability("history");
         const end = Number.isFinite(Number(endTime)) ? Number(endTime) : Date.now();
         const start = Number.isFinite(Number(startTime)) ? Number(startTime) : end - 3 * DAY_MS;
         if (!(end >= start)) return [];
+        const listMode = String(mode || "full").toLowerCase() === "list";
         const symbolCap = Math.max(1, Math.min(MAX_HISTORY_SYMBOLS, Number(maxSymbols) || MAX_HISTORY_SYMBOLS));
 
         let incomes = [];
@@ -372,6 +375,13 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
         } catch (error) {
             if (error.status === 429) throw error;
             console.error("[BinanceFuturesAdapter.fetchPositionHistory] income", error.message);
+        }
+
+        if (listMode) {
+            const maxRows = Math.max(100, Number(limit) || 100) * 20;
+            return groupRealizedPnlIncomes(incomes)
+                .sort((a, b) => (Number(b.time) || 0) - (Number(a.time) || 0))
+                .slice(0, maxRows);
         }
 
         const score = new Map();

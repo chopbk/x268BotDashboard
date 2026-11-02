@@ -9,8 +9,8 @@ const PAGE_LIMIT = 30;
 /** Cache ngắn cho tab Lịch sử — tránh mỗi lần mở tab kéo lại toàn bộ Binance (nginx 40–90s). */
 const LIST_CACHE_MS = 90 * 1000;
 const listHistoryCache = new Map();
-const HISTORY_ACCOUNT_CONCURRENCY = 3;
-const HISTORY_ACCOUNT_GAP_MS = 80;
+const HISTORY_ACCOUNT_CONCURRENCY = 5;
+const HISTORY_ACCOUNT_GAP_MS = 40;
 const SNAPSHOT_KEYS = [
     "openType", "tpType", "slType", "trailingOn", "trailingType", "hold", "tpCount", "tpPrices",
     "slPriceOpen", "leverage", "costAmount", "entryPrice", "isCopy", "isLimit", "isPaper", "signal",
@@ -555,6 +555,8 @@ async function listBinanceLiveHistory(selected, owners, window, query, errors) {
                     startTime: window.from.getTime(),
                     endTime: window.to.getTime(),
                     limit: 100,
+                    // Tab list: income REALIZED_PNL — tránh N×userTrades vượt proxy timeout.
+                    mode: "list",
                 });
                 return { username, rows: Array.isArray(rows) ? rows : [] };
             } catch (error) {
@@ -678,7 +680,7 @@ async function listPositionHistory(actor, query = {}) {
         range: { preset: window.preset, from: window.from, to: window.to },
         book,
         separateBooks: true,
-        source: book === "paper" ? "account_statics" : "binance_user_trades",
+        source: book === "paper" ? "account_statics" : "binance_income_realized_pnl",
         errors,
         summaries: {
             live: book === "paper" ? null : summarizeBook(liveRows),
@@ -687,8 +689,8 @@ async function listPositionHistory(actor, query = {}) {
         formula: {
             winRate: "Thắng / (thắng + thua + hòa). Lệnh không có PnL không đưa vào mẫu số.",
             profitFactor: "Tổng PnL dương / trị tuyệt đối tổng PnL âm. Thiếu một trong hai nhóm thì để trống.",
-            pnl: "Live: tái tạo từ Binance userTrades (fallback income REALIZED_PNL). API không có /fapi/v1/positionHistory. Paper: account_statics. Không cộng live với paper. Config/signal chỉ khi khớp account_statics.",
-            hold: "Trung bình closeTime − openTime khi có giờ mở từ userTrades hoặc config khớp.",
+            pnl: "Live (tab list): income REALIZED_PNL gộp burst đóng. Chi tiết một lệnh có thể tái tạo userTrades. Paper: account_statics. Không cộng live với paper. Config/signal chỉ khi khớp account_statics.",
+            hold: "Trung bình closeTime − openTime khi có giờ mở từ config khớp (list income thường thiếu openTime).",
         },
     };
     listHistoryCache.set(cacheKey, { at: Date.now(), data });
