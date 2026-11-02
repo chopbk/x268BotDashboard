@@ -130,3 +130,13 @@ test("classifyMutationResult: failed command status", () => {
   });
   assert.equal(out.phase, "failed");
 });
+
+test("classifyMutationResult: duplicate in-flight → unknown (no second submit)", () => {
+  const out = classifyMutationResult({
+    duplicate: true,
+    inFlight: true,
+    command: { requestId: "r1", status: "claimed" },
+  });
+  assert.equal(out.phase, "unknown");
+  assert.match(out.message, /đang xử lý/i);
+});

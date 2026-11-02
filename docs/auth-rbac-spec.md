@@ -382,6 +382,7 @@ Các invariant:
 | `GET /api/market/symbols/:symbol/scores` | `requireAuth` | Cùng quyền đọc. Lịch sử điểm |
 | `GET /api/market/events` | `requireAuth` | Cùng quyền đọc. Sự kiện lean/delta/regime (web only) |
 | `POST /api/market/refresh` | `requireAuth` | `market.manage`. Bootstrap/refresh collector; rate-limit 3/10 phút |
+| `GET /api/trading/commands?idempotencyKey=` | `requireAuth` | Actor của key (scoped `actorUserId`). Lookup khi client chưa có `requestId`; 404 ≠ chứng minh chưa gửi |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |
 | `DELETE /api/trading/positions/:positionKey/tpsl/:kind/:orderId` | `requireAuth` | `positions.tpsl` + scope bot. Hủy TP/SL cụ thể |

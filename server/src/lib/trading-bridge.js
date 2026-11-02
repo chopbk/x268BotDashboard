@@ -17,6 +17,13 @@ const {
     assertReceiptStatus,
     isTerminalReceiptStatus,
 } = require("./trading-receipt-status");
+const {
+    buildTradingPayloadHash,
+    claimTradingReceipt,
+    markReceiptSubmitted,
+    finalizeTradingReceipt,
+    isInFlightStatus,
+} = require("./trading-receipt-claim");
 const UserAccount = require("../models/user-account");
 const { executeDirectTrading } = require("./direct-trading");
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -350,27 +357,8 @@ async function checkTargetAccess(actor, username, action) {
 }
 
 /**
- * Kiểm tra idempotency key đã được xử lý chưa.
- */
-async function checkIdempotency(actorUserId, idempotencyKey) {
-    const existing = await TradingReceipt.findOne({
-        actorUserId,
-        idempotencyKey,
-        expiresAt: { $gt: new Date() },
-    }).lean();
-
-    if (existing) {
-        return {
-            duplicate: true,
-            receipt: existing,
-        };
-    }
-    return { duplicate: false };
-}
-
-/**
  * Tạo và thực hiện trading request.
- * Gọi Binance API trực tiếp - không qua MQTT.
+ * Claim receipt atomic trước side-effect — không gọi sàn nếu thua race idempotency.
  */
 async function createTradingRequest({
     actor,
@@ -415,26 +403,50 @@ async function createTradingRequest({
     const requestId = crypto.randomUUID();
     const finalIdempotencyKey = idempotencyKey || requestId;
     const actorUserId = actor?.id || (actor?._id ? String(actor._id) : "");
+    const now = Date.now();
+    const payloadHash = buildTradingPayloadHash({
+        action,
+        target,
+        params: normalized,
+    });
 
-    // Check idempotency
-    const idempCheck = await checkIdempotency(actorUserId, finalIdempotencyKey);
-    if (idempCheck.duplicate) {
+    // Claim durable TRƯỚC preview revalidate / risk / exchange
+    const claim = await claimTradingReceipt({
+        requestId,
+        idempotencyKey: finalIdempotencyKey,
+        action,
+        target,
+        payloadHash,
+        actorUserId,
+        actorUsername: actor?.username || actor?.email || "",
+        expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
+    });
+    if (!claim.claimed) {
         return {
             duplicate: true,
-            command: publicTradingCommand(idempCheck.receipt),
+            inFlight: isInFlightStatus(claim.receipt?.status),
+            command: publicTradingCommand(claim.receipt),
         };
     }
 
     // Revalidate versioned preview tại submit (Q1) — lazy require tránh cycle.
     let previewMeta = null;
-    if (previewId && (action === "ORDER_CREATE" || action === "POSITION_OPEN")) {
-        const { assertPreviewForSubmit } = require("./trading-preview");
-        previewMeta = await assertPreviewForSubmit(actor, {
-            previewId,
-            action,
-            target,
-            params: normalized,
-        });
+    try {
+        if (previewId && (action === "ORDER_CREATE" || action === "POSITION_OPEN")) {
+            const { assertPreviewForSubmit } = require("./trading-preview");
+            previewMeta = await assertPreviewForSubmit(actor, {
+                previewId,
+                action,
+                target,
+                params: normalized,
+            });
+        }
+    } catch (error) {
+        await finalizeTradingReceipt(requestId, {
+            status: "failed",
+            error: { message: error.message, code: error.code || "preview_invalid" },
+        }).catch(() => null);
+        throw error;
     }
 
     // Risk gate — tăng exposure. Close/tpsl không vào.
@@ -450,6 +462,14 @@ async function createTradingRequest({
             loadBook: true,
         });
         if (riskMeta.required && !riskMeta.allowed) {
+            await finalizeTradingReceipt(requestId, {
+                status: "failed",
+                error: {
+                    message: riskMeta.reason || "Risk gate từ chối",
+                    code: riskMeta.code || "risk_rejected",
+                },
+                result: { riskRejected: true, reason: riskMeta.reason },
+            }).catch(() => null);
             throw httpError(409, riskMeta.reason || "Risk gate từ chối", {
                 code: riskMeta.code || "risk_rejected",
             });
@@ -481,11 +501,20 @@ async function createTradingRequest({
         }
         : normalized;
 
-    // Thực hiện trading qua Binance API trực tiếp (không qua MQTT config bridge)
     console.log(`[tradingBridge] ${action} for ${target.username}`);
-    const now = Date.now();
-    
-    const result = await executeDirectTrading(action, target, execParams);
+    await markReceiptSubmitted(requestId).catch(() => null);
+
+    let result;
+    try {
+        result = await executeDirectTrading(action, target, execParams);
+    } catch (error) {
+        // Đã dispatch / không chắc sàn nhận → unknown; không execute lại khi client retry
+        await finalizeTradingReceipt(requestId, {
+            status: "unknown",
+            error: { message: error.message, code: error.code || error.status },
+        }).catch((err) => console.error("[tradingBridge] finalize unknown", err.message));
+        throw error;
+    }
 
     if (riskMeta?.reservation?.reservationId && riskMeta.bindAfterSubmit) {
         await riskMeta.bindAfterSubmit(riskMeta.reservation.reservationId, {
@@ -514,35 +543,29 @@ async function createTradingRequest({
             reason: "entry_failed_before_protect",
         };
     }
-    
+
     const receiptStatus = assertReceiptStatus(receiptStatusFromResult(result));
     const resultPayload = protection
         ? { ...result, protection, previewId: previewId || null }
         : result;
+    const exchangeIds = [
+        result?.orderId,
+        result?.algoId,
+        result?.closeResult?.orderId,
+        result?.openResult?.orderId,
+    ].filter(Boolean).map(String);
 
-    // Receipt durable — lỗi persist không được nuốt mất kết quả sàn đã chạy
     let receiptPersisted = true;
     try {
-        await TradingReceipt.create({
-            requestId,
-            idempotencyKey: finalIdempotencyKey,
-            action,
-            target: {
-                username: target.username,
-                env: target.env,
-                symbol: target.symbol,
-                positionSide: target.positionSide,
-            },
+        const finalized = await finalizeTradingReceipt(requestId, {
             status: receiptStatus,
             result: resultPayload,
-            actorUserId,
-            actorUsername: actor?.username || actor?.email || "",
-            expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
-            completedAt: isTerminalReceiptStatus(receiptStatus) ? new Date(now) : undefined,
+            exchangeIds,
         });
+        if (!finalized) receiptPersisted = false;
     } catch (err) {
         receiptPersisted = false;
-        console.error("[tradingBridge] receipt persist failed:", err.message);
+        console.error("[tradingBridge] receipt finalize failed:", err.message);
     }
 
     // P3 timeline event (additive) — không đoán tradeInstanceId nếu thiếu
@@ -572,6 +595,7 @@ async function createTradingRequest({
                 openBlocked: result?.openBlocked,
                 receiptStatus,
                 receiptPersisted,
+                claimFirst: true,
             },
         }, { trustedProducer: true });
     } catch (err) {
@@ -582,6 +606,7 @@ async function createTradingRequest({
         duplicate: false,
         command: {
             requestId,
+            idempotencyKey: finalIdempotencyKey,
             action,
             status: receiptStatus,
             terminal: isTerminalReceiptStatus(receiptStatus),
@@ -607,17 +632,32 @@ function publicTradingCommand(doc) {
         action: doc.action,
         status,
         terminal: doc.terminal != null ? !!doc.terminal : isTerminalReceiptStatus(status),
+        inFlight: isInFlightStatus(status),
+        payloadHash: doc.payloadHash || null,
         error: doc.error || null,
         result: doc.result || null,
         protection: doc.result?.protection || null,
+        exchangeIds: doc.exchangeIds || [],
         expiresAt: doc.expiresAt,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
     };
 }
 
+async function assertCanViewReceipt(actor, doc) {
+    const actorId = actor?.id || (actor?._id ? String(actor._id) : "");
+    const isActor = doc.actorUserId && actorId && actorId === doc.actorUserId;
+    if (isActor) return;
+    const canView = hasPermission(actor, PERMISSIONS.ORDERS_VIEW) ||
+        hasPermission(actor, PERMISSIONS.POSITIONS_VIEW);
+    if (!canView) throw httpError(403, "Không có quyền xem lệnh này");
+    await checkTargetAccess(actor, doc.target?.username, doc.action).catch(() => {
+        throw httpError(403, "Không có quyền với tài khoản này");
+    });
+}
+
 /**
- * Get trading command status.
+ * Get trading command status by requestId.
  */
 async function getTradingCommand(actor, requestId) {
     const doc = await TradingReceipt.findOne({
@@ -625,22 +665,28 @@ async function getTradingCommand(actor, requestId) {
     }).lean();
 
     if (!doc) throw httpError(404, "Không tìm thấy lệnh");
+    await assertCanViewReceipt(actor, doc);
+    return publicTradingCommand(doc);
+}
 
-    const actorId = actor?.id || (actor?._id ? String(actor._id) : "");
-    const isActor = doc.actorUserId && actorId && actorId === doc.actorUserId;
+/**
+ * Lookup theo idempotencyKey trong phạm vi actor (B4).
+ * 404 không chứng minh lệnh chưa gửi — client giữ unknown.
+ */
+async function getTradingCommandByIdempotencyKey(actor, idempotencyKey) {
+    const key = String(idempotencyKey || "").trim();
+    if (!key) throw httpError(400, "Thiếu idempotencyKey");
+    const actorUserId = actor?.id || (actor?._id ? String(actor._id) : "");
+    if (!actorUserId) throw httpError(401, "Thiếu actor");
 
-    if (!isActor) {
-        // Check permission to view
-        const canView = hasPermission(actor, PERMISSIONS.ORDERS_VIEW) ||
-            hasPermission(actor, PERMISSIONS.POSITIONS_VIEW);
-        if (!canView) throw httpError(403, "Không có quyền xem lệnh này");
+    const doc = await TradingReceipt.findOne({
+        actorUserId,
+        idempotencyKey: key,
+        expiresAt: { $gt: new Date() },
+    }).lean();
 
-        // Check scope
-        await checkTargetAccess(actor, doc.target?.username, doc.action).catch(() => {
-            throw httpError(403, "Không có quyền với tài khoản này");
-        });
-    }
-
+    if (!doc) throw httpError(404, "Không tìm thấy lệnh theo idempotencyKey");
+    await assertCanViewReceipt(actor, doc);
     return publicTradingCommand(doc);
 }
 
@@ -689,6 +735,7 @@ module.exports = {
     TRADING_PERMISSIONS,
     createTradingRequest,
     getTradingCommand,
+    getTradingCommandByIdempotencyKey,
     cancelOrder,
     cancelOrderBatch,
     publicTradingCommand,
@@ -696,4 +743,5 @@ module.exports = {
     checkTargetAccess,
     validateOrderCreate,
     receiptStatusFromResult,
+    buildTradingPayloadHash,
 };

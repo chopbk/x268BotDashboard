@@ -193,6 +193,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders/cancel-batch` | [trading](../server/src/routes/trading.js) |
 | POST | `/api/trading/orders` | [trading](../server/src/routes/trading.js) |
+| GET | `/api/trading/commands?idempotencyKey=` | [trading](../server/src/routes/trading.js) — lookup actor-scoped |
 | GET | `/api/trading/commands/:requestId` | [trading](../server/src/routes/trading.js) |
 | PUT | `/api/trading/positions/:positionKey/tpsl` | [trading](../server/src/routes/trading.js) |
 | DELETE | `/api/trading/positions/:positionKey/tpsl/:kind/:orderId` | [trading](../server/src/routes/trading.js) |

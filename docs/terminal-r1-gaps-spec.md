@@ -45,7 +45,7 @@ State đề xuất: `workspaceMode = position | new-position`, `ticketDraft`, `s
 
 ### B1. Hiện trạng cần sửa
 
-`classifyMutationResult` hiện coi gần như mọi response có body là accepted; duplicate được coi trạng thái tích cực bất kể lệnh gốc. `trading-bridge.createTradingRequest` hiện kiểm tra key, gọi `executeDirectTrading`, rồi mới tạo receipt. Unique index sau side effect không ngăn được hai request đồng thời cùng gọi sàn. Model có claimed/submitted/unknown nhưng không có nghĩa flow đã sử dụng chúng đúng.
+`classifyMutationResult` phân biệt partial/failed/unknown/in-flight. `createTradingRequest` **claim** receipt (`status=claimed`, `payloadHash`) **trước** risk/exchange; thua unique → replay, không gọi sàn lần hai; cùng key khác hash → 409. Finalize sau execute. Còn mở: recovery khi `claimed` treo lâu không evidence; TTL unresolved; exactly-once tuyệt đối không tuyên bố.
 
 `GET /api/trading/commands/:requestId` tra requestId do server tạo; **idempotencyKey của client không phải requestId**. Không gán key vào trường requestId để giả tra receipt được. Receipt cũ có thể thiếu field terminal; serializer hiện dùng `!!doc.terminal`, cần chuẩn hóa từ status cho record legacy.
 

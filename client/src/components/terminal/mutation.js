@@ -12,6 +12,14 @@ export function classifyMutationResult(result, { timedOut = false } = {}) {
   if (!result) return { phase: "rejected", message: "Không có phản hồi" };
   if (result.duplicate) {
     const dupStatus = result.command?.status;
+    if (result.inFlight || dupStatus === "claimed" || dupStatus === "submitted") {
+      return {
+        phase: "unknown",
+        message: "Ý định đang xử lý — đối chiếu receipt, không gửi key mới",
+        requestId: result.command?.requestId,
+        exchangeStatus: dupStatus || null,
+      };
+    }
     if (dupStatus === "partial") {
       return {
         phase: "partial",
@@ -28,6 +36,14 @@ export function classifyMutationResult(result, { timedOut = false } = {}) {
         message: "Trùng ý định — receipt gốc thất bại",
         requestId: result.command?.requestId,
         exchangeStatus: dupStatus,
+      };
+    }
+    if (dupStatus === "unknown") {
+      return {
+        phase: "unknown",
+        message: "Trùng ý định — trạng thái gốc chưa xác định",
+        requestId: result.command?.requestId,
+        exchangeStatus: "unknown",
       };
     }
     return {

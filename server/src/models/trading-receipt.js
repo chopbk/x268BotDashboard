@@ -29,6 +29,8 @@ const TradingReceiptSchema = new mongoose.Schema(
             type: [String],
             default: [],
         },
+        /** Fingerprint ý định — cùng key khác hash → 409, không execute. */
+        payloadHash: { type: String, index: true },
         result: {
             type: mongoose.Schema.Types.Mixed,
             default: null,

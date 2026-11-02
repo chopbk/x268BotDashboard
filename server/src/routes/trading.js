@@ -17,6 +17,7 @@ const {
     cancelOrder,
     cancelOrderBatch,
     getTradingCommand,
+    getTradingCommandByIdempotencyKey,
     createTradingRequest,
 } = require("../lib/trading-bridge");
 const { createPreview, getPreview } = require("../lib/trading-preview");
@@ -134,6 +135,21 @@ router.post("/orders/cancel-batch", requireAuth, requirePermission(PERMISSIONS.O
         });
     } catch (error) {
         sendError(res, error, "POST /api/trading/orders/cancel-batch");
+    }
+});
+
+/**
+ * GET /api/trading/commands?idempotencyKey=
+ * Lookup receipt theo key của actor (khi client chưa nhận requestId).
+ */
+router.get("/commands", requireAuth, async (req, res) => {
+    try {
+        const key = String(req.query.idempotencyKey || "").trim();
+        if (!key) throw httpError(400, "Cần idempotencyKey");
+        const command = await getTradingCommandByIdempotencyKey(req.webUser, key);
+        res.json({ command, lookup: "idempotencyKey" });
+    } catch (error) {
+        sendError(res, error, "GET /api/trading/commands");
     }
 });
 

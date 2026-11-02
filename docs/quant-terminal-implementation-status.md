@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix4** (web observe infra + bot fence-after-write). **Chưa deploy / enforce vẫn khóa.** Atomic reservation+lock **chưa nghiệm thu**. Receipt retry-safe khi `receiptPersisted:false` **chưa chứng minh**.  
+Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix5** (receipt claim-before-execute). **Chưa deploy / enforce vẫn khóa.** Atomic reservation+lock **chưa nghiệm thu**.  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -10,19 +10,27 @@ Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
 | Repo | Git | Ghi chú |
 |---|---|---|
-| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit fix4; push; **không deploy** |
-| `binance-bot` | risk-gate fence-after-write | Không commit dirty sẵn |
+| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` + dirty charts nếu có — **giữ nguyên** | Commit fix5; push; **không deploy** |
+| `binance-bot` | Không đổi vòng này | — |
 
 Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration production / lệnh thật.
 
-### Fix4 (vòng hiện tại)
+### Fix5 (vòng hiện tại)
 
 | Mục | Trạng thái | Trước mốc |
 |---|---|---|
-| Web lock/DB throw chặn observe | `withAccountLock` → `{ok:false}`; `decideInfraOutcome`; gate catch | **trước deploy** |
-| Bot enforce + `lock_fenced_after` vẫn `allowed:true` | `decideFenceAfterWrite` ép `allowed:false`, giữ `reservationId` | **trước enforce** |
-| Atomic fence+insert | Vẫn chưa nghiệm thu | trước enforce |
-| Receipt `receiptPersisted:false` retry-safe | Chưa chứng minh | trước production trading |
+| Claim receipt trước execute + payloadHash | `claimTradingReceipt` → risk → exchange → `finalize`; conflict hash → 409; replay không gọi sàn | trước production trading |
+| Lookup `GET /api/trading/commands?idempotencyKey=` | Actor-scoped | trước production trading |
+| Atomic fence+insert reservation | Vẫn chưa nghiệm thu | trước enforce |
+| Receipt treo `claimed` lâu / TTL unresolved | Chưa recovery worker | trước production trading |
+
+### Fix4
+
+| Mục | Trạng thái | Trước mốc |
+|---|---|---|
+| Web lock/DB throw chặn observe | Đã sửa | trước deploy |
+| Bot enforce + `lock_fenced_after` | Đã sửa xử lý kết quả | trước enforce |
+| Atomic fence+insert | Chưa | trước enforce |
 
 ### Fix3
 
