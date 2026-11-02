@@ -12,6 +12,11 @@ const crypto = require("crypto");
 const { PERMISSIONS, hasPermission, canAccessResource } = require("../auth/access-control");
 const { httpError } = require("./http");
 const TradingReceipt = require("../models/trading-receipt");
+const {
+    receiptStatusFromResult,
+    assertReceiptStatus,
+    isTerminalReceiptStatus,
+} = require("./trading-receipt-status");
 const UserAccount = require("../models/user-account");
 const { executeDirectTrading } = require("./direct-trading");
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -510,25 +515,35 @@ async function createTradingRequest({
         };
     }
     
-    // Tạo receipt để track
-    await TradingReceipt.create({
-        requestId,
-        idempotencyKey: finalIdempotencyKey,
-        action,
-        target: {
-            username: target.username,
-            env: target.env,
-            symbol: target.symbol,
-            positionSide: target.positionSide,
-        },
-        status: result?.success
-            ? "succeeded"
-            : (result?.partial || result?.closeOk ? "partial" : "failed"),
-        result: protection ? { ...result, protection, previewId: previewId || null } : result,
-        actorUserId,
-        actorUsername: actor?.username || actor?.email || "",
-        expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
-    });
+    const receiptStatus = assertReceiptStatus(receiptStatusFromResult(result));
+    const resultPayload = protection
+        ? { ...result, protection, previewId: previewId || null }
+        : result;
+
+    // Receipt durable — lỗi persist không được nuốt mất kết quả sàn đã chạy
+    let receiptPersisted = true;
+    try {
+        await TradingReceipt.create({
+            requestId,
+            idempotencyKey: finalIdempotencyKey,
+            action,
+            target: {
+                username: target.username,
+                env: target.env,
+                symbol: target.symbol,
+                positionSide: target.positionSide,
+            },
+            status: receiptStatus,
+            result: resultPayload,
+            actorUserId,
+            actorUsername: actor?.username || actor?.email || "",
+            expiresAt: new Date(now + IDEMPOTENCY_WINDOW_MS),
+            completedAt: isTerminalReceiptStatus(receiptStatus) ? new Date(now) : undefined,
+        });
+    } catch (err) {
+        receiptPersisted = false;
+        console.error("[tradingBridge] receipt persist failed:", err.message);
+    }
 
     // P3 timeline event (additive) — không đoán tradeInstanceId nếu thiếu
     try {
@@ -538,7 +553,7 @@ async function createTradingRequest({
             sourceEventId: requestId,
             type: result?.success
                 ? "submitted"
-                : (result?.partial ? "partial_reverse" : "exchange_rejected"),
+                : (result?.partial || result?.closeOk ? "partial_reverse" : "exchange_rejected"),
             reasonCode: result?.success ? undefined : (result?.openBlocked ? "risk_rejected" : "exchange_rejected"),
             account: target.username,
             env: target.env,
@@ -555,26 +570,26 @@ async function createTradingRequest({
                 protection: protection?.status || null,
                 closeOk: result?.closeOk,
                 openBlocked: result?.openBlocked,
+                receiptStatus,
+                receiptPersisted,
             },
         }, { trustedProducer: true });
     } catch (err) {
         console.warn("[tradingBridge] timeline", err.message);
     }
 
-    const commandStatus = result?.success
-        ? "succeeded"
-        : (result?.partial || result?.closeOk ? "partial" : "failed");
     return {
         duplicate: false,
         command: {
             requestId,
             action,
-            status: commandStatus,
-            terminal: true,
-            result,
+            status: receiptStatus,
+            terminal: isTerminalReceiptStatus(receiptStatus),
+            result: resultPayload,
             protection,
             previewId: previewId || null,
             reservationId: riskMeta?.reservation?.reservationId || null,
+            receiptPersisted,
         },
     };
 }
@@ -584,15 +599,17 @@ async function createTradingRequest({
  */
 function publicTradingCommand(doc) {
     if (!doc) return null;
+    const status = doc.status || "unknown";
     return {
         requestId: doc.requestId,
         idempotencyKey: doc.idempotencyKey,
         username: doc.username || doc.target?.username,
         action: doc.action,
-        status: doc.status,
-        terminal: !!doc.terminal,
+        status,
+        terminal: doc.terminal != null ? !!doc.terminal : isTerminalReceiptStatus(status),
         error: doc.error || null,
         result: doc.result || null,
+        protection: doc.result?.protection || null,
         expiresAt: doc.expiresAt,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
@@ -678,4 +695,5 @@ module.exports = {
     hasActionPermission,
     checkTargetAccess,
     validateOrderCreate,
+    receiptStatusFromResult,
 };

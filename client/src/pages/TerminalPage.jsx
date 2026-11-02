@@ -1055,17 +1055,14 @@ export default function TerminalPage() {
   }
 
   function onTradePlaced(result) {
-    const protect = result?.command?.protection;
+    const protect = result?.command?.protection || result?.command?.result?.protection;
     if (protect?.status) setProtectionNotice(protect);
     setTradePreview(null);
-    setMutation({
-      phase: result?.command?.status === "succeeded" ? "accepted" : "failed",
-      message: protect?.status
-        ? `Receipt ${result?.command?.requestId || ""} · ${protect.status}`
-        : (result?.command?.requestId || "Đã gửi"),
-      requestId: result?.command?.requestId,
-      exchangeStatus: result?.command?.status,
-    });
+    const classified = classifyMutationResult(result);
+    if (protect?.status && classified.phase === "accepted") {
+      classified.message = `Receipt ${result?.command?.requestId || ""} · ${protect.status}`;
+    }
+    setMutation(classified);
   }
 
   // Params bridge for reused history/orders tabs (book=live → empty)

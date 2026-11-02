@@ -100,3 +100,33 @@ test("classifyMutationResult: timeout → unknown, duplicate, accepted", () => {
   assert.equal(classifyMutationResult({ duplicate: true, command: { requestId: "a" } }).phase, "duplicate");
   assert.equal(classifyMutationResult({ command: { result: { orderId: "1", status: "NEW" } } }).phase, "accepted");
 });
+
+test("classifyMutationResult: partial reverse closeOk ≠ accepted/failed", () => {
+  const out = classifyMutationResult({
+    command: {
+      requestId: "rev-1",
+      status: "partial",
+      result: {
+        success: false,
+        partial: true,
+        closeOk: true,
+        openBlocked: true,
+        gateError: true,
+        reason: "Mongo lock failed",
+      },
+    },
+  });
+  assert.equal(out.phase, "partial");
+  assert.equal(out.closeOk, true);
+  assert.equal(out.openBlocked, true);
+  assert.match(out.message, /Đã đóng/);
+  assert.notEqual(out.phase, "accepted");
+  assert.notEqual(out.phase, "failed");
+});
+
+test("classifyMutationResult: failed command status", () => {
+  const out = classifyMutationResult({
+    command: { status: "failed", result: { success: false, reason: "exchange_rejected" } },
+  });
+  assert.equal(out.phase, "failed");
+});

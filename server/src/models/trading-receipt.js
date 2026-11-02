@@ -20,7 +20,8 @@ const TradingReceiptSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ["claimed", "submitted", "succeeded", "failed", "unknown"],
+            // partial = saga/child một phần thành công (vd reverse closeOk + openBlocked)
+            enum: ["claimed", "submitted", "succeeded", "partial", "failed", "unknown"],
             default: "claimed",
             index: true,
         },

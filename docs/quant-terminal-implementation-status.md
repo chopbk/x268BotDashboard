@@ -1,6 +1,6 @@
 # Quant Terminal — implementation status
 
-Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix2** (timeline scope, reservation transition, reverse gate throw, bot identity, shared lock fencing, wallet shape). **Chưa nghiệm thu / chưa deploy / enforce vẫn khóa.**  
+Ngày cập nhật: **2026-11-02**. Milestone hiện tại: **pre-deploy fix3** (receipt `partial` xuyên UI + lock/DB theo observe/enforce). **Chưa deploy / enforce vẫn khóa.** Atomic reservation+lock **chưa nghiệm thu**.  
 Nguồn chuẩn sản phẩm: [quant-terminal-master-spec.md](quant-terminal-master-spec.md).  
 Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
@@ -10,21 +10,27 @@ Contracts: [docs/contracts/quant-terminal/](contracts/quant-terminal/).
 
 | Repo | Git | Ghi chú |
 |---|---|---|
-| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit fix2 + docs; push; **không deploy** |
-| `binance-bot` | risk-gate + command/COPY/MTF callers | Không commit dirty sẵn (config/session/…) |
+| `web-bot` | Untracked sẵn: `.planning/`, `.tmux.conf` — **giữ nguyên** | Commit fix3; push; **không deploy** |
+| `binance-bot` | risk-gate observe/enforce infra | Không commit dirty sẵn |
 
 Không đọc `.env` / `.env.deploy`. Không deploy / restart / migration production / lệnh thật.
 
-### Fix2 regression (audit mock)
+### Fix3 (vòng hiện tại)
+
+| Mục | Trạng thái |
+|---|---|
+| Receipt enum + `partial` | Model + `receiptStatusFromResult` + `publicTradingCommand` + UI `classifyMutationResult` / MutationStatus |
+| Observe không throw khi lock/DB lỗi | `onInfraFailure` / `withAccountLock` không ném; enforce từ chối; insert enforce fail → reject |
+| Atomic reservation vs fence | **Chưa nghiệm thu** — renew trước ghi chỉ giảm cửa sổ; `lock_fenced_after` vẫn có thể sau khi đã insert. Bắt buộc trước enforce |
+
+### Fix2 regression (đã đóng trước đó)
 
 | Lỗi | Trạng thái |
 |---|---|
-| Timeline duplicate leak cross-account | User POST 403; `assertEventAccess` trên duplicate; client không đặt source |
-| `unknown → bind(submitted) → release` | Public bind/release không nhận status; transition pure + API |
-| Reverse gate throw mất close | `guardOpenLegAfterClose` + receipt `partial` / `closeOk` |
-| Bot identity env-as-account | Callers truyền `botUsername`; `resolveAccount` ưu tiên username + map FuturesAccount |
-| Soft lock web-only | Bot dùng `web_risk_account_locks` + fence; lease 5s + renew/fencing check |
-| Wallet `balance` vs `equity` | Snapshot giữ `walletBalance` + `equityBasis` + stale/error |
+| Timeline duplicate leak cross-account | User POST 403; `assertEventAccess` trên duplicate |
+| `unknown → bind(submitted) → release` | Public không nhận status client |
+| Reverse gate throw mất close | `guardOpenLegAfterClose` + adapter partial |
+| Bot identity / wallet shape | Callers `botUsername`; portfolio `walletBalance`/`equityBasis` |
 
 ---
 

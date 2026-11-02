@@ -272,7 +272,11 @@ async function reserveBudget({
         };
     }
 
-    return withAccountLock(username, async () => {
+    // renew trước ghi giảm cửa sổ mất lease; atomic reservation+lock **chưa nghiệm thu** trước enforce.
+    return withAccountLock(username, async (lockCtx = {}) => {
+        if (typeof lockCtx.renew === "function") {
+            await lockCtx.renew();
+        }
         const policy = await getPolicyForAccount(username);
         const mode = policy?.mode || "observe";
         const active = await loadActiveReservations(username);
@@ -353,6 +357,9 @@ async function reserveBudget({
         }
 
         const status = mode === "enforce" ? "reserved" : "observed";
+        if (typeof lockCtx.renew === "function") {
+            await lockCtx.renew();
+        }
         const doc = await RiskReservation.create({
             reservationId,
             account: username,

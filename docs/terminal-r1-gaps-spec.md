@@ -56,6 +56,7 @@ State đề xuất: `workspaceMode = position | new-position`, `ticketDraft`, `s
 | Nháp/chờ xác nhận | draft/preview | Không |
 | claimed/submitted | Đang xử lý | Không |
 | succeeded, đủ kết quả yêu cầu | Đã thực hiện yêu cầu | Có, nhưng order có thể chưa khớp |
+| partial (vd reverse closeOk + openBlocked) | Thành công một phần — không “Server đã nhận lệnh” xanh mặc định | Có |
 | failed, xác nhận không có tác động thành công | Bị từ chối/thất bại | Có |
 | Có child thành công và child thất bại | Thành công một phần + từng bước | Có nếu mọi child đã xác định; nếu còn unknown thì chưa |
 | Timeout/disconnect sau dispatch, crash chưa đối chiếu | Chưa xác định | Không |
