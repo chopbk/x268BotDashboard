@@ -58,17 +58,6 @@
   font-size: var(--font-caption);
   opacity: 0.8;
 }
-.mkt-brief {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.mkt-brief-item {
-  margin: 0;
-  font-size: var(--font-control);
-  line-height: 1.45;
-  opacity: 0.92;
-}
 .mkt-detail-summary {
   margin: 4px 0 0;
   font-size: 12px;

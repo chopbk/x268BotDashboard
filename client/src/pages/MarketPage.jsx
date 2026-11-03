@@ -187,7 +187,6 @@ export default function MarketPage({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showContextCards, setShowContextCards] = useState(false);
   const [showScoreDeep, setShowScoreDeep] = useState(false);
 
   useEffect(() => {
@@ -491,7 +490,6 @@ export default function MarketPage({
   const coverage = overview?.coverage || {};
   const progress = overview?.progress || {};
   const ctx = overview?.context || null;
-  const briefStatements = ctx?.brief?.statements || [];
   const dc = detail?.decisionContext || null;
   const detailSymbolInfo =
     detail?.symbolInfo || list?.rows?.find((r) => r.symbol === symbol)?.symbolInfo || null;
@@ -561,80 +559,61 @@ export default function MarketPage({
         </div>
       ) : null}
 
-      <div className="mkt-context-block" id="mkt-context">
-        {briefStatements.length ? (
-          <div className="mkt-brief" role="region" aria-label="Tóm tắt bối cảnh">
-            {briefStatements.map((s) => (
-              <p key={s.id} className="mkt-brief-item">
-                {s.text}
-              </p>
-            ))}
-          </div>
-        ) : (
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-            Chưa có tóm tắt bối cảnh — collector đang thu thập.
-          </p>
-        )}
-        <button
-          type="button"
-          className="mkt-ctx-toggle ghost"
-          onClick={() => setShowContextCards((v) => !v)}
-          aria-expanded={showContextCards}
-        >
-          {showContextCards ? "Ẩn số chi tiết" : "Hiện số chi tiết (BTC · độ rộng · ATR · setup)"}
-        </button>
-        {showContextCards ? (
-          <div className="mkt-context-cards">
-            {ctx?.btc4h && ctx.btc4h.quality !== "missing" ? (
-              <div className="mkt-ctx-card">
-                <span className="mkt-ctx-label">BTC 4h</span>
-                <strong>
-                  {ctx.btc4h.value?.structureLabel || ctx.btc4h.value?.structureBias || "—"}
-                  {ctx.btc4h.value?.regime ? ` · ${ctx.btc4h.value.regime}` : ""}
-                </strong>
-                <span className="muted">
-                  {qualityLabel(ctx.btc4h.quality)} · {when(ctx.btc4h.asOf)}
-                </span>
-              </div>
-            ) : (
-              <div className="mkt-ctx-card mkt-ctx-missing">
-                <span className="mkt-ctx-label">BTC 4h</span>
-                <strong>Thiếu dữ liệu</strong>
-                <span className="muted">{ctx?.btc4h?.reason || "không có snapshot BTC"}</span>
-              </div>
-            )}
-            {ctx?.breadth?.value ? (
-              <div className="mkt-ctx-card">
-                <span className="mkt-ctx-label">Độ rộng 1h</span>
-                <strong>
-                  L {ctx.breadth.value.leanLong}/{ctx.breadth.value.universeTotal} · S{" "}
-                  {ctx.breadth.value.leanShort}/{ctx.breadth.value.universeTotal}
-                </strong>
-                <span className="muted">
-                  thiếu {ctx.breadth.value.missing ?? "—"}/{ctx.breadth.value.universeTotal}
-                </span>
-              </div>
-            ) : null}
-            {ctx?.volatility && ctx.volatility.quality !== "missing" ? (
-              <div className="mkt-ctx-card">
-                <span className="mkt-ctx-label">Biến động</span>
-                <strong>ATR% BTC 4h {fmtPctSafe(ctx.volatility.value?.atrPct)}</strong>
-                <span className="muted">{qualityLabel(ctx.volatility.quality)}</span>
-              </div>
-            ) : null}
-            {ctx?.setupCounts && ctx.setupCounts.quality !== "missing" ? (
-              <div className="mkt-ctx-card">
-                <span className="mkt-ctx-label">
-                  Setup · {ctx.setupCounts.value?.analysisTf || analysisTf}
-                </span>
-                <strong>
-                  {ctx.setupCounts.value?.active ?? "—"} active · {ctx.setupCounts.value?.inEntry ?? "—"}{" "}
-                  trong vùng
-                </strong>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+      <div className="mkt-context-block" id="mkt-context" role="region" aria-label="Bối cảnh kỹ thuật">
+        <div className="mkt-context-cards">
+          {ctx?.btc4h && ctx.btc4h.quality !== "missing" ? (
+            <div className="mkt-ctx-card">
+              <span className="mkt-ctx-label">BTC 4h</span>
+              <strong>
+                {ctx.btc4h.value?.structureLabel || ctx.btc4h.value?.structureBias || "—"}
+                {ctx.btc4h.value?.regime ? ` · ${ctx.btc4h.value.regime}` : ""}
+              </strong>
+              <span className="muted">
+                {qualityLabel(ctx.btc4h.quality)} · {when(ctx.btc4h.asOf)}
+              </span>
+            </div>
+          ) : (
+            <div className="mkt-ctx-card mkt-ctx-missing">
+              <span className="mkt-ctx-label">BTC 4h</span>
+              <strong>Thiếu dữ liệu</strong>
+              <span className="muted">{ctx?.btc4h?.reason || "không có snapshot BTC"}</span>
+            </div>
+          )}
+          {ctx?.breadth?.value ? (
+            <div className="mkt-ctx-card">
+              <span className="mkt-ctx-label">Độ rộng 1h</span>
+              <strong>
+                L {ctx.breadth.value.leanLong}/{ctx.breadth.value.universeTotal} · S{" "}
+                {ctx.breadth.value.leanShort}/{ctx.breadth.value.universeTotal}
+              </strong>
+              <span className="muted">
+                thiếu {ctx.breadth.value.missing ?? "—"}/{ctx.breadth.value.universeTotal}
+                {ctx.breadth.quality ? ` · ${qualityLabel(ctx.breadth.quality)}` : ""}
+              </span>
+            </div>
+          ) : null}
+          {ctx?.volatility && ctx.volatility.quality !== "missing" ? (
+            <div className="mkt-ctx-card">
+              <span className="mkt-ctx-label">Biến động</span>
+              <strong>ATR% BTC 4h {fmtPctSafe(ctx.volatility.value?.atrPct)}</strong>
+              <span className="muted">{qualityLabel(ctx.volatility.quality)}</span>
+            </div>
+          ) : null}
+          {ctx?.setupCounts && ctx.setupCounts.quality !== "missing" ? (
+            <div className="mkt-ctx-card">
+              <span className="mkt-ctx-label">
+                Setup · {ctx.setupCounts.value?.analysisTf || analysisTf}
+              </span>
+              <strong>
+                {ctx.setupCounts.value?.active ?? "—"} active · {ctx.setupCounts.value?.inEntry ?? "—"}{" "}
+                trong vùng
+              </strong>
+              <span className="muted">
+                {ctx.setupCounts.value?.scope || "universe được phép · trước filter Top"}
+              </span>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="mkt-filters">
