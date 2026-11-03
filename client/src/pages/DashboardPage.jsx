@@ -265,9 +265,8 @@ export default function DashboardPage() {
       <header className="page-head">
         <div>
           <h1>Tổng quan</h1>
-          <p className="muted">
-            Bot bạn sở hữu hoặc được gán · ngày UTC. Đã chốt ≠ lãi lỗ ví ≠ chưa chốt.
-            F5 dùng cache ngắn; bấm Làm mới để tính lại.
+          <p className="muted" title="Bot bạn sở hữu hoặc được gán · ngày UTC. Đã chốt ≠ lãi lỗ ví ≠ chưa chốt. F5 dùng cache ngắn; bấm Làm mới để tính lại.">
+            Phạm vi bot của bạn · UTC · F5 = cache ngắn
           </p>
         </div>
         <div className="row-actions">

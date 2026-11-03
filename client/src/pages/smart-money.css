@@ -1,7 +1,7 @@
 .sm-page { display: flex; flex-direction: column; gap: 12px; }
 .sm-banner { padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: 8px; line-height: 1.45; }
 .sm-hints { margin: 0; padding-left: 1.2rem; font-size: var(--font-caption); }
-.sm-header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.sm-header { display: flex; justify-content: space-between; gap: var(--space-3, 10px); flex-wrap: wrap; align-items: flex-start; }
 .sm-header h1 { margin: 0 0 4px; font-size: var(--font-title); }
 .sm-status { display: grid; gap: 2px; font-size: var(--font-caption); text-align: right; }
 .sm-filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
@@ -53,7 +53,7 @@
 .sm-panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .sm-panel-title { font-size: var(--font-section); }
 .sm-panel-muted { color: #848e9c; font-size: var(--font-caption); font-weight: 400; }
-.sm-panel-kpis { display: flex; gap: 16px; flex-wrap: wrap; }
+.sm-panel-kpis { display: flex; gap: var(--space-3, 10px); flex-wrap: wrap; }
 .sm-panel-kpi { font-size: var(--font-body); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .sm-panel-split { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: #2b3139; }
 .sm-panel-split-long { background: #2ebd85; }

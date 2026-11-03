@@ -1074,7 +1074,7 @@ main:has(.term-screen) {
 }
 .term-decision-layout {
   display: grid;
-  gap: 16px;
+  gap: var(--space-3, 10px);
 }
 @media (min-width: 900px) {
   .term-decision-layout {
@@ -1708,7 +1708,7 @@ main:has(.term-screen) {
   align-items: center;
   margin-bottom: 6px;
 }
-.term-chart-host { width: 100%; min-height: 180px; }
+.term-chart-host { width: 100%; min-height: 140px; }
 .term-chart-hint { margin: 6px 0 0; font-size: var(--font-caption); }
 .term-quant-right {
   display: flex;

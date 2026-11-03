@@ -1,6 +1,6 @@
-.mkt-hub { display: flex; flex-direction: column; gap: 12px; }
-.mkt-hub-header h1 { margin: 0 0 4px; font-size: var(--font-title); letter-spacing: -0.02em; }
-.mkt-hub-sub { margin: 0; font-size: var(--font-control); line-height: 1.4; max-width: 48rem; }
+.mkt-hub { display: flex; flex-direction: column; gap: var(--stack-gap, 8px); }
+.mkt-hub-header h1 { margin: 0 0 2px; font-size: var(--font-title); letter-spacing: -0.02em; }
+.mkt-hub-sub { margin: 0; font-size: var(--font-caption); line-height: 1.35; max-width: 48rem; }
 
 .mkt-hub-tabs {
   display: flex;

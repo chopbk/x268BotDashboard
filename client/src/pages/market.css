@@ -1,5 +1,5 @@
 .mkt-page { display: flex; flex-direction: column; gap: 12px; }
-.mkt-header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.mkt-header { display: flex; justify-content: space-between; gap: var(--space-3, 10px); flex-wrap: wrap; align-items: flex-start; }
 .mkt-header h1, .mkt-header h2 { margin: 0 0 4px; font-size: var(--font-title); letter-spacing: -0.02em; }
 .mkt-sub { margin: 0; font-size: var(--font-control); opacity: 0.72; line-height: 1.4; max-width: 52rem; }
 .mkt-meta { display: grid; gap: 2px; font-size: var(--font-caption); text-align: right; opacity: 0.8; }

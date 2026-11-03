@@ -14,26 +14,26 @@
 
 .dv-shell {
   display: grid;
-  gap: 10px;
+  gap: var(--space-2, 8px);
   min-width: 0;
-  padding: 12px 14px;
+  padding: var(--card-pad-y, 10px) var(--card-pad-x, 12px);
 }
 
 .dv-shell.height-rank {
-  min-height: 200px;
+  min-height: 160px;
 }
 
 /* Titles full-width above actions — tránh mode tabs ép subtitle xuống từng token trong lưới 2 cột. */
 .dv-shell-head {
   display: grid;
-  gap: 8px;
+  gap: var(--space-1, 4px);
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
 .dv-shell-titles {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -72,12 +72,12 @@
 
 .dv-shell-body {
   min-width: 0;
-  min-height: 200px;
+  min-height: 160px;
 }
 
 @media (min-width: 768px) {
   .dv-shell-body {
-    min-height: 240px;
+    min-height: 200px;
   }
 }
 

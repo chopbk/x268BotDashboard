@@ -114,12 +114,12 @@ Không lưu config thật chỉ để test giao diện. Giữ cả route mới v
 Rule bắt buộc: [ui-consistency.mdc](../.cursor/rules/ui-consistency.mdc),
 được tham chiếu từ AGENTS.md để áp dụng cho cả Cursor và Codex.
 
-Token chung trong `client/src/styles.css` (profile **Data-Dense vừa vặn + Financial Trust**,
-ui-ux-pro-max): body 14 / control 13 / caption 12 / section 16 / title 20 / KPI 22.
-Control desktop 34px (cảm ứng 40). Gap hành động ≥ 8px (`--space-2`); ô bảng `9×12`
-(`--table-cell-*`); card `--card-pad-*`. Nút thường/ghost/link-btn cùng
-`min-height: var(--control-height)`. Giữ root 16px. Mọi CSS màn dùng token
-`--font-*` — không hardcode px/rem cho chữ có nghĩa; sàn tối thiểu caption 12px.
+Token chung trong `client/src/styles.css` (profile **Data-Dense Dashboard + Financial Trust**,
+ui-ux-pro-max — ưu tiên ít scroll): body 14 / control 13 / caption 12 / section 15 /
+title 18 / KPI 20. Control 32px (cảm ứng 40). Stack gap `--stack-gap` 8px; card pad
+10×12; ô bảng 6×8. Mô tả phụ (`.page-head p.muted`, lead card) clamp 1 dòng, hover
+xem đủ. Nút cùng `min-height: var(--control-height)`. Root 16px. Không hardcode
+font có nghĩa; sàn caption 12px.
 
 ### Theme / skin
 

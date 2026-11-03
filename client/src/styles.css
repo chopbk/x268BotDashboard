@@ -1,27 +1,28 @@
 :root {
   /* Shared density: keep rem at 16px for chart geometry and compact labels. */
-  /* Density vừa vặn: Data-Dense + hơi thoáng (ui-ux-pro-max) */
+  /* Data-Dense Dashboard (ui-ux-pro-max): tối đa thông tin / viewport, ít scroll */
   --font-body: 14px;
   --font-control: 13px;
-  --font-title: 20px;
-  --font-section: 16px;
+  --font-title: 18px;
+  --font-section: 15px;
   --font-caption: 12px;
-  --font-kpi: 22px;
-  --control-height: 34px;
+  --font-kpi: 20px;
+  --control-height: 32px;
   --space-1: 4px;
   --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --table-cell-y: 9px;
-  --table-cell-x: 12px;
-  --card-pad-y: 14px;
-  --card-pad-x: 16px;
+  --space-3: 10px;
+  --space-4: 12px;
+  --table-cell-y: 6px;
+  --table-cell-x: 8px;
+  --card-pad-y: 10px;
+  --card-pad-x: 12px;
+  --stack-gap: 8px;
   --ease: 180ms ease;
-  --radius-card: 12px;
+  --radius-card: 10px;
   --radius-control: 8px;
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.4;
   color: var(--text);
   background: var(--bg);
   scroll-padding-top: 72px;
@@ -202,7 +203,7 @@ h2 { font-size: var(--font-section); font-weight: 650; }
 .card {
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   padding: var(--card-pad-y) var(--card-pad-x);
   backdrop-filter: blur(8px);
 }
@@ -335,8 +336,8 @@ a.link-btn:hover { background: var(--surface-2); }
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 14px;
+  gap: var(--space-2);
+  padding: 12px 10px;
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 88%, var(--bg));
 }
@@ -357,7 +358,7 @@ a.link-btn:hover { background: var(--surface-2); }
 }
 
 .nav-label {
-  margin: 14px 12px 6px;
+  margin: 10px 10px 4px;
   color: var(--muted);
   font-size: var(--font-caption);
   font-weight: 700;
@@ -367,9 +368,9 @@ a.link-btn:hover { background: var(--surface-2); }
 
 .sidenav nav a {
   color: var(--muted);
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: var(--font-body);
+  padding: 7px 10px;
+  border-radius: var(--radius-control);
+  font-size: var(--font-control);
   transition: background var(--ease), color var(--ease);
 }
 
@@ -408,7 +409,7 @@ a.link-btn:hover { background: var(--surface-2); }
   cursor: pointer;
 }
 
-.dash-block { margin-top: 16px; display: grid; gap: 10px; }
+.dash-block { margin-top: var(--stack-gap); display: grid; gap: var(--space-2); }
 .dash-health-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dash-health-head h2 { margin: 0; }
 .dash-chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -436,11 +437,11 @@ a.link-btn:hover { background: var(--surface-2); }
 .dash-attn-critical .dash-sev { color: var(--danger); }
 .dash-attn-high .dash-sev { color: var(--warn, #e0a106); }
 .dash-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.dash-cache-meta { margin: 0 0 12px; font-size: var(--font-control); }
+.dash-cache-meta { margin: 0 0 var(--space-2); }
 .dash-series {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-2);
   align-items: end;
 }
 .dash-series > div { display: grid; gap: 8px; }
@@ -494,21 +495,67 @@ td.negative,
 
 /* Full width như Terminal — form config giữ hẹp hơn qua :has(.config-screen) */
 main {
-  width: calc(100% - 40px);
+  width: calc(100% - 24px);
   max-width: none;
-  margin: 16px auto 40px;
+  margin: 10px auto 20px;
   font-size: var(--font-body);
   box-sizing: border-box;
 }
 
 main:has(.config-screen) {
-  width: min(1040px, calc(100% - 24px));
-  margin-top: 10px;
-  margin-bottom: 16px;
+  width: min(1040px, calc(100% - 20px));
+  margin-top: 8px;
+  margin-bottom: 12px;
 }
 
-.page-head { margin-bottom: 16px; display: grid; gap: 8px; }
-.page-head .muted { font-size: var(--font-body); line-height: 1.55; }
+.page-head {
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.page-head > div:first-child { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
+.page-head h1 { line-height: 1.25; margin: 0; }
+/* Mô tả phụ: 1 dòng mặc định (Pro Max progressive disclosure) — hover/focus xem đủ */
+.page-head p.muted,
+.card > p.muted:first-of-type,
+.dash-block > p.muted:first-of-type,
+.dash-cache-meta,
+.dv-shell-sub,
+.mkt-hub-sub,
+.sm-panel-muted,
+.econ-lead,
+.econ-hint,
+.econ-note {
+  font-size: var(--font-caption);
+  line-height: 1.35;
+  margin: 0;
+  max-width: 72ch;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-head p.muted:hover,
+.page-head p.muted:focus-visible,
+.card > p.muted:first-of-type:hover,
+.card > p.muted:first-of-type:focus-visible,
+.dash-block > p.muted:first-of-type:hover,
+.dash-block > p.muted:first-of-type:focus-visible,
+.dash-cache-meta:hover,
+.dv-shell-sub:hover,
+.dv-shell-sub:focus-visible,
+.mkt-hub-sub:hover,
+.sm-panel-muted:hover,
+.econ-lead:hover,
+.econ-hint:hover,
+.econ-note:hover {
+  -webkit-line-clamp: unset;
+  display: block;
+  overflow: visible;
+}
 
 .config-head {
   display: flex;
@@ -944,7 +991,7 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
 }
 
 .user-table-wrap { max-height: 360px; }
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-2); }
 .stats-grid .card { display: grid; gap: 8px; }
 .stats-grid strong { font-size: var(--font-kpi); }
 
@@ -1018,7 +1065,7 @@ button.symbol-chip.active, button.symbol-chip:hover { border-color: #6a6d80; col
 .leave-dialog { max-width: 420px; }
 .leave-dialog h2 { margin: 0 0 8px; }
 .dirty-note { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.history-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.history-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .signal-setup { display: grid; gap: 12px; }
 .signal-setup h2 { margin: 0 0 6px; font-size: var(--font-section); }
 .signal-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1782,17 +1829,17 @@ button.linkish:hover { background: none; }
 .order-detail dd { margin: 0; }
 
 /* Hiệu quả giao dịch + Account Static (/signals) */
-.signals-shell { display: grid; gap: 12px; min-width: 0; }
+.signals-shell { display: grid; gap: var(--stack-gap); min-width: 0; }
 .signals-shell > .history-tabs { margin-bottom: 0; }
 .signals-shell > .history-tabs .link-btn.active { background: var(--accent); color: var(--ink); border-color: transparent; }
 .perf-page { display: grid; gap: 0; min-width: 0; }
 .perf-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+  gap: var(--space-2);
   align-items: start;
 }
-.perf-main { display: grid; gap: 12px; min-width: 0; }
+.perf-main { display: grid; gap: var(--stack-gap); min-width: 0; }
 .perf-side {
   display: grid;
   gap: 12px;
@@ -1971,7 +2018,7 @@ button.linkish:hover { background: none; }
 }
 
 /* Strategy analytics `/analytics` */
-.sa-page { gap: 14px; }
+.sa-page { gap: var(--stack-gap); }
 .sa-header {
   display: flex;
   flex-wrap: wrap;
