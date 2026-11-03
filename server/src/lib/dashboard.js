@@ -10,6 +10,14 @@ const { httpError } = require("./http");
 const { ledgerEnv } = require("./account-ledger");
 const { attentionPackage } = require("./dashboard-brief");
 const { loadAttribution, attentionFromAttribution } = require("./ledger-attribution");
+const {
+    TRADE_LOOKBACK_DAYS,
+    TRADE_LIMIT,
+    normalizeTradeKind,
+    closedLiveFilter,
+    buildRecentTrades,
+    buildAllocation,
+} = require("./dashboard-panels");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEARTBEAT_MS = 90 * 1000;
@@ -47,11 +55,12 @@ function cacheTtlMs(deps = {}) {
     return Math.max(0, numEnv("DASHBOARD_CACHE_MS", DEFAULT_CACHE_MS));
 }
 
-function cacheKey(actor) {
+function cacheKey(actor, tradeKind = "all") {
     return [
         String(actor?.id || ""),
         [...(actor?.permissions || [])].sort().join(","),
         [...(actor?.botUsernames || [])].sort().join(","),
+        normalizeTradeKind(tradeKind),
     ].join("|");
 }
 
@@ -417,6 +426,8 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
         compare: null,
         series: null,
         activity: [],
+        recentTrades: null,
+        allocation: null,
         openRisk: null,
         health: null,
         attention: [],
@@ -425,6 +436,7 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
         ai: attentionPackage({ day: "UTC" }),
     };
     if (!canBots) return empty;
+    const tradeKind = normalizeTradeKind(deps.tradeKind);
 
     const UserAccountModel = deps.UserAccount || UserAccount;
     const AccountConfigModel = deps.AccountConfig || AccountConfig;
@@ -458,7 +470,8 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
         ? await AccountConfigModel.find(envFilter).select("env signals trade_config.ON").lean()
         : [];
 
-    const [weekProfitRows, weekIncomeRows, signalRows, apiRows, blocked, removed, exchangeLogs, recentCloses, beats, books] = await Promise.all([
+    const tradeFrom = new Date(now.getTime() - TRADE_LOOKBACK_DAYS * DAY_MS);
+    const [weekProfitRows, weekIncomeRows, signalRows, apiRows, blocked, removed, exchangeLogs, recentCloses, tradeCloses, beats, books] = await Promise.all([
         canStats && envFilter
             ? AccountStaticModel.aggregate([
                 { $match: { ...envFilter, isPaper: false, $expr: { $and: [
@@ -560,6 +573,13 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
                 isPaper: false,
                 closeTime: { $gte: new Date(now.getTime() - 2 * DAY_MS), $lte: now },
             }).sort({ closeTime: -1 }).limit(6).select("env typeSignal symbol side profit status closeTime").lean()
+            : [],
+        canStats && envs.length
+            ? AccountStaticModel.find(closedLiveFilter(envs, tradeFrom, now))
+                .sort({ closeTime: -1 })
+                .limit(TRADE_LIMIT)
+                .select("_id env typeSignal symbol side profit status closeTime openTime")
+                .lean()
             : [],
         usernames.length
             ? HeartbeatModel.find({
@@ -873,6 +893,13 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
     }
     activity.splice(ACTIVITY_LIMIT);
 
+    const recentTrades = canStats
+        ? buildRecentTrades({ kind: tradeKind, bots, closes: tradeCloses || [], now })
+        : null;
+    const allocation = canPositions
+        ? buildAllocation({ usernames, books: books == null ? null : books, now })
+        : null;
+
     let attributionIssues = [];
     let attributionFacts = [];
     if (canStats && mine.length) {
@@ -1007,6 +1034,8 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
         compare,
         series,
         activity,
+        recentTrades,
+        allocation,
         openRisk: openRisk
             ? {
                 available: openRisk.available,
@@ -1028,7 +1057,8 @@ async function computeDashboard(actor, now = new Date(), deps = {}) {
 async function getDashboard(actor, now = new Date(), deps = {}) {
     const ttl = cacheTtlMs(deps);
     const refresh = deps.refresh === true;
-    const key = cacheKey(actor);
+    const tradeKind = normalizeTradeKind(deps.tradeKind);
+    const key = cacheKey(actor, tradeKind);
     const at = now instanceof Date ? now.getTime() : Date.now();
     if (!refresh && ttl > 0 && actor?.id) {
         const hit = dashboardCache.get(key);
@@ -1041,7 +1071,7 @@ async function getDashboard(actor, now = new Date(), deps = {}) {
             };
         }
     }
-    const payload = await computeDashboard(actor, now, deps);
+    const payload = await computeDashboard(actor, now, { ...deps, tradeKind });
     const out = {
         ...payload,
         cached: false,
@@ -1067,6 +1097,7 @@ module.exports = {
     buildSkipAttention,
     clearDashboardCache,
     severityThresholds,
+    cacheKey,
     HEARTBEAT_MS,
     WALLET_CRITICAL,
     WALLET_ATTENTION_MIN,

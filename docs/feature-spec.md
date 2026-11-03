@@ -7,7 +7,7 @@
 | Màn hình / URL | Component | Nghiệp vụ và điều kiện |
 |---|---|---|
 | Đăng nhập `/login`, đăng ký `/register` | LoginPage, RegisterPage | Login bằng identifier; đăng ký tạo pending. Pending có session nhưng chưa có quyền bot |
-| Trang chủ `/` | OverviewPage (tab Tổng quan / Thống kê tổng hợp) / PendingPage | `bots.view` \| `summary.view` \| `statistics.view` → shell tab; không có quyền → trang chờ. Tab Tổng quan = DashboardPage (`bots.view`) + chart P1 đóng góp PnL bot (đã chốt / uPnL riêng); tab Thống kê = SummaryPage + bar userRanks (ví) và Long/Short (Static). `/summary` redirect `/?tab=summary`. — [dashboard-overview-spec](dashboard-overview-spec.md), [data-visualization-spec](data-visualization-spec.md) |
+| Trang chủ `/` | OverviewPage (tab Tổng quan / Thống kê tổng hợp) / PendingPage | `bots.view` \| `summary.view` \| `statistics.view` → shell tab; không có quyền → trang chờ. Tab Tổng quan = DashboardPage (`bots.view`) + chart P1 đóng góp PnL bot + card **Phân bổ vị thế** (donut gross notional) + **Giao dịch gần đây** (timeline Đóng; Mở chưa hỗ trợ) — [dashboard-timeline-allocation-spec](dashboard-timeline-allocation-spec.md); tab Thống kê = SummaryPage + bar userRanks (ví) và Long/Short (Static). `/summary` redirect `/?tab=summary`. — [dashboard-overview-spec](dashboard-overview-spec.md), [data-visualization-spec](data-visualization-spec.md) |
 | Danh sách `/bots` | HomePage | Active, phạm vi, chủ sở hữu; peek Static/Config/lãi lỗ; nút Config → `/config-lab?user=` |
 | Config `/config-lab`, `/config-lab/:username/:env` | ConfigLabPage + AccountConfigPage | Tạo/sửa/copy/sync/bulk/xoá config; 6 nhóm form; APPLY_CONFIG |
 | `/bots/:username`, `/bots/.../accounts/:env` | Redirect | Chuyển sang Config Lab (UI cũ không còn dùng) |

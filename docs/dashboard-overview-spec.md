@@ -240,8 +240,8 @@ Vẫn **`GET /api/dashboard`** — mở rộng response; không tách endpoint t
 |---|---|
 | `bots`, `mine` (cơ bản) | `bots.view` + ownership/assign như hiện tại |
 | `configs` | `config.view` |
-| `profitToday`, `incomeToday`, `closedToday`, activity đóng lệnh | `statistics.view` |
-| `openRisk` | `positions.view`; thiếu quyền → `null` |
+| `profitToday`, `incomeToday`, `closedToday`, activity đóng lệnh, `recentTrades` | `statistics.view` |
+| `openRisk`, `allocation` | `positions.view`; thiếu quyền → `null` |
 | `health` tóm tắt trong scope bot của mình | `bots.view` (heartbeat theo username/env đã gắn); không mở heartbeat toàn hệ thống |
 | attention thiếu key | `credentials.view` |
 | attention blocked | `logs.view` |

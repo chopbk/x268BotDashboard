@@ -61,6 +61,7 @@ function installMocks() {
     };
     AccountStatic.find = () => query([
         {
+            _id: "static-1",
             env: "V1",
             typeSignal: "TITAN",
             symbol: "BTCUSDT",
@@ -121,9 +122,11 @@ const books = {
     readExchangeBooks: async () => ({
         V: {
             source: "exchange",
+            exchange: "binance",
+            at: "2026-10-08T11:55:00.000Z",
             positions: [
-                { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "0.1", markPrice: "50000", unRealizedProfit: "-120" },
-                { symbol: "ETHUSDT", positionSide: "SHORT", positionAmt: "-1", markPrice: "3000", unRealizedProfit: "5" },
+                { symbol: "BTCUSDT", positionSide: "LONG", positionAmt: "0.1", markPrice: "50000", unRealizedProfit: "-120", quantityUnit: "base" },
+                { symbol: "ETHUSDT", positionSide: "SHORT", positionAmt: "-1", markPrice: "3000", unRealizedProfit: "5", quantityUnit: "base" },
             ],
         },
     }),
@@ -151,6 +154,15 @@ test("dashboard stays on owned or assigned bots and hides secrets", async () => 
         assert.equal(view.series.profit.at(-1), 12);
         assert.equal(view.series.income.at(-1), -40);
         assert.equal(view.activity.some((item) => item.kind === "close" && item.title.includes("BTCUSDT")), true);
+        assert.equal(view.recentTrades?.openSupported, false);
+        assert.equal(view.recentTrades?.items?.length, 1);
+        assert.equal(view.recentTrades.items[0].kind, "close");
+        assert.equal(view.recentTrades.items[0].symbol, "BTCUSDT");
+        assert.equal(view.recentTrades.items[0].id, "close:static-1");
+        assert.equal(view.allocation?.quality, "complete");
+        assert.equal(view.allocation?.gross, 8000);
+        assert.equal(view.allocation?.bySide.find((row) => row.key === "LONG")?.value, 5000);
+        assert.equal(view.allocation?.bySide.find((row) => row.key === "SHORT")?.value, 3000);
         assert.equal(view.closedToday.trades, 4);
         assert.equal(view.closedToday.wins, 3);
         assert.equal(view.closedToday.winRate, 75);
@@ -272,9 +284,13 @@ test("dashboard serves in-memory cache until refresh", async () => {
         assert.equal(second.cached, true);
         assert.equal(second.profitToday, 12);
         assert.equal(booksCalls, 1);
+        const otherKind = await getDashboard(operator, new Date("2026-10-08T12:00:15Z"), { ...deps, tradeKind: "close" });
+        assert.equal(otherKind.cached, false);
+        assert.equal(booksCalls, 2);
+        assert.equal(otherKind.recentTrades?.kind, "close");
         const fresh = await getDashboard(operator, new Date("2026-10-08T12:00:20Z"), { ...deps, refresh: true });
         assert.equal(fresh.cached, false);
-        assert.equal(booksCalls, 2);
+        assert.equal(booksCalls, 3);
     } finally {
         restoreMocks(originals);
         clearDashboardCache();

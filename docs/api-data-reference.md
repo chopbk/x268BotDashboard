@@ -233,7 +233,7 @@ Không có REST `/api/logs`, `/api/user/stats` hay wildcard `/api/signals/*` ch�
 | Ledger | `username`, `view=all`, `days=today\|3\|7\|…` (UI Báo cáo mặc định `today` + tất cả user) | Đọc DB; `series`/`totals`/`flows` + `incomeBreakdown` (`coverage`, `waterfallEligible`, `components` realized/fee/funding/rebate khi typed đủ và đối soát khớp, `cashComponents`); POST `refresh-all` hoặc `/:username/refresh` gọi sàn hôm nay UTC ghi `futures_profits`, rate limit 4/10 phút; `refresh-all` trả `refresh.ok/failed` |
 | Summary | `range=today/3d/7d/30d/90d/all`, `audience` | Payload aggregate hoặc snapshot kèm metadata; refresh có giới hạn |
 | Positions | `account`, `audience`, `book` và filter vị thế | Monitor + snapshot sàn đã lọc quyền; detail cần `id` |
-| Dashboard | GET trả bots/configs/profitToday/incomeToday/closedToday/compare/series/activity/openRisk/health/attention/mine/thresholds/ai + `cached`; `?refresh=1` bỏ cache; openRisk Redis; [overview spec](dashboard-overview-spec.md) |
+| Dashboard | GET trả bots/configs/profitToday/incomeToday/closedToday/compare/series/activity/`recentTrades`/`allocation`/openRisk/health/attention/mine/thresholds/ai + `cached`; `?refresh=1` bỏ cache; `?tradeKind=all\|open\|close`; openRisk + allocation từ Redis; [overview](dashboard-overview-spec.md), [timeline/allocation](dashboard-timeline-allocation-spec.md) |
 | Runtime logs | `page`/`limit`/`q`/`category`/`level`/`from`/`to`/`bucketFrom`/`bucketTo`/`histogram` | `logs` phân trang + `histogram` ({points, total, bucket, from, to, note}); histogram không phụ thuộc page; scope như auth-rbac |
 | Dashboard attention | `instructions` tùy chọn | Server dựng facts; tối đa 2000 ký tự hướng dẫn, kết quả items/provider |
 

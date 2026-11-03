@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fixture — Phân bổ + Timeline Tổng quan</title>
+  <link rel="stylesheet" href="../src/components/dashboard/dashboard-panels.css" />
+  <style>
+    :root {
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --card: #111827;
+      --border: #334155;
+      --ok: #22a06b;
+      --danger: #e5484d;
+      --accent: #3b82f6;
+      --bg: #0b1220;
+    }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1e293b, var(--bg));
+      color: var(--text);
+      padding: 24px;
+    }
+    .card {
+      background: color-mix(in srgb, var(--card) 92%, white 8%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .ghost, .link-btn { color: var(--accent); text-decoration: none; background: none; border: 0; cursor: pointer; }
+    .muted { color: var(--muted); }
+    .dv-mode-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dv-mode-tabs button {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .dv-mode-tabs button.active { border-color: var(--accent); }
+    .positive { color: var(--ok); }
+    h2 { margin: 0; font-size: 1.05rem; }
+    .dash-health-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+  </style>
+</head>
+<body>
+  <p class="muted">Fixture tổng hợp — không gọi API / không đặt lệnh. Resize để xem desktop (≥1200) và mobile.</p>
+  <div class="dash-overview-split">
+    <section class="card dash-panel">
+      <div class="dash-health-head">
+        <div>
+          <h2>Phân bổ vị thế</h2>
+          <p class="muted dash-panel-sub">Giá trị vị thế · gross notional USDT</p>
+        </div>
+        <a class="ghost link-btn" href="#">Mở Terminal</a>
+      </div>
+      <div class="dv-mode-tabs">
+        <button type="button" class="active">Theo coin</button>
+        <button type="button" class="ghost">Long–Short</button>
+      </div>
+      <div class="dash-alloc-layout">
+        <div class="dash-donut-wrap">
+          <svg class="dash-donut" viewBox="0 0 240 240" width="240" height="240" aria-label="donut demo">
+            <path d="M 120 2 A 118 118 0 0 1 220.9 162.9 L 187.3 146.7 A 78 78 0 0 0 120 42 Z" fill="#22a06b"></path>
+            <path d="M 220.9 162.9 A 118 118 0 0 1 56.4 198.2 L 78.8 170 A 78 78 0 0 0 187.3 146.7 Z" fill="#3b82f6"></path>
+            <path d="M 56.4 198.2 A 118 118 0 0 1 120 2 L 120 42 A 78 78 0 0 0 78.8 170 Z" fill="#f59e0b"></path>
+            <text x="120" y="112" text-anchor="middle" class="dash-donut-center-label">Giá trị vị thế</text>
+            <text x="120" y="134" text-anchor="middle" class="dash-donut-center-value">12.500 USDT</text>
+          </svg>
+          <p class="muted dash-panel-meta">3 vị thế · dữ liệu demo UTC</p>
+        </div>
+        <ul class="dash-donut-legend">
+          <li><button type="button" class="dash-legend-btn"><span class="dash-legend-swatch" style="background:#22a06b"></span><span class="dash-legend-name">BTCUSDT</span><span class="dash-legend-val">7.500</span><span class="muted">60%</span></button></li>
+          <li><button type="button" class="dash-legend-btn"><span class="dash-legend-swatch" style="background:#3b82f6"></span><span class="dash-legend-name">ETHUSDT</span><span class="dash-legend-val">3.000</span><span class="muted">24%</span></button></li>
+          <li><button type="button" class="dash-legend-btn"><span class="dash-legend-swatch" style="background:#f59e0b"></span><span class="dash-legend-name">Khác (2)</span><span class="dash-legend-val">2.000</span><span class="muted">16%</span></button></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card dash-panel">
+      <div class="dash-health-head">
+        <div>
+          <h2>Giao dịch gần đây</h2>
+          <p class="muted dash-panel-sub">Lệnh bot · 7 ngày UTC</p>
+        </div>
+        <a class="ghost link-btn" href="#">Xem lịch sử</a>
+      </div>
+      <div class="dv-mode-tabs">
+        <button type="button" class="active">Tất cả</button>
+        <button type="button" class="ghost">Mở</button>
+        <button type="button" class="ghost">Đóng</button>
+      </div>
+      <p class="muted dash-panel-note">Chưa chứng minh nguồn mở lệnh — chỉ Đóng từ account_statics Live.</p>
+      <ol class="dash-timeline">
+        <li class="dash-timeline-item">
+          <span class="dash-timeline-dot kind-close"></span>
+          <span class="dash-timeline-line"></span>
+          <div class="dash-timeline-body">
+            <a class="dash-timeline-main" href="#"><span class="dash-timeline-kind kind-close">Đóng</span> SHORT BTCUSDT · <span class="positive">+12,30 USDT</span></a>
+            <div class="muted dash-timeline-meta">bot-demo · DEMO_1 · SIG · 03/11/2026 10:32:05 UTC</div>
+          </div>
+        </li>
+        <li class="dash-timeline-item">
+          <span class="dash-timeline-dot kind-close"></span>
+          <div class="dash-timeline-body">
+            <a class="dash-timeline-main" href="#"><span class="dash-timeline-kind kind-close">Đóng</span> LONG ETHUSDT · Chưa có PnL</a>
+            <div class="muted dash-timeline-meta">bot-demo · DEMO_2 · 02/11/2026 18:01:11 UTC</div>
+          </div>
+        </li>
+      </ol>
+    </section>
+  </div>
+</body>
+</html>

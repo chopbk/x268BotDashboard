@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import HorizontalPnlBars from "../components/charts/HorizontalPnlBars.jsx";
 import { rankGroups } from "../components/charts/rankGroups.js";
+import PositionAllocationDonut from "../components/dashboard/PositionAllocationDonut.jsx";
+import RecentTradesTimeline from "../components/dashboard/RecentTradesTimeline.jsx";
 import "../components/charts/charts.css";
 
 const LOGS_VIEW = "logs.view";
@@ -54,13 +56,13 @@ function promptText(ai, guide) {
   return ["Hướng dẫn:", guide || ai?.instructions || "", "Dữ liệu:", JSON.stringify(ai?.data || {})].join("\n\n");
 }
 
-function cacheKey(userId) {
-  return `web-bot:dashboard:${userId || "anon"}`;
+function cacheKey(userId, tradeKind = "all") {
+  return `web-bot:dashboard:${userId || "anon"}:${tradeKind || "all"}`;
 }
 
-function readClientCache(userId) {
+function readClientCache(userId, tradeKind = "all") {
   try {
-    const raw = sessionStorage.getItem(cacheKey(userId));
+    const raw = sessionStorage.getItem(cacheKey(userId, tradeKind));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.at || !parsed?.data) return null;
@@ -71,9 +73,9 @@ function readClientCache(userId) {
   }
 }
 
-function writeClientCache(userId, data) {
+function writeClientCache(userId, tradeKind, data) {
   try {
-    sessionStorage.setItem(cacheKey(userId), JSON.stringify({ at: Date.now(), data }));
+    sessionStorage.setItem(cacheKey(userId, tradeKind), JSON.stringify({ at: Date.now(), data }));
   } catch {
     /* ignore quota */
   }
@@ -105,12 +107,14 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [botPnlMode, setBotPnlMode] = useState("closed"); // closed | upnl
+  const [tradeKind, setTradeKind] = useState("all"); // all | open | close
   const statsAllowed = can(user, STATISTICS_VIEW);
   const canSystem = (user?.permissions || []).includes(LOGS_VIEW) && user?.scopes?.[LOGS_VIEW] === "all";
   const healthHref = canSystem ? "/system" : "/logs?kind=runtime";
-  const [data, setData] = useState(() => readClientCache(user?.id));
+  const [data, setData] = useState(() => readClientCache(user?.id, "all"));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!data);
+  const [kindLoading, setKindLoading] = useState(false);
   const [guide, setGuide] = useState("");
   const [showGuide, setShowGuide] = useState(false);
   const [aiItems, setAiItems] = useState(null);
@@ -119,33 +123,45 @@ export default function DashboardPage() {
   const [copied, setCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [riskBadge, setRiskBadge] = useState(null);
+  const tradeKindRef = useRef(tradeKind);
+  tradeKindRef.current = tradeKind;
 
-  async function loadDashboard({ refresh = false, signal } = {}) {
-    const path = refresh ? "/api/dashboard?refresh=1" : "/api/dashboard";
+  async function loadDashboard({ refresh = false, signal, kind = tradeKindRef.current } = {}) {
+    const params = new URLSearchParams();
+    if (refresh) params.set("refresh", "1");
+    if (kind && kind !== "all") params.set("tradeKind", kind);
+    const qs = params.toString();
+    const path = qs ? `/api/dashboard?${qs}` : "/api/dashboard";
     const next = await api(path, { signal });
+    if (signal?.aborted) return next;
     setData(next);
     setGuide(next?.ai?.instructions || "");
-    writeClientCache(user?.id, next);
+    writeClientCache(user?.id, kind, next);
     if (!refresh) setAiItems(null);
     return next;
   }
 
   useEffect(() => {
     const controller = new AbortController();
-    const cached = readClientCache(user?.id);
+    const cached = readClientCache(user?.id, tradeKind);
     if (cached) {
       setData(cached);
       setGuide(cached?.ai?.instructions || "");
       setLoading(false);
-    } else {
+    } else if (!data) {
       setLoading(true);
     }
-    loadDashboard({ signal: controller.signal })
+    const switchingKind = Boolean(data) && data?.recentTrades?.kind !== tradeKind;
+    if (switchingKind) setKindLoading(true);
+    loadDashboard({ signal: controller.signal, kind: tradeKind })
       .catch((err) => {
         if (!controller.signal.aborted) setError(err.message || "Không tải được tổng quan");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setKindLoading(false);
+        }
       });
     // Badge rủi ro: đọc cache báo cáo account gần nhất — không gọi AI mỗi load
     api("/api/terminal/decision/latest-account", { signal: controller.signal })
@@ -164,7 +180,7 @@ export default function DashboardPage() {
       })
       .catch(() => setRiskBadge(null));
     return () => controller.abort();
-  }, [user?.id]);
+  }, [user?.id, tradeKind]);
 
   const bots = data?.bots;
   const configs = data?.configs;
@@ -173,9 +189,12 @@ export default function DashboardPage() {
   const closedToday = data?.closedToday;
   const compare = data?.compare;
   const series = data?.series;
-  const activity = data?.activity || [];
+  const activity = (data?.activity || []).filter((item) => item?.kind !== "close");
+  const recentTrades = data?.recentTrades;
+  const allocation = data?.allocation;
   const ai = data?.ai;
   const snapshotAt = openRisk?.asOf || data?.generatedAt || null;
+  const canLogs = (user?.permissions || []).includes(LOGS_VIEW);
 
   const botContribution = useMemo(() => {
     const rows = (data?.mine || []).map((row) => ({
@@ -410,6 +429,20 @@ export default function DashboardPage() {
             </section>
           ) : null}
 
+          {(allocation != null || recentTrades != null) ? (
+            <div className="dash-overview-split">
+              {allocation != null ? <PositionAllocationDonut allocation={allocation} /> : null}
+              {recentTrades != null ? (
+                <RecentTradesTimeline
+                  recentTrades={recentTrades}
+                  tradeKind={tradeKind}
+                  onTradeKindChange={setTradeKind}
+                  loadingKind={kindLoading}
+                />
+              ) : null}
+            </div>
+          ) : null}
+
           {openRisk?.available && openRisk.top?.length ? (
             <section className="card dash-block">
               <div className="dash-health-head">
@@ -490,9 +523,10 @@ export default function DashboardPage() {
           {activity.length ? (
             <section className="card dash-block">
               <div className="dash-health-head">
-                <h2>Hoạt động gần đây</h2>
-                <Link className="ghost link-btn" to="/logs?kind=runtime">Lịch sử</Link>
+                <h2>Hoạt động vận hành</h2>
+                {canLogs ? <Link className="ghost link-btn" to="/logs?kind=runtime">Lịch sử</Link> : null}
               </div>
+              <p className="muted">Lỗi sàn / signal gỡ — đóng lệnh xem ở Giao dịch gần đây.</p>
               <ul className="dash-list">
                 {activity.map((item, index) => (
                   <li key={`act-${item.kind}-${index}-${item.href}`}>

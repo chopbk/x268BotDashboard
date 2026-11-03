@@ -1,7 +1,23 @@
 # Spec: Timeline giao dịch và donut phân bổ vị thế trên Tổng quan
 
-Ngày: **2026-11-03**. Trạng thái: **Đề xuất — chưa triển khai**.
-Phạm vi yêu cầu hiện tại: viết spec trước; chưa sửa runtime hoặc triển khai UI.
+Ngày: **2026-11-03**. Trạng thái: **Đã triển khai một phần (runtime + UI)**.
+Phạm vi đã làm: card Giao dịch gần đây (Đóng) + Phân bổ vị thế (donut) trên `DashboardPage`; mở rộng `GET /api/dashboard`.
+
+### Đã triển khai
+
+- Layout desktop hai cột (donut | timeline) sau khối 7 ngày / PnL bot, trước bảng rủi ro; mobile xếp dọc donut trước.
+- `recentTrades` từ `account_statics` Live đã đóng, 7 ngày UTC, limit 8, `tradeKind=all|open|close`; cache server/client tách actor + tradeKind.
+- `openSupported=false` — chưa chứng minh nguồn mở lệnh; tab Mở trống; UI ghi rõ giới hạn.
+- `allocation` gross notional USDT từ toàn sổ Redis trong scope; dedupe `positionIdentity`; hedge cộng gross; loại contracts thiếu `baseQuantity`/`notional`; quality/stale/coverage.
+- Hoạt động vận hành: UI lọc `activity.kind=close` để không trùng timeline.
+- Không REST Binance từ dashboard; không mount RiskCockpit.
+
+### Chưa làm / giới hạn còn lại
+
+- Sự kiện **Mở** và khóa lifecycle đã xác minh (`openSupported` vẫn false).
+- Paper timeline; margin allocation; backfill / event store mới.
+- Deep-link mở đúng một lệnh chi tiết khi route báo cáo chưa hỗ trợ ID.
+- nginx/`proxy_read_timeout` không liên quan panel này (payload nhẹ).
 
 Tham chiếu: ảnh user cung cấp và [SH-Stark/trading-dashboard](https://github.com/SH-Stark/trading-dashboard), đặc biệt [LastOrders](https://github.com/SH-Stark/trading-dashboard/blob/master/src/components/_dashboard/app/LastOrders.js) và [PositionsRepartition](https://github.com/SH-Stark/trading-dashboard/blob/master/src/components/_dashboard/app/PositionsRepartition.js).
 
@@ -110,9 +126,9 @@ Không dùng pie cho PnL âm/dương. Không thêm chế độ margin trong phi�
 - Stale là cờ độc lập với coverage; dùng reconciliation timestamp/nguỡng freshness hiện hành, không dùng giá mark mới để làm sổ cũ thành mới. Nêu account stale và thời điểm đối chiếu cũ nhất trong tập.
 - Thiếu mark/null/chuỗi rỗng/NaN/Infinity/giá <=0 không biến thành 0. Tính bằng precision gốc, chỉ làm tròn khi hiển thị.
 
-## 6. API đề xuất — chưa tồn tại
+## 6. API — đã có trên `GET /api/dashboard`
 
-Mở rộng `GET /api/dashboard`, giữ field cũ. Query mới allowlist `tradeKind=all|open|close` (default all), fixed lookback 7 ngày, fixed limit 8. Cache actor hiện tại phải thêm tradeKind vào key; client session cache cũng vậy. Hủy/bỏ response cũ khi chuyển tab nhanh. Không query lại REST sàn hoặc gọi risk endpoint theo từng bot.
+Mở rộng response, giữ field cũ. Query allowlist `tradeKind=all|open|close` (default all), fixed lookback 7 ngày, fixed limit 8. Cache actor + tradeKind; client session cache cùng khóa. Hủy/bỏ response cũ khi chuyển tab nhanh. Không query lại REST sàn hoặc gọi risk endpoint theo từng bot.
 
 ```json
 {
