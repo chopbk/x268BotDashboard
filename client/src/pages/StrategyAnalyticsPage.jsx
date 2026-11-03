@@ -231,7 +231,7 @@ export default function StrategyAnalyticsPage() {
           </p>
         </div>
         <div className="sa-header-links">
-          <Link className="ghost link-btn" to="/reports?tab=performance&range=30&analytics=1">Báo cáo</Link>
+          <Link className="ghost link-btn" to="/reports?tab=overview&range=30&analytics=1">Báo cáo</Link>
           {account ? (
             <Link className="ghost link-btn" to={`/terminal?account=${encodeURIComponent(account)}`}>Terminal</Link>
           ) : null}

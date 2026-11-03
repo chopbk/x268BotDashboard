@@ -33,7 +33,7 @@ export default function SignalHistoryPage() {
 
   const next = new URLSearchParams(params);
   next.delete("view");
-  next.set("tab", "performance");
+  next.set("tab", params.get("trade") ? "performance" : "overview");
   if (!next.get("analytics")) next.set("analytics", "1");
   const username = params.get("user");
   if (username && !next.get("username")) {

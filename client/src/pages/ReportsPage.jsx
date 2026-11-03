@@ -5,18 +5,20 @@ import AccountLedgerPage from "./AccountLedgerPage";
 
 const can = (user, permission) => (user?.permissions || []).includes(permission);
 
+const TABS = new Set(["overview", "performance", "ledger"]);
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const [params] = useSearchParams();
   const staticAllowed = can(user, "statistics.view");
   const requested = params.get("tab");
-  const tab = requested === "ledger" ? "ledger" : "performance";
+  const tab = TABS.has(requested) ? requested : "overview";
 
   function tabHref(nextTab) {
     const next = new URLSearchParams(params);
     next.set("tab", nextTab);
     if (!next.get("username")) next.set("username", "__all__");
-    if (nextTab === "performance") {
+    if (nextTab === "overview" || nextTab === "performance") {
       next.delete("view");
       next.set("analytics", "1");
       if (!next.get("scope") && next.get("username") === "__all__") next.set("scope", "mine");
@@ -24,6 +26,11 @@ export default function ReportsPage() {
       if (!next.get("time")) next.set("time", "close");
       if (!next.get("closed")) next.set("closed", "closed");
       if (!next.get("book")) next.set("book", "live");
+      // Danh sách lệnh: bỏ trade panel khi sang tổng quan
+      if (nextTab === "overview") {
+        next.delete("trade");
+        next.delete("tradeUser");
+      }
     } else {
       if (!next.get("days") && !next.get("from")) next.set("days", "today");
       if (!next.get("book")) next.set("book", "live");
@@ -54,6 +61,14 @@ export default function ReportsPage() {
       <div className="history-tabs" role="tablist" aria-label="Báo cáo">
         <Link
           role="tab"
+          aria-selected={tab === "overview"}
+          className={tab === "overview" ? "active link-btn" : "link-btn"}
+          to={tabHref("overview")}
+        >
+          Tổng quan
+        </Link>
+        <Link
+          role="tab"
           aria-selected={tab === "performance"}
           className={tab === "performance" ? "active link-btn" : "link-btn"}
           to={tabHref("performance")}
@@ -74,7 +89,7 @@ export default function ReportsPage() {
           </Link>
         ) : null}
       </div>
-      {tab === "ledger" ? <AccountLedgerPage /> : <TradePerformancePage />}
+      {tab === "ledger" ? <AccountLedgerPage /> : <TradePerformancePage mode={tab === "performance" ? "performance" : "overview"} />}
     </section>
   );
 }

@@ -331,7 +331,7 @@ export default function DashboardPage() {
                   {closedToday.trades} lệnh
                   {closedToday.winRate != null ? ` · thắng ${closedToday.winRate}%` : ""}
                   {" · "}
-                  <Link to="/reports?tab=performance">Báo cáo</Link>
+                  <Link to="/reports?tab=overview">Báo cáo</Link>
                 </small>
               ) : null}
             </article>

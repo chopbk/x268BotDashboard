@@ -514,15 +514,16 @@ UserApisPage / UserApiDetailPage
   -> user_apis, không trả raw secret
 ```
 
-Trang Báo cáo (`/reports`, ReportsPage) gồm tab Hiệu quả lệnh (TradePerformancePage →
-`account_statics` analytics) và tab Ví & dòng tiền (AccountLedgerPage → `account-ledger`).
-Route cũ `/signals?view=performance` và `/ledger` redirect sang `/reports` (giữ query).
-Account Static legacy còn ở `/signals?view=statics`. Lịch sử signal (`signal_infos`) nằm ở
-`/signal-search`, không suy diễn profit từ SignalInfo. UI analytics mặc định Live, 7 ngày,
-theo ngày đóng UTC, lệnh đã đóng; bộ lọc lưu trên URL. KPI/biểu đồ/nhóm dùng cùng tập sau lọc;
-phân trang chỉ thu hẹp danh sách. Bấm dòng mở panel chi tiết (Escape đóng); giá dùng `tickSize`
-từ `futures_symbols`. Link “Xem hiệu quả vốn tài khoản” sang tab ledger khi có `statistics.view`.
-Gộp menu không gộp quyền: `bots.view` / `summary.view` / `statistics.view` vẫn tách theo API.
+Trang Báo cáo (`/reports`, ReportsPage) gồm tab **Tổng quan** (mặc định: KPI/chart/insights/nhóm),
+tab **Hiệu quả lệnh** (danh sách lệnh + panel chi tiết), và tab **Ví & dòng tiền**
+(AccountLedgerPage → `account-ledger`). Cùng TradePerformancePage + `account_statics` analytics;
+`tab=overview|performance` chỉ đổi phần UI, giữ filter URL và selection `list*`.
+Route cũ `/signals?view=performance` và `/ledger` redirect sang `/reports` (giữ query; không có
+`trade` → overview). Account Static legacy còn ở `/signals?view=statics`. Lịch sử signal
+(`signal_infos`) nằm ở `/signal-search`. UI analytics mặc định Live, hôm nay UTC, closeTime,
+lệnh đã đóng. Phân trang chỉ thu hẹp danh sách lệnh. Link “Xem hiệu quả vốn tài khoản” sang
+ledger khi có `statistics.view`. Gộp menu không gộp quyền: `bots.view` / `summary.view` /
+`statistics.view` vẫn tách theo API.
 
 File chuẩn:
 

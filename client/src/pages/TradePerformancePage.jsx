@@ -357,10 +357,16 @@ function TradePanel({ row, onClose, configHref, historyHref, ledgerHref, trigger
   );
 }
 
-export default function TradePerformancePage() {
+/**
+ * mode=overview — KPI, chart, insights, bảng nhóm (tab Tổng quan).
+ * mode=performance — danh sách lệnh + panel chi tiết (tab Hiệu quả lệnh).
+ * Cùng URL filter nền / selection list*; chuyển tab giữ query.
+ */
+export default function TradePerformancePage({ mode = "overview" }) {
   const { user } = useAuth();
   const location = useLocation();
   const onReports = location.pathname.startsWith("/reports");
+  const isOverview = mode !== "performance";
   const signalAllowed = can(user, "signals.history");
   const staticAllowed = can(user, "statistics.view");
   const configAllowed = can(user, "config.view");
@@ -450,13 +456,35 @@ export default function TradePerformancePage() {
       && !Object.hasOwn(values, "listSymbol")
     ) next.set("page", "1");
     if (onReports) {
-      next.set("tab", "performance");
+      next.set("tab", isOverview ? "overview" : "performance");
       next.delete("view");
     } else {
       next.set("view", "performance");
     }
     next.set("analytics", "1");
     setParams(next, { replace });
+  }
+
+  function tradesTabHref(extra = {}) {
+    const next = new URLSearchParams(params);
+    next.set("tab", "performance");
+    next.set("analytics", "1");
+    next.delete("view");
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value === "" || value == null || value === false) next.delete(key);
+      else next.set(key, String(value));
+    });
+    return `/reports?${next}`;
+  }
+
+  function overviewTabHref() {
+    const next = new URLSearchParams(params);
+    next.set("tab", "overview");
+    next.set("analytics", "1");
+    next.delete("view");
+    next.delete("trade");
+    next.delete("tradeUser");
+    return `/reports?${next}`;
   }
 
   function clearFilters() {
@@ -590,7 +618,9 @@ export default function TradePerformancePage() {
         setGroupTab("user");
       } else if (
         !params.get("analytics")
-        || (onReports ? params.get("tab") !== "performance" : params.get("view") !== "performance")
+        || (onReports
+          ? !["overview", "performance"].includes(params.get("tab"))
+          : params.get("view") !== "performance")
         || (isAll && !scopeParam)
         || !params.get("range")
       ) {
@@ -847,14 +877,15 @@ export default function TradePerformancePage() {
           <header className="page-head perf-head">
             <div className="perf-head-row">
               <div>
-                <h1>Hiệu quả lệnh</h1>
+                <h1>{isOverview ? "Tổng quan lệnh" : "Hiệu quả lệnh"}</h1>
                 <p className="muted">
-                  Phân tích kết quả theo signal, cấu hình và từng lệnh · sổ <strong>{book === "paper" ? "Paper" : "Live"}</strong> theo cờ <code>isPaper</code>.
-                  Theo {timeField === "open" ? "thời gian mở lệnh" : "thời gian đóng lệnh"} (UTC).
-                  PnL = field profit bot đã lưu trên Account Static
+                  {isOverview
+                    ? <>KPI, biểu đồ và xếp hạng nhóm · sổ <strong>{book === "paper" ? "Paper" : "Live"}</strong> · {timeField === "open" ? "openTime" : "closeTime"} UTC. Danh sách từng lệnh nằm tab Hiệu quả lệnh.</>
+                    : <>Danh sách lệnh chi tiết theo bộ lọc · sổ <strong>{book === "paper" ? "Paper" : "Live"}</strong> · {timeField === "open" ? "openTime" : "closeTime"} UTC. KPI/chart tổng hợp nằm tab Tổng quan.</>}
+                  {" "}PnL = profit Account Static
                   {book === "paper"
-                    ? " · Paper: profit/cost mô phỏng theo bot; phí sàn / funding / nạp-rút: Chưa tính (không coi là 0)."
-                    : " · Live: phí/funding theo cách bot ghi vào profit (xem chi tiết lệnh)."}
+                    ? " · Paper: profit/cost mô phỏng; phí/funding/nạp-rút: Chưa tính."
+                    : " · Live: phí/funding theo cách bot ghi vào profit."}
                 </p>
               </div>
               <div className="perf-head-actions">
@@ -869,6 +900,13 @@ export default function TradePerformancePage() {
                 >
                   Làm mới
                 </button>
+                {onReports ? (
+                  isOverview ? (
+                    <Link className="ghost link-btn" to={tradesTabHref()}>Danh sách lệnh</Link>
+                  ) : (
+                    <Link className="ghost link-btn" to={overviewTabHref()}>Về tổng quan</Link>
+                  )
+                ) : null}
                 {allUsers ? (
                   <span className="muted" title="Gộp lệnh của mọi user trong phạm vi đang chọn; không đổi công thức từng user.">
                     Đang xem tổng hợp nhiều user
@@ -888,7 +926,9 @@ export default function TradePerformancePage() {
             </div>
             <p className="muted perf-range-note">
               {data?.rangeLabel || "Kỳ theo UTC"}. Không trộn Live và Paper trong KPI hoặc xếp hạng.
-              Bộ lọc kết quả nhóm (WR/số lệnh/PnL) chỉ thu hẹp bảng phân tích — không đổi KPI tổng phía trên.
+              {isOverview
+                ? " Bộ lọc kết quả nhóm chỉ thu hẹp bảng nhóm — không đổi KPI tổng."
+                : " Selection chart từ Tổng quan chỉ lọc bảng lệnh; KPI nền giữ trên tab Tổng quan."}
               {stats?.excludedMissingClose ? ` ${stats.excludedMissingClose} bản ghi thiếu closeTime đã bị loại khi lọc ngày đóng.` : ""}
             </p>
           </header>
@@ -940,6 +980,8 @@ export default function TradePerformancePage() {
                 />
               </div>
 
+              {isOverview ? (
+              <>
               <div className="dv-chart-grid two">
                 <div className={`dv-group-collapsible${groupChartOpen ? "" : " collapsed"}`}>
                   <div className="dv-shell-actions" style={{ marginBottom: 8 }}>
@@ -1028,6 +1070,7 @@ export default function TradePerformancePage() {
                       <button type="button" aria-label="Bỏ chọn ngày" onClick={() => update({ listDay: "", page: "1" })}>×</button>
                     </span>
                   ) : null}
+                  <Link className="ghost link-btn" to={tradesTabHref()}>Xem danh sách lệnh</Link>
                   <button type="button" className="ghost" onClick={clearChartSelection}>Bỏ chọn biểu đồ</button>
                 </div>
               ) : null}
@@ -1086,6 +1129,48 @@ export default function TradePerformancePage() {
                 />
               </section>
 
+              <p className="muted perf-ledger-link">
+                Bấm nhóm/ngày trên chart rồi{" "}
+                <Link to={tradesTabHref()}>mở tab Hiệu quả lệnh</Link>
+                {" "}để xem danh sách lệnh theo lựa chọn. KPI/chart nền giữ trên Tổng quan.
+              </p>
+              </>
+              ) : (
+              <>
+              {chartSelection ? (
+                <div className="dv-selection-bar card" aria-label="Lựa chọn biểu đồ từ Tổng quan">
+                  <span className="muted">Đang lọc bảng theo chart:</span>
+                  {listSignal ? (
+                    <span className="perf-chip">
+                      Signal {listSignal}
+                      <button type="button" aria-label="Bỏ chọn signal" onClick={() => update({ listSignal: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  {listEnv ? (
+                    <span className="perf-chip">
+                      Config {listEnv}
+                      <button type="button" aria-label="Bỏ chọn config" onClick={() => update({ listEnv: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  {listSymbol ? (
+                    <span className="perf-chip">
+                      Symbol {listSymbol}
+                      <button type="button" aria-label="Bỏ chọn symbol" onClick={() => update({ listSymbol: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  {listDay ? (
+                    <span className="perf-chip">
+                      Ngày {listDay} UTC
+                      <button type="button" aria-label="Bỏ chọn ngày" onClick={() => update({ listDay: "", page: "1" })}>×</button>
+                    </span>
+                  ) : null}
+                  <Link className="ghost link-btn" to={overviewTabHref()}>Sửa lựa chọn trên Tổng quan</Link>
+                  <button type="button" className="ghost" onClick={clearChartSelection}>Bỏ chọn</button>
+                </div>
+              ) : (
+                <p className="muted">Chưa có selection chart. Có thể lọc bằng sidebar hoặc chọn nhóm/ngày ở tab Tổng quan.</p>
+              )}
+
               <section className="card perf-trades">
                 <div className="perf-trades-head">
                   <h2>Danh sách lệnh</h2>
@@ -1095,7 +1180,7 @@ export default function TradePerformancePage() {
                     {listSignal ? ` · signal ${listSignal}` : ""}
                     {listEnv ? ` · config ${listEnv}` : ""}
                     {listSymbol ? ` · symbol ${listSymbol}` : ""}
-                    {chartSelection ? " · KPI/chart phía trên vẫn theo filter nền." : ""}.
+                    {chartSelection ? " · KPI/chart nền xem ở tab Tổng quan." : ""}.
                   </p>
                 </div>
                 <div className="perf-trades-layout">
@@ -1177,6 +1262,8 @@ export default function TradePerformancePage() {
                   </div>
                 ) : null}
               </section>
+              </>
+              )}
             </>
           ) : null}
 
@@ -1349,32 +1436,34 @@ export default function TradePerformancePage() {
             {!listedBots.length ? <p className="muted">{audience === "mine" ? "Bạn chưa có user bot đang active." : "Không có user active của người khác."}</p> : null}
           </div>
 
-          <div className="card perf-filters" aria-label="Bộ lọc kết quả nhóm">
-            <div className="perf-filters-head">
-              <strong>Bộ lọc kết quả nhóm</strong>
+          {isOverview ? (
+            <div className="card perf-filters" aria-label="Bộ lọc kết quả nhóm">
+              <div className="perf-filters-head">
+                <strong>Bộ lọc kết quả nhóm</strong>
+              </div>
+              <p className="muted" style={{ margin: "0 0 8px", fontSize: "0.78rem" }}>
+                Lọc sau khi đã tính thống kê. Không đổi KPI tổng của tập lệnh.
+              </p>
+              <div className="perf-filters-main">
+                <label>Win rate từ %
+                  <input type="number" min="0" max="100" step="1" value={minWinText} placeholder="60" onChange={(e) => update({ minWin: e.target.value })} />
+                </label>
+                <label>Số lệnh từ
+                  <input type="number" min="1" step="1" value={minTradesText} placeholder="10" onChange={(e) => update({ minTrades: e.target.value })} />
+                </label>
+                <label>PnL từ
+                  <input type="number" step="1" value={minPnlText} placeholder="0" onChange={(e) => update({ minPnl: e.target.value })} />
+                </label>
+                <label>Nhóm lãi
+                  <select value={gain} onChange={(e) => update({ gain: e.target.value })}>
+                    <option value="">Tất cả</option>
+                    <option value="1">Chỉ đang lãi</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <p className="muted" style={{ margin: "0 0 8px", fontSize: "0.78rem" }}>
-              Lọc sau khi đã tính thống kê. Không đổi KPI tổng của tập lệnh.
-            </p>
-            <div className="perf-filters-main">
-              <label>Win rate từ %
-                <input type="number" min="0" max="100" step="1" value={minWinText} placeholder="60" onChange={(e) => update({ minWin: e.target.value })} />
-              </label>
-              <label>Số lệnh từ
-                <input type="number" min="1" step="1" value={minTradesText} placeholder="10" onChange={(e) => update({ minTrades: e.target.value })} />
-              </label>
-              <label>PnL từ
-                <input type="number" step="1" value={minPnlText} placeholder="0" onChange={(e) => update({ minPnl: e.target.value })} />
-              </label>
-              <label>Nhóm lãi
-                <select value={gain} onChange={(e) => update({ gain: e.target.value })}>
-                  <option value="">Tất cả</option>
-                  <option value="1">Chỉ đang lãi</option>
-                </select>
-              </label>
-            </div>
-          </div>
-          {extrasCard}
+          ) : null}
+          {isOverview ? extrasCard : null}
         </aside>
       </div>
 

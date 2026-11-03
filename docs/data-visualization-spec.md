@@ -66,9 +66,11 @@ Mỗi giai đoạn có thể bàn giao riêng; không chặn P0 vì chưa có l�
 
 ## 4. Chi tiết từng màn
 
-### 4.1 Báo cáo → Hiệu quả lệnh
+### 4.1 Báo cáo → Tổng quan / Hiệu quả lệnh
 
-Nguồn: [TradePerformancePage](../client/src/pages/TradePerformancePage.jsx) → `GET /api/account-statics` → [account-statics](../server/src/lib/account-statics.js) → `account_statics`.
+Nguồn: [ReportsPage](../client/src/pages/ReportsPage.jsx) + [TradePerformancePage](../client/src/pages/TradePerformancePage.jsx) (`mode=overview|performance`) → `GET /api/account-statics` → [account-statics](../server/src/lib/account-statics.js) → `account_statics`.
+
+**Tổng quan** (`tab=overview`, mặc định): KPI, chart nhóm, Biểu đồ/Lịch ngày, insights, bảng xếp hạng nhóm. **Hiệu quả lệnh** (`tab=performance`): danh sách lệnh + panel chi tiết; giữ cùng filter URL; selection `list*` từ chart chỉ lọc bảng.
 
 **Chart A — PnL theo nhóm:** thanh ngang phân kỳ quanh 0; tab Signal/Config/Symbol dùng cùng lựa chọn nhóm của bảng. Mặc định 10 nhóm có trị tuyệt đối PnL lớn nhất, sắp giảm theo trị tuyệt đối; thêm lựa chọn “Lãi nhiều nhất”/“Lỗ nhiều nhất”. Không gọi danh sách theo trị tuyệt đối là “top hiệu suất”. Tooltip: tên đầy đủ, PnL, số lệnh, win rate theo công thức của màn. Nêu “10/N nhóm”; phần còn lại có tổng lãi và tổng lỗ riêng để không che triệt tiêu.
 
@@ -251,8 +253,8 @@ Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời,
 
 | Màn | Chart | Nguồn | Filter nền / selection |
 |---|---|---|---|
-| Báo cáo → Hiệu quả lệnh | Bar ngang nhóm Signal/Config/Symbol (+ user/side); Biểu đồ ngày / Lịch PnL (một chế độ) | `GET /api/account-statics` → `stats.by*` + `series` (có `wins`/`losses` theo ngày) | Nền: kỳ/account/book/side/…; selection URL `listSignal`/`listEnv`/`listSymbol`/`listDay` chỉ lọc bảng lệnh |
-| Signal → Scorecard | Xếp hạng bar (mặc định); bubble win rate × profit × diện tích lệnh | `GET /api/provider-scorecard` | `scoreSelect`/`scoreChart` đẩy history (Back/Forward); filter form `replace` |
+| Báo cáo → Tổng quan (`tab=overview`) | Bar ngang nhóm + Biểu đồ/Lịch PnL; KPI + insights + bảng nhóm | `GET /api/account-statics` → `stats.by*` + `series` | Nền: kỳ/account/book/…; selection `list*` giữ trên URL, dùng khi mở tab Hiệu quả lệnh |
+| Báo cáo → Hiệu quả lệnh (`tab=performance`) | Danh sách lệnh + panel chi tiết (không nhét lại chart tổng hợp) | Cùng API / filter URL | Selection từ Tổng quan lọc bảng; KPI nền xem lại ở Tổng quan || Signal → Scorecard | Xếp hạng bar (mặc định); bubble win rate × profit × diện tích lệnh | `GET /api/provider-scorecard` | `scoreSelect`/`scoreChart` đẩy history (Back/Forward); filter form `replace` |
 | Báo cáo → Ví & dòng tiền | Đường số dư + Trading/dòng tiền cộng dồn (trục, tooltip, gap, Xem dữ liệu) | `GET /api/account-ledger` → `series` | Giữ filter user/days; null balance = gap |
 
 **Coverage ngày (Hiệu quả lệnh):** ngày không có bản ghi trong tập đang lọc = **0 lệnh** (aggregate xác nhận). **Chưa xác minh** tín hiệu “thiếu snapshot/coverage” riêng từ backend — UI **không** tô “Thiếu dữ liệu” giả khi chỉ vắng hàng ngày.

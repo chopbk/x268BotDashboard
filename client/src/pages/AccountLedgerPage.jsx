@@ -193,8 +193,9 @@ export default function AccountLedgerPage() {
 
   if (book === "paper") {
     const back = new URLSearchParams(searchParams);
-    back.set("tab", "performance");
+    back.set("tab", "overview");
     back.set("book", "paper");
+    back.set("analytics", "1");
     return (
       <section>
         <header className="page-head summary-head">
@@ -207,7 +208,7 @@ export default function AccountLedgerPage() {
           <p>Tab này chưa hỗ trợ sổ Paper. Không hiển thị số liệu ví live dưới bộ lọc Paper.</p>
           <div className="row-actions" style={{ marginTop: 12 }}>
             <button type="button" onClick={() => patchParams({ book: "live" })}>Chuyển sang Live</button>
-            <Link className="ghost link-btn" to={`/reports?${back}`}>Quay lại Hiệu quả lệnh (Paper)</Link>
+            <Link className="ghost link-btn" to={`/reports?${back}`}>Quay lại Tổng quan (Paper)</Link>
           </div>
         </div>
       </section>
