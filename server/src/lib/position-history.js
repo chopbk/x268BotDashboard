@@ -9,10 +9,14 @@ const PAGE_LIMIT = 30;
 /** Cache ngắn cho tab Lịch sử — tránh mỗi lần mở tab kéo lại toàn bộ Binance (nginx 40–90s). */
 const LIST_CACHE_MS = 90 * 1000;
 const listHistoryCache = new Map();
-const HISTORY_ACCOUNT_CONCURRENCY = 5;
+/** Queue Binance signed là global 1-luồng — concurrency cao chỉ xếp hàng, không song song HTTP. */
+const HISTORY_ACCOUNT_CONCURRENCY = 3;
 const HISTORY_ACCOUNT_GAP_MS = 40;
-/** Một account treo (proxy/API) không được giữ cả request tới requestTimeout 90s. */
-const HISTORY_ACCOUNT_TIMEOUT_MS = 12_000;
+/**
+ * Một account treo không được giữ cả request tới requestTimeout 90s.
+ * Phải > N × (gap pacing + RTT) vì các account chia sẻ enqueueBinanceRest.
+ */
+const HISTORY_ACCOUNT_TIMEOUT_MS = 28_000;
 
 function withTimeout(promise, ms, label) {
     let timer;

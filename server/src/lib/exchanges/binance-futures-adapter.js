@@ -281,9 +281,11 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
                 try {
                     const params = { startTime: pageStart, endTime: chunkEnd, limit: 1000 };
                     if (incomeType) params.incomeType = incomeType;
+                    // Weight pacing queue ≠ Binance REQUEST_WEIGHT: 30×BASE_GAP (~12s) làm
+                    // multi-account history timeout hàng loạt. Dùng 5 (~2s) đủ tránh burst.
                     const batch = await this.queued(
                         () => this.client.signedGet("/fapi/v1/income", params),
-                        30
+                        5
                     );
                     if (!Array.isArray(batch) || !batch.length) break;
                     out.push(...batch);
@@ -297,9 +299,9 @@ class BinanceFuturesAdapter extends BaseExchangeAdapter {
                     console.error("[BinanceFuturesAdapter.fetchIncomeRange]", error.message);
                     break;
                 }
-                await sleep(150);
+                await sleep(40);
             }
-            if (chunkEnd < end) await sleep(150);
+            if (chunkEnd < end) await sleep(40);
         }
         return out;
     }
