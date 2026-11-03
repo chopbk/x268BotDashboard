@@ -100,7 +100,7 @@ main:has(.term-screen) {
 
 .term-header h1 {
   margin: 0;
-  font-size: 1.45rem;
+  font-size: var(--font-title);
   letter-spacing: -0.02em;
 }
 
@@ -216,7 +216,7 @@ main:has(.term-screen) {
 }
 
 .term-summary-card strong {
-  font-size: 1.15rem;
+  font-size: var(--font-section);
   font-variant-numeric: tabular-nums;
 }
 
@@ -535,7 +535,7 @@ main:has(.term-screen) {
 
 .term-panel-head h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--font-section);
 }
 
 .term-panel-tabs {
@@ -967,7 +967,7 @@ main:has(.term-screen) {
 }
 .term-ai-dialog-head h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--font-section);
 }
 .term-ai-dialog-body {
   overflow: auto;

@@ -16,6 +16,12 @@
   --ink: #0f172a;
   --ring: #f59e0b;
   --ease: 180ms ease;
+  /* Shared density: keep rem at 16px for chart geometry and compact labels. */
+  --font-body: 14px;
+  --font-control: 13px;
+  --font-title: 20px;
+  --font-section: 16px;
+  --control-height: 32px;
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.5;
@@ -27,6 +33,7 @@
 * { box-sizing: border-box; }
 
 body {
+  font-size: var(--font-body);
   margin: 0;
   min-height: 100vh;
   background:
@@ -35,7 +42,7 @@ body {
     var(--bg);
 }
 
-button, input, select {
+button, input, select, textarea {
   font: inherit;
   color: inherit;
 }
@@ -44,8 +51,8 @@ a { color: inherit; text-decoration: none; }
 
 h1, h2, p { margin: 0; }
 
-h1 { font-size: 1.75rem; font-weight: 650; letter-spacing: -.4px; }
-h2 { font-size: 1.15rem; font-weight: 650; }
+h1 { font-size: var(--font-title); font-weight: 650; letter-spacing: -.4px; }
+h2 { font-size: var(--font-section); font-weight: 650; }
 
 .screen {
   min-height: 100vh;
@@ -76,7 +83,7 @@ h2 { font-size: 1.15rem; font-weight: 650; }
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 18px 20px;
+  padding: 14px 16px;
   backdrop-filter: blur(8px);
 }
 
@@ -100,7 +107,7 @@ h2 { font-size: 1.15rem; font-weight: 650; }
 label {
   display: grid;
   gap: 6px;
-  font-size: 0.95rem;
+  font-size: var(--font-body);
 }
 
 input, select {
@@ -108,10 +115,11 @@ input, select {
   background: #0b1220;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px 12px;
-  min-height: 40px;
+  padding: 6px 10px;
+  min-height: var(--control-height);
+  line-height: 18px;
   outline: none;
-  font-size: 0.95rem;
+  font-size: var(--font-control);
   transition: border-color var(--ease), box-shadow var(--ease);
 }
 
@@ -125,9 +133,10 @@ button {
   background: var(--accent);
   border: 0;
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 7px 10px;
+  line-height: 18px;
   font-weight: 650;
-  font-size: 0.95rem;
+  font-size: var(--font-control);
   color: var(--ink);
   cursor: pointer;
   transition: background var(--ease), border-color var(--ease), opacity var(--ease);
@@ -144,6 +153,7 @@ a:focus-visible,
 }
 
 button.ghost {
+  padding: 6px 9px;
   background: transparent;
   border: 1px solid var(--line);
   color: var(--text);
@@ -156,8 +166,9 @@ a.link-btn {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 0.9rem;
+  padding: 6px 10px;
+  line-height: 18px;
+  font-size: var(--font-control);
   transition: background var(--ease);
 }
 
@@ -230,7 +241,7 @@ a.link-btn:hover { background: var(--surface-2); }
   color: var(--muted);
   padding: 10px 12px;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: var(--font-body);
   transition: background var(--ease), color var(--ease);
 }
 
@@ -337,8 +348,8 @@ td.negative,
 main {
   width: calc(100% - 40px);
   max-width: none;
-  margin: 24px auto 48px;
-  font-size: 1rem;
+  margin: 16px auto 40px;
+  font-size: var(--font-body);
   box-sizing: border-box;
 }
 
@@ -348,8 +359,8 @@ main:has(.config-screen) {
   margin-bottom: 16px;
 }
 
-.page-head { margin-bottom: 20px; display: grid; gap: 8px; }
-.page-head .muted { font-size: 0.95rem; line-height: 1.55; }
+.page-head { margin-bottom: 16px; display: grid; gap: 8px; }
+.page-head .muted { font-size: var(--font-body); line-height: 1.55; }
 
 .config-head {
   display: flex;
@@ -768,7 +779,7 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
   padding: 18px;
 }
 .modal-card header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-.modal-card h2 { margin: 0; font-size: 1.15rem; }
+.modal-card h2 { margin: 0; font-size: var(--font-section); }
 
 .bot-list-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .bot-list-tools select { width: 160px; }
@@ -778,13 +789,13 @@ button.danger:hover { background: rgba(255, 141, 141, 0.12); }
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
-  font-size: 0.95rem;
+  font-size: var(--font-body);
 }
 
 .user-table-wrap { max-height: 360px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
 .stats-grid .card { display: grid; gap: 8px; }
-.stats-grid strong { font-size: 2rem; }
+.stats-grid strong { font-size: 24px; }
 
 .summary-section-title { margin: 22px 0 12px; }
 .summary-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; }
@@ -799,7 +810,7 @@ a.trail-link { color: var(--text); text-decoration: underline; text-underline-of
 .summary-updated { margin-top: 18px; text-align: right; font-size: 0.82rem; }
 .signal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 12px; margin-bottom: 14px; padding: 14px 16px; }
 .signal-filters label { font-size: 0.85rem; gap: 4px; min-width: 0; color: var(--muted); }
-.signal-filters input, .signal-filters select { padding: 8px 10px; border-radius: 6px; font-size: 0.95rem; min-width: 0; min-height: 38px; }
+.signal-filters input, .signal-filters select { padding: 6px 10px; border-radius: 6px; font-size: var(--font-control); min-width: 0; min-height: var(--control-height); }
 .signal-filters > button { align-self: end; }
 .signal-filters .history-range { grid-column: 1 / -1; gap: 6px; }
 .signal-filters .history-range button { padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
@@ -824,7 +835,7 @@ button.ghost-link {
 button.sort-col { background: none; border: 0; color: inherit; font: inherit; font-weight: 650; padding: 0; cursor: pointer; }
 .config-brief { display: block; max-width: 420px; font-size: 0.88rem; line-height: 1.4; }
 .config-glance { display: grid; gap: 14px; }
-.config-glance section h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.config-glance section h3 { margin: 0 0 8px; font-size: var(--font-body); }
 .config-glance .mode-note { margin: 0 0 8px; }
 .config-glance dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; margin: 0; }
 .config-glance dt { color: var(--muted); font-size: 0.75rem; }
@@ -832,7 +843,7 @@ button.sort-col { background: none; border: 0; color: inherit; font: inherit; fo
 .action-form { display: grid; gap: 10px; max-width: 420px; margin-top: 8px; }
 .action-form.transfer-form { max-width: none; }
 .transfer-check { display: grid; gap: 8px; }
-.transfer-check h3 { margin: 0; font-size: 0.95rem; }
+.transfer-check h3 { margin: 0; font-size: var(--font-body); }
 .transfer-path { margin: 0; font-weight: 650; }
 .transfer-check .table-wrap th,
 .transfer-check .table-wrap td { padding: 8px 10px; font-size: 0.85rem; }
@@ -872,7 +883,7 @@ button.th-sort.active, button.th-sort:hover { color: var(--text); background: tr
 .trade-row.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .trade-detail { display: grid; gap: 12px; margin-bottom: 16px; }
 .trade-detail header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.trade-detail h2 { margin: 0; font-size: 1.15rem; }
+.trade-detail h2 { margin: 0; font-size: var(--font-section); }
 .trade-detail dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 16px; margin: 0; }
 .trade-detail dt { color: var(--muted); font-size: 0.78rem; }
 .trade-detail dd { margin: 2px 0 0; }
@@ -884,16 +895,16 @@ button.th-sort.active, button.th-sort:hover { color: var(--text); background: tr
   background: var(--surface);
 }
 
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; font-size: var(--font-control); }
 
 th, td {
   text-align: left;
-  padding: 12px 14px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
 
-th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
+th { color: var(--muted); font-weight: 600; font-size: var(--font-control); }
 
 .bot-picker {
   max-height: 240px;
@@ -1066,7 +1077,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.88rem; }
 }
 .process-env-section-toggle:hover { background: color-mix(in srgb, var(--surface) 80%, var(--text)); }
 .process-env-caret { width: 1rem; color: var(--muted); }
-.process-env-section-toggle strong { flex: 1; font-size: 0.95rem; }
+.process-env-section-toggle strong { flex: 1; font-size: var(--font-body); }
 .process-env-section-body {
   display: grid;
   gap: 12px;
@@ -1239,7 +1250,7 @@ td.negative { color: var(--danger); }
 .pos-alert { background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .pos-child td { color: var(--muted); font-size: 0.82rem; }
 .pos-table { width: max-content; min-width: 100%; border-collapse: collapse; }
-.pos-table th, .pos-table td { padding: 10px 12px; text-align: left; white-space: nowrap; vertical-align: middle; font-size: 0.95rem; }
+.pos-table th, .pos-table td { padding: 8px 10px; text-align: left; white-space: nowrap; vertical-align: middle; font-size: var(--font-body); }
 .pos-inline { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .pos-sub td { padding-top: 0; border-top: 0; }
 .pos-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
@@ -1649,7 +1660,7 @@ button.linkish:hover { background: none; }
   gap: 12px;
   flex-wrap: wrap;
 }
-.perf-head h1 { font-size: 1.45rem; }
+.perf-head h1 { font-size: var(--font-title); }
 .perf-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .perf-range-note { font-size: 0.82rem; margin: 0; }
 .perf-filters {
@@ -1711,7 +1722,7 @@ button.linkish:hover { background: none; }
 .perf-chart.compact { max-width: 480px; }
 .perf-chart.tiny { max-width: 360px; }
 .perf-chart.compact .perf-chart-head h2 { font-size: 1rem; }
-.perf-chart.tiny .perf-chart-head h2 { font-size: 0.95rem; margin: 0 0 2px; }
+.perf-chart.tiny .perf-chart-head h2 { font-size: var(--font-body); margin: 0 0 2px; }
 .perf-chart.compact .perf-chart-head .muted { font-size: 0.8rem; margin: 0; }
 .perf-chart.tiny .perf-chart-head { margin-bottom: 4px; }
 .perf-chart-head { margin-bottom: 8px; }
@@ -1793,7 +1804,7 @@ button.linkish:hover { background: none; }
 @media (max-width: 640px) {
   .perf-filters-main { grid-template-columns: 1fr; }
   .perf-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .perf-num { font-size: 1.15rem; }
+  .perf-num { font-size: var(--font-section); }
 }
 @media (prefers-reduced-motion: reduce) {
   .skeleton-block { animation: none; }
@@ -1833,7 +1844,7 @@ button.linkish:hover { background: none; }
 }
 .sa-controls select,
 .sa-controls input {
-  min-height: 36px;
+  min-height: var(--control-height);
   padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid var(--line, var(--border));
@@ -1885,4 +1896,21 @@ button.linkish:hover { background: none; }
 .sa-breakdown .table-wrap { overflow: auto; max-height: 320px; }
 @media (max-width: 960px) {
   .sa-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Touch devices retain larger form controls without changing dense chart labels.
+   Exclude switches/checkboxes and tiny inline actions with their own geometry. */
+@media (pointer: coarse) {
+  :root { --control-height: 40px; }
+  body main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  body main select, body main textarea,
+  .screen input, .screen select, .screen textarea {
+    font-size: 16px;
+    min-height: var(--control-height);
+  }
+  .page-head button, .history-tabs button, .mkt-hub-tabs button,
+  .lab-save-actions button, .lab-filterbar button, .lab-create-fields button,
+  .login-card button, .sidenav nav a, a.link-btn {
+    min-height: 40px;
+  }
 }

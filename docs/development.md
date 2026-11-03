@@ -107,3 +107,17 @@ giữ field theo mode, list rỗng/false, signal và bộ lọc. Build client v�
 quy trình chung. Kiểm tra browser bằng fixture không có kết nối Mongo/sàn: menu mới,
 đổi nhóm, sửa/review/cancel, guard rời trang, save thành công/lỗi, readonly và mobile.
 Không lưu config thật chỉ để test giao diện. Giữ cả route mới và cũ đến khi user duyệt.
+
+## Mật độ giao diện
+
+Token chung trong `client/src/styles.css`: nội dung 14px, nút/bộ lọc 13px,
+tiêu đề trang 20px, tiêu đề khối 16px, control desktop 32px. Giữ root 16px
+để không co nhỏ thêm nhãn biểu đồ và các kích thước dùng rem. KPI được phép
+lớn hơn nội dung. Config Lab, Market/Smart Money và Terminal dùng cùng token
+cho tiêu đề; bảng chuyên dụng giữ cỡ chữ nhỏ riêng.
+
+Thiết bị pointer coarse dùng input 16px (tránh zoom khi focus trên iOS),
+control chính tối thiểu 40px; không kéo giãn checkbox/switch hoặc icon nội tuyến.
+Khi sửa CSS chung, build client và kiểm tra desktop + viewport hẹp: toolbar
+wrap, bảng cuộn trong container, form/switch, tiêu đề, dialog và focus keyboard.
+Không dùng zoom toàn trang để sửa mật độ.

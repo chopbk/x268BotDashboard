@@ -1,5 +1,5 @@
 .mkt-hub { display: flex; flex-direction: column; gap: 12px; }
-.mkt-hub-header h1 { margin: 0 0 4px; font-size: 1.4rem; letter-spacing: -0.02em; }
+.mkt-hub-header h1 { margin: 0 0 4px; font-size: var(--font-title); letter-spacing: -0.02em; }
 .mkt-hub-sub { margin: 0; font-size: 13px; line-height: 1.4; max-width: 48rem; }
 
 .mkt-hub-tabs {
@@ -14,8 +14,9 @@
   background: transparent;
   color: inherit;
   opacity: 0.65;
-  padding: 8px 12px;
+  padding: 6px 10px;
   font: inherit;
+  font-size: var(--font-control);
   font-weight: 600;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -46,7 +47,7 @@
 .mkt-hub .mkt-page > .mkt-header h2,
 .mkt-hub .sm-page > .sm-header h1,
 .mkt-hub .sm-page > .sm-header h2 {
-  font-size: 1.1rem;
+  font-size: var(--font-section);
 }
 
 @media (max-width: 960px) {

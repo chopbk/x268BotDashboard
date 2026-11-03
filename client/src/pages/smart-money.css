@@ -2,7 +2,7 @@
 .sm-banner { padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: 8px; line-height: 1.45; }
 .sm-hints { margin: 0; padding-left: 1.2rem; font-size: 12px; }
 .sm-header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
-.sm-header h1 { margin: 0 0 4px; font-size: 1.45rem; }
+.sm-header h1 { margin: 0 0 4px; font-size: var(--font-title); }
 .sm-status { display: grid; gap: 2px; font-size: 12px; text-align: right; }
 .sm-filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
 .sm-filters label { display: grid; gap: 4px; font-size: 12px; }
@@ -21,7 +21,7 @@
 .sm-tiny { font-size: 11px; }
 .sm-detail { position: sticky; top: 8px; max-height: calc(100vh - 120px); overflow: auto; padding: 12px; }
 .sm-detail-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.sm-detail-head h2 { margin: 0; font-size: 1.1rem; }
+.sm-detail-head h2 { margin: 0; font-size: var(--font-section); }
 .sm-side-table { width: 100%; font-size: 12px; border-collapse: collapse; margin-bottom: 8px; }
 .sm-side-table th, .sm-side-table td { padding: 4px 6px; border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
 .sm-side-table .num { text-align: right; font-variant-numeric: tabular-nums; }
