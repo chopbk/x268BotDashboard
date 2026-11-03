@@ -1,0 +1,135 @@
+/**
+ * URL helpers for Market Economy tab — docs/crypto-macro-intelligence-spec.md
+ */
+
+export const ECON_VIEWS = Object.freeze(["context", "calendar"]);
+export const ECON_RANGES = Object.freeze(["today", "week", "7d"]);
+export const ECON_IMPACTS = Object.freeze(["high,medium", "high", "all"]);
+export const DEFAULT_ECON_TZ = "Asia/Ho_Chi_Minh";
+
+export function normalizeEconView(raw) {
+  if (raw === "news") return { view: "context", notice: "Tin tức (P1) chưa mở — chuyển về Bối cảnh" };
+  return { view: ECON_VIEWS.includes(raw) ? raw : "context", notice: null };
+}
+
+export function normalizeEconRange(raw) {
+  return ECON_RANGES.includes(raw) ? raw : "today";
+}
+
+export function normalizeEconImpact(raw) {
+  if (!raw) return "high,medium";
+  if (raw === "all" || raw === "high" || raw === "medium" || raw === "high,medium") return raw;
+  return "high,medium";
+}
+
+export function normalizeEconTz(raw) {
+  if (!raw || typeof raw !== "string") return DEFAULT_ECON_TZ;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: raw }).format(new Date());
+    return raw;
+  } catch {
+    return DEFAULT_ECON_TZ;
+  }
+}
+
+export function normalizeEconCurrency(raw) {
+  const v = String(raw || "USD").toUpperCase();
+  if (["USD", "EUR", "ALL"].includes(v)) return v;
+  return "USD";
+}
+
+/**
+ * Apply economy query defaults when tab=economy.
+ * @returns {{ replaced: boolean, notice: string|null }}
+ */
+export function normalizeEconomyParams(params) {
+  let replaced = false;
+  let notice = null;
+  const { view, notice: viewNotice } = normalizeEconView(params.get("econView"));
+  if (params.get("econView") !== view) {
+    params.set("econView", view);
+    replaced = true;
+  }
+  if (viewNotice) notice = viewNotice;
+
+  const range = normalizeEconRange(params.get("econRange"));
+  if (params.get("econRange") !== range) {
+    params.set("econRange", range);
+    replaced = true;
+  }
+
+  const impact = normalizeEconImpact(params.get("econImpact"));
+  if (params.get("econImpact") !== impact) {
+    params.set("econImpact", impact);
+    replaced = true;
+  }
+
+  const currency = normalizeEconCurrency(params.get("econCurrency"));
+  if (params.get("econCurrency") !== currency) {
+    params.set("econCurrency", currency);
+    replaced = true;
+  }
+
+  const tz = normalizeEconTz(params.get("econTz"));
+  if (params.get("econTz") !== tz) {
+    params.set("econTz", tz);
+    replaced = true;
+  }
+
+  const region = (params.get("region") || "us").toLowerCase();
+  if (region !== "us") {
+    params.set("region", "us");
+    replaced = true;
+  } else if (!params.get("region")) {
+    params.set("region", "us");
+    replaced = true;
+  }
+
+  return { replaced, notice };
+}
+
+export function formatCountdown(ms) {
+  if (ms == null || !Number.isFinite(ms)) return null;
+  if (ms <= 0) return "Đến giờ";
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 48) return `${Math.floor(h / 24)} ngày`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export function formatInTz(iso, timeZone = DEFAULT_ECON_TZ, dateOnly = false) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat("vi-VN", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      ...(dateOnly ? {} : { hour: "2-digit", minute: "2-digit", hour12: false }),
+    }).format(d);
+  } catch {
+    return d.toISOString();
+  }
+}
+
+export function statusLabel(status) {
+  switch (status) {
+    case "scheduled":
+      return "Đã lên lịch";
+    case "due":
+      return "Đến giờ — chờ actual";
+    case "released":
+      return "Đã có số liệu";
+    case "postponed":
+      return "Hoãn";
+    case "cancelled":
+      return "Hủy";
+    default:
+      return "Chưa rõ";
+  }
+}

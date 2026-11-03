@@ -1,0 +1,231 @@
+.econ-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.econ-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+.econ-subtabs button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.econ-subtabs button.active {
+  opacity: 1;
+  border-bottom-color: currentColor;
+}
+.econ-subtabs-note {
+  margin-left: auto;
+  font-size: 12px;
+  padding-right: 8px;
+}
+
+.econ-banner {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 13px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+}
+.econ-banner.warn {
+  border-color: color-mix(in srgb, #b54708 40%, transparent);
+  background: color-mix(in srgb, #b54708 10%, transparent);
+}
+
+.econ-crypto-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.econ-stale { color: #c9a227; font-size: 12px; }
+.econ-note { margin: 0; font-size: 12px; }
+
+.econ-next-event {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 8px;
+}
+.econ-countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
+.econ-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #b54708 18%, transparent);
+}
+.econ-link-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.econ-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.econ-card {
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.econ-card-label { font-size: 12px; opacity: 0.75; }
+.econ-card-value { font-size: 1.15rem; font-weight: 700; margin-top: 4px; }
+.econ-card-meta { font-size: 11px; margin-top: 6px; }
+
+.econ-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.econ-panel {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.econ-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+
+.econ-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.econ-table th,
+.econ-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  vertical-align: top;
+}
+.econ-table tr.selected { background: color-mix(in srgb, currentColor 6%, transparent); }
+.econ-table tbody tr { cursor: pointer; }
+
+.econ-curve-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-height: 80px;
+  margin-top: 12px;
+}
+.econ-curve-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  font-size: 11px;
+}
+.econ-curve-bar {
+  width: 100%;
+  max-width: 36px;
+  background: color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 4px 4px 0 0;
+}
+
+.econ-brief { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 10px; }
+.econ-attr { font-size: 11px; }
+
+.econ-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: end;
+}
+.econ-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.econ-filters select {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: inherit;
+}
+
+.econ-cal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 12px;
+  align-items: start;
+}
+.econ-cal-list { min-width: 0; overflow-x: auto; }
+.econ-cal-detail {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  position: sticky;
+  top: 8px;
+}
+.econ-dl {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 10px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.econ-dl dt { opacity: 0.7; }
+.econ-dl dd { margin: 0; }
+.econ-rev { margin: 0; padding-left: 18px; font-size: 12px; }
+
+.econ-impact {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.econ-impact.high { color: #b42318; }
+.econ-impact.medium { color: #b54708; }
+
+@media (max-width: 1199px) {
+  .econ-two-col,
+  .econ-cal-layout {
+    grid-template-columns: 1fr;
+  }
+  .econ-cal-detail { position: static; }
+}
+
+@media (max-width: 720px) {
+  .econ-cards { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 400px) {
+  .econ-cards { grid-template-columns: 1fr; }
+  .econ-table { font-size: 12px; }
+}

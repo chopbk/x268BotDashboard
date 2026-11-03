@@ -55,6 +55,19 @@ test("normalizeMarketHubSearch quyền và tab mặc định", async () => {
   const onlyMarket = marketHubAccess({ permissions: ["market.view"] });
   assert.equal(onlyMarket.canTechnical, true);
   assert.equal(onlyMarket.canFlow, false);
+  assert.equal(onlyMarket.canEconomy, true);
+
+  const onlySmEco = marketHubAccess({ permissions: ["smart_money.view"] });
+  assert.equal(onlySmEco.canEconomy, false);
+
+  const nEco = normalizeMarketHubSearch("?tab=economy&econView=news", both);
+  assert.equal(nEco.mainTab, "economy");
+  assert.equal(nEco.params.get("econView"), "context");
+  assert.ok(nEco.notice);
+
+  const nEcoDeny = normalizeMarketHubSearch("?tab=economy", onlySmEco);
+  assert.equal(nEcoDeny.mainTab, "flow");
+  assert.ok(nEcoDeny.notice);
 
   const n1 = normalizeMarketHubSearch("", both);
   assert.equal(n1.mainTab, "technical");

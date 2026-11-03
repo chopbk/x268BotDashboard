@@ -122,6 +122,7 @@ Menu /market
     │    ├─ view=location (mặc định) → zones/setups + signal entry
     │    └─ view=scores → ma trận market-v1
     ├─ dashboard → MarketDashPage → GET /api/market/dash/*
+    ├─ economy (flag) → MarketEconomyPage → GET /api/market/economy/context|calendar|events/* (read snapshot only)
     │    collector mdash (WS ticker/mark + REST) → hist funding/OI
     │    → analyzer nến đóng → pulse/regime/setups/score → signals Mongo
     │    → alert Telegram (cooldown 4h) nếu env cấu hình

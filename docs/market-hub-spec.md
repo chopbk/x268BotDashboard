@@ -5,7 +5,7 @@ Phạm vi: `web-bot`, P0 giao diện và điều hướng. **R1 đã triển kha
 
 ## 1. Quyết định sản phẩm
 
-Một mục menu **Thị trường**, hai tab chính **Kỹ thuật** và **Dòng tiền**. Giữ nguyên hai pipeline dữ liệu và ý nghĩa chỉ số:
+Một mục menu **Thị trường**, các tab chính **Kỹ thuật**, **Dashboard**, **Dòng tiền**, và (khi `MARKET_ECONOMY_ENABLED`) **Kinh tế & Tin tức**. Giữ nguyên pipeline dữ liệu riêng và ý nghĩa chỉ số:
 
 - Kỹ thuật trả lời giá/cấu trúc đang ủng hộ Long hay Short, theo market-v1.
 - Dòng tiền trình bày vị thế trader/whale, OI, funding, taker và candidates Smart Money.

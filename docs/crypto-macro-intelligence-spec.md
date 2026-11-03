@@ -1,7 +1,17 @@
 # Spec BA: Bối cảnh crypto, kinh tế vĩ mô và sự kiện
 
-Ngày: **2026-11-03**. Version: **1.0**. Trạng thái: **Đề xuất — chưa triển khai**.
-Repo: `web-bot`. Lượt bàn giao này chỉ viết spec, chưa thay UI/API/collector hoặc deploy runtime.
+Ngày: **2026-11-03**. Version: **1.1**. Trạng thái: **P0a + P0b đã triển khai (schedule-only)**; P1/P2 chưa.
+Repo: `web-bot`. Spike nguồn: [crypto-macro-provider-spike.md](crypto-macro-provider-spike.md).
+
+### Trạng thái shipped vs chưa làm
+
+| Hạng mục | Trạng thái |
+|---|---|
+| P0a metric registry, per-metric provenance macro CG/F&G, snapshot/revision Mongo | **Shipped** |
+| P0b tab Kinh tế & Tin tức — Bối cảnh + Lịch; yields/VIX/FRED; brief template | **Shipped** (cần `MARKET_ECONOMY_ENABLED=true`) |
+| Calendar schedule this-week + coverage gap rõ | **Shipped kỹ thuật**; **gate terms redistributor còn mở**; next-week unavailable |
+| Actual/consensus/surprise từ official release | **Chưa** — schedule-only |
+| News / AI rewrite / reaction / Inbox reminder / EU / correlation | **Chưa (P1/P2)** |
 
 ## 1. Quyết định sản phẩm
 

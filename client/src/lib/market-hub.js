@@ -1,9 +1,11 @@
 /**
  * Hub Thị trường P0 — URL + quyền (pure, testable).
  * Spec: docs/market-hub-spec.md
+ * Economy tab: docs/crypto-macro-intelligence-spec.md (P0b)
  */
+import { normalizeEconomyParams } from "./market-economy.js";
 
-export const MAIN_TABS = Object.freeze(["technical", "flow", "dashboard"]);
+export const MAIN_TABS = Object.freeze(["technical", "flow", "dashboard", "economy"]);
 export const FLOW_TABS = Object.freeze(["overview", "notable", "watchlist"]);
 export const VIEW_MODES = Object.freeze(["location", "scores"]);
 export const TOP_OPTIONS = Object.freeze([10, 25, 50]);
@@ -50,6 +52,8 @@ export function marketHubAccess(user) {
     canTechnical,
     canFlow,
     canDashboard: canTechnical,
+    /** Spec: canEconomy = canTechnical (smart_money-only không vào economy). */
+    canEconomy: canTechnical,
     canMarketHub: canTechnical || canFlow,
     defaultMainTab: canTechnical ? "technical" : "flow",
   };
@@ -113,6 +117,11 @@ export function normalizeMarketHubSearch(search, access) {
     params.set("tab", mainTab);
     replaced = true;
     notice = "Bạn không có quyền xem tab đã chọn";
+  } else if (mainTab === "economy" && !access.canEconomy) {
+    mainTab = access.canFlow ? "flow" : access.defaultMainTab;
+    params.set("tab", mainTab);
+    replaced = true;
+    notice = "Bạn không có quyền xem tab đã chọn";
   } else if (mainTab === "flow" && !access.canFlow && access.canTechnical) {
     mainTab = "technical";
     params.set("tab", "technical");
@@ -148,6 +157,12 @@ export function normalizeMarketHubSearch(search, access) {
       params.set("analysisTf", analysisTf);
       replaced = true;
     }
+  }
+
+  if (mainTab === "economy") {
+    const econ = normalizeEconomyParams(params);
+    if (econ.replaced) replaced = true;
+    if (econ.notice) notice = econ.notice;
   }
 
   return {

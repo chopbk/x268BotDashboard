@@ -1,0 +1,18 @@
+[
+  {
+    "title": "CPI YoY",
+    "country": "USD",
+    "date": "2026-11-03T08:30:00-05:00",
+    "impact": "High",
+    "forecast": "2.5%",
+    "previous": "2.4%"
+  },
+  {
+    "title": "Unemployment Claims",
+    "country": "USD",
+    "date": "2026-11-05T08:30:00-05:00",
+    "impact": "Medium",
+    "forecast": "197K",
+    "previous": "194K"
+  }
+]

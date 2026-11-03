@@ -84,7 +84,7 @@ Permission được chia theo domain, không gắn trực tiếp vào màn hình
 | Log | `logs.view` |
 | Process env / PM2 | `processes.view`, `processes.edit`, `processes.restart` (scope chỉ `all`) |
 | Smart Money / Dòng tiền | Đọc: cùng Terminal hoặc `smart_money.view`. Quản lý collector: `smart_money.manage` (admin/ops). UI hub: tab Dòng tiền trong `/market` |
-| Thị trường (scoring / hub) | Menu hub `/market`: `canTechnical` = Terminal \| `market.view`; `canFlow` = Terminal \| `smart_money.view`; `canMarketHub` = một trong hai. Quản lý scoring: `market.manage`. Inbox `/inbox`: `market.view`. Chi tiết: [market-hub-spec](market-hub-spec.md) |
+| Thị trường (scoring / hub) | Menu hub `/market`: `canTechnical` = Terminal \| `market.view`; `canFlow` = Terminal \| `smart_money.view`; `canEconomy` = `canTechnical`; `canMarketHub` = một trong hai. Quản lý scoring: `market.manage`. Inbox `/inbox`: `market.view`. Chi tiết: [market-hub-spec](market-hub-spec.md), [crypto-macro](crypto-macro-intelligence-spec.md) |
 
 `config.*` bao trọn `Account_Config`: signal, trade config, symbol blacklist/whitelist và
 các thuộc tính config khác. `signals.view`, `signals.manage`, `users.manage` chỉ là alias
@@ -382,6 +382,11 @@ Các invariant:
 | `GET /api/market/symbols/:symbol/scores` | `requireAuth` | Cùng quyền đọc. Lịch sử điểm |
 | `GET /api/market/events` | `requireAuth` | Cùng quyền đọc. Sự kiện lean/delta/regime (web only) |
 | `POST /api/market/refresh` | `requireAuth` | `market.manage`. Bootstrap/refresh collector; rate-limit 3/10 phút |
+| `GET /api/market/economy/status` | `requireAuth` | Đọc: `positions.view` \| `orders.view` \| `statistics.view` \| `market.view`. Flags economy (kể cả khi collector tắt) |
+| `GET /api/market/economy/context` | `requireAuth` | Cùng market-read; cần `MARKET_ECONOMY_ENABLED`. Snapshot yields/VIX/crypto refs/brief |
+| `GET /api/market/economy/series/:metricId` | `requireAuth` | Cùng market-read + flag. Chỉ metric registry |
+| `GET /api/market/economy/calendar` | `requireAuth` | Cùng market-read + flag. Lịch stored; coverage partial |
+| `GET /api/market/economy/events/:eventId` | `requireAuth` | Cùng market-read + flag. Event + revisions; không cấp Inbox |
 | `GET /api/trading/commands?idempotencyKey=` | `requireAuth` | Actor của key (scoped `actorUserId`). Lookup khi client chưa có `requestId`; 404 ≠ chứng minh chưa gửi |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |

@@ -11,6 +11,7 @@ const { startSummarySnapshotJob } = require("./lib/summary-snapshots");
 const { startSmartMoneyJob } = require("./lib/smart-money/scheduler");
 const { startMarketJob } = require("./lib/market/scheduler");
 const { startMarketDashJob } = require("./lib/market-dash/scheduler");
+const { startMarketEconomyJob } = require("./lib/market-economy/scheduler");
 const { connectRateLimitStore, rateLimitStoreStatus, getRedisClient } = require("./lib/rate-limit-store");
 const { bindRedis } = require("./lib/position-live");
 const { startMarkPrices } = require("./lib/mark-prices");
@@ -40,6 +41,7 @@ async function main() {
         await startSmartMoneyJob();
         await startMarketJob();
         await startMarketDashJob();
+        await startMarketEconomyJob();
         await initBotCommandBridge();
 
         const app = express();
@@ -135,6 +137,11 @@ async function main() {
             "/api/market/dash",
             (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
             require("./routes/market-dash")
+        );
+        app.use(
+            "/api/market/economy",
+            (req, res, next) => (req.method === "GET" ? next() : sensitiveMutationLimit(req, res, next)),
+            require("./routes/market-economy")
         );
         app.use(
             "/api/market",

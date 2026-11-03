@@ -71,9 +71,20 @@ async function getDashOverview() {
             fearGreed: macro?.fearGreed ?? overview?.topBar?.fearGreed ?? null,
             fearGreedLabel: macro?.fearGreedLabel ?? overview?.topBar?.fearGreedLabel ?? null,
             totalMarketCap: macro?.totalMarketCap ?? overview?.topBar?.totalMarketCap ?? null,
+            // Additive: volume already collected; expose when present (global USD ≠ Futures).
+            totalVolume: macro?.totalVolume ?? overview?.topBar?.totalVolume ?? null,
         },
+        macroMetrics: macro?.metrics || null,
         freshness: {
             macro: staleFlag(macro?.updatedAt, 15 * 60_000),
+            macroMetrics: macro?.metrics
+                ? Object.fromEntries(
+                      Object.entries(macro.metrics).map(([k, m]) => [
+                          k,
+                          staleFlag(m?.observedAt || m?.lastSuccessfulFetchAt, 15 * 60_000),
+                      ])
+                  )
+                : null,
             overview: staleFlag(overview?.updatedAt, 5 * 60_000),
             pulse: staleFlag(pulse?.updatedAt, 5 * 60_000),
         },

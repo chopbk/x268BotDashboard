@@ -61,6 +61,11 @@ erDiagram
 | `market_events` | Detector điểm | Sự kiện lean/delta/regime (web only) |
 | `market_collector_state` | Scheduler Thị trường | Lease + metrics |
 | Redis `wb:mkt:*` | Collector Thị trường | Snapshot/candle cache + meta |
+| `market_economy_metrics` | Economy collector | Latest/revision yields/VIX (+ payload) |
+| `market_economy_events` | Economy calendar collector | Event identity + schedule revisions |
+| `market_economy_event_values` | Economy calendar collector | forecast/previous/actual vintages (actual chỉ khi trusted) |
+| `market_economy_collector_state` | Economy scheduler | Lease per task yields/calendar |
+| Redis `wb:economy:*` | Economy read cache | Context snapshot + calendar meta |
 
 Tên collection phải lấy từ [models](../server/src/models), không suy từ tên class Mongoose. Web không tạo dữ liệu lịch sử signal/giao dịch chỉ bằng việc mở trang. Một số schema shared cho phép field ngoài khai báo; response vẫn phải dùng projection/serializer an toàn.
 
@@ -188,6 +193,11 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/market/dash/signals` | [market-dash](../server/src/routes/market-dash.js) — filter setup/tf/direction/minScore |
 | GET | `/api/market/dash/symbols/:symbol` | [market-dash](../server/src/routes/market-dash.js) — candles + checklist + MTF |
 | POST | `/api/market/dash/refresh` | [market-dash](../server/src/routes/market-dash.js) — `market.manage` |
+| GET | `/api/market/economy/status` | [market-economy](../server/src/routes/market-economy.js) — feature flags (market-read) |
+| GET | `/api/market/economy/context` | [market-economy](../server/src/routes/market-economy.js) — US metrics + brief; 503 nếu flag tắt |
+| GET | `/api/market/economy/series/:metricId` | [market-economy](../server/src/routes/market-economy.js) — registry allowlist |
+| GET | `/api/market/economy/calendar` | [market-economy](../server/src/routes/market-economy.js) — UTC range + coverage |
+| GET | `/api/market/economy/events/:eventId` | [market-economy](../server/src/routes/market-economy.js) — detail + revisions; schedule-only actual |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/preview` | [trading](../server/src/routes/trading.js) — xem thêm dòng Terminal Q1 |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |
