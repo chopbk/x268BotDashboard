@@ -62,8 +62,7 @@ test("normalizeMarketHubSearch quyền và tab mặc định", async () => {
 
   const nEco = normalizeMarketHubSearch("?tab=economy&econView=news", both);
   assert.equal(nEco.mainTab, "economy");
-  assert.equal(nEco.params.get("econView"), "context");
-  assert.ok(nEco.notice);
+  assert.equal(nEco.params.get("econView"), "news");
 
   const nEcoDeny = normalizeMarketHubSearch("?tab=economy", onlySmEco);
   assert.equal(nEcoDeny.mainTab, "flow");

@@ -9,6 +9,8 @@ const {
     getContextSnapshot,
     getCalendarMeta,
     listEventsInRange,
+    listRecentDueOrPastEvents,
+    listNews,
     getEventById,
     listEventValues,
     listMetricSeries,
@@ -16,6 +18,14 @@ const {
 const { getMacro, getTickers } = require("../market-dash/store");
 const { buildCryptoRefs } = require("./collector/yields");
 const { FRED_ATTRIBUTION } = require("./providers/fred");
+const {
+    eventHintVi,
+    impactLabelVi,
+    statusLabelVi,
+    qualityLabelVi,
+    coverageReasonsVi,
+    sessionGuideVi,
+} = require("./labels-vi");
 
 function envelope(extra = {}) {
     const serverNow = new Date().toISOString();
@@ -46,6 +56,13 @@ async function getEconomyContext(query = {}) {
     const serverNow = new Date();
 
     const nextEvent = await findNextHighEvent(serverNow);
+    const recentRaw = await listRecentDueOrPastEvents({
+        before: serverNow,
+        currencies: ["USD"],
+        impacts: ["high", "medium"],
+        limit: 6,
+    });
+    const recentEvents = recentRaw.map((ev) => decorateEvent(ev, serverNow));
     const brief = buildContextBrief({ metrics, cryptoRefs, nextEvent, serverNow });
 
     const coverageReasons = [
@@ -55,13 +72,18 @@ async function getEconomyContext(query = {}) {
     if (!calMeta?.ok && calMeta?.coverage?.status === "unavailable") {
         coverageReasons.push("calendar_unavailable");
     }
+    const uniqReasons = [...new Set(coverageReasons)];
 
     return envelope({
         generatedAt: snap?.generatedAt || serverNow.toISOString(),
         region: "us",
+        locale: "vi",
+        defaultTz: config.defaultTz,
+        sessionGuide: sessionGuideVi(),
         coverage: {
-            status: coverageReasons.length ? "partial" : snap?.coverage?.status || "partial",
-            reasons: [...new Set(coverageReasons)],
+            status: uniqReasons.length ? "partial" : snap?.coverage?.status || "partial",
+            reasons: uniqReasons,
+            reasonsVi: coverageReasonsVi(uniqReasons),
             calendar: calMeta?.coverage || {
                 status: "unavailable",
                 reasons: ["calendar_not_collected"],
@@ -71,10 +93,12 @@ async function getEconomyContext(query = {}) {
         curve: snap?.curve || null,
         cryptoRefs,
         nextEvent,
+        recentEvents,
         brief,
         sourceHealth: {
             fred: snap?.sourceHealth?.fred || { attribution: FRED_ATTRIBUTION },
             calendar: snap?.sourceHealth?.calendar || calMeta || { ok: false },
+            news: snap?.sourceHealth?.news || null,
             crypto: { reusedMarketDashMacro: true },
         },
         attribution: {
@@ -84,7 +108,9 @@ async function getEconomyContext(query = {}) {
         flags: {
             economyEnabled: config.enabled,
             actualMode: "schedule_only",
-            newsEnabled: false,
+            newsEnabled: config.newsEnabled,
+            actualModeLabelVi:
+                "Chế độ lịch: chỉ lịch + Forecast/Previous — chưa có Actual chính thức đã xác minh",
         },
     });
 }
@@ -134,17 +160,26 @@ function decorateEvent(ev, serverNow = new Date(), tz = config.defaultTz) {
     return {
         eventId: ev.eventId,
         title: ev.title,
+        hintVi: eventHintVi(ev.title),
         currency: ev.currency,
         country: ev.country,
         impact: ev.impact,
+        impactLabelVi: impactLabelVi(ev.impact),
         scheduledAt: ev.scheduledAt ? new Date(ev.scheduledAt).toISOString() : null,
         timePrecision: ev.timePrecision,
         status,
+        statusLabelVi: statusLabelVi(status),
         coverage: ev.coverage,
         referencePeriod: ev.referencePeriod,
         source: ev.source,
         ...cd,
         displayTz: normalizeTimeZone(tz),
+        displayTzLabelVi:
+            normalizeTimeZone(tz) === "Asia/Ho_Chi_Minh"
+                ? "Giờ Việt Nam"
+                : normalizeTimeZone(tz) === "America/New_York"
+                  ? "Giờ New York"
+                  : normalizeTimeZone(tz),
     };
 }
 
@@ -235,6 +270,7 @@ async function getEconomyCalendar(query = {}) {
         impacts: impactRaw.toLowerCase() === "all" ? null : impacts,
         limit,
         cursor: query.cursor || null,
+        q: query.q || query.econQ || null,
     });
 
     const calMeta = await getCalendarMeta();
@@ -280,6 +316,7 @@ async function getEconomyCalendar(query = {}) {
         coverage: {
             status: reasons.length ? "partial" : coverage.status || "partial",
             reasons: [...new Set(reasons)],
+            reasonsVi: coverageReasonsVi([...new Set(reasons)]),
             coverageFrom: coverage.coverageFrom || null,
             coverageTo: coverage.coverageTo || null,
         },
@@ -291,7 +328,67 @@ async function getEconomyCalendar(query = {}) {
                   : decorated.length === 0
                     ? "no_events_in_filters"
                     : null,
+        emptyMeaningVi: emptyMeaningVi(
+            decorated.length === 0 && reasons.includes("calendar_next_week_unavailable")
+                ? "coverage_gap"
+                : decorated.length === 0 && coverage.status === "unavailable"
+                  ? "calendar_unavailable"
+                  : decorated.length === 0
+                    ? "no_events_in_filters"
+                    : null
+        ),
         actualMode: "schedule_only",
+        actualModeLabelVi:
+            "Chưa có Actual đã xác minh — Forecast/Previous chỉ mang tính tham khảo từ nguồn lịch",
+    });
+}
+
+function emptyMeaningVi(code) {
+    if (code === "coverage_gap") {
+        return "Phần còn lại của khoảng xem nằm ngoài phạm vi nguồn lịch — không có nghĩa là “không có sự kiện”.";
+    }
+    if (code === "calendar_unavailable") return "Chưa xác nhận lịch từ collector.";
+    if (code === "no_events_in_filters") return "Không có sự kiện khớp bộ lọc trong phần lịch đã có.";
+    return null;
+}
+
+async function getEconomyNews(query = {}) {
+    if (!config.newsEnabled) {
+        return { status: 503, error: "Tin tức chưa bật", flag: "MARKET_ECONOMY_NEWS_ENABLED" };
+    }
+    const topic = String(query.topic || query.newsTopic || "all").toLowerCase();
+    const symbol = query.symbol || query.newsSymbol || null;
+    const limit = Math.min(Number(query.limit) || 30, 100);
+    const { items, nextCursor, count } = await listNews({
+        topic: ["crypto", "macro", "all"].includes(topic) ? topic : "all",
+        symbol: symbol ? String(symbol).toUpperCase() : null,
+        limit,
+        cursor: query.cursor || null,
+    });
+
+    return envelope({
+        topic,
+        symbol: symbol || null,
+        count,
+        nextCursor,
+        items: items.map((n) => ({
+            id: String(n._id),
+            title: n.title,
+            publisher: n.publisher,
+            sourceId: n.sourceId,
+            url: n.canonicalUrl,
+            publishedAt: n.publishedAt ? new Date(n.publishedAt).toISOString() : null,
+            publishedAtLabelVi: n.publishedAt
+                ? null
+                : "Chưa rõ giờ đăng",
+            collectedAt: n.collectedAt ? new Date(n.collectedAt).toISOString() : null,
+            topic: n.topic,
+            locale: n.locale,
+            assetIds: n.assetIds || [],
+            noteVi: "Chỉ tiêu đề + link nguồn; không phải tín hiệu giao dịch đã xác minh.",
+        })),
+        disclaimerVi:
+            "Tin tổng hợp từ RSS allowlist. Không scrape toàn bài; không tự gắn coin nếu thiếu bằng chứng trong tiêu đề.",
     });
 }
 
@@ -334,7 +431,12 @@ async function getEconomyEvent(eventId, query = {}) {
         seriesObservations: byField.actual.filter((v) => !v.isTrustedActual),
         surprise: null,
         surpriseReason: "actual_not_verified_schedule_only",
+        surpriseReasonVi:
+            "Chưa tính surprise — thiếu Actual cùng kỳ/đơn vị đã xác minh (không lấy Previous làm Actual).",
         actualMode: "schedule_only",
+        qualityLabels: {
+            forecast: qualityLabelVi("fresh"),
+        },
     });
 }
 
@@ -343,4 +445,5 @@ module.exports = {
     getEconomySeries,
     getEconomyCalendar,
     getEconomyEvent,
+    getEconomyNews,
 };

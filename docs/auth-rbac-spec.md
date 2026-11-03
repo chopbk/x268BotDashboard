@@ -387,6 +387,7 @@ Các invariant:
 | `GET /api/market/economy/series/:metricId` | `requireAuth` | Cùng market-read + flag. Chỉ metric registry |
 | `GET /api/market/economy/calendar` | `requireAuth` | Cùng market-read + flag. Lịch stored; coverage partial |
 | `GET /api/market/economy/events/:eventId` | `requireAuth` | Cùng market-read + flag. Event + revisions; không cấp Inbox |
+| `GET /api/market/economy/news` | `requireAuth` | Cùng market-read + economy flag; cần `MARKET_ECONOMY_NEWS_ENABLED`. Chỉ metadata RSS allowlist |
 | `GET /api/trading/commands?idempotencyKey=` | `requireAuth` | Actor của key (scoped `actorUserId`). Lookup khi client chưa có `requestId`; 404 ≠ chứng minh chưa gửi |
 | `GET /api/trading/commands/:requestId` | `requireAuth` | Actor của lệnh hoặc quyền view tương ứng. Trạng thái trading command |
 | `PUT /api/trading/positions/:positionKey/tpsl` | `requireAuth` | `positions.tpsl` + scope bot. Tạo/thay TP/SL. positionKey = username\|symbol\|positionSide |

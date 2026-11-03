@@ -6,12 +6,13 @@ const crypto = require("crypto");
 const { config } = require("./config");
 const { collectYields } = require("./collector/yields");
 const { collectCalendar } = require("./collector/calendar");
+const { collectNews } = require("./collector/news");
 const { MarketEconomyCollectorState, saveCollectorMeta } = require("./store");
 
 const INSTANCE_ID = `${os.hostname()}:${process.pid}:${crypto.randomBytes(3).toString("hex")}`;
-const busy = { yields: false, calendar: false };
-const backoffUntil = { yields: 0, calendar: 0 };
-const failStreak = { yields: 0, calendar: 0 };
+const busy = { yields: false, calendar: false, news: false };
+const backoffUntil = { yields: 0, calendar: 0, news: 0 };
+const failStreak = { yields: 0, calendar: 0, news: 0 };
 const BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
 let timers = [];
 let started = false;
@@ -117,6 +118,28 @@ async function safeCalendar() {
     }
 }
 
+async function safeNews() {
+    if (!config.enabled || !config.newsEnabled || busy.news) return;
+    if (Date.now() < backoffUntil.news) return;
+    busy.news = true;
+    try {
+        const ok = await acquireLease("economy-news");
+        if (!ok) return;
+        await collectNews();
+        await touchLease("economy-news", { status: "idle", lastSuccessAt: new Date(), lastError: null });
+        clearBackoff("news");
+    } catch (error) {
+        console.warn("[MARKET_ECONOMY] news", error.message || error);
+        scheduleBackoff("news", error.retryAfter);
+        await saveCollectorMeta("economy-news", {
+            status: "error",
+            lastError: String(error.message || error).slice(0, 500),
+        });
+    } finally {
+        busy.news = false;
+    }
+}
+
 async function startMarketEconomyJob() {
     if (started) return;
     started = true;
@@ -124,14 +147,19 @@ async function startMarketEconomyJob() {
         console.log("[MARKET_ECONOMY] disabled (MARKET_ECONOMY_ENABLED!=true)");
         return;
     }
-    console.log("[MARKET_ECONOMY] starting collectors", INSTANCE_ID);
-    // Bootstrap once
+    console.log("[MARKET_ECONOMY] starting collectors", INSTANCE_ID, {
+        news: config.newsEnabled,
+    });
     setTimeout(() => {
         safeYields().catch(() => {});
         safeCalendar().catch(() => {});
+        safeNews().catch(() => {});
     }, 2500);
     timers.push(setInterval(() => safeYields().catch(() => {}), config.yieldsPollMs));
     timers.push(setInterval(() => safeCalendar().catch(() => {}), config.calendarPollMs));
+    if (config.newsEnabled) {
+        timers.push(setInterval(() => safeNews().catch(() => {}), config.newsPollMs));
+    }
     for (const t of timers) t.unref?.();
 }
 
@@ -146,4 +174,5 @@ module.exports = {
     stopMarketEconomyJob,
     safeYields,
     safeCalendar,
+    safeNews,
 };

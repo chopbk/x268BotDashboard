@@ -78,7 +78,7 @@ function buildContextBrief({ metrics = {}, cryptoRefs = {}, nextEvent = null, se
     if (nextEvent?.title && nextEvent?.scheduledAt) {
         facts.push({
             id: "next_event",
-            text: `Sự kiện kế tiếp: ${nextEvent.title} (${nextEvent.currency || nextEvent.country || "?"})`,
+            text: `Sự kiện kế tiếp: ${nextEvent.title} (${nextEvent.currency || nextEvent.country || "?"}${nextEvent.impactLabelVi ? ` · mức ${nextEvent.impactLabelVi}` : ""})`,
             asOf: nextEvent.scheduledAt,
             quality: nextEvent.coverage === "unavailable" ? "missing" : "fresh",
             evidenceRefs: [nextEvent.eventId],
@@ -90,7 +90,7 @@ function buildContextBrief({ metrics = {}, cryptoRefs = {}, nextEvent = null, se
     if (nextEvent?.status === "due") {
         facts.push({
             id: "release_status",
-            text: `Đến giờ công bố — chờ actual (chưa có nguồn actual đã xác minh)`,
+            text: "Đến giờ công bố — đang chờ số liệu thực tế (chưa có nguồn Actual đã xác minh)",
             asOf: nextEvent.scheduledAt,
             quality: "warming",
             evidenceRefs: [nextEvent.eventId],

@@ -13,13 +13,15 @@ function envInt(name, fallback) {
 }
 
 const config = Object.freeze({
-    /** Default false until release gate; set MARKET_ECONOMY_ENABLED=true to show tab + run collectors. */
-    enabled: envBool("MARKET_ECONOMY_ENABLED", false),
-    newsEnabled: envBool("MARKET_ECONOMY_NEWS_ENABLED", false),
+    /** Bật mặc định sau P0 spike; tắt bằng MARKET_ECONOMY_ENABLED=false. */
+    enabled: envBool("MARKET_ECONOMY_ENABLED", true),
+    /** Tin RSS allowlist (Google News VI/EN) — tắt bằng MARKET_ECONOMY_NEWS_ENABLED=false. */
+    newsEnabled: envBool("MARKET_ECONOMY_NEWS_ENABLED", true),
     reactionEnabled: envBool("MARKET_ECONOMY_REACTION_ENABLED", false),
     remindersEnabled: envBool("MARKET_ECONOMY_REMINDERS_ENABLED", false),
     yieldsPollMs: envInt("MARKET_ECONOMY_YIELDS_MS", 60 * 60_000),
     calendarPollMs: envInt("MARKET_ECONOMY_CALENDAR_MS", 15 * 60_000),
+    newsPollMs: envInt("MARKET_ECONOMY_NEWS_MS", 5 * 60_000),
     leaseMs: envInt("MARKET_ECONOMY_LEASE_MS", 90_000),
     providerTimeoutMs: envInt("MARKET_ECONOMY_PROVIDER_TIMEOUT_MS", 12_000),
     providerConcurrency: envInt("MARKET_ECONOMY_PROVIDER_CONCURRENCY", 3),

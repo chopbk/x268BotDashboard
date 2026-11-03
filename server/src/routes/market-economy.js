@@ -7,6 +7,7 @@ const {
     getEconomySeries,
     getEconomyCalendar,
     getEconomyEvent,
+    getEconomyNews,
 } = require("../lib/market-economy/read-api");
 
 const router = express.Router();
@@ -42,6 +43,10 @@ router.get("/status", requireAuth, requireMarketRead, (_req, res) => {
         reactionEnabled: config.reactionEnabled,
         remindersEnabled: config.remindersEnabled,
         actualMode: "schedule_only",
+        actualModeLabelVi:
+            "Chế độ lịch: chỉ lịch + Forecast/Previous — chưa có Actual chính thức đã xác minh",
+        defaultTz: config.defaultTz,
+        locale: "vi",
     });
 });
 
@@ -89,9 +94,15 @@ router.get("/events/:eventId", requireAuth, requireMarketRead, requireEconomyEna
     }
 });
 
-// P1 stubs — explicit 404 so clients don't confuse with missing routes
-router.get("/news", requireAuth, requireMarketRead, (_req, res) => {
-    res.status(404).json({ error: "News P1 chưa triển khai", flag: "MARKET_ECONOMY_NEWS_ENABLED" });
+router.get("/news", requireAuth, requireMarketRead, requireEconomyEnabled, async (req, res) => {
+    try {
+        const body = await getEconomyNews(req.query || {});
+        if (body.status) return res.status(body.status).json({ error: body.error, flag: body.flag });
+        res.json(body);
+    } catch (error) {
+        console.error("[MARKET_ECONOMY] news", error.message || error);
+        res.status(503).json({ error: "Không đọc được tin tức" });
+    }
 });
 
 module.exports = router;

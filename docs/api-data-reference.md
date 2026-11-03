@@ -66,6 +66,7 @@ erDiagram
 | `market_economy_event_values` | Economy calendar collector | forecast/previous/actual vintages (actual chỉ khi trusted) |
 | `market_economy_collector_state` | Economy scheduler | Lease per task yields/calendar |
 | Redis `wb:economy:*` | Economy read cache | Context snapshot + calendar meta |
+| `market_economy_news` | Economy news collector | RSS headlines TTL 30 ngày |
 
 Tên collection phải lấy từ [models](../server/src/models), không suy từ tên class Mongoose. Web không tạo dữ liệu lịch sử signal/giao dịch chỉ bằng việc mở trang. Một số schema shared cho phép field ngoài khai báo; response vẫn phải dùng projection/serializer an toàn.
 
@@ -198,6 +199,7 @@ Các URL dưới đây gồm mount prefix từ [index.js](../server/src/index.js
 | GET | `/api/market/economy/series/:metricId` | [market-economy](../server/src/routes/market-economy.js) — registry allowlist |
 | GET | `/api/market/economy/calendar` | [market-economy](../server/src/routes/market-economy.js) — UTC range + coverage |
 | GET | `/api/market/economy/events/:eventId` | [market-economy](../server/src/routes/market-economy.js) — detail + revisions; schedule-only actual |
+| GET | `/api/market/economy/news` | [market-economy](../server/src/routes/market-economy.js) — RSS snapshot; `topic`/`symbol`/`cursor` |
 | GET | `/api/orders/:kind/:symbol/:orderId` | [orders](../server/src/routes/orders.js) |
 | POST | `/api/trading/preview` | [trading](../server/src/routes/trading.js) — xem thêm dòng Terminal Q1 |
 | POST | `/api/trading/orders/cancel` | [trading](../server/src/routes/trading.js) |

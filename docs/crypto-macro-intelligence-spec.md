@@ -1,6 +1,6 @@
 # Spec BA: Bối cảnh crypto, kinh tế vĩ mô và sự kiện
 
-Ngày: **2026-11-03**. Version: **1.1**. Trạng thái: **P0a + P0b đã triển khai (schedule-only)**; P1/P2 chưa.
+Ngày: **2026-11-03**. Version: **1.2**. Trạng thái: **P0a/P0b + News P1a (RSS)**; UX tiếng Việt; reaction/reminder/EU/correlation chưa.
 Repo: `web-bot`. Spike nguồn: [crypto-macro-provider-spike.md](crypto-macro-provider-spike.md).
 
 ### Trạng thái shipped vs chưa làm
@@ -8,10 +8,11 @@ Repo: `web-bot`. Spike nguồn: [crypto-macro-provider-spike.md](crypto-macro-pr
 | Hạng mục | Trạng thái |
 |---|---|
 | P0a metric registry, per-metric provenance macro CG/F&G, snapshot/revision Mongo | **Shipped** |
-| P0b tab Kinh tế & Tin tức — Bối cảnh + Lịch; yields/VIX/FRED; brief template | **Shipped** (cần `MARKET_ECONOMY_ENABLED=true`) |
-| Calendar schedule this-week + coverage gap rõ | **Shipped kỹ thuật**; **gate terms redistributor còn mở**; next-week unavailable |
+| P0b tab Kinh tế & Tin tức — Bối cảnh + Lịch; yields/VIX/FRED; brief; checklist giờ VN | **Shipped** (mặc định `MARKET_ECONOMY_ENABLED=true`) |
+| Calendar schedule this-week + coverage gap rõ + tìm kiếm + gợi ý VI | **Shipped kỹ thuật**; terms redistributor còn mở; next-week unavailable |
+| News RSS allowlist (Google News VI/EN crypto+macro), tab Tin tức | **Shipped P1a** (`MARKET_ECONOMY_NEWS_ENABLED` mặc định true) |
 | Actual/consensus/surprise từ official release | **Chưa** — schedule-only |
-| News / AI rewrite / reaction / Inbox reminder / EU / correlation | **Chưa (P1/P2)** |
+| AI rewrite / reaction / Inbox reminder / EU / correlation | **Chưa (P1b+/P2)** |
 
 ## 1. Quyết định sản phẩm
 

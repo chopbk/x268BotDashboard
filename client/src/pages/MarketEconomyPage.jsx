@@ -5,7 +5,10 @@ import {
   DEFAULT_ECON_TZ,
   formatCountdown,
   formatInTz,
+  impactLabel,
+  qualityLabel,
   statusLabel,
+  tzOptionLabel,
 } from "../lib/market-economy";
 import "./market-economy.css";
 
@@ -30,15 +33,15 @@ function MetricCard({ label, value, asOf, quality, hint }) {
       <div className="econ-card-label">{label}</div>
       <div className="econ-card-value">{value}</div>
       <div className="econ-card-meta muted">
-        {asOf ? `asOf ${asOf}` : "Chưa có"}
-        {quality ? ` · ${quality}` : ""}
+        {asOf ? `Ngày quan sát ${asOf}` : "Chưa có"}
+        {quality ? ` · ${qualityLabel(quality)}` : ""}
         {hint ? ` · ${hint}` : ""}
       </div>
     </div>
   );
 }
 
-export default function MarketEconomyPage() {
+export default function MarketEconomyPage({ newsEnabled: newsEnabledProp = true } = {}) {
   const [params, setParams] = useSearchParams();
   const econView = params.get("econView") || "context";
   const econRange = params.get("econRange") || "today";
@@ -46,20 +49,29 @@ export default function MarketEconomyPage() {
   const econCurrency = params.get("econCurrency") || "USD";
   const econTz = params.get("econTz") || DEFAULT_ECON_TZ;
   const eventId = params.get("event") || "";
+  const newsTopic = params.get("newsTopic") || "all";
+  const newsSymbol = params.get("newsSymbol") || "";
+  const econQ = params.get("econQ") || "";
 
   const [context, setContext] = useState(null);
   const [calendar, setCalendar] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [news, setNews] = useState(null);
+  const [searchDraft, setSearchDraft] = useState(econQ);
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
   const abortRef = useRef(null);
   const pollRef = useRef(null);
   const reqSeq = useRef(0);
+  const searchTimer = useRef(null);
+
+  const newsEnabled = context?.flags?.newsEnabled ?? newsEnabledProp;
 
   const serverNowSkew = useMemo(() => {
-    if (!context?.serverNow) return 0;
-    return Date.now() - new Date(context.serverNow).getTime();
-  }, [context?.serverNow]);
+    const nowIso = context?.serverNow || calendar?.serverNow || news?.serverNow;
+    if (!nowIso) return 0;
+    return Date.now() - new Date(nowIso).getTime();
+  }, [context?.serverNow, calendar?.serverNow, news?.serverNow]);
 
   function setEconParam(patch, { replace = false } = {}) {
     setParams(
@@ -75,6 +87,10 @@ export default function MarketEconomyPage() {
       { replace }
     );
   }
+
+  useEffect(() => {
+    setSearchDraft(econQ);
+  }, [econQ]);
 
   useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 1000);
@@ -100,6 +116,7 @@ export default function MarketEconomyPage() {
             econTz,
             limit: "50",
           });
+          if (econQ.trim()) qs.set("q", econQ.trim());
           const body = await api(`/api/market/economy/calendar?${qs}`, { signal: ctrl.signal });
           if (cancelled || seq !== reqSeq.current) return;
           setCalendar(body);
@@ -113,6 +130,15 @@ export default function MarketEconomyPage() {
           } else {
             setDetail(null);
           }
+        } else if (econView === "news") {
+          const qs = new URLSearchParams({
+            topic: newsTopic,
+            limit: "30",
+          });
+          if (newsSymbol) qs.set("symbol", newsSymbol);
+          const body = await api(`/api/market/economy/news?${qs}`, { signal: ctrl.signal });
+          if (cancelled || seq !== reqSeq.current) return;
+          setNews(body);
         } else {
           const body = await api("/api/market/economy/context?region=us", { signal: ctrl.signal });
           if (cancelled || seq !== reqSeq.current) return;
@@ -141,7 +167,7 @@ export default function MarketEconomyPage() {
       clearInterval(pollRef.current);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [econView, econRange, econImpact, econCurrency, econTz, eventId]);
+  }, [econView, econRange, econImpact, econCurrency, econTz, eventId, econQ, newsTopic, newsSymbol]);
 
   void tick;
 
@@ -151,8 +177,21 @@ export default function MarketEconomyPage() {
   const nextEvent = context?.nextEvent;
   const clockSkewWarn = Math.abs(serverNowSkew) > 60_000;
 
+  function onSearchChange(value) {
+    setSearchDraft(value);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setEconParam({ econQ: value.trim() || null }, { replace: true });
+    }, 300);
+  }
+
   return (
     <div className="econ-page">
+      <p className="econ-lead muted">
+        Chuẩn bị nhận định theo giờ Việt Nam: sự kiện Mỹ, lợi suất, VIX và tin crypto/vĩ mô. Không phải
+        khuyến nghị vào lệnh.
+      </p>
+
       <div className="econ-subtabs" role="tablist" aria-label="Kinh tế & Tin tức">
         <button
           type="button"
@@ -172,7 +211,19 @@ export default function MarketEconomyPage() {
         >
           Lịch kinh tế
         </button>
-        <span className="econ-subtabs-note muted">Tin tức — P1</span>
+        {newsEnabled ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={econView === "news"}
+            className={econView === "news" ? "active" : ""}
+            onClick={() => setEconParam({ econView: "news", event: "" })}
+          >
+            Tin tức
+          </button>
+        ) : (
+          <span className="econ-subtabs-note muted">Tin tức đang tắt</span>
+        )}
       </div>
 
       {error ? (
@@ -182,12 +233,23 @@ export default function MarketEconomyPage() {
       ) : null}
       {clockSkewWarn ? (
         <p className="econ-banner warn" role="status">
-          Đồng hồ thiết bị lệch &gt;60s so với server — countdown chỉ mang tính tham khảo.
+          Đồng hồ máy lệch &gt;60 giây so với server — countdown chỉ mang tính tham khảo.
         </p>
       ) : null}
 
       {econView === "context" ? (
         <section className="econ-context" aria-label="Bối cảnh Mỹ">
+          {context?.sessionGuide ? (
+            <div className="econ-guide">
+              <strong>{context.sessionGuide.title}</strong>
+              <ul>
+                {(context.sessionGuide.bullets || []).map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="econ-crypto-strip">
             <span>
               BTC{" "}
@@ -225,7 +287,7 @@ export default function MarketEconomyPage() {
               </strong>
             </span>
             <span>
-              Cap{" "}
+              Vốn hóa{" "}
               <strong>
                 {cryptoRefs?.totalMarketCap?.value != null
                   ? `$${(Number(cryptoRefs.totalMarketCap.value) / 1e12).toFixed(2)}T`
@@ -233,7 +295,7 @@ export default function MarketEconomyPage() {
               </strong>
             </span>
             <span>
-              Vol{" "}
+              Vol 24h{" "}
               <strong>
                 {cryptoRefs?.totalVolume?.value != null
                   ? `$${(Number(cryptoRefs.totalVolume.value) / 1e9).toFixed(1)}B`
@@ -241,11 +303,11 @@ export default function MarketEconomyPage() {
               </strong>
             </span>
             <span>
-              F&G{" "}
+              Sợ hãi &amp; tham lam{" "}
               <strong>
                 {cryptoRefs?.fearGreed?.value != null ? cryptoRefs.fearGreed.value : "—"}
                 {cryptoRefs?.fearGreed?.displayValue
-                  ? ` ${cryptoRefs.fearGreed.displayValue}`
+                  ? ` (${cryptoRefs.fearGreed.displayValue})`
                   : ""}
               </strong>
               {cryptoRefs?.fearGreed?.quality === "stale" ? (
@@ -253,13 +315,19 @@ export default function MarketEconomyPage() {
               ) : null}
             </span>
           </div>
-          <p className="muted econ-note">{cryptoRefs?.note}</p>
+          <p className="muted econ-note">
+            {cryptoRefs?.note ||
+              "Số liệu global USD từ CoinGecko — khác volume Futures Binance USDT."}
+          </p>
 
           {nextEvent ? (
             <div className="econ-next-event">
               <div>
-                <strong>Sự kiện High/Med kế tiếp:</strong> {nextEvent.title} ·{" "}
-                {formatInTz(nextEvent.scheduledAt, econTz)} ({econTz})
+                <strong>Sự kiện mức Cao/Trung kế tiếp:</strong> {nextEvent.title}
+                {nextEvent.impactLabelVi ? ` · ${nextEvent.impactLabelVi}` : ""} ·{" "}
+                {formatInTz(nextEvent.scheduledAt, econTz)} (
+                {nextEvent.displayTzLabelVi || tzOptionLabel(econTz)})
+                {nextEvent.hintVi ? <div className="muted econ-hint">{nextEvent.hintVi}</div> : null}
               </div>
               <div className="econ-countdown">
                 {nextEvent.timePrecision === "datetime"
@@ -268,7 +336,7 @@ export default function MarketEconomyPage() {
                         ? new Date(nextEvent.scheduledAt).getTime() - (Date.now() - serverNowSkew)
                         : null
                     )
-                  : "Không countdown (giờ không chắc)"}
+                  : "Không đếm ngược (giờ không chắc)"}
                 {nextEvent.badge ? <span className="econ-badge">{nextEvent.badge}</span> : null}
               </div>
               <button
@@ -284,26 +352,26 @@ export default function MarketEconomyPage() {
           ) : (
             <p className="econ-banner" role="status">
               {context?.coverage?.calendar?.status === "unavailable"
-                ? "Chưa xác nhận lịch — coverage lịch chưa sẵn sàng (không đồng nghĩa không có rủi ro)."
-                : "Không có sự kiện USD High/Med trong 24h tới theo filter hiện có."}
+                ? "Chưa xác nhận lịch — không đồng nghĩa là không có rủi ro sự kiện."
+                : "Không có sự kiện USD mức Cao/Trung trong 24 giờ tới theo dữ liệu hiện có."}
             </p>
           )}
 
           <div className="econ-cards">
             <MetricCard
-              label="US 2Y"
+              label="Lợi suất Mỹ 2 năm"
               value={fmtYield(metrics["us.yield.2y"])}
               asOf={metrics["us.yield.2y"]?.observationDate}
               quality={metrics["us.yield.2y"]?.quality}
             />
             <MetricCard
-              label="US 10Y"
+              label="Lợi suất Mỹ 10 năm"
               value={fmtYield(metrics["us.yield.10y"])}
               asOf={metrics["us.yield.10y"]?.observationDate}
               quality={metrics["us.yield.10y"]?.quality}
             />
             <MetricCard
-              label="10Y−2Y"
+              label="Chênh 10Y−2Y"
               value={
                 metrics["us.yield.spread_10y_2y"]?.value != null
                   ? `${metrics["us.yield.spread_10y_2y"].value.toFixed(1)} bp`
@@ -313,12 +381,12 @@ export default function MarketEconomyPage() {
               quality={metrics["us.yield.spread_10y_2y"]?.quality}
               hint={
                 metrics["us.yield.spread_10y_2y"]?.value < 0
-                  ? "đảo ngược cặp 10Y−2Y"
-                  : metrics["us.yield.spread_10y_2y"]?.reason || null
+                  ? "đường cong đảo ngược (cặp 10Y−2Y)"
+                  : null
               }
             />
             <MetricCard
-              label="VIX close"
+              label="VIX (đóng cửa ngày)"
               value={
                 metrics["us.vix.close"]?.value != null
                   ? String(metrics["us.vix.close"].value)
@@ -326,20 +394,20 @@ export default function MarketEconomyPage() {
               }
               asOf={metrics["us.vix.close"]?.observationDate}
               quality={metrics["us.vix.close"]?.quality}
-              hint="daily close, không phải IV BTC"
+              hint="không phải biến động ẩn BTC"
             />
           </div>
 
           <div className="econ-two-col">
             <div className="econ-panel">
-              <h3>Yield curve</h3>
+              <h3>Đường cong lợi suất Mỹ</h3>
               {curve?.observationDate ? (
                 <>
-                  <p className="muted">Ngày quan sát chung: {curve.observationDate}</p>
+                  <p className="muted">Cùng ngày quan sát: {curve.observationDate}</p>
                   <table className="econ-table">
                     <thead>
                       <tr>
-                        <th>Tenor</th>
+                        <th>Kỳ hạn</th>
                         <th>%</th>
                       </tr>
                     </thead>
@@ -369,7 +437,7 @@ export default function MarketEconomyPage() {
                 </>
               ) : (
                 <p role="status">
-                  Chưa có ngày chung đủ tenor — xem bảng từng kỳ hạn ở card. Gaps:{" "}
+                  Chưa có ngày chung đủ kỳ hạn — xem từng thẻ lợi suất. Thiếu:{" "}
                   {(curve?.gaps || []).join(", ") || "—"}
                 </p>
               )}
@@ -382,7 +450,8 @@ export default function MarketEconomyPage() {
                   <li key={f.id}>
                     <div>{f.text}</div>
                     <div className="muted">
-                      asOf {f.asOf || "—"} · {f.quality}
+                      Thời điểm {f.asOf ? formatInTz(f.asOf, econTz) : "—"} ·{" "}
+                      {qualityLabel(f.quality)}
                       {f.drillDown?.econView === "calendar" && f.drillDown.event ? (
                         <>
                           {" · "}
@@ -405,18 +474,44 @@ export default function MarketEconomyPage() {
                 ))}
               </ul>
               {!context?.brief?.facts?.length ? (
-                <p className="muted">Thiếu metric — chưa đủ facts cho recap.</p>
+                <p className="muted">Thiếu số liệu — chưa đủ để viết bản tin ngắn.</p>
+              ) : null}
+
+              <h4 className="econ-subh">Công bố gần đây (USD)</h4>
+              <ul className="econ-recent">
+                {(context?.recentEvents || []).map((ev) => (
+                  <li key={ev.eventId}>
+                    <button
+                      type="button"
+                      className="econ-link-btn"
+                      onClick={() => setEconParam({ econView: "calendar", event: ev.eventId })}
+                    >
+                      {ev.title}
+                    </button>
+                    <span className="muted">
+                      {" "}
+                      · {formatInTz(ev.scheduledAt, econTz)} ·{" "}
+                      {statusLabel(ev.status, ev.statusLabelVi)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {!context?.recentEvents?.length ? (
+                <p className="muted">Chưa có sự kiện gần đây trong snapshot lịch.</p>
               ) : null}
             </div>
           </div>
 
+          {context?.coverage?.reasonsVi?.length ? (
+            <p className="muted">Phạm vi dữ liệu: {context.coverage.reasonsVi.join("; ")}</p>
+          ) : null}
+          <p className="muted">
+            {context?.flags?.actualModeLabelVi ||
+              "Chưa có Actual đã xác minh — không lấy Previous làm Actual."}
+          </p>
           {context?.attribution?.fred ? (
             <p className="econ-attr muted">{context.attribution.fred}</p>
           ) : null}
-          {context?.coverage?.reasons?.length ? (
-            <p className="muted">Coverage: {context.coverage.reasons.join(", ")}</p>
-          ) : null}
-          <p className="muted">Actual mode: schedule-only — không ghép FRED làm first-release actual.</p>
         </section>
       ) : null}
 
@@ -424,67 +519,72 @@ export default function MarketEconomyPage() {
         <section className="econ-calendar" aria-label="Lịch kinh tế">
           <div className="econ-filters">
             <label>
-              Khoảng
+              Khoảng thời gian
               <select
                 value={econRange}
                 onChange={(e) => setEconParam({ econRange: e.target.value }, { replace: true })}
               >
-                <option value="today">Hôm nay</option>
+                <option value="today">Hôm nay (giờ VN)</option>
                 <option value="week">Tuần này</option>
                 <option value="7d">7 ngày tới</option>
               </select>
             </label>
             <label>
-              Currency
+              Tiền tệ
               <select
                 value={econCurrency}
                 onChange={(e) => setEconParam({ econCurrency: e.target.value }, { replace: true })}
               >
-                <option value="USD">USD</option>
+                <option value="USD">USD (Mỹ)</option>
                 <option value="EUR">EUR</option>
-                <option value="ALL">All</option>
+                <option value="ALL">Tất cả</option>
               </select>
             </label>
             <label>
-              Impact
+              Mức ảnh hưởng
               <select
                 value={econImpact}
                 onChange={(e) => setEconParam({ econImpact: e.target.value }, { replace: true })}
               >
-                <option value="high,medium">High + Medium</option>
-                <option value="high">High</option>
-                <option value="all">All</option>
+                <option value="high,medium">Cao + Trung bình</option>
+                <option value="high">Chỉ Cao</option>
+                <option value="all">Tất cả</option>
               </select>
             </label>
             <label>
-              Timezone
+              Múi giờ hiển thị
               <select
                 value={econTz}
                 onChange={(e) => setEconParam({ econTz: e.target.value }, { replace: true })}
               >
-                <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="UTC">UTC</option>
+                <option value="Asia/Ho_Chi_Minh">{tzOptionLabel("Asia/Ho_Chi_Minh")}</option>
+                <option value="America/New_York">{tzOptionLabel("America/New_York")}</option>
+                <option value="UTC">{tzOptionLabel("UTC")}</option>
               </select>
+            </label>
+            <label className="econ-search">
+              Tìm theo tên
+              <input
+                type="search"
+                value={searchDraft}
+                placeholder="CPI, NFP, FOMC…"
+                onChange={(e) => onSearchChange(e.target.value)}
+              />
             </label>
           </div>
 
           {calendar?.coverage ? (
             <p className="econ-banner" role="status">
-              Coverage {calendar.coverage.status}
+              {(calendar.coverage.reasonsVi || []).join("; ") ||
+                `Phạm vi: ${calendar.coverage.status}`}
               {calendar.coverage.coverageTo
-                ? ` tới ${formatInTz(calendar.coverage.coverageTo, econTz)}`
+                ? ` · Có dữ liệu tới ${formatInTz(calendar.coverage.coverageTo, econTz)}`
                 : ""}
-              {calendar.coverage.reasons?.length
-                ? ` — ${calendar.coverage.reasons.join(", ")}`
-                : ""}
-              {calendar.emptyMeaning === "coverage_gap"
-                ? ". Phần ngoài coverage không phải “không có sự kiện”."
-                : ""}
-              {calendar.emptyMeaning === "calendar_unavailable"
-                ? ". Chưa xác nhận lịch."
-                : ""}
+              {calendar.emptyMeaningVi ? ` ${calendar.emptyMeaningVi}` : ""}
             </p>
+          ) : null}
+          {calendar?.actualModeLabelVi ? (
+            <p className="muted">{calendar.actualModeLabelVi}</p>
           ) : null}
 
           <div className="econ-cal-layout">
@@ -494,11 +594,11 @@ export default function MarketEconomyPage() {
                   <tr>
                     <th>Giờ</th>
                     <th>Sự kiện</th>
-                    <th>Impact</th>
-                    <th>Forecast</th>
-                    <th>Previous</th>
-                    <th>Actual</th>
-                    <th>TT</th>
+                    <th>Mức</th>
+                    <th>Dự báo</th>
+                    <th>Trước đó</th>
+                    <th>Thực tế</th>
+                    <th>Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -518,13 +618,15 @@ export default function MarketEconomyPage() {
                         <div className="muted">{ev.currency}</div>
                       </td>
                       <td>
-                        <span className={impactClass(ev.impact)}>{ev.impact}</span>
+                        <span className={impactClass(ev.impact)}>
+                          {impactLabel(ev.impact, ev.impactLabelVi)}
+                        </span>
                       </td>
                       <td>{ev.forecast?.displayValue || "—"}</td>
                       <td>{ev.previous?.displayValue || "—"}</td>
                       <td className="muted">{ev.actual?.displayValue || "chưa xác minh"}</td>
                       <td>
-                        <div>{statusLabel(ev.status)}</div>
+                        <div>{statusLabel(ev.status, ev.statusLabelVi)}</div>
                         <div className="muted">
                           {ev.timePrecision === "datetime"
                             ? formatCountdown(
@@ -541,13 +643,7 @@ export default function MarketEconomyPage() {
                 </tbody>
               </table>
               {!calendar?.events?.length ? (
-                <p className="muted">
-                  {calendar?.emptyMeaning === "coverage_gap"
-                    ? "Không có dữ liệu trong phần coverage còn lại của khoảng đã chọn."
-                    : calendar?.emptyMeaning === "calendar_unavailable"
-                      ? "Chưa xác nhận lịch."
-                      : "Không có sự kiện khớp bộ lọc trong khoảng đã có coverage."}
-                </p>
+                <p className="muted">{calendar?.emptyMeaningVi || "Không có sự kiện."}</p>
               ) : null}
             </div>
 
@@ -556,29 +652,26 @@ export default function MarketEconomyPage() {
                 <>
                   <h3>{detail.event.title}</h3>
                   <p className="muted">
-                    {detail.event.currency} · {detail.event.impact} ·{" "}
-                    {statusLabel(detail.event.status)}
+                    {detail.event.currency} ·{" "}
+                    {impactLabel(detail.event.impact, detail.event.impactLabelVi)} ·{" "}
+                    {statusLabel(detail.event.status, detail.event.statusLabelVi)}
                   </p>
+                  {detail.event.hintVi ? <p className="econ-hint">{detail.event.hintVi}</p> : null}
                   <dl className="econ-dl">
-                    <dt>Giờ (UTC)</dt>
+                    <dt>Giờ UTC</dt>
                     <dd>{detail.event.scheduledAt || "—"}</dd>
-                    <dt>Giờ ({econTz})</dt>
+                    <dt>{tzOptionLabel(econTz)}</dt>
                     <dd>{formatInTz(detail.event.scheduledAt, econTz)}</dd>
                     <dt>Kỳ tham chiếu</dt>
                     <dd>{detail.referencePeriod || "Chưa có từ nguồn lịch"}</dd>
-                    <dt>Forecast</dt>
-                    <dd>
-                      {detail.values?.forecast?.displayValue || "—"}
-                      {detail.values?.forecast?.numericValue != null
-                        ? ` (${detail.values.forecast.numericValue})`
-                        : ""}
-                    </dd>
-                    <dt>Previous</dt>
+                    <dt>Dự báo (Forecast)</dt>
+                    <dd>{detail.values?.forecast?.displayValue || "—"}</dd>
+                    <dt>Trước đó (Previous)</dt>
                     <dd>{detail.values?.previous?.displayValue || "—"}</dd>
-                    <dt>Actual</dt>
+                    <dt>Thực tế (Actual)</dt>
                     <dd>
                       {detail.values?.actual?.displayValue ||
-                        "Chưa có actual đã xác minh (schedule-only)"}
+                        "Chưa có số liệu đã xác minh — không dùng Previous thay Actual"}
                     </dd>
                     <dt>Nguồn</dt>
                     <dd>
@@ -587,24 +680,106 @@ export default function MarketEconomyPage() {
                   </dl>
                   {detail.revisions?.schedule?.length ? (
                     <div>
-                      <h4>Revisions lịch</h4>
+                      <h4>Lịch sử đổi giờ</h4>
                       <ul className="econ-rev">
                         {detail.revisions.schedule.map((r, i) => (
                           <li key={i}>
-                            {r.scheduledAt ? new Date(r.scheduledAt).toISOString() : "—"} ·{" "}
-                            {r.reason}
+                            {r.scheduledAt ? formatInTz(r.scheduledAt, econTz) : "—"} · {r.reason}
                           </li>
                         ))}
                       </ul>
                     </div>
                   ) : null}
-                  <p className="muted">{detail.surpriseReason}</p>
+                  <p className="muted">{detail.surpriseReasonVi || detail.surpriseReason}</p>
                 </>
               ) : (
                 <p className="muted">Chọn một sự kiện để xem chi tiết.</p>
               )}
             </aside>
           </div>
+        </section>
+      ) : null}
+
+      {econView === "news" && newsEnabled ? (
+        <section className="econ-news" aria-label="Tin tức">
+          <div className="econ-filters">
+            <label>
+              Chủ đề
+              <select
+                value={newsTopic}
+                onChange={(e) => setEconParam({ newsTopic: e.target.value }, { replace: true })}
+              >
+                <option value="all">Tất cả</option>
+                <option value="crypto">Crypto</option>
+                <option value="macro">Vĩ mô</option>
+              </select>
+            </label>
+            <label>
+              Coin (nếu có trong tiêu đề)
+              <select
+                value={newsSymbol}
+                onChange={(e) =>
+                  setEconParam({ newsSymbol: e.target.value || null }, { replace: true })
+                }
+              >
+                <option value="">Tất cả</option>
+                <option value="BTCUSDT">BTC</option>
+                <option value="ETHUSDT">ETH</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="econ-link-btn"
+              onClick={() => setEconParam({ econView: "context" })}
+            >
+              Về bối cảnh
+            </button>
+          </div>
+          {news?.disclaimerVi ? <p className="econ-banner">{news.disclaimerVi}</p> : null}
+          <ul className="econ-news-list">
+            {(news?.items || []).map((item) => (
+              <li key={item.id}>
+                <a href={item.url} target="_blank" rel="noopener noreferrer">
+                  {item.title}
+                </a>
+                <div className="muted">
+                  {item.publisher || "Nguồn"} ·{" "}
+                  {item.publishedAt
+                    ? formatInTz(item.publishedAt, econTz)
+                    : item.publishedAtLabelVi || "Chưa rõ giờ đăng"}
+                  {item.assetIds?.length ? ` · ${item.assetIds.join(", ")}` : ""}
+                  {item.locale === "vi" ? " · tiếng Việt" : ""}
+                </div>
+                {item.assetIds?.includes("BTCUSDT") || item.assetIds?.includes("ETHUSDT") ? (
+                  <div>
+                    <button
+                      type="button"
+                      className="econ-link-btn"
+                      onClick={() =>
+                        setParams(
+                          (prev) => {
+                            const n = new URLSearchParams(prev);
+                            n.set("tab", "technical");
+                            n.set(
+                              "symbol",
+                              item.assetIds.includes("BTCUSDT") ? "BTCUSDT" : "ETHUSDT"
+                            );
+                            return n;
+                          },
+                          { replace: false }
+                        )
+                      }
+                    >
+                      Xem kỹ thuật
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {!news?.items?.length ? (
+            <p className="muted">Chưa có tin trong snapshot — collector có thể đang chạy.</p>
+          ) : null}
         </section>
       ) : null}
     </div>

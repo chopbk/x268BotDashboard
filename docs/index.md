@@ -28,7 +28,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Smart Money / dòng tiền thị trường (collector dùng chung) | [Smart Money](smart-money-spec.md), [UI infographic](smart-money-ui-research.md) |
 | Hub Thị trường — P0 đã triển khai; R1 nút flow + Top 10/25/50 + collector SM top50 được đặc tả | [Market hub](market-hub-spec.md) |
 | Thị trường Intelligence: P0 đã triển khai (context/brief/panel); P1/P2 còn đề xuất | [Market Intelligence spec](market-intelligence-spec.md) |
-| Crypto + kinh tế: P0a/P0b đã ship (context/calendar schedule-only, flag); P1 news/reaction/reminder còn đề xuất | [Crypto & Macro Intelligence](crypto-macro-intelligence-spec.md), [Provider spike](crypto-macro-provider-spike.md) |
+| Crypto + kinh tế: P0 + tin RSS P1a (UX VI); reaction/reminder/EU còn đề xuất | [Crypto & Macro Intelligence](crypto-macro-intelligence-spec.md), [Provider spike](crypto-macro-provider-spike.md) |
 | Danh sách quyết định Location P1a (hành động, RR, preset, Giá×OI) | [Decision list](market-decision-list-spec.md) |
 | Bảng Vị trí & Setup (hỗ trợ/kháng cự, setup, entry signal) | [Vị trí & Setup](market-position-setup-spec.md) |
 | Scoring kỹ thuật top 50 đa khung (market-v1) | [Market scoring spec](market-scoring-spec.md), [Formula market-v1](market-formula-v1.md) |

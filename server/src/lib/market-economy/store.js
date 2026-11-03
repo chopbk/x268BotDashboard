@@ -7,6 +7,7 @@ const MarketEconomyMetric = require("../../models/market-economy-metric");
 const MarketEconomyEvent = require("../../models/market-economy-event");
 const MarketEconomyEventValue = require("../../models/market-economy-event-value");
 const MarketEconomyCollectorState = require("../../models/market-economy-collector-state");
+const MarketEconomyNews = require("../../models/market-economy-news");
 
 const memory = {
     context: null,
@@ -232,28 +233,67 @@ async function upsertCalendarEvent(normalized) {
     return ev.eventId;
 }
 
-async function listEventsInRange({ from, to, currencies, impacts, limit = 50, cursor } = {}) {
-    const q = {};
+async function listEventsInRange({ from, to, currencies, impacts, limit = 50, cursor, q: textQ } = {}) {
+    const filter = {};
     if (from || to) {
-        q.scheduledAt = {};
-        if (from) q.scheduledAt.$gte = new Date(from);
-        if (to) q.scheduledAt.$lt = new Date(to);
+        filter.scheduledAt = {};
+        if (from) filter.scheduledAt.$gte = new Date(from);
+        if (to) filter.scheduledAt.$lt = new Date(to);
     }
-    if (currencies?.length) q.currency = { $in: currencies };
-    if (impacts?.length) q.impact = { $in: impacts };
+    if (currencies?.length) filter.currency = { $in: currencies };
+    if (impacts?.length) filter.impact = { $in: impacts };
+    if (textQ && String(textQ).trim()) {
+        const safe = String(textQ).trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        filter.title = { $regex: safe, $options: "i" };
+    }
     if (cursor) {
         const c = new Date(cursor);
         if (Number.isFinite(c.getTime())) {
-            q.scheduledAt = { ...(q.scheduledAt || {}), $gt: c };
+            filter.scheduledAt = { ...(filter.scheduledAt || {}), $gt: c };
         }
     }
 
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
-    const rows = await MarketEconomyEvent.find(q).sort({ scheduledAt: 1, eventId: 1 }).limit(lim + 1).lean();
+    const rows = await MarketEconomyEvent.find(filter).sort({ scheduledAt: 1, eventId: 1 }).limit(lim + 1).lean();
     const hasMore = rows.length > lim;
     const page = hasMore ? rows.slice(0, lim) : rows;
     const nextCursor = hasMore ? page[page.length - 1].scheduledAt?.toISOString() : null;
     return { events: page, nextCursor, count: page.length };
+}
+
+async function listRecentDueOrPastEvents({ before, currencies = ["USD"], impacts = ["high", "medium"], limit = 8 } = {}) {
+    const filter = {
+        scheduledAt: { $lte: before || new Date() },
+    };
+    if (currencies?.length) filter.currency = { $in: currencies };
+    if (impacts?.length) filter.impact = { $in: impacts };
+    return MarketEconomyEvent.find(filter).sort({ scheduledAt: -1 }).limit(limit).lean();
+}
+
+async function listNews({ topic, symbol, limit = 30, cursor } = {}) {
+    const filter = {};
+    if (topic && topic !== "all") filter.topic = topic;
+    if (symbol) {
+        const sym = String(symbol).toUpperCase();
+        filter.assetIds = sym;
+    }
+    if (cursor) {
+        const c = new Date(cursor);
+        if (Number.isFinite(c.getTime())) {
+            filter.publishedAt = { $lt: c };
+        }
+    }
+    const lim = Math.min(Math.max(Number(limit) || 30, 1), 100);
+    const rows = await MarketEconomyNews.find(filter)
+        .sort({ publishedAt: -1, _id: -1 })
+        .limit(lim + 1)
+        .lean();
+    const hasMore = rows.length > lim;
+    const page = hasMore ? rows.slice(0, lim) : rows;
+    const nextCursor = hasMore && page[page.length - 1].publishedAt
+        ? page[page.length - 1].publishedAt.toISOString()
+        : null;
+    return { items: page, nextCursor, count: page.length };
 }
 
 async function getEventById(eventId) {
@@ -304,6 +344,8 @@ module.exports = {
     upsertMetricObservation,
     upsertCalendarEvent,
     listEventsInRange,
+    listRecentDueOrPastEvents,
+    listNews,
     getEventById,
     listEventValues,
     listMetricSeries,

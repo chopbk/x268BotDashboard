@@ -17,6 +17,7 @@ export default function MarketHubPage() {
   const [params, setParams] = useSearchParams();
   const [denyNotice, setDenyNotice] = useState("");
   const [economyEnabled, setEconomyEnabled] = useState(false);
+  const [newsEnabled, setNewsEnabled] = useState(false);
 
   const access = useMemo(() => marketHubAccess(user), [user]);
   const searchKey = params.toString();
@@ -24,15 +25,22 @@ export default function MarketHubPage() {
   useEffect(() => {
     if (!access.canEconomy) {
       setEconomyEnabled(false);
+      setNewsEnabled(false);
       return undefined;
     }
     let cancelled = false;
     api("/api/market/economy/status")
       .then((body) => {
-        if (!cancelled) setEconomyEnabled(Boolean(body?.enabled));
+        if (!cancelled) {
+          setEconomyEnabled(Boolean(body?.enabled));
+          setNewsEnabled(Boolean(body?.newsEnabled));
+        }
       })
       .catch(() => {
-        if (!cancelled) setEconomyEnabled(false);
+        if (!cancelled) {
+          setEconomyEnabled(false);
+          setNewsEnabled(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -172,7 +180,7 @@ export default function MarketHubPage() {
       {denyNotice ? <p className="mkt-hub-notice" role="status">{denyNotice}</p> : null}
       {economyFlagOff ? (
         <p className="mkt-hub-notice" role="status">
-          Tab Kinh tế & Tin tức chưa bật (MARKET_ECONOMY_ENABLED). Bối cảnh/lịch không chạy collector khi flag tắt.
+          Tab Kinh tế & Tin tức chưa bật (MARKET_ECONOMY_ENABLED=false trên server).
         </p>
       ) : null}
 
@@ -205,7 +213,7 @@ export default function MarketHubPage() {
             canTerminal={access.canTerminal}
           />
         ) : null}
-        {showEconomy ? <MarketEconomyPage /> : null}
+        {showEconomy ? <MarketEconomyPage newsEnabled={newsEnabled} /> : null}
       </div>
     </div>
   );

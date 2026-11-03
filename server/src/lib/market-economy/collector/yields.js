@@ -139,7 +139,7 @@ function buildCryptoRefs(macro, tickers) {
         totalMarketCap: macro?.metrics?.totalMarketCap || (macro?.totalMarketCap != null ? { value: macro.totalMarketCap, observedAt: macro.updatedAt } : null),
         totalVolume: macro?.metrics?.totalVolume || (macro?.totalVolume != null ? { value: macro.totalVolume, observedAt: macro.updatedAt } : null),
         fearGreed: macro?.metrics?.fearGreed || (macro?.fearGreed != null ? { value: macro.fearGreed, displayValue: macro.fearGreedLabel, observedAt: macro.updatedAt } : null),
-        note: "Global USD market stats from CoinGecko collector; not Binance Futures USDT volume.",
+        note: "Số liệu thị trường global USD từ CoinGecko (collector hiện có) — không phải volume Futures Binance USDT.",
     };
 }
 
