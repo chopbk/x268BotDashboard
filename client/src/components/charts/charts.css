@@ -783,6 +783,11 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
   font-size: var(--font-section);
 }
 
+.dv-host-card .dv-host-meta {
+  margin: 0;
+  font-size: var(--font-caption);
+}
+
 .dv-process-tiles {
   display: flex;
   flex-wrap: wrap;

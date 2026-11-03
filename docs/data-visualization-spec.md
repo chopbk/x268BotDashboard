@@ -147,7 +147,7 @@ Hai bar ngang: top 10 signal theo số lỗi parse; top 10 signal theo số conf
 
 Nguồn: [SystemHealthPage](../client/src/pages/SystemHealthPage.jsx) → `/api/system-health` → [system-health](../server/src/lib/system-health.js); [AuditLogsPage](../client/src/pages/AuditLogsPage.jsx) → `/api/runtime-logs` → [runtime-logs](../server/src/lib/runtime-logs.js).
 
-Hệ thống: nhóm process theo host, mỗi process một ô có tên/role/trạng thái/tuổi heartbeat; bấm lọc hoặc focus dòng process. Giữ ngưỡng stale hiện tại của backend (tài liệu hiện tại: 90 giây), không tạo ngưỡng khác ở chart. Bar RAM là giá trị hiện tại theo process, không phải lịch sử hay % RAM host khi không có total host memory.
+Hệ thống: nhóm process theo IP máy (`host` từ heartbeat), không theo `hostId` control; mỗi process một ô có tên/role/trạng thái/tuổi heartbeat; card IP có thể ghi phụ `hostId` nếu có. Bấm lọc hoặc focus dòng process. Giữ ngưỡng stale hiện tại của backend (tài liệu hiện tại: 90 giây), không tạo ngưỡng khác ở chart. Bar RAM là giá trị hiện tại theo process, không phải lịch sử hay % RAM host khi không có total host memory.
 
 Log runtime: cột chồng error/warn/info theo thời gian. Mặc định dùng kỳ đang chọn; nếu chưa có kỳ, chọn 24 giờ và hiện filter. <=48 giờ bucket 1 giờ; dài hơn bucket ngày, giới hạn 90 ngày. Bấm bucket/mức lỗi lọc bảng và reset page. Cùng nguyên tắc giữ chart nền như Báo cáo.
 
@@ -280,7 +280,7 @@ Mỗi PR triển khai phải ghi: màn/chart nào, câu hỏi chart trả lời,
 | Màn | Chart | Nguồn | Ghi chú |
 |---|---|---|---|
 | Signal → Thống kê | Top 10 lỗi parse (7 ngày); top 10 config đang bật | `/api/signal-config` → `parseErrors` / `usage` | Kỳ ghi rõ; không tự gắn tỷ lệ lỗi; bấm signal → `signals` filter bảng |
-| Hệ thống | Process theo host; bar RAM MB hiện tại | `/api/system-health` | Stale 90s backend; không % host; bấm ô/process → `?process=` |
+| Hệ thống | Process theo IP (`host`); bar RAM MB hiện tại | `/api/system-health` | Stale 90s backend; không % host; bấm ô/process → `?process=` |
 | Log runtime | Histogram chồng error/warn/info | `/api/runtime-logs` → `histogram` | Aggregate trước phân trang; mặc định 24h; ≤48h bucket giờ; selection `bucketFrom`/`level` lọc bảng |
 
 Component dùng chung: `client/src/components/charts/*` (SVG/HTML, không thêm dependency). Fixture trực quan: `scripts/chart-p0-fixture.html`.

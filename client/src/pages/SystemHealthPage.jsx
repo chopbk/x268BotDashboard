@@ -164,17 +164,25 @@ export default function SystemHealthPage() {
     return list;
   }, [data, filter]);
 
+  /** Nhóm theo IP máy (`host` từ heartbeat), không theo hostId control. */
   const hostGroups = useMemo(() => {
     const map = new Map();
     for (const row of rows) {
-      const host = row.hostId || row.host || "unknown";
-      const list = map.get(host) || [];
+      const ip = String(row.host || "").trim() || "unknown";
+      const list = map.get(ip) || [];
       list.push(row);
-      map.set(host, list);
+      map.set(ip, list);
     }
     return [...map.entries()]
-      .map(([host, processes]) => ({ host, processes }))
-      .sort((a, b) => a.host.localeCompare(b.host));
+      .map(([ip, processes]) => {
+        const hostIds = [
+          ...new Set(
+            processes.map((p) => String(p.hostId || "").trim()).filter(Boolean)
+          ),
+        ].sort((a, b) => a.localeCompare(b));
+        return { ip, hostIds, processes };
+      })
+      .sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
   }, [rows]);
 
   const ramRows = useMemo(
@@ -252,16 +260,21 @@ export default function SystemHealthPage() {
 
           <div className="dv-chart-grid two" style={{ margin: "16px 0" }}>
             <ChartShell
-              title="Process theo host đang thế nào?"
-              subtitle={`Snapshot hiện tại · stale ${(staleMs / 1000) | 0}s (backend) · bấm ô để mở process · không tạo ngưỡng khác`}
-              summary={`${rows.length} process · ${hostGroups.length} host · ${staleCount} stale`}
+              title="Process theo IP đang thế nào?"
+              subtitle={`Snapshot hiện tại · nhóm theo IP heartbeat · stale ${(staleMs / 1000) | 0}s (backend) · bấm ô để mở process · không tạo ngưỡng khác`}
+              summary={`${rows.length} process · ${hostGroups.length} IP · ${staleCount} stale`}
               empty={!rows.length ? "Chưa có heartbeat process." : ""}
               height="rank"
             >
               <div className="dv-host-grid">
                 {hostGroups.map((group) => (
-                  <article key={group.host} className="dv-host-card">
-                    <h3>{group.host}</h3>
+                  <article key={group.ip} className="dv-host-card">
+                    <h3>{group.ip}</h3>
+                    {group.hostIds.length ? (
+                      <p className="muted dv-host-meta">
+                        hostId: {group.hostIds.join(", ")}
+                      </p>
+                    ) : null}
                     <div className="dv-process-tiles">
                       {group.processes.map((row) => {
                         const key = row.profileEnv || row.processName;
@@ -386,7 +399,12 @@ export default function SystemHealthPage() {
                     <td className={row.drift === "mismatch" || row.drift === "stale" ? "negative" : ""}>
                       {driftLabel(row.drift)}
                     </td>
-                    <td>{row.hostId || row.host || "—"}</td>
+                    <td>
+                      {row.host || "—"}
+                      {row.hostId ? (
+                        <span className="muted">{row.host ? ` · ${row.hostId}` : row.hostId}</span>
+                      ) : null}
+                    </td>
                     <td>{row.lastCommand ? `${row.lastCommand.kind}:${row.lastCommand.status}` : "—"}</td>
                     <td>{row.memoryMb == null ? "—" : `${row.memoryMb} MB`}</td>
                     <td className={row.status === "down" ? "negative" : ""}>{when(row.at)}</td>
