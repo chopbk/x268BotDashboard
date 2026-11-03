@@ -235,3 +235,8 @@ Mục tiêu hiệu năng đề xuất: API đọc cache p95 <700ms với 50 symb
 ## 13. Phạm vi bàn giao bản spec này
 
 Chỉ thêm tài liệu và liên kết vào mục lục. Không triển khai UI/API, không đổi bot hay gọi dữ liệu tài khoản. Các nguồn ngoài được tham khảo ngày 2026-10-23; các feature nhà cung cấp và API phải được kiểm tra lại khi bắt đầu implementation.
+
+
+## Spec triển khai bổ sung cho macro và sự kiện
+
+[Crypto & Macro Intelligence](crypto-macro-intelligence-spec.md) (2026-11-03) chi tiết hóa nhánh macro/calendar của roadmap: tái sử dụng crypto context hiện có, thêm lịch kinh tế và US macro ở P0; news, reaction và Inbox opt-in ở P1. Đây là **đề xuất chưa triển khai**, không thay market-v1/mdash-v1 hoặc các trạng thái shipped trong tài liệu này.
