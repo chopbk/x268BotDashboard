@@ -22,6 +22,7 @@ Bộ tài liệu mô tả implementation được đối chiếu ngày **2026-10
 | Xếp hạng channel theo feed + PnL thật | [Provider Scorecard](provider-scorecard-spec.md) |
 | Biểu đồ dễ đọc: P0 đạt còn gap; P1 Tổng quan/Thống kê đã làm; waterfall/P2 còn đề xuất | [Spec trực quan hóa dữ liệu](data-visualization-spec.md) |
 | Nâng trang Tổng quan (health, uPnL, triage) | [Dashboard overview spec](dashboard-overview-spec.md) |
+| Timeline giao dịch + donut phân bổ trên Tổng quan — đề xuất, chưa triển khai | [Dashboard timeline & allocation](dashboard-timeline-allocation-spec.md) |
 | Process env / restart trên tab Hệ thống | [Remote process env admin](remote-process-env-admin-spec.md) — Phase 1 trên `/system` (admin panel) |
 | Terminal Futures cho Bybit, Aster và OKX | [Multi-exchange Futures](multi-exchange-futures-spec.md) |
 | Smart Money / dòng tiền thị trường (collector dùng chung) | [Smart Money](smart-money-spec.md), [UI infographic](smart-money-ui-research.md) |
