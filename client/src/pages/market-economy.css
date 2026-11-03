@@ -30,21 +30,21 @@
 }
 .econ-subtabs-note {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--font-caption);
   padding-right: 8px;
 }
-.econ-lead { margin: 0; font-size: 13px; line-height: 1.45; max-width: 52rem; }
+.econ-lead { margin: 0; font-size: var(--font-control); line-height: 1.45; max-width: 52rem; }
 .econ-guide {
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
   background: color-mix(in srgb, currentColor 4%, transparent);
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .econ-guide ul { margin: 6px 0 0; padding-left: 18px; }
-.econ-hint { font-size: 12px; margin-top: 4px; line-height: 1.4; }
-.econ-subh { margin: 14px 0 6px; font-size: 0.95rem; }
-.econ-recent { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.econ-hint { font-size: var(--font-caption); margin-top: 4px; line-height: 1.4; }
+.econ-subh { margin: 14px 0 6px; font-size: var(--font-section); }
+.econ-recent { margin: 0; padding-left: 18px; font-size: var(--font-control); display: flex; flex-direction: column; gap: 6px; }
 .econ-search input {
   font: inherit;
   padding: 6px 8px;
@@ -78,7 +78,7 @@
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  font-size: 13px;
+  font-size: var(--font-control);
   background: color-mix(in srgb, currentColor 4%, transparent);
 }
 .econ-banner.warn {
@@ -94,10 +94,10 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
-.econ-stale { color: #c9a227; font-size: 12px; }
-.econ-note { margin: 0; font-size: 12px; }
+.econ-stale { color: #c9a227; font-size: var(--font-caption); }
+.econ-note { margin: 0; font-size: var(--font-caption); }
 
 .econ-next-event {
   display: flex;
@@ -111,7 +111,7 @@
 .econ-countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
 .econ-badge {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: var(--font-caption);
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
@@ -139,9 +139,9 @@
   border-radius: 8px;
   min-width: 0;
 }
-.econ-card-label { font-size: 12px; opacity: 0.75; }
-.econ-card-value { font-size: 1.15rem; font-weight: 700; margin-top: 4px; }
-.econ-card-meta { font-size: 11px; margin-top: 6px; }
+.econ-card-label { font-size: var(--font-caption); opacity: 0.75; }
+.econ-card-value { font-size: var(--font-section); font-weight: 700; margin-top: 4px; }
+.econ-card-meta { font-size: var(--font-caption); margin-top: 6px; }
 
 .econ-two-col {
   display: grid;
@@ -155,12 +155,12 @@
   border-radius: 8px;
   min-width: 0;
 }
-.econ-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+.econ-panel h3 { margin: 0 0 8px; font-size: var(--font-section); }
 
 .econ-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .econ-table th,
 .econ-table td {
@@ -185,7 +185,7 @@
   align-items: center;
   gap: 4px;
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-caption);
 }
 .econ-curve-bar {
   width: 100%;
@@ -195,7 +195,7 @@
 }
 
 .econ-brief { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 10px; }
-.econ-attr { font-size: 11px; }
+.econ-attr { font-size: var(--font-caption); }
 
 .econ-filters {
   display: flex;
@@ -207,7 +207,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .econ-filters select {
   font: inherit;
@@ -237,15 +237,15 @@
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 6px 10px;
-  font-size: 13px;
+  font-size: var(--font-control);
   margin: 0 0 12px;
 }
 .econ-dl dt { opacity: 0.7; }
 .econ-dl dd { margin: 0; }
-.econ-rev { margin: 0; padding-left: 18px; font-size: 12px; }
+.econ-rev { margin: 0; padding-left: 18px; font-size: var(--font-caption); }
 
 .econ-impact {
-  font-size: 11px;
+  font-size: var(--font-caption);
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -266,5 +266,5 @@
 
 @media (max-width: 400px) {
   .econ-cards { grid-template-columns: 1fr; }
-  .econ-table { font-size: 12px; }
+  .econ-table { font-size: var(--font-caption); }
 }

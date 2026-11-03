@@ -8,7 +8,7 @@
 .dash-panel-note,
 .dash-panel-meta {
   margin: 4px 0 0;
-  font-size: 0.85rem;
+  font-size: var(--font-control);
 }
 
 .dash-overview-split {
@@ -70,12 +70,12 @@
 
 .dash-donut-center-label {
   fill: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-caption);
 }
 
 .dash-donut-center-value {
   fill: var(--text);
-  font-size: 13px;
+  font-size: var(--font-control);
   font-weight: 700;
 }
 
@@ -123,7 +123,7 @@
 
 .dash-legend-val {
   font-variant-numeric: tabular-nums;
-  font-size: 0.9rem;
+  font-size: var(--font-body);
 }
 
 .dash-tip {
@@ -137,7 +137,7 @@
   background: var(--card, #0f172a);
   border: 1px solid var(--border, #334155);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  font-size: 0.85rem;
+  font-size: var(--font-control);
   max-width: min(240px, 90vw);
 }
 
@@ -220,7 +220,7 @@
 }
 
 .dash-timeline-meta {
-  font-size: 0.82rem;
+  font-size: var(--font-control);
   line-height: 1.4;
   word-break: break-word;
 }

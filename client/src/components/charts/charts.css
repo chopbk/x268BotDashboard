@@ -39,14 +39,14 @@
 
 .dv-shell-titles h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--font-section);
   line-height: 1.35;
   overflow-wrap: break-word;
 }
 
 .dv-shell-sub {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--font-control);
   line-height: 1.45;
   overflow-wrap: break-word;
   word-break: normal;
@@ -54,7 +54,7 @@
 
 .dv-shell-summary {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--font-control);
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: break-word;
@@ -108,7 +108,7 @@
 
 .dv-mode-tabs button {
   padding: 4px 8px;
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
   min-height: 28px;
 }
 
@@ -124,7 +124,7 @@
 .dv-badge {
   display: inline-block;
   margin-left: 6px;
-  font-size: 0.68rem;
+  font-size: var(--font-caption);
   font-weight: 650;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -146,7 +146,7 @@
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
@@ -156,7 +156,7 @@
 }
 
 .dv-tooltip strong {
-  font-size: 0.82rem;
+  font-size: var(--font-control);
 }
 
 .dv-legend {
@@ -164,7 +164,7 @@
   flex-wrap: wrap;
   gap: 12px;
   margin: 8px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
   color: var(--muted);
 }
 
@@ -205,7 +205,7 @@
 
 .dv-axis-label {
   fill: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-caption);
 }
 
 .dv-grid {
@@ -223,7 +223,7 @@
 /* Horizontal bars */
 .dv-rank-meta {
   margin: 0 0 6px;
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
 }
 
 .dv-hbar-list {
@@ -272,7 +272,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: var(--font-control);
 }
 
 .dv-hbar-track {
@@ -309,14 +309,14 @@
 
 .dv-hbar-value {
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
+  font-size: var(--font-control);
   font-weight: 650;
   min-width: 4.5rem;
   text-align: right;
 }
 
 .dv-hbar-meta {
-  font-size: 0.72rem;
+  font-size: var(--font-caption);
   min-width: 3.2rem;
   text-align: right;
 }
@@ -370,7 +370,7 @@
 
 .dv-cal-dow {
   text-align: center;
-  font-size: 0.7rem;
+  font-size: var(--font-caption);
   color: var(--muted);
   padding: 2px;
 }
@@ -400,19 +400,19 @@
 }
 
 .dv-cal-day {
-  font-size: 0.72rem;
+  font-size: var(--font-caption);
   font-weight: 650;
 }
 
 .dv-cal-month {
   display: block;
-  font-size: 0.58rem;
+  font-size: var(--font-caption);
   color: var(--muted);
 }
 
 .dv-cal-miss {
   display: block;
-  font-size: 0.58rem;
+  font-size: var(--font-caption);
   color: #fbbf24;
 }
 
@@ -422,7 +422,7 @@
   gap: 4px;
   align-items: center;
   margin-top: 8px;
-  font-size: 0.72rem;
+  font-size: var(--font-caption);
 }
 
 .dv-cal-swatch {
@@ -475,7 +475,7 @@
 
 .dv-bubble-label {
   fill: var(--text);
-  font-size: 10px;
+  font-size: var(--font-caption);
   pointer-events: none;
 }
 
@@ -488,7 +488,7 @@
 
 .dv-notrade-title {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: var(--font-control);
 }
 
 .dv-notrade-list {
@@ -520,7 +520,7 @@ polyline.dv-ts-line.trade { stroke: var(--ok); }
 polyline.dv-ts-line.cash { stroke: #60a5fa; }
 
 .dv-single-point {
-  font-size: 0.9rem;
+  font-size: var(--font-body);
 }
 
 /* Page chart grids */
@@ -600,7 +600,7 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
 }
 
 .dv-share-swatch {
@@ -643,7 +643,7 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
 }
 
 .dv-exposure-label {
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -669,7 +669,7 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
 }
 
 .dv-exposure-value {
-  font-size: 0.75rem;
+  font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -780,7 +780,7 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
 
 .dv-host-card h3 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--font-section);
 }
 
 .dv-process-tiles {
@@ -814,11 +814,11 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
 }
 
 .dv-process-tile strong {
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
 }
 
 .dv-process-tile span {
-  font-size: 0.7rem;
+  font-size: var(--font-caption);
   color: var(--muted);
 }
 
@@ -853,7 +853,7 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
 }
 
 .dv-waterfall-label {
-  font-size: 0.8rem;
+  font-size: var(--font-control);
 }
 
 .dv-waterfall-track {
@@ -884,13 +884,13 @@ polyline.dv-ts-line.cash { stroke: #60a5fa; }
 }
 
 .dv-waterfall-value {
-  font-size: 0.78rem;
+  font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .dv-waterfall-meta {
-  font-size: 0.72rem;
+  font-size: var(--font-caption);
   white-space: nowrap;
 }
 

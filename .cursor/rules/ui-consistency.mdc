@@ -18,9 +18,11 @@ Nguồn chuẩn là `client/src/styles.css`; xem thêm phần Mật độ giao d
 | Nhãn phụ / bảng compact | `var(--font-caption)` | 12px |
 | Tiêu đề trang | `var(--font-title)` | 20px |
 | Tiêu đề khối/panel/dialog | `var(--font-section)` | 16px |
-| Chiều cao tối thiểu form control | `var(--control-height)` | 32px |
+| KPI số lớn | `var(--font-kpi)` | 22px |
+| Chiều cao tối thiểu form control | `var(--control-height)` | 34px (cảm ứng 40) |
 | Gap hành động / toolbar | `var(--space-2)` | 8px |
-| Ô bảng | `var(--table-cell-y/x)` | 8px / 10px |
+| Ô bảng | `var(--table-cell-y/x)` | 9px / 12px |
+| Card padding | `var(--card-pad-y/x)` | 14px / 16px |
 
 - Tái sử dụng style/component có sẵn cho button, `.ghost`, `.link-btn`, card,
   page header, filter và table. Dùng token thay vì chép giá trị px tương đương.

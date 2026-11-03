@@ -19,7 +19,7 @@ main:has(.term-screen) {
   gap: 10px;
   flex: 1;
   min-height: 0;
-  font-size: 14px;
+  font-size: var(--font-body);
 }
 
 /* Desk: Phân tích (trên) → Sổ vị thế (dưới, ưu tiên chiều cao còn lại) */
@@ -35,7 +35,7 @@ main:has(.term-screen) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--font-caption);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -52,7 +52,7 @@ main:has(.term-screen) {
 .term-analysis-collapsed {
   margin: 0;
   padding: 6px 0;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-book {
   flex: 1 1 auto;
@@ -81,7 +81,7 @@ main:has(.term-screen) {
   padding: 6px 10px;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-caption);
   border-radius: 6px 6px 0 0;
 }
 .term-side-tabs button.active {
@@ -164,7 +164,7 @@ main:has(.term-screen) {
 .term-filters label {
   display: grid;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-caption);
   color: var(--muted, #888);
 }
 
@@ -190,7 +190,7 @@ main:has(.term-screen) {
   border: 1px solid var(--term-line);
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface-2, #1a1a1a) 70%, transparent);
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 
 .term-summary {
@@ -209,7 +209,7 @@ main:has(.term-screen) {
 }
 
 .term-summary-label {
-  font-size: 11px;
+  font-size: var(--font-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted, #888);
@@ -224,7 +224,7 @@ main:has(.term-screen) {
 .term-summary-coverage {
   grid-column: 1 / -1;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 .term-workspace {
@@ -288,7 +288,7 @@ main:has(.term-screen) {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 
 .term-table thead th {
@@ -300,7 +300,7 @@ main:has(.term-screen) {
   padding: 5px 8px;
   text-align: left;
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption);
   color: var(--muted, #aaa);
 }
 
@@ -312,7 +312,7 @@ main:has(.term-screen) {
 }
 
 .density-compact .term-table tbody td { padding: 3px 6px; }
-.density-compact .term-table { font-size: 12px; }
+.density-compact .term-table { font-size: var(--font-caption); }
 .density-compact .term-table tbody tr { height: auto; min-height: 0; }
 .density-comfortable .term-table tbody td { padding: 7px 10px; }
 .density-comfortable .term-table tbody tr { height: auto; }
@@ -353,7 +353,7 @@ main:has(.term-screen) {
 }
 
 .term-account-meta {
-  font-size: 11px;
+  font-size: var(--font-caption);
   color: var(--muted, #888);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -361,7 +361,7 @@ main:has(.term-screen) {
 }
 
 .term-mini-warn {
-  font-size: 10px;
+  font-size: var(--font-caption);
   color: #d4a017;
   line-height: 1.15;
 }
@@ -374,7 +374,7 @@ main:has(.term-screen) {
 }
 
 .term-side {
-  font-size: 11px;
+  font-size: var(--font-caption);
   font-weight: 700;
   letter-spacing: 0.03em;
 }
@@ -388,7 +388,7 @@ main:has(.term-screen) {
 
 .term-badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--font-caption);
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--term-line);
@@ -411,7 +411,7 @@ main:has(.term-screen) {
 .term-protect {
   display: grid;
   gap: 0;
-  font-size: 11px;
+  font-size: var(--font-caption);
   line-height: 1.2;
 }
 
@@ -428,7 +428,7 @@ main:has(.term-screen) {
 }
 
 .term-row-actions button {
-  font-size: 11px;
+  font-size: var(--font-caption);
   padding: 2px 6px;
   border-radius: 5px;
   border: 1px solid var(--term-line);
@@ -477,13 +477,13 @@ main:has(.term-screen) {
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 .term-menu-pop button:hover { background: var(--surface-2, #222); }
 
 .term-child td {
-  font-size: 11px;
+  font-size: var(--font-caption);
   padding: 2px 6px 4px !important;
   color: var(--muted);
   background: color-mix(in srgb, var(--bg, #0d0d0d) 60%, transparent);
@@ -571,7 +571,7 @@ main:has(.term-screen) {
   border: 1px solid color-mix(in srgb, var(--term-line) 80%, transparent);
 }
 
-.term-kv span { font-size: 11px; color: var(--muted); }
+.term-kv span { font-size: var(--font-caption); color: var(--muted); }
 
 .term-trade-modes {
   display: flex;
@@ -604,7 +604,7 @@ main:has(.term-screen) {
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--term-line);
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 
 .term-preview ul { margin: 6px 0 0; padding-left: 18px; }
@@ -615,7 +615,7 @@ main:has(.term-screen) {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--term-line);
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 
 .term-mutation-ok { border-color: var(--term-tp); }
@@ -667,7 +667,7 @@ main:has(.term-screen) {
 .term-dialog label {
   display: grid;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 
 .term-dialog > label > select,
@@ -689,7 +689,7 @@ main:has(.term-screen) {
 
 .term-tpsl-label {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--font-body);
 }
 
 .term-tpsl-tp {
@@ -759,7 +759,7 @@ main:has(.term-screen) {
   min-height: 38px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--font-caption);
   color: var(--muted);
   border: 1px solid var(--line, #303138);
   border-radius: 8px;
@@ -822,7 +822,7 @@ main:has(.term-screen) {
 }
 
 .term-data-details {
-  font-size: 12px;
+  font-size: var(--font-caption);
   color: var(--muted);
   margin-top: auto;
 }
@@ -919,7 +919,7 @@ main:has(.term-screen) {
 .term-panel-body .term-case-content .orders-table-compact th,
 .term-panel-body .term-case-content .orders-table-compact td {
   padding: 2px 5px;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-tab-body .orders-table-compact th,
 .term-tab-body .orders-table-compact td {
@@ -932,17 +932,17 @@ main:has(.term-screen) {
   justify-content: space-between;
   gap: 8px;
 }
-.term-case-content h2, .term-case-content h3 { font-size: 14px; margin: 0; }
+.term-case-content h2, .term-case-content h3 { font-size: var(--font-body); margin: 0; }
 .term-case-content .table-wrap { max-width: 100%; overflow: auto; }
-.term-case-content .pos-table { font-size: 13px; }
-.term-case-content .pos-table th, .term-case-content .pos-table td { padding: 6px 8px; font-size: 13px; }
+.term-case-content .pos-table { font-size: var(--font-control); }
+.term-case-content .pos-table th, .term-case-content .pos-table td { padding: 6px 8px; font-size: var(--font-control); }
 .term-case-content > label { max-width: 420px; }
 .term-case-content .pos-case-timeline { max-height: none; }
 .term-panel-section > .stack { max-width: none; }
 
 .term-overview-subhead {
   margin: 8px 0 0;
-  font-size: 0.95rem;
+  font-size: var(--font-section);
 }
 .term-overview-journal {
   border-top: 1px solid var(--term-line);
@@ -962,7 +962,7 @@ main:has(.term-screen) {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
-  padding: 14px 16px;
+  padding: var(--card-pad-y) var(--card-pad-x);
   border-bottom: 1px solid var(--term-line);
 }
 .term-ai-dialog-head h2 {
@@ -974,12 +974,12 @@ main:has(.term-screen) {
   padding: 12px 16px 20px;
   flex: 1;
   min-height: 0;
-  font-size: 15px;
+  font-size: var(--font-body);
   line-height: 1.45;
 }
 
 .term-decision-tool {
-  font-size: 14px;
+  font-size: var(--font-body);
   line-height: 1.4;
 }
 .term-decision-toolbar {
@@ -995,7 +995,7 @@ main:has(.term-screen) {
   gap: 2px;
 }
 .term-decision-toolbar-id strong {
-  font-size: 1.05rem;
+  font-size: var(--font-section);
 }
 .term-decision-toolbar-actions {
   display: flex;
@@ -1008,7 +1008,7 @@ main:has(.term-screen) {
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--term-line);
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 600;
 }
 .term-analyze-split {
@@ -1049,7 +1049,7 @@ main:has(.term-screen) {
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-analyze-menu button:hover {
   background: rgba(255, 255, 255, 0.06);
@@ -1061,7 +1061,7 @@ main:has(.term-screen) {
 .term-decision-once,
 .term-decision-empty {
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-stale-banner {
   margin: 0;
@@ -1070,7 +1070,7 @@ main:has(.term-screen) {
   border: 1px solid #c4a35a;
   background: rgba(196, 163, 90, 0.12);
   color: #e0c88a;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-decision-layout {
   display: grid;
@@ -1107,25 +1107,25 @@ main:has(.term-screen) {
   flex-wrap: wrap;
   gap: 8px;
   align-items: baseline;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-verdict-risk { font-weight: 700; }
 .term-verdict-label {
   margin: 2px 0 0;
-  font-size: 11px;
+  font-size: var(--font-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted, #888);
 }
 .term-verdict-action {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: var(--font-title);
   line-height: 1.3;
   font-weight: 700;
 }
 .term-verdict-why {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-control);
   color: var(--muted, #a0a0a8);
 }
 .term-critical-list {
@@ -1139,7 +1139,7 @@ main:has(.term-screen) {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--term-line);
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-critical-list li.is-critical {
   border-color: #c45c5c;
@@ -1166,22 +1166,22 @@ main:has(.term-screen) {
   min-width: 0;
 }
 .term-kpi-row span {
-  font-size: 11px;
+  font-size: var(--font-caption);
   color: var(--muted, #888);
 }
 .term-kpi-row strong {
-  font-size: 1rem;
+  font-size: var(--font-section);
   font-variant-numeric: tabular-nums;
   word-break: break-all;
 }
 .term-kpi-row strong small {
-  font-size: 11px;
+  font-size: var(--font-caption);
   font-weight: 500;
   color: var(--muted, #888);
 }
 .term-kpi-row em {
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--font-caption);
 }
 .term-scenario-tabs {
   display: none;
@@ -1194,7 +1194,7 @@ main:has(.term-screen) {
   color: inherit;
   border-radius: 6px;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--font-caption);
   cursor: pointer;
 }
 .term-scenario-tabs button.active {
@@ -1215,21 +1215,21 @@ main:has(.term-screen) {
 }
 .term-scenario-dl span {
   color: var(--muted, #888);
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-scenario-dl strong {
-  font-size: 13px;
+  font-size: var(--font-control);
   font-weight: 600;
 }
 .term-scenario-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-scenario-table-wrap { overflow-x: auto; }
 .term-scenario-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-scenario-table th,
 .term-scenario-table td {
@@ -1239,7 +1239,7 @@ main:has(.term-screen) {
   vertical-align: top;
 }
 .term-scenario-table thead th {
-  font-size: 12px;
+  font-size: var(--font-caption);
   color: var(--muted, #888);
   font-weight: 600;
 }
@@ -1250,14 +1250,14 @@ main:has(.term-screen) {
 }
 .term-scenario-table .muted {
   display: block;
-  font-size: 10px;
+  font-size: var(--font-caption);
   font-weight: 400;
 }
-.term-side-align { margin: 0; font-size: 12px; }
+.term-side-align { margin: 0; font-size: var(--font-caption); }
 .term-tf-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-tf-table th,
 .term-tf-table td {
@@ -1271,7 +1271,7 @@ main:has(.term-screen) {
 }
 .term-price-line {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-caption);
   display: flex;
   flex-wrap: wrap;
   gap: 4px 6px;
@@ -1281,7 +1281,7 @@ main:has(.term-screen) {
 .term-decision-details summary {
   cursor: pointer;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-evidence-list {
   list-style: none;
@@ -1293,7 +1293,7 @@ main:has(.term-screen) {
 .term-evidence-list li {
   padding: 6px 0;
   border-bottom: 1px solid var(--term-line);
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-evidence-list li p { margin: 2px 0 0; color: var(--muted, #a0a0a8); }
 .term-evidence-list li.is-critical strong { color: #e8a0a0; }
@@ -1335,7 +1335,7 @@ main:has(.term-screen) {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
-    font-size: 13px;
+    font-size: var(--font-control);
   }
   .term-panel-overlay {
     width: 100vw;
@@ -1364,14 +1364,14 @@ main:has(.term-screen) {
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-size-modes button.active {
   color: var(--text, #eee);
   border-color: var(--accent, #7a9e7e);
   background: color-mix(in srgb, var(--accent, #7a9e7e) 18%, transparent);
 }
-.term-size-hint { font-size: 12px; margin: 0; }
+.term-size-hint { font-size: var(--font-caption); margin: 0; }
 .term-cli {
   position: sticky;
   bottom: 0;
@@ -1396,7 +1396,7 @@ main:has(.term-screen) {
   flex: 1;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-cli-suggest {
   list-style: none;
@@ -1418,7 +1418,7 @@ main:has(.term-screen) {
   padding: 6px 4px;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-cli-suggest button.active,
 .term-cli-suggest button:hover {
@@ -1434,7 +1434,7 @@ main:has(.term-screen) {
 .term-cli-log pre {
   margin: 0;
   white-space: pre-wrap;
-  font-size: 11px;
+  font-size: var(--font-caption);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .term-cli-log-error pre { color: #c45c5c; }
@@ -1462,17 +1462,17 @@ main:has(.term-screen) {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .term-coach-list {
   margin: 0;
   padding-left: 1.1rem;
   display: grid;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-kv-compact {
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 .order-ticket .term-size { margin: 8px 0; }
 
@@ -1490,7 +1490,7 @@ main:has(.term-screen) {
 .term-close-all-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-close-all-table th,
 .term-close-all-table td {
@@ -1536,7 +1536,7 @@ main:has(.term-screen) {
   gap: 8px;
 }
 .term-level-role {
-  font-size: 10px;
+  font-size: var(--font-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
   margin-right: 4px;
@@ -1545,7 +1545,7 @@ main:has(.term-screen) {
 .term-level-tp { color: var(--term-tp, #5a9e6f); }
 .term-level-zone { color: var(--term-mark, #c4a35a); }
 .term-coach-kind {
-  font-size: 10px;
+  font-size: var(--font-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted, #888);
@@ -1557,7 +1557,7 @@ main:has(.term-screen) {
   align-items: baseline;
   gap: 4px;
 }
-.term-coach-item p { margin: 0; font-size: 12px; }
+.term-coach-item p { margin: 0; font-size: var(--font-caption); }
 
 .term-risk-badge {
   display: inline-flex;
@@ -1567,7 +1567,7 @@ main:has(.term-screen) {
   padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid var(--term-line);
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-risk-high {
   border-color: #c45c5c;
@@ -1592,7 +1592,7 @@ main:has(.term-screen) {
   padding-left: 1.2rem;
   display: grid;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--font-control);
 }
 .term-risk-profile {
   border: 1px solid var(--term-line);
@@ -1709,7 +1709,7 @@ main:has(.term-screen) {
   margin-bottom: 6px;
 }
 .term-chart-host { width: 100%; min-height: 180px; }
-.term-chart-hint { margin: 6px 0 0; font-size: 12px; }
+.term-chart-hint { margin: 6px 0 0; font-size: var(--font-caption); }
 .term-quant-right {
   display: flex;
   flex-direction: column;
@@ -1735,7 +1735,7 @@ main:has(.term-screen) {
 .term-plan-panel textarea {
   display: grid;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-caption);
   color: var(--muted, #888);
 }
 .term-plan-panel input,
@@ -1749,9 +1749,9 @@ main:has(.term-screen) {
   padding: 6px 8px;
 }
 .term-plan-actions { display: flex; gap: 8px; }
-.term-plan-preview { font-size: 13px; }
+.term-plan-preview { font-size: var(--font-control); }
 .term-protect-banner {
-  font-size: 12px;
+  font-size: var(--font-caption);
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--term-line);
@@ -1764,7 +1764,7 @@ main:has(.term-screen) {
   border-color: #c45c5c;
   color: #e8a0a0;
 }
-.order-ticket-preview-id { margin: 0 0 8px; font-size: 12px; }
+.order-ticket-preview-id { margin: 0 0 8px; font-size: var(--font-caption); }
 .term-risk-cockpit {
   border: 1px solid var(--term-line);
   border-radius: 10px;
@@ -1780,7 +1780,7 @@ main:has(.term-screen) {
 }
 .term-risk-stale {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-caption);
   color: #c9a227;
 }
 .term-risk-share,
@@ -1790,17 +1790,17 @@ main:has(.term-screen) {
 }
 .term-risk-share-title {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 600;
 }
 .term-risk-net {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--font-caption);
 }
 .term-risk-metrics {
   margin: 0;
   padding-left: 1.1rem;
-  font-size: 12px;
+  font-size: var(--font-caption);
   display: grid;
   gap: 2px;
 }
