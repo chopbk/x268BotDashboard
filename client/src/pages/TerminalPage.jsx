@@ -1095,8 +1095,7 @@ export default function TerminalPage() {
     <section className="term-screen">
       <header className="term-header">
         <div className="term-header-title">
-          <h1>Terminal</h1>
-          <p className="muted">Workspace giao dịch (vị thế, lệnh, lịch sử).</p>
+          <h1 title="Workspace giao dịch (vị thế, lệnh, lịch sử).">Terminal</h1>
         </div>
         <div className="term-header-status">
           <span className={stale ? "term-badge term-badge-warn" : "term-badge"}>

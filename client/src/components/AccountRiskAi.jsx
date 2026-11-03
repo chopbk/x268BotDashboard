@@ -68,12 +68,7 @@ export default function AccountRiskAi({ username }) {
 
   return (
     <section className="ledger-ai-risk stack">
-      <h2 className="summary-section-title">AI đánh giá rủi ro</h2>
-      <p className="muted">
-        Phân tích exposure, thiếu SL, tập trung symbol cho <strong>{username}</strong>.
-        Phase 1 chỉ đọc — không tự sửa lệnh.
-        {!profileConfigured ? " · Chưa có ngân sách rủi ro cá nhân." : ""}
-      </p>
+      <h2 className="summary-section-title" title="Phân tích exposure, thiếu SL, tập trung symbol cho . Phase 1 chỉ đọc — không tự sửa lệnh.">AI đánh giá rủi ro</h2>
       <div className="ledger-tools">
         <button type="button" className="ghost" disabled={busy} onClick={() => run(false)}>Rule</button>
         <button type="button" disabled={busy} onClick={() => run(true)}>{busy ? "Đang phân tích…" : "AI đánh giá"}</button>

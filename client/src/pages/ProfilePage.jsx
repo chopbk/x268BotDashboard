@@ -49,8 +49,7 @@ export default function ProfilePage() {
     <section>
       <header className="page-head">
         <div>
-          <h1>Hồ sơ</h1>
-          <p className="muted">Sửa tên, Telegram, số điện thoại hoặc mật khẩu của chính bạn. Email và username đăng nhập không đổi tại đây.</p>
+          <h1 title="Sửa tên, Telegram, số điện thoại hoặc mật khẩu của chính bạn. Email và username đăng nhập không đổi tại đây.">Hồ sơ</h1>
         </div>
       </header>
       <form className="card action-form" onSubmit={onSubmit}>

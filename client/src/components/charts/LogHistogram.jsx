@@ -52,7 +52,7 @@ export default function LogHistogram({
   return (
     <ChartShell
       title={title}
-      subtitle={subtitle}
+      subtitle={subtitle || "Chỉ đếm số log đã ghi nhận — không suy ra số sự cố độc lập hoặc uptime."}
       summary={summary || autoSummary}
       loading={loading}
       error={error}
@@ -127,7 +127,6 @@ export default function LogHistogram({
         <li><span className="dv-share-swatch log-warn" /> Warn</li>
         <li><span className="dv-share-swatch log-info" /> Info</li>
       </ul>
-      <p className="muted">Chỉ đếm số log đã ghi nhận — không suy ra số sự cố độc lập hoặc uptime.</p>
     </ChartShell>
   );
 }

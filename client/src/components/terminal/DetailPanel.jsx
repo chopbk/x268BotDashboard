@@ -350,8 +350,7 @@ export default function DetailPanel({
             ) : null}
 
             {tradeMode === "advanced" && canCreateOrder ? (
-              <div className="term-advanced-ticket">
-                <p className="muted">Dùng `orders.create` — không né quyền bằng endpoint positions.</p>
+              <div className="term-advanced-ticket" title="Dùng orders.create — không né quyền bằng endpoint positions.">
                 <OrderTicket
                   key={`${row.account}-${row.symbol}`}
                   accounts={accounts}

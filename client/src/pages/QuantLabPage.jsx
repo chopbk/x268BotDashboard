@@ -93,10 +93,7 @@ export default function QuantLabPage() {
   return (
     <section className="stack">
       <header>
-        <h1>Quant Lab</h1>
-        <p className="muted">
-          `/research` giữ tracking setup. Lab không cấp live credentials; engine parity-ready mới được expose trade.
-        </p>
+        <h1 title={"/research giữ tracking setup. Lab không cấp live credentials; engine parity-ready mới được expose trade."}>Quant Lab</h1>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
       <button type="button" disabled={busy} onClick={seedStub}>

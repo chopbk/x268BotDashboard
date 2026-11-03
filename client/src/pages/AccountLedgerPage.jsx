@@ -200,8 +200,7 @@ export default function AccountLedgerPage() {
       <section>
         <header className="page-head summary-head">
           <div>
-            <h1>Ví & dòng tiền</h1>
-            <p className="muted">Số dư và income hiện lấy từ futures_profits (live). Chưa có ledger Paper.</p>
+            <h1 title="Số dư và income hiện lấy từ futures_profits (live). Chưa có ledger Paper.">Ví & dòng tiền</h1>
           </div>
         </header>
         <div className="card empty">
@@ -219,12 +218,7 @@ export default function AccountLedgerPage() {
     <section>
       <header className="page-head summary-head">
         <div>
-          <h1>Ví & dòng tiền</h1>
-          <p className="muted">
-            Số dư, income và hiệu suất lấy từ database · theo thời gian phát sinh (ngày UTC).
-            Trading PnL và phí/funding lấy từ income sàn — không cộng lại nếu đã nằm trong income.
-            Nạp/rút/chuyển không phải lợi nhuận. Cập nhật chỉ gọi API sàn cho ngày UTC hôm nay.
-          </p>
+          <h1 title="Số dư, income và hiệu suất lấy từ database · theo thời gian phát sinh (ngày UTC). Trading PnL và phí/funding lấy từ income sàn — không cộng lại nếu đã nằm trong income. Nạp/rút/chuyển không phải lợi nhuận. Cập nhật chỉ gọi API sàn cho ngày UTC hôm nay.">Ví & dòng tiền</h1>
         </div>
         <div className="ledger-tools">
           <label>

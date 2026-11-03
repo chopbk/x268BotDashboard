@@ -264,10 +264,7 @@ export default function DashboardPage() {
     <section>
       <header className="page-head">
         <div>
-          <h1>Tổng quan</h1>
-          <p className="muted" title="Bot bạn sở hữu hoặc được gán · ngày UTC. Đã chốt ≠ lãi lỗ ví ≠ chưa chốt. F5 dùng cache ngắn; bấm Làm mới để tính lại.">
-            Phạm vi bot của bạn · UTC · F5 = cache ngắn
-          </p>
+          <h1 title="Bot bạn sở hữu hoặc được gán · ngày UTC. Đã chốt ≠ lãi lỗ ví ≠ chưa chốt. F5 dùng cache ngắn; bấm Làm mới để tính lại.">Tổng quan</h1>
         </div>
         <div className="row-actions">
           <button type="button" className="ghost" onClick={refreshNow} disabled={refreshing || loading}>
@@ -299,10 +296,9 @@ export default function DashboardPage() {
           {health ? (
             <section className="card dash-block dash-health">
               <div className="dash-health-head">
-                <h2>Process</h2>
+                <h2 title={`Heartbeat trader/monitor trong ~${Math.round((health.thresholdMs || 90000) / 1000)}s. Hiển thị bật ≠ process đang chạy.`}>Process</h2>
                 <Link className="ghost link-btn" to={healthHref}>{canSystem ? "Hệ thống" : "Lịch sử"}</Link>
               </div>
-              <p className="muted">Heartbeat trader/monitor trong ~{Math.round((health.thresholdMs || 90000) / 1000)}s. Hiển thị bật ≠ process đang chạy.</p>
               <div className="dash-chips">
                 <span className="dash-chip health-ok">OK {health.ok}</span>
                 <span className="dash-chip health-warn">Stale {health.stale}</span>
@@ -445,10 +441,9 @@ export default function DashboardPage() {
           {openRisk?.available && openRisk.top?.length ? (
             <section className="card dash-block">
               <div className="dash-health-head">
-                <h2>Rủi ro đang mở</h2>
+                <h2 title="Top theo |uPnL| từ sổ Redis — không gọi sàn tại đây. Cần sổ mới thì mở Terminal.">Rủi ro đang mở</h2>
                 <Link className="ghost link-btn" to="/terminal">Terminal</Link>
               </div>
-              <p className="muted">Top theo |uPnL| từ sổ Redis — không gọi sàn tại đây. Cần sổ mới thì mở Position.</p>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -477,11 +472,7 @@ export default function DashboardPage() {
           ) : null}
 
           <section className="card dash-block">
-            <h2>Việc cần xử lý</h2>
-            <p className="muted">
-              Tóm tắt lỗ ví, uPnL lớn, lỗi sàn, heartbeat, signal lỗ, config/API — không liệt kê “đã có vị thế”.
-              Ngày UTC. AI chỉ viết lại từ số liệu server.
-            </p>
+            <h2 title="Tóm tắt lỗ ví, uPnL lớn, lỗi sàn, heartbeat, signal lỗ, config/API — không liệt kê “đã có vị thế”. Ngày UTC. AI chỉ viết lại từ số liệu server.">Việc cần xử lý</h2>
             <div className="row-actions">
               <button type="button" onClick={sendToAi} disabled={aiBusy}>{aiBusy ? "Đang gửi…" : ai?.configured ? "Viết lại bằng AI" : "Sao chép prompt"}</button>
               {aiItems ? (
@@ -522,10 +513,9 @@ export default function DashboardPage() {
           {activity.length ? (
             <section className="card dash-block">
               <div className="dash-health-head">
-                <h2>Hoạt động vận hành</h2>
+                <h2 title="Lỗi sàn / signal gỡ — đóng lệnh xem ở Giao dịch gần đây.">Hoạt động vận hành</h2>
                 {canLogs ? <Link className="ghost link-btn" to="/logs?kind=runtime">Lịch sử</Link> : null}
               </div>
-              <p className="muted">Lỗi sàn / signal gỡ — đóng lệnh xem ở Giao dịch gần đây.</p>
               <ul className="dash-list">
                 {activity.map((item, index) => (
                   <li key={`act-${item.kind}-${index}-${item.href}`}>

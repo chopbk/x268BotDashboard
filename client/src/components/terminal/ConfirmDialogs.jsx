@@ -138,12 +138,16 @@ export function CloseAllConfirmDialog({ confirm, busy, formError, onChange, onCa
     <div className="modal-backdrop term-modal" onClick={() => { if (!busy) onCancel(); }}>
       <div className="modal-card stack term-dialog term-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="term-close-all-title" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2 id="term-close-all-title">Đóng toàn bộ (bộ lọc)</h2>
+          <h2
+            id="term-close-all-title"
+            title="Paper/pending đã bỏ qua. Không đóng account ngoài bộ lọc. Gửi lần lượt POSITION_CLOSE MARKET · quantityMode PERCENT/ALL. Dừng nếu một lệnh lỗi (các lệnh trước có thể đã gửi)."
+          >
+            Đóng toàn bộ (bộ lọc)
+          </h2>
           <button type="button" disabled={busy} onClick={onCancel}>Huỷ</button>
         </header>
         <p className="muted">
-          {items.length} vị thế live · mỗi dòng đóng <strong>{percent}%</strong> size của chính nó.
-          Paper/pending đã bỏ qua. Không đóng account ngoài bộ lọc.
+          {items.length} vị thế live · mỗi dòng đóng <strong>{percent}%</strong> size
         </p>
 
         <div className="term-percents" role="group" aria-label="Chọn % đóng mỗi vị thế">
@@ -207,7 +211,6 @@ export function CloseAllConfirmDialog({ confirm, busy, formError, onChange, onCa
         </div>
 
         {formError ? <p className="form-error">{formError}</p> : null}
-        <p className="muted">Gửi lần lượt POSITION_CLOSE MARKET · quantityMode PERCENT/ALL. Dừng nếu một lệnh lỗi (các lệnh trước có thể đã gửi).</p>
         <div className="term-dialog-actions">
           <button type="button" className="ghost" disabled={busy} onClick={onCancel}>Giữ lệnh</button>
           <button type="button" className="term-primary" disabled={busy || !items.length} onClick={onSubmit}>
@@ -245,7 +248,16 @@ export function TpslConfirmDialog({ draft, busy, formError, onChange, onCancel, 
         onSubmit={(e) => { e.preventDefault(); onSubmit(); }}
       >
         <header>
-          <h2 id="term-tpsl-title">Position TP/SL</h2>
+          <h2
+            id="term-tpsl-title"
+            title={
+              draft.tab === "trailing"
+                ? "TRAILING_STOP_MARKET + closePosition qua Algo Order API."
+                : "Algo TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại bị hủy trước."
+            }
+          >
+            Position TP/SL
+          </h2>
           <button type="button" disabled={busy} onClick={onCancel}>Đóng</button>
         </header>
         <p className="muted">
@@ -358,7 +370,6 @@ export function TpslConfirmDialog({ draft, busy, formError, onChange, onCancel, 
               </div>
             </div>
             <PreviewBlock title="Preview nếu chạm TP/SL (ước tính)" preview={preview} />
-            <p className="muted">Algo TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại bị hủy trước.</p>
           </>
         )}
 
@@ -381,7 +392,7 @@ export function ReverseConfirmDialog({ confirm, busy, onCancel, onSubmit }) {
     <div className="modal-backdrop term-modal" onClick={() => { if (!busy) onCancel(); }}>
       <div className="modal-card stack term-dialog" role="dialog" aria-modal="true" aria-labelledby="term-rev-title" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2 id="term-rev-title">Xác nhận đảo chiều</h2>
+          <h2 id="term-rev-title" title="Nếu bước mở lỗi sau khi đóng: vị thế có thể flat — không tự mở lại phía cũ.">Xác nhận đảo chiều</h2>
           <button type="button" disabled={busy} onClick={onCancel}>Huỷ</button>
         </header>
         <p>
@@ -391,7 +402,6 @@ export function ReverseConfirmDialog({ confirm, busy, onCancel, onSubmit }) {
         </p>
         <PreviewBlock preview={confirm.preview} title="Bước 1 — đóng" />
         <PreviewBlock preview={confirm.openPreview} title="Bước 2 — mở đối ứng" />
-        <p className="muted">Nếu bước mở lỗi sau khi đóng: vị thế có thể flat — không tự mở lại phía cũ.</p>
         <div className="term-dialog-actions">
           <button type="button" className="ghost" disabled={busy} onClick={onCancel}>Giữ lệnh</button>
           <button type="button" className="term-primary" disabled={busy} onClick={onSubmit}>{busy ? "Đang gửi…" : "Xác nhận đảo chiều"}</button>
@@ -435,10 +445,9 @@ export function MonitorDraftDialog({ draft, accounts, busy, onChange, onCancel, 
         onSubmit={(e) => { e.preventDefault(); onSubmit(); }}
       >
         <header>
-          <h2>Thêm monitor</h2>
+          <h2 title="Tạo bản ghi monitor — không mở/đóng vị thế sàn.">Thêm monitor</h2>
           <button type="button" disabled={busy} onClick={onCancel}>Đóng</button>
         </header>
-        <p className="muted">Tạo bản ghi monitor — không mở/đóng vị thế sàn.</p>
         <label>Tài khoản
           <select value={draft.account} required onChange={(e) => onChange({ ...draft, account: e.target.value, env: "" })}>
             <option value="">Chọn</option>

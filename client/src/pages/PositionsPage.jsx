@@ -805,8 +805,7 @@ export default function PositionsPage() {
     <section className="stack pos-screen">
       <header className="pos-header-row">
         <div>
-          <h1>Position</h1>
-          <p className="muted">Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). Cập nhật sàn chỉ lấy sổ live (position → orders), lần lượt từng account. PnL ghi nhận / income / trades tải khi mở Chi tiết (cache vài phút). Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.</p>
+          <h1 title="Mỗi vị thế hai dòng. PnL mở = Size × (mark − entry). Cập nhật sàn chỉ lấy sổ live (position → orders), lần lượt từng account. PnL ghi nhận / income / trades tải khi mở Chi tiết (cache vài phút). Size và entry lấy từ sổ sàn; khi chưa có sổ thì lấy bản monitor lưu lần cuối.">Position</h1>
         </div>
         {canOpen && tab === "open" ? (
           <button type="button" className="pos-tpsl-confirm" onClick={() => askOpenTrade()}>Mở position</button>
@@ -1103,7 +1102,16 @@ export default function PositionsPage() {
             onSubmit={(event) => { event.preventDefault(); submitTpsl(); }}
           >
             <header>
-              <h2 id="tpsl-title">Position TP/SL</h2>
+              <h2
+                id="tpsl-title"
+                title={
+                  tpslDraft.tab === "trailing"
+                    ? "TRAILING_STOP_MARKET + closePosition qua Algo Order API."
+                    : "Algo Order TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại bị hủy trước."
+                }
+              >
+                Position TP/SL
+              </h2>
               <button type="button" disabled={savingTpsl} onClick={() => setTpslDraft(null)}>Đóng</button>
             </header>
             <p className="muted">
@@ -1167,7 +1175,6 @@ export default function PositionsPage() {
                     monitors: tpslDraft.monitors,
                   })}
                 />
-                <p className="muted">Algo Order TAKE_PROFIT_MARKET / STOP_MARKET (closePosition). Lệnh cũ cùng loại bị hủy trước.</p>
               </>
             ) : (
               <>
@@ -1202,7 +1209,6 @@ export default function PositionsPage() {
                   </span>
                 </label>
                 {tpslDraft.hasTrailing ? <p className="muted">Đang có trailing {fmt(tpslDraft.callbackRate, 2)}% trên sàn — Confirm sẽ thay lệnh cũ.</p> : null}
-                <p className="muted">TRAILING_STOP_MARKET + closePosition qua Algo Order API.</p>
               </>
             )}
             <div className="pos-inline">
@@ -1219,7 +1225,7 @@ export default function PositionsPage() {
         <div className="modal-backdrop" onClick={() => { if (!closing) setCloseConfirm(null); }}>
           <div className="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="close-pos-title" onClick={(event) => event.stopPropagation()}>
             <header>
-              <h2 id="close-pos-title">Xác nhận đóng vị thế</h2>
+              <h2 id="close-pos-title" title="Phí là ước tính taker mặc định, không phải phí VIP thật. Limit chưa khớp thì position vẫn còn.">Xác nhận đóng vị thế</h2>
               <button type="button" disabled={closing} onClick={() => setCloseConfirm(null)}>Huỷ</button>
             </header>
             <p>
@@ -1234,7 +1240,6 @@ export default function PositionsPage() {
                   : ` · qty ${closeConfirm.quantity}`}
             </p>
             <PreviewBlock preview={closeConfirm.preview} title="Preview trước khi gửi" />
-            <p className="muted">Phí là ước tính taker mặc định, không phải phí VIP thật. Limit chưa khớp thì position vẫn còn.</p>
             <div className="pos-inline">
               <button type="button" className="ghost" disabled={closing} onClick={() => setCloseConfirm(null)}>Giữ lệnh</button>
               <button type="button" disabled={closing} onClick={submitClose}>{closing ? "Đang gửi…" : "Xác nhận đóng"}</button>
@@ -1246,7 +1251,7 @@ export default function PositionsPage() {
         <div className="modal-backdrop" onClick={() => { if (!reversing) setReverseConfirm(null); }}>
           <div className="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="reverse-title" onClick={(event) => event.stopPropagation()}>
             <header>
-              <h2 id="reverse-title">Xác nhận Reverse</h2>
+              <h2 id="reverse-title" title="Hai lệnh liên tiếp; nếu mở thất bại sau khi đóng, vị thế có thể về flat.">Xác nhận Reverse</h2>
               <button type="button" disabled={reversing} onClick={() => setReverseConfirm(null)}>Huỷ</button>
             </header>
             <p>
@@ -1256,7 +1261,6 @@ export default function PositionsPage() {
             </p>
             <PreviewBlock preview={reverseConfirm.preview} title="Bước 1 — đóng vị thế hiện tại" />
             <PreviewBlock preview={reverseConfirm.openPreview} title="Bước 2 — mở phía đối ứng" />
-            <p className="muted">Hai lệnh liên tiếp; nếu mở thất bại sau khi đóng, vị thế có thể về flat.</p>
             <div className="pos-inline">
               <button type="button" className="ghost" disabled={reversing} onClick={() => setReverseConfirm(null)}>Giữ lệnh</button>
               <button type="button" disabled={reversing} onClick={submitReverse}>{reversing ? "Đang gửi…" : "Xác nhận reverse"}</button>
@@ -1355,10 +1359,9 @@ export default function PositionsPage() {
             }
           }}>
             <header>
-              <h2>Thêm monitor position</h2>
+              <h2 title="Tạo bản ghi monitor. Không mở thêm lệnh trên sàn. Bot nhận bản ghi ở vòng kiểm tra kế tiếp và dùng trade config của env.">Thêm monitor position</h2>
               <button type="button" onClick={() => setDraft(null)}>Đóng</button>
             </header>
-            <p className="muted">Tạo bản ghi monitor. Không mở thêm lệnh trên sàn. Bot nhận bản ghi ở vòng kiểm tra kế tiếp và dùng trade config của env.</p>
             <label>Tài khoản
               <select value={draft.account} onChange={(event) => setDraft({ ...draft, account: event.target.value, env: "" })} required>
                 <option value="">Chọn</option>

@@ -216,13 +216,7 @@ export default function SystemHealthPage() {
   return (
     <section>
       <header className="page-head">
-        <h1>Hệ thống</h1>
-        <p className="muted">
-          Heartbeat process bot, MongoDB, Redis và snapshot. Quá 90 giây không có nhịp là mất kết nối.
-          {canProcessView
-            ? " Để sửa env / restart: bấm một dòng Process (hoặc nút Sửa) → tab Env → Preview / Lưu / Restart."
-            : " Chỉ xem health. Cần processes.edit / processes.restart (hoặc role ops/admin) để sửa env."}
-        </p>
+        <h1 title="Heartbeat process bot, MongoDB, Redis và snapshot. Quá 90 giây không có nhịp là mất kết nối.">Hệ thống</h1>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? <p className="muted">Đang tải…</p> : null}
@@ -862,7 +856,7 @@ function ProcessAdminPanel({ row, canEdit, canRestart, onClose, onChanged }) {
               </button>
             </div>
             {!canEdit && !canRestart ? (
-              <p className="muted">Chỉ xem. Cần processes.edit để sửa env, processes.restart để restart.</p>
+              <p className="muted" title="Cần processes.edit để sửa env, processes.restart để restart.">Chỉ xem</p>
             ) : null}
 
             {Object.entries(grouped).map(([name, entries]) => {

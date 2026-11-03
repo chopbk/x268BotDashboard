@@ -34,8 +34,7 @@ export default function ChartShell({
     <section className={`dv-shell card height-${height} ${className}`}>
       <header className="dv-shell-head">
         <div className="dv-shell-titles">
-          {title ? <h2>{title}</h2> : null}
-          {subtitle ? <p className="muted dv-shell-sub">{subtitle}</p> : null}
+          {title ? <h2 title={subtitle || undefined}>{title}</h2> : null}
           {summary ? <p className="dv-shell-summary">{summary}</p> : null}
           {refreshing ? <p className="muted">Đang cập nhật…</p> : null}
         </div>

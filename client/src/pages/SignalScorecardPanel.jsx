@@ -205,12 +205,19 @@ export default function SignalScorecardPanel({ onFindConfig }) {
       {error ? <p className="form-error">{error}</p> : null}
 
       <section className="card">
-        <h2>Provider Scorecard</h2>
-        <p className="muted">
-          Xếp hạng channel bằng số thật: feed từ signal_infos, lệnh/PnL từ account_statics.
-          {data?.from ? ` Từ ${fmtTime(data.from)}` : ""}{data?.to ? ` đến ${fmtTime(data.to)}` : ""}.
-        </p>
-        <p className="muted">{formula.feed}. {formula.trades}. {formula.win}. {formula.pnl}.</p>
+        <h2
+          title={[
+            "Xếp hạng channel bằng số thật: feed từ signal_infos, lệnh/PnL từ account_statics.",
+            data?.from ? `Từ ${fmtTime(data.from)}` : "",
+            data?.to ? `đến ${fmtTime(data.to)}` : "",
+            formula?.feed,
+            formula?.trades,
+            formula?.win,
+            formula?.pnl,
+          ].filter(Boolean).join(" ")}
+        >
+          Provider Scorecard
+        </h2>
         {!data?.canSeeFeed ? <p className="muted">Thiếu signals.history — cột Feed = 0.</p> : null}
         {!data?.canSeeTrades ? <p className="muted">Thiếu statistics.view — cột lệnh/profit = 0.</p> : null}
         <p>

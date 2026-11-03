@@ -518,43 +518,14 @@ main:has(.config-screen) {
 }
 .page-head > div:first-child { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
 .page-head h1 { line-height: 1.25; margin: 0; }
-/* Mô tả phụ: 1 dòng mặc định (Pro Max progressive disclosure) — hover/focus xem đủ */
-.page-head p.muted,
-.card > p.muted:first-of-type,
-.dash-block > p.muted:first-of-type,
-.dash-cache-meta,
-.dv-shell-sub,
-.mkt-hub-sub,
-.sm-panel-muted,
-.econ-lead,
-.econ-hint,
-.econ-note {
-  font-size: var(--font-caption);
-  line-height: 1.35;
-  margin: 0;
-  max-width: 72ch;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.page-head p.muted:hover,
-.page-head p.muted:focus-visible,
-.card > p.muted:first-of-type:hover,
-.card > p.muted:first-of-type:focus-visible,
-.dash-block > p.muted:first-of-type:hover,
-.dash-block > p.muted:first-of-type:focus-visible,
-.dash-cache-meta:hover,
-.dv-shell-sub:hover,
-.dv-shell-sub:focus-visible,
-.mkt-hub-sub:hover,
-.sm-panel-muted:hover,
-.econ-lead:hover,
-.econ-hint:hover,
-.econ-note:hover {
-  -webkit-line-clamp: unset;
-  display: block;
-  overflow: visible;
+/* Giải thích ô/dữ liệu: chỉ hiện khi hover đề mục (title=) */
+h1[title], h2[title], h3[title],
+.page-head [title],
+.dv-shell-titles h2[title],
+.mkt-hub-header h1[title],
+.summary-stat [title],
+.summary-section-title[title] {
+  cursor: help;
 }
 
 .config-head {

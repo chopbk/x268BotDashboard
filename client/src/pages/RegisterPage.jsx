@@ -37,8 +37,7 @@ export default function RegisterPage() {
     <div className="screen login-screen">
       <form className="card login-card" onSubmit={onSubmit}>
         <p className="eyebrow">Web Bot</p>
-        <h1>Đăng ký</h1>
-        <p className="muted">Tài khoản cần được admin cấp quyền trước khi sử dụng bot.</p>
+        <h1 title="Tài khoản cần được admin cấp quyền trước khi sử dụng bot.">Đăng ký</h1>
         <label>
           Tên
           <input

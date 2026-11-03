@@ -137,7 +137,6 @@ function RuntimeLogs({ initialCategory = "" }) {
   const totalPages = Math.max(1, Math.ceil(total / limit));
   return (
     <>
-      <p className="muted">Lỗi runtime của binance-bot, giữ 30 ngày. Kỳ mặc định 24 giờ UTC; histogram aggregate toàn query (không lấy từ trang bảng).</p>
       <form
         className="audit-search ledger-tools"
         onSubmit={(event) => {
@@ -334,8 +333,7 @@ export default function AuditLogsPage() {
     <section>
       <header className="page-head audit-head">
         <div>
-          <h1>Log</h1>
-          <p className="muted">{kind === "runtime" ? "Lỗi vận hành của bot." : "Lịch sử chỉnh sửa trên web, không chứa mật khẩu hoặc secret."}</p>
+          <h1 title={kind === "runtime" ? "Lỗi vận hành của bot." : "Lịch sử chỉnh sửa trên web, không lộ mật khẩu hoặc secret."}>Log</h1>
         </div>
       </header>
       <div className="history-tabs">

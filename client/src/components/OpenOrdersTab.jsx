@@ -403,7 +403,10 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
             {confirmCancel ? (
                 <div className="modal-backdrop" role="presentation" onClick={() => !cancelling && !batchBusy && setConfirmCancel(null)}>
                     <div className="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="cancel-order-title" onClick={(e) => e.stopPropagation()}>
-                        <h2 id="cancel-order-title">
+                        <h2
+                            id="cancel-order-title"
+                            title={confirmCancel.mode === "batch" ? "Chỉ huỷ các dòng đang chọn trên bảng." : undefined}
+                        >
                             {confirmCancel.mode === "batch"
                                 ? `Huỷ ${confirmCancel.count} lệnh đã chọn?`
                                 : `Huỷ ${confirmCancel.order.kind === "algo" ? "algo" : "order"} ${confirmCancel.order.symbol}?`}
@@ -412,9 +415,7 @@ export default function OpenOrdersTab({ params, go, accounts: parentAccounts }) 
                             <p className="muted">
                                 {confirmCancel.order.username} · {confirmCancel.order.type} · #{confirmCancel.order.orderId}
                             </p>
-                        ) : (
-                            <p className="muted">Chỉ huỷ các dòng đang chọn trên bảng.</p>
-                        )}
+                        ) : null}
                         <div className="modal-actions">
                             <button type="button" className="ghost" disabled={!!cancelling || batchBusy} onClick={() => setConfirmCancel(null)}>
                                 Đóng

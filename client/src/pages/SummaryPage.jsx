@@ -18,9 +18,15 @@ function money(value) {
   return `${number(value, 2)} $`;
 }
 
-function Stat({ label, value, note, tone = "", rank = false, href }) {
+function Stat({ label, value, note, tip, tone = "", rank = false, href }) {
   const body = href ? <Link className="trail-link" to={href}>{value}</Link> : value;
-  return <article className={`card summary-stat ${tone} ${rank ? "summary-rank" : ""}`}><span className="muted">{label}</span><strong>{body}</strong>{note ? <small className="muted">{note}</small> : null}</article>;
+  return (
+    <article className={`card summary-stat ${tone} ${rank ? "summary-rank" : ""}`}>
+      <span className="muted" title={tip || undefined}>{label}</span>
+      <strong>{body}</strong>
+      {note ? <small className="muted">{note}</small> : null}
+    </article>
+  );
 }
 
 function stamp(value) {
@@ -179,8 +185,7 @@ export default function SummaryPage() {
     <section>
       <header className="page-head summary-head">
         <div>
-          <h1>Thống kê tổng hợp</h1>
-          <p className="muted">{audience === "mine" ? "Đang xem user bot bạn sở hữu hoặc được gán." : "Đang xem user bot mà quyền Bot hoặc Account Static của bạn cho phép. Bot private chỉ hiện khi bạn sở hữu hoặc được gán."} Số liệu hiện tại (config đang bật, monitor mở) không cắt theo kỳ thời gian. Số liệu trong kỳ (lệnh, profit, volume, xếp hạng) theo closeTime UTC. Cột profit/balance/ROI bảng user lấy futures_profits.</p>
+          <h1 title="Số liệu hiện tại (config đang bật, monitor mở) không cắt theo kỳ thời gian. Số liệu trong kỳ (lệnh, profit, volume, xếp hạng) theo closeTime UTC. Cột profit/balance/ROI bảng user lấy futures_profits.">Thống kê tổng hợp</h1>
         </div>
         <div className="ledger-tools">
           <label>Phạm vi<select value={audience} onChange={(event) => setQuery({ audience: event.target.value })}><option value="mine">User của tôi</option><option value="system">Toàn hệ thống</option></select></label>
@@ -191,26 +196,38 @@ export default function SummaryPage() {
       {error ? <p className="form-error">{error}</p> : null}
       {!summary && !error ? <p className="muted">Đang tải số liệu…</p> : null}
       {summary ? <>
-        <h2 className="summary-section-title">Hệ thống</h2>
+        <h2 className="summary-section-title" title="Config đang bật và monitor mở không cắt theo kỳ thời gian.">Hệ thống</h2>
         <div className="stats-grid summary-grid">
           <Stat label="User bot" value={number(summary.botCount)} note={`${number(summary.publicBotCount)} public · ${number(summary.privateBotCount)} private`} />
           <Stat label="Account config" value={number(summary.configCount)} note={`${number(summary.activeConfigCount)} đang bật · ${number(summary.inactiveConfigCount)} đang tắt`} />
-          <Stat label="Signal trong kỳ" value={number(summary.signalCount)} note={`Signal đã vào lệnh của user trong phạm vi, theo openTime, không paper · ${number(summary.signalCount24h)} signal trong 24 giờ`} />
-          <Stat label="Position đang mở" value={number(summary.openPositionCount)} note="Monitor Position đang mở, không paper, không cắt theo kỳ" />
+          <Stat
+            label="Signal trong kỳ"
+            value={number(summary.signalCount)}
+            tip="Signal đã vào lệnh của user trong phạm vi, theo openTime, không paper."
+            note={`${number(summary.signalCount24h)} signal trong 24 giờ`}
+          />
+          <Stat
+            label="Position đang mở"
+            value={number(summary.openPositionCount)}
+            tip="Monitor Position đang mở, không paper, không cắt theo kỳ."
+          />
         </div>
-        <h2 className="summary-section-title">Hiệu suất giao dịch</h2>
-        <p className="muted">Nguồn: Account Static, lệnh đã đóng, không paper, theo closeTime. Kỳ {summary.from ? when(summary.from) : "toàn bộ"} → {when(summary.to)}. Tính lúc {when(summary.snapshot?.generatedAt || summary.generatedAt)}{summary.snapshot?.status === "refreshing" ? " · đang làm mới nền" : summary.cached ? " · snapshot MongoDB" : ""}.</p>
+        <h2
+          className="summary-section-title"
+          title={`Nguồn: Account Static, lệnh đã đóng, không paper, theo closeTime. Kỳ ${summary.from ? when(summary.from) : "toàn bộ"} → ${when(summary.to)}. Tính lúc ${when(summary.snapshot?.generatedAt || summary.generatedAt)}${summary.snapshot?.status === "refreshing" ? " · đang làm mới nền" : summary.cached ? " · snapshot MongoDB" : ""}.`}
+        >
+          Hiệu suất giao dịch
+        </h2>
         <div className="stats-grid summary-grid">
           <Stat label="Tổng giao dịch" value={number(summary.tradeCount)} note={`${number(summary.wins)} thắng · ${number(summary.losses)} thua`} />
-          <Stat label="Win rate" value={`${number(summary.winRate, 1)}%`} note="Account Static, không gồm paper" />
-          <Stat label="Profit hôm nay" value={money(summary.profitToday)} tone={summary.profitToday < 0 ? "negative" : "positive"} note="Account Static, lệnh đóng hôm nay theo UTC" />
-          <Stat label="Profit trong kỳ" value={money(summary.profit)} tone={summary.profit < 0 ? "negative" : "positive"} note="Account Static, cùng kỳ closeTime ở trên" />
-          <Stat label="Volume trong kỳ" value={money(summary.volume)} note="Account Static, không lấy từ signal_infos" />
-          <Stat label="Profit Long" value={money(summary.longProfit)} tone={summary.longProfit < 0 ? "negative" : "positive"} note="Cùng nguồn và kỳ" />
-          <Stat label="Profit Short" value={money(summary.shortProfit)} tone={summary.shortProfit < 0 ? "negative" : "positive"} note="Cùng nguồn và kỳ" />
+          <Stat label="Win rate" value={`${number(summary.winRate, 1)}%`} tip="Account Static, không gồm paper." />
+          <Stat label="Profit hôm nay" value={money(summary.profitToday)} tone={summary.profitToday < 0 ? "negative" : "positive"} tip="Account Static, lệnh đóng hôm nay theo UTC." />
+          <Stat label="Profit trong kỳ" value={money(summary.profit)} tone={summary.profit < 0 ? "negative" : "positive"} tip="Account Static, cùng kỳ closeTime ở trên." />
+          <Stat label="Volume trong kỳ" value={money(summary.volume)} tip="Account Static, không lấy từ signal_infos." />
+          <Stat label="Profit Long" value={money(summary.longProfit)} tone={summary.longProfit < 0 ? "negative" : "positive"} tip="Cùng nguồn và kỳ." />
+          <Stat label="Profit Short" value={money(summary.shortProfit)} tone={summary.shortProfit < 0 ? "negative" : "positive"} tip="Cùng nguồn và kỳ." />
         </div>
-        <h2 className="summary-section-title">Xếp hạng trong kỳ</h2>
-        <p className="muted">Thẻ tín hiệu và symbol theo Account Static. Bảng user lấy một ví futures_profits cho mỗi user, không cộng các config. Profit là tổng ngày trong kỳ, balance là số dư ngày cuối, ROI là profit kỳ chia số dư đầu kỳ. Bấm tên để mở giao dịch, config hoặc lịch sử signal của đúng kỳ.</p>
+        <h2 className="summary-section-title" title="Thẻ tín hiệu và symbol theo Account Static. Bảng user lấy một ví futures_profits cho mỗi user, không cộng các config. Profit là tổng ngày trong kỳ, balance là số dư ngày cuối, ROI là profit kỳ chia số dư đầu kỳ. Bấm tên để mở giao dịch, config hoặc lịch sử signal của đúng kỳ.">Xếp hạng trong kỳ</h2>
         <div className="stats-grid summary-grid">
           <Stat rank label="Tín hiệu tốt nhất" value={rankValue(summary.bestSignal)} href={signalHref(summary.bestSignal?.name)} note={rankNote(summary.bestSignal)} tone={rankTone(summary.bestSignal)} />
           <Stat rank label="Tín hiệu kém nhất" value={rankValue(summary.worstSignal)} href={signalHref(summary.worstSignal?.name)} note={rankNote(summary.worstSignal)} tone={rankTone(summary.worstSignal)} />
@@ -278,8 +295,7 @@ export default function SummaryPage() {
           </ChartShell>
         </div>
 
-        <h2 className="summary-section-title">Bảng xếp hạng user</h2>
-        <p className="muted">Bấm tiêu đề cột để sắp xếp. Bấm lại để đảo chiều. Chart phía trên dùng cùng userRanks (ví) và longProfit/shortProfit (Static) — không trộn hai nguồn thành một tổng.</p>
+        <h2 className="summary-section-title" title="Bấm tiêu đề cột để sắp xếp. Bấm lại để đảo chiều. Chart phía trên dùng cùng userRanks (ví) và longProfit/shortProfit (Static) — không trộn hai nguồn thành một tổng.">Bảng xếp hạng user</h2>
         {sortedUsers(summary.userRanks, sort.key, sort.dir).length ? (
           <div className="table-wrap signal-table">
             <table>

@@ -160,11 +160,7 @@ export default function UserApiDetailPage() {
         <Link to="/user-apis">← User API</Link>
       </p>
       <header className="page-head">
-        <h1>{isNew ? "Thêm User API" : username}</h1>
-        <p className="muted">
-          Key không được hiện lại. Khi sửa, để trống API key, secret hoặc passphrase nghĩa là giữ giá trị cũ.
-          Tên user phải trùng user bot trong RUN. Bot chỉ nhận key mới sau khi restart.
-        </p>
+        <h1 title="Key không được hiện lại. Khi sửa, để trống API key, secret hoặc passphrase nghĩa là giữ giá trị cũ. Tên user phải trùng user bot trong RUN. Bot chỉ nhận key mới sau khi restart.">{isNew ? "Thêm User API" : username}</h1>
       </header>
       {loading ? <p className="muted">Đang tải…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}

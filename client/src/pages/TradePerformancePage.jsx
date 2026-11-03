@@ -294,7 +294,7 @@ function TradePanel({ row, onClose, configHref, historyHref, ledgerHref, trigger
   if (!row) {
     return (
       <aside className="perf-panel card" ref={panelRef} aria-label="Chi tiết lệnh">
-        <header><h2>Chi tiết lệnh</h2><button type="button" className="ghost" onClick={onClose}>Đóng</button></header>
+        <header><h2 title="Nhận xét theo quy tắc — mô tả số liệu, không khuyên tăng vốn.">Chi tiết lệnh</h2><button type="button" className="ghost" onClick={onClose}>Đóng</button></header>
         <p className="muted">Đang tải…</p>
       </aside>
     );
@@ -916,16 +916,15 @@ export default function TradePerformancePage({ mode = "overview" }) {
           <header className="page-head perf-head">
             <div className="perf-head-row">
               <div>
-                <h1>{isOverview ? "Tổng quan lệnh" : "Hiệu quả lệnh"}</h1>
-                <p className="muted">
-                  {isOverview
-                    ? <>KPI, biểu đồ và xếp hạng nhóm · sổ <strong>{book === "paper" ? "Paper" : "Live"}</strong> · {timeField === "open" ? "openTime" : "closeTime"} UTC. Danh sách từng lệnh nằm tab Hiệu quả lệnh.</>
-                    : <>Danh sách lệnh chi tiết theo bộ lọc · sổ <strong>{book === "paper" ? "Paper" : "Live"}</strong> · {timeField === "open" ? "openTime" : "closeTime"} UTC. KPI/chart tổng hợp nằm tab Tổng quan.</>}
-                  {" "}PnL = profit Account Static
-                  {book === "paper"
-                    ? " · Paper: profit/cost mô phỏng; phí/funding/nạp-rút: Chưa tính."
-                    : " · Live: phí/funding theo cách bot ghi vào profit."}
-                </p>
+                <h1
+                  title={
+                    isOverview
+                      ? `KPI, biểu đồ và xếp hạng nhóm · sổ ${book === "paper" ? "Paper" : "Live"} · ${timeField === "open" ? "openTime" : "closeTime"} UTC. Danh sách từng lệnh nằm tab Hiệu quả lệnh. PnL = profit Account Static${book === "paper" ? " · Paper: profit/cost mô phỏng; phí/funding/nạp-rút: Chưa tính." : " · Live: phí/funding theo cách bot ghi vào profit."}`
+                      : `Danh sách lệnh chi tiết theo bộ lọc · sổ ${book === "paper" ? "Paper" : "Live"} · ${timeField === "open" ? "openTime" : "closeTime"} UTC. KPI/chart tổng hợp nằm tab Tổng quan. PnL = profit Account Static${book === "paper" ? " · Paper: profit/cost mô phỏng; phí/funding/nạp-rút: Chưa tính." : " · Live: phí/funding theo cách bot ghi vào profit."}`
+                  }
+                >
+                  {isOverview ? "Tổng quan lệnh" : "Hiệu quả lệnh"}
+                </h1>
               </div>
               <div className="perf-head-actions">
                 <span className="muted">{data?.generatedAt ? `Cập nhật ${fmtTime(data.generatedAt)}` : "—"}{refreshing ? " · đang cập nhật" : ""}</span>
@@ -1113,7 +1112,6 @@ export default function TradePerformancePage({ mode = "overview" }) {
 
               <aside className="card perf-insights">
                 <h2>Điểm đáng chú ý</h2>
-                <p className="muted">Nhận xét theo quy tắc — mô tả số liệu, không khuyên tăng vốn.</p>
                 {(data?.insights || []).length === 0 ? <p className="muted">Không đủ điều kiện để tạo nhận xét.</p> : null}
                 <ul>
                   {(data?.insights || []).map((item) => (
@@ -1212,16 +1210,15 @@ export default function TradePerformancePage({ mode = "overview" }) {
 
               <section className="card perf-trades">
                 <div className="perf-trades-head">
-                  <h2>Danh sách lệnh</h2>
-                  <p className="muted">
-                    Phân trang phía server · {data?.listTotal ?? data?.total ?? 0} lệnh
-                    {listDay ? ` · ngày đóng ${listDay}` : ""}
-                    {listSignal ? ` · signal ${listSignal}` : ""}
-                    {listEnv ? ` · config ${listEnv}` : ""}
-                    {listSymbol ? ` · symbol ${listSymbol}` : ""}
-                    {chartSelection ? " · KPI/chart nền xem ở tab Tổng quan." : ""}.
-                  </p>
-                </div>
+                    <h2 title="Phân trang phía server. KPI/chart nền xem ở tab Tổng quan.">Danh sách lệnh</h2>
+                    <p className="muted">
+                      {data?.listTotal ?? data?.total ?? 0} lệnh
+                      {listDay ? ` · ngày đóng ${listDay}` : ""}
+                      {listSignal ? ` · signal ${listSignal}` : ""}
+                      {listEnv ? ` · config ${listEnv}` : ""}
+                      {listSymbol ? ` · symbol ${listSymbol}` : ""}
+                    </p>
+                  </div>
                 <div className="perf-trades-layout">
                   <div className="table-wrap perf-table">
                     <table>
@@ -1509,8 +1506,7 @@ export default function TradePerformancePage({ mode = "overview" }) {
           <div className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className="page-head">
               <div>
-                <h2>Config {peek.username}/{peek.env}</h2>
-                <p className="muted">Chỉ xem/copy cấu hình — không áp dụng hay bật giao dịch live.</p>
+                <h2 title="Chỉ xem/copy cấu hình — không áp dụng hay bật giao dịch live.">Config {peek.username}/{peek.env}</h2>
               </div>
               <button type="button" className="ghost" onClick={() => setPeek(null)}>Đóng</button>
             </header>

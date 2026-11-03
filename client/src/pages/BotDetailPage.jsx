@@ -347,7 +347,7 @@ export default function BotDetailPage() {
           items={[{ label: "Bot", to: location.state?.returnTo || "/bots" }, { label: bot?.username || username }]}
           returnTo={location.state?.returnTo || ""}
         />
-        <h1>{bot?.username || username}</h1>
+        <h1 title="Bấm Cấu hình hoặc Static trước tên config để xem nhanh trong popup. Sửa vẫn mở đủ mục.">{bot?.username || username}</h1>
         {pendingCount > 0 ? (
           <p className="dirty-note muted">
             Đang sửa {pendingCount} mục.
@@ -363,7 +363,6 @@ export default function BotDetailPage() {
             }}>Huỷ thay đổi</button>
           </p>
         ) : null}
-        <p className="muted">Bấm Cấu hình hoặc Static trước tên config để xem nhanh trong popup. Sửa vẫn mở đủ mục.</p>
         {canViewSignalHistory ? <p><Link to="/signal-search?tab=history">Xem lịch sử signal hệ thống</Link></p> : null}
         {canViewStatistics ? <p><Link to={`/signals?view=statics&username=${encodeURIComponent(username)}`}>Xem Account Static của User bot</Link></p> : null}
       </header>
@@ -560,8 +559,7 @@ export default function BotDetailPage() {
                 Signal
                 <input value={quick.signals} placeholder="Giữ nguyên" onChange={(event) => setQuick((prev) => ({ ...prev, signals: event.target.value }))} />
               </label>
-              <button type="submit" disabled={busy}>Áp dụng {picked.size} config</button>
-              <p className="muted">Ô để trống giữ nguyên. Signal điền vào sẽ thay cả danh sách signal. Lưu xong tự đồng bộ lên bot qua MQTT.</p>
+              <button type="submit" disabled={busy} title="Ô để trống giữ nguyên. Signal điền vào sẽ thay cả danh sách signal. Lưu xong tự đồng bộ lên bot qua MQTT.">Áp dụng {picked.size} config</button>
             </form>
           ) : null}
           {accounts.length > 0 ? (

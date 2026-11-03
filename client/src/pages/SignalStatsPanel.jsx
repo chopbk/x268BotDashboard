@@ -97,7 +97,7 @@ export default function SignalStatsPanel({ onFindConfig }) {
           <Link className="trail-link" to={`/config-lab/${encodeURIComponent(fromUser)}/${encodeURIComponent(fromEnv)}`}>Mở config</Link>
           <Link className="trail-link" to={historyHref}>Lịch sử signal</Link>
         </p>
-      ) : <p className="muted">Nguồn: log parse 7 ngày và log tự gỡ 14 ngày{loadedAt ? `. Tải lúc ${fmtTime(loadedAt)}` : ""}.</p>}
+      ) : loadedAt ? <p className="muted" title="Nguồn: log parse 7 ngày và log tự gỡ 14 ngày.">Tải lúc {fmtTime(loadedAt)}</p> : null}
 
       <div className="dv-chart-grid two" style={{ marginBottom: 16 }}>
         <CountBars
@@ -149,15 +149,16 @@ export default function SignalStatsPanel({ onFindConfig }) {
       ) : null}
 
       <section className="card">
-        <h2>Tổng quan</h2>
-        <p className="muted">
+        <h2 title="Bảng phía dưới lấy account bạn sở hữu hoặc được gán. Phần lỗ lãi gồm mọi user bạn được xem, ngày UTC cùng sổ /income. Lỗi parse và lần bị gỡ chỉ có sau khi listener và monitor chạy bản mới.">
+          Tổng quan
+        </h2>
+        <p>
           {summary.channels || 0} channel
           {" · "}{summary.signals || 0} signal đang dùng
           {" · "}{summary.withoutChannel || 0} signal chưa có channel
           {" · "}{summary.parseErrors || 0} lỗi parse trong 7 ngày
           {" · "}{summary.removed || 0} lần bị gỡ trong 14 ngày
         </p>
-        <p className="muted">Bảng phía dưới lấy account bạn sở hữu hoặc được gán. Phần lỗ lãi gồm mọi user bạn được xem, ngày UTC cùng sổ /income. Lỗi parse và lần bị gỡ chỉ có sau khi listener và monitor chạy bản mới.</p>
         {performance ? (
           <>
             <p>Tài khoản lỗ hôm nay</p>
@@ -178,11 +179,9 @@ export default function SignalStatsPanel({ onFindConfig }) {
             )) : <p className="muted">Không có signal dưới 50% trong 7 ngày.</p>}
           </>
         ) : <p className="muted">Cần quyền xem thống kê để thấy signal lỗ và win rate.</p>}
-        {signalSet.size || fromEnv ? <p className="muted">Số tổng phía trên là cả user. Các bảng bên dưới chỉ giữ signal và config đang xem.</p> : null}
       </section>
       <section className="card">
-        <h2>Signal đang chạy</h2>
-        <p className="muted">Mỗi dòng là một signal trên config của bạn. Đang bật là config On. Tự gỡ là config bật autoremove. Channel là listener có channel cùng tên.</p>
+        <h2 title="Mỗi dòng là một signal trên config của bạn. Đang bật là config On. Tự gỡ là config bật autoremove. Channel là listener có channel cùng tên.">Signal đang chạy</h2>
         {usage.length === 0 ? <p className="muted">{signalSet.size ? "Config này không có signal trong phạm vi đang xem." : "Chưa có signal trên account bạn sở hữu hoặc được gán."}</p> : (
           <div className="table-wrap">
             <table>
@@ -217,8 +216,7 @@ export default function SignalStatsPanel({ onFindConfig }) {
         )}
       </section>
       <section className="card">
-        <h2>Channel</h2>
-        <p className="muted">Tên channel listener đang theo. Không gồm session hay API hash.</p>
+        <h2 title="Tên channel listener đang theo. Không gồm session hay API hash.">Channel</h2>
         {channels.length === 0 ? <p className="muted">Không có channel trong phạm vi bạn được xem.</p> : (
           <div className="table-wrap">
             <table>
@@ -239,8 +237,7 @@ export default function SignalStatsPanel({ onFindConfig }) {
         )}
       </section>
       <section className="card">
-        <h2>Lỗi parse</h2>
-        <p className="muted">7 ngày gần nhất. Tin có LONG, SHORT, BUY, SELL hoặc ENTRY nhưng không ra được side và symbol.</p>
+        <h2 title="7 ngày gần nhất. Tin có LONG, SHORT, BUY, SELL hoặc ENTRY nhưng không ra được side và symbol.">Lỗi parse</h2>
         {parseErrors.length === 0 ? <p className="muted">{signalSet.size ? "Các signal này chưa có lỗi parse trong 7 ngày." : "Chưa có lỗi parse."}</p> : (
           <div className="table-wrap">
             <table>
@@ -261,8 +258,7 @@ export default function SignalStatsPanel({ onFindConfig }) {
         )}
       </section>
       <section className="card">
-        <h2>Bị gỡ vì chuỗi thua</h2>
-        <p className="muted">14 ngày gần nhất. Config bật autoremove, chuỗi thua và win rate thấp thì bot gỡ signal, hoặc tắt config nếu đó là signal cuối. ROSE không bị gỡ.</p>
+        <h2 title="14 ngày gần nhất. Config bật autoremove, chuỗi thua và win rate thấp thì bot gỡ signal, hoặc tắt config nếu đó là signal cuối. ROSE không bị gỡ.">Bị gỡ vì chuỗi thua</h2>
         {removed.length === 0 ? <p className="muted">{fromEnv ? `Config ${fromEnv} chưa có signal bị gỡ trong 14 ngày.` : "Chưa có signal bị gỡ."}</p> : (
           <div className="table-wrap">
             <table>

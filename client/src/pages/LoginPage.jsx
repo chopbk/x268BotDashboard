@@ -32,8 +32,7 @@ export default function LoginPage() {
     <div className="screen login-screen">
       <form className="card login-card" onSubmit={onSubmit}>
         <p className="eyebrow">Web Bot</p>
-        <h1>Đăng nhập</h1>
-        <p className="muted">Đăng nhập để xem và vận hành các bot được cấp quyền.</p>
+        <h1 title="Đăng nhập để xem và vận hành các bot được cấp quyền.">Đăng nhập</h1>
         <label>
           Email hoặc username
           <input

@@ -99,10 +99,7 @@ export default function UserApisPage() {
     <section>
       <header className="page-head user-list-head">
         <div>
-          <h1>User API</h1>
-          <p className="muted">
-            Key sàn của từng user bot. Danh sách chỉ hiện đã có key hay chưa. Bot đọc key mới sau khi restart.
-          </p>
+          <h1 title="Key sàn của từng user bot. Danh sách chỉ hiện đã có key hay chưa. Bot đọc key mới sau khi restart.">User API</h1>
         </div>
         <input
           className="user-search"

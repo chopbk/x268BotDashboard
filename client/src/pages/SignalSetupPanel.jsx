@@ -81,8 +81,7 @@ export default function SignalSetupPanel({ onFindConfig }) {
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="muted">{notice}</p> : null}
       <section className="card">
-        <h2>Thêm hoặc xoá signal</h2>
-        <p className="muted">Thêm giữ các signal đang có. Xoá chỉ gỡ đúng tên đã nhập. Ô signal nhận nhiều tên, cách nhau bởi dấu phẩy.</p>
+        <h2 title="Thêm giữ các signal đang có. Xoá chỉ gỡ đúng tên đã nhập. Ô signal nhận nhiều tên, cách nhau bởi dấu phẩy.">Thêm hoặc xoá signal</h2>
         <form className="account-filters" onSubmit={(event) => event.preventDefault()}>
           <label>
             User bot
@@ -131,8 +130,7 @@ export default function SignalSetupPanel({ onFindConfig }) {
         ) : username ? <p className="muted">User này chưa có config.</p> : <p className="muted">Chọn user bot để xem và sửa signal trên từng config.</p>}
       </section>
       <section className="card">
-        <h2>Signal đang dùng</h2>
-        <p className="muted">Chỉ signal trên account bạn sở hữu hoặc được gán. Bấm tên để điền vào ô signal, rồi bấm Tìm config cạnh ô đó.</p>
+        <h2 title="Chỉ signal trên account bạn sở hữu hoặc được gán. Bấm tên để điền vào ô signal, rồi bấm Tìm config cạnh ô đó.">Signal đang dùng</h2>
         <div className="signal-chips">
           {(data?.catalog || []).map((row) => (
             <button type="button" className={names.trim().toUpperCase() === row.signal ? "symbol-chip active" : "ghost"} key={row.signal} onClick={() => setNames(row.signal)}>{row.signal} · {row.configs}</button>

@@ -106,8 +106,7 @@ function volumeHint(config) {
 function Glance({ title, note, items }) {
   return (
     <section>
-      <h3>{title}</h3>
-      {note ? <p className="muted mode-note">{note}</p> : null}
+      <h3 title={note || undefined}>{title}</h3>
       <dl>
         {items.map(([label, value]) => <DetailItem key={label} label={label} value={value} />)}
       </dl>
@@ -413,7 +412,6 @@ function SignalLog({ canSearch, onFindConfig }) {
           {contextSignals.length ? <button type="button" className="ghost" onClick={() => update({ signals: "", signal: "" })}>Mọi signal trong kỳ</button> : null}
         </p>
       ) : null}
-      {fromSummary ? <p className="muted">Mở từ Tổng kết. Profit ở Tổng kết là lệnh đóng theo closeTime. Nhật ký này đếm signal_infos theo openTime, cùng mốc từ/đến trên URL.</p> : null}
       <div className="card signal-filters">
         <label>Symbol<input value={symbol} placeholder="BTCUSDT" onChange={(event) => update({ symbol: event.target.value })} /></label>
         <label>Side<select value={side} onChange={(event) => update({ side: event.target.value })}><option value="">Tất cả</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
@@ -425,7 +423,10 @@ function SignalLog({ canSearch, onFindConfig }) {
           ))}
         </div>
       </div>
-      <p className="muted">Nguồn: signal_infos, lọc openTime từ {fmtTime(data?.from || activeFrom)}{data?.to || to ? ` đến ${fmtTime(data?.to || to)}` : ""}. {loadedAt ? `Tải lúc ${fmtTime(loadedAt)}.` : ""} Đây không phải profit lệnh.</p>
+      <p className="muted" title="Nguồn: signal_infos theo openTime. Đây không phải profit lệnh.">
+        {fmtTime(data?.from || activeFrom)}{data?.to || to ? ` → ${fmtTime(data?.to || to)}` : ""}
+        {loadedAt ? ` · tải ${fmtTime(loadedAt)}` : ""}
+      </p>
       {chips.length ? (
         <div className="chips signal-chips">
           <span className="muted">{contextSignals.length ? "Signal của config" : "Signal"}</span>
@@ -968,18 +969,21 @@ export default function SignalSearchPage() {
     <section>
       <header className="page-head">
         <div>
-          <h1>Signal</h1>
-          <p className="muted">
-            {tab === "setup"
-              ? "Thêm hoặc xoá signal trên config của user đang sở hữu hoặc được gán. Signal đang dùng cũng chỉ đếm các account đó."
-              : tab === "stats"
-                ? "Channel, lỗi parse, signal bị gỡ vì chuỗi thua, và signal đang chạy trên config của bạn."
-                : tab === "scorecard"
-                  ? "Xếp hạng channel bằng số tin signal_infos và lệnh/PnL account_statics trong cùng khoảng openTime."
-                  : tab === "history"
-                    ? "Bấm một signal để xem lịch sử và số lượng. Tìm config đưa sang bộ lọc config với đúng signal đó."
-                    : "Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây."}
-          </p>
+          <h1
+            title={
+              tab === "setup"
+                ? "Thêm hoặc xoá signal trên config của user đang sở hữu hoặc được gán. Signal đang dùng cũng chỉ đếm các account đó."
+                : tab === "stats"
+                  ? "Channel, lỗi parse, signal bị gỡ vì chuỗi thua, và signal đang chạy trên config của bạn."
+                  : tab === "scorecard"
+                    ? "Xếp hạng channel bằng số tin signal_infos và lệnh/PnL account_statics trong cùng khoảng openTime."
+                    : tab === "history"
+                      ? `${params.get("src") === "summary" ? "Mở từ Tổng kết. Profit Tổng kết theo closeTime; nhật ký đếm signal_infos theo openTime. " : ""}Bấm một signal để xem lịch sử và số lượng. Tìm config đưa sang bộ lọc config với đúng signal đó.`
+                      : `${params.get("src") === "summary" ? "Mở từ Tổng kết. Profit Tổng kết theo closeTime, không paper; bảng này lọc openTime trên config có lệnh thật. " : ""}Gõ một hoặc nhiều tên, ví dụ SIGNAL_A hoặc SIGNAL_A, BULL. Chỉ hiện config có lệnh thật để chọn bản tốt, rồi xem, copy hoặc sync ngay tại đây.`
+            }
+          >
+            Signal
+          </h1>
         </div>
       </header>
       <div className="history-tabs">
@@ -1050,8 +1054,11 @@ export default function SignalSearchPage() {
         <button type="submit" disabled={busy || !signal.trim()}>{busy ? "Đang tìm…" : "Tìm"}</button>
       </form> : null}
       {tab === "search" && error ? <p className="form-error">{error}</p> : null}
-      {tab === "search" && params.get("src") === "summary" ? <p className="muted">Mở từ Tổng kết. Profit ở Tổng kết tính lệnh đóng theo closeTime, không paper. Bảng này là config có lệnh thật, lọc openTime.</p> : null}
-      {tab === "search" && shown && range ? <p className="muted">Nguồn: Account Static. Từ {fmtTime(range.from)}{range.to ? ` đến ${fmtTime(range.to)}` : ""}, theo openTime. Bỏ config chưa có lệnh. Win rate là tỷ lệ lệnh có profit &gt; 0, không tính paper.</p> : null}
+      {tab === "search" && shown && range ? (
+        <p className="muted" title="Nguồn: Account Static theo openTime. Bỏ config chưa có lệnh. Win rate là tỷ lệ lệnh có profit > 0, không tính paper.">
+          {fmtTime(range.from)}{range.to ? ` → ${fmtTime(range.to)}` : ""}
+        </p>
+      ) : null}
       {tab === "search" && shown ? (
         shown.length === 0 ? <p className="muted">Không có config có lệnh trong khoảng này.</p> : (
           <div className="table-wrap">

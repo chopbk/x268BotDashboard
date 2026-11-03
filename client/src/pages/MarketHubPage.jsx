@@ -116,10 +116,9 @@ export default function MarketHubPage() {
   return (
     <div className="mkt-hub">
       <header className="mkt-hub-header">
-        <h1>Thị trường</h1>
-        <p className="mkt-hub-sub muted">
-          Kỹ thuật, Dashboard, dòng tiền Smart Money, và bối cảnh kinh tế/sự kiện — các góc nhìn riêng, không cộng chung thành một điểm vào lệnh.
-        </p>
+        <h1 title="Kỹ thuật, Dashboard, dòng tiền Smart Money, và bối cảnh kinh tế/sự kiện — các góc nhìn riêng, không cộng chung thành một điểm vào lệnh.">
+          Thị trường
+        </h1>
       </header>
 
       <div className="mkt-hub-tabs" role="tablist" aria-label="Tab chính Thị trường">

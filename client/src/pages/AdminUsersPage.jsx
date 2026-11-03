@@ -269,8 +269,7 @@ export default function AdminUsersPage() {
       <div className="user-list-panel">
         <header className="page-head user-list-head">
           <div>
-            <h1>User web</h1>
-            <p className="muted">Viewer chỉ xem, operator có thể vận hành. Admin quản lý toàn hệ thống.</p>
+            <h1 title="Viewer chỉ xem, operator có thể vận hành. Admin quản lý toàn hệ thống.">User web</h1>
           </div>
           <label className="user-search">
             Tìm user
@@ -331,8 +330,7 @@ export default function AdminUsersPage() {
 
       {!editingId && !canCreateUser ? (
         <div className="card readonly-user-note">
-          <h2>Chỉ xem người dùng</h2>
-          <p className="muted">Chọn “Xem” trong danh sách để xem thông tin. Tài khoản này không có quyền tạo người dùng.</p>
+          <h2 title="Chọn “Xem” trong danh sách để xem thông tin. Tài khoản này không có quyền tạo người dùng.">Chỉ xem người dùng</h2>
         </div>
       ) : <form className="card admin-form" onSubmit={onSubmit}>
         <div className="form-title">

@@ -224,11 +224,7 @@ export default function StrategyAnalyticsPage() {
     <section className="stack sa-page">
       <header className="sa-header">
         <div>
-          <h1>Strategy analytics</h1>
-          <p className="muted">
-            Basis observed static profit (cùng Reports). Mẫu nhỏ không được coi là bằng chứng edge;
-            alert chỉ phân tích — không tắt config.
-          </p>
+          <h1 title="Basis observed static profit (cùng Reports). Mẫu nhỏ không được coi là bằng chứng edge; alert chỉ phân tích — không tắt config.">Strategy analytics</h1>
         </div>
         <div className="sa-header-links">
           <Link className="ghost link-btn" to="/reports?tab=overview&range=30&analytics=1">Báo cáo</Link>
@@ -329,8 +325,7 @@ export default function StrategyAnalyticsPage() {
 
           {alerts.length ? (
             <div className="card sa-alerts">
-              <h2>Alerts phân tích</h2>
-              <p className="muted">sideEffect=none — không tự đổi config / tắt bot.</p>
+              <h2 title="sideEffect=none — không tự đổi config / tắt bot.">Alerts phân tích</h2>
               <ul>
                 {alerts.map((a) => (
                   <li key={a.id}>

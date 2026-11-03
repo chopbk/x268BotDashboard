@@ -252,8 +252,9 @@ export default function SmartMoneyPage({
     <div className="sm-page">
       <header className="sm-header">
         <div>
-          <TitleTag>{embedded ? "Dòng tiền" : "Smart Money"}</TitleTag>
-          <p className="muted">Theo dõi vị thế tổng hợp, dòng giao dịch và biến động thị trường.</p>
+          <TitleTag title="Theo dõi vị thế tổng hợp, dòng giao dịch và biến động thị trường.">
+            {embedded ? "Dòng tiền" : "Smart Money"}
+          </TitleTag>
         </div>
         <div className="sm-status muted">
           <div>

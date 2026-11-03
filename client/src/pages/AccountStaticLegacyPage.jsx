@@ -116,8 +116,7 @@ function volumeHint(config) {
 function Glance({ title, note, items }) {
   return (
     <section>
-      <h3>{title}</h3>
-      {note ? <p className="muted mode-note">{note}</p> : null}
+      <h3 title={note || undefined}>{title}</h3>
       <dl>
         {items.map(([label, value]) => <DetailItem key={label} label={label} value={value} />)}
       </dl>
@@ -242,7 +241,7 @@ function keepGroup(row, rules) {
   return true;
 }
 
-function CompareTable({ title, note, rows, nameKey, nameLabel, active, onPick, onPeek, sortKey, onSort }) {
+function CompareTable({ title, note, tip, rows, nameKey, nameLabel, active, onPick, onPeek, sortKey, onSort }) {
   const sorted = sortRows(rows, sortKey);
   const heads = [
     ["count", "Lệnh"],
@@ -253,7 +252,7 @@ function CompareTable({ title, note, rows, nameKey, nameLabel, active, onPick, o
   ];
   return (
     <div className="compare-block">
-      <h2 className="summary-section-title">{title}</h2>
+      <h2 className="summary-section-title" title={tip || undefined}>{title}</h2>
       {note ? <p className="muted">{note}</p> : null}
       <div className="table-wrap signal-table">
         <table>
@@ -341,7 +340,6 @@ function ConfigPeekModal({ username, env, config, loading, error, configHref, on
         <header>
           <div>
             <h2 id="static-config-peek-title">{username} · {env}</h2>
-            <p className="muted">Xem nhanh account config đang chọn.</p>
           </div>
           <button type="button" className="ghost" onClick={onClose}>Đóng</button>
         </header>
@@ -635,8 +633,11 @@ export default function AccountStaticLegacyPage() {
     <section className={refreshing ? "static-soft-refresh" : undefined}>
       <header className="page-head">
         <div>
-          <h1>Account Static</h1>
-          <p className="muted">Lọc signal theo win rate, số lệnh và profit. Chọn một signal rồi để Tất cả config để xem config live hoặc paper nào tốt với signal đó.</p>
+          <h1
+            title={`${params.get("src") === "summary" ? `Mở từ Tổng kết. Tổng kết tính lệnh đóng theo closeTime; bảng này lọc openTime, sổ ${bookLabel}${closed === "closed" ? ", chỉ lệnh đã đóng" : ""}. ` : ""}Lọc signal theo win rate, số lệnh và profit. Chọn một signal rồi để Tất cả config để xem config live hoặc paper nào tốt với signal đó.`}
+          >
+            Account Static
+          </h1>
         </div>
       </header>
       <div className="card signal-filters">
@@ -705,17 +706,22 @@ export default function AccountStaticLegacyPage() {
         </div>
       </div>
 
-      {params.get("src") === "summary" ? <p className="muted">Mở từ Tổng kết. Tổng kết tính lệnh đóng theo closeTime. Bảng này lọc openTime, sổ {bookLabel}{closed === "closed" ? ", chỉ lệnh đã đóng" : ""}.</p> : null}
       {refreshing ? <p className="muted static-refresh-hint">Đang cập nhật bảng…</p> : null}
       <div className={refreshing ? "static-stats-pane is-refreshing" : "static-stats-pane"}>
         {tradeStats ? <div className="stats-grid signal-stats"><article className="card"><span className="muted">Số lượng giao dịch</span><strong>{tradeStats.total}</strong><small className="muted">{tradeStats.wins} thắng · {tradeStats.losses} thua</small></article><article className="card"><span className="muted">Win rate</span><strong>{fmt(tradeStats.winRate, 1)}%</strong></article><article className="card"><span className="muted">Profit</span><strong>{fmt(tradeStats.profit)}$</strong><small className="muted">Cost {fmt(tradeStats.cost)}$ · ROI {fmt(tradeStats.avgRoi, 1)}%</small></article><article className="card"><span className="muted">Volume</span><strong>{fmt(tradeStats.volume)}$</strong></article><article className="card"><span className="muted">Long</span><strong>{fmt(tradeStats.longProfit)}$</strong></article><article className="card"><span className="muted">Short</span><strong>{fmt(tradeStats.shortProfit)}$</strong></article></div> : null}
-        {tradeStats ? <p className="muted">Nguồn: Account Static, sổ {bookLabel}. Khoảng openTime {fmtTime(data?.from || activeFrom)}{data?.to || to ? ` → ${fmtTime(data?.to || to)}` : " → nay"}.{loadedAt ? ` Tải lúc ${fmtTime(loadedAt)}.` : ""} Không lấy từ income sàn.</p> : null}
+        {tradeStats ? (
+          <p className="muted" title={`Nguồn: Account Static, sổ ${bookLabel}. Không lấy từ income sàn.`}>
+            openTime {fmtTime(data?.from || activeFrom)}{data?.to || to ? ` → ${fmtTime(data?.to || to)}` : " → nay"}
+            {loadedAt ? ` · tải ${fmtTime(loadedAt)}` : ""}
+          </p>
+        ) : null}
         {data?.stats?.byStatus?.length ? <div className="chips signal-chips"><span className="muted">Status</span>{data.stats.byStatus.map((item) => <button type="button" className={status === item.status ? "symbol-chip active" : "symbol-chip"} key={item.status} onClick={() => update({ status: status === item.status ? "" : item.status }, { replace: true })}>{item.status}: {item.count} · {fmt(item.profit)}$</button>)}</div> : null}
         {data?.stats?.bySide?.length ? <div className="chips signal-chips"><span className="muted">Side</span>{data.stats.bySide.map((item) => <button type="button" className={side === item.side ? "symbol-chip active" : "symbol-chip"} key={item.side} onClick={() => update({ side: side === item.side ? "" : item.side }, { replace: true })}>{item.side}: {item.wins}/{item.count} · WR {fmt(item.winRate, 1)}% · {fmt(item.profit)}$</button>)}</div> : null}
         {data?.stats?.bySignal?.length ? (
           <CompareTable
             title={env ? `Signal của ${env}` : `Signal của ${username || "user"}`}
-            note={`${signalRows.length}/${data.stats.bySignal.length} signal${ruleNote ? ` · ${ruleNote}` : ""}. Bấm một dòng để giữ signal đó và so config.`}
+            tip="Bấm một dòng để giữ signal đó và so config."
+            note={`${signalRows.length}/${data.stats.bySignal.length} signal${ruleNote ? ` · ${ruleNote}` : ""}`}
             rows={signalRows}
             nameKey="signal"
             nameLabel="Signal"
@@ -736,7 +742,8 @@ export default function AccountStaticLegacyPage() {
         {!env && (data?.stats?.byConfig || data?.stats?.byEnv || []).length ? (
           <CompareTable
             title={signal ? `Config ${bookLabel} của signal ${signal}` : `Config ${bookLabel} của ${username || "user"}`}
-            note={signal ? `Mỗi dòng chỉ tính signal ${signal}${side ? `, side ${side}` : ""}. ${configRows.length} config đạt bộ lọc.` : `Chưa chọn signal nên mỗi dòng là cả config. Chọn một signal để so đúng signal đó. ${configRows.length} config đạt bộ lọc.`}
+            tip={signal ? `Mỗi dòng chỉ tính signal ${signal}${side ? `, side ${side}` : ""}.` : "Chưa chọn signal nên mỗi dòng là cả config. Chọn một signal để so đúng signal đó."}
+            note={`${configRows.length} config đạt bộ lọc`}
             rows={configRows}
             nameKey="env"
             nameLabel="Config"

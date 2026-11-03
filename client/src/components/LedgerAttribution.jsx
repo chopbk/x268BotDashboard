@@ -50,8 +50,8 @@ function multiLinePoints(seriesList, width, height) {
 
 function MetricCard({ label, value, note, tip, toneClass }) {
   return (
-    <article className={`card summary-stat ${toneClass || ""}`} title={tip || undefined}>
-      <small>{label}</small>
+    <article className={`card summary-stat ${toneClass || ""}`}>
+      <small title={tip || undefined}>{label}</small>
       <strong>{value}</strong>
       {note ? <span className="muted" style={{ fontSize: "0.78rem" }}>{note}</span> : null}
     </article>
@@ -123,12 +123,7 @@ export default function LedgerAttribution({ attribution, username }) {
 
   return (
     <section className="ledger-attribution">
-      <h2 className="summary-section-title">Attribution & equity</h2>
-      <p className="muted">
-        Equity curve từ lệnh Account Static (live, đã đóng) trong cùng kỳ UTC — bắt đầu từ 0, không phải số dư ví.
-        {attr.truncated ? " Đã cắt tối đa 2000 lệnh gần nhất trong kỳ." : ""}
-        {" "}Max DD / PF / expectancy / time-in-trade tính trên tập lệnh đó.
-      </p>
+      <h2 className="summary-section-title" title="Equity curve từ lệnh Account Static (live, đã đóng) trong cùng kỳ UTC — bắt đầu từ 0, không phải số dư ví. Max DD / PF / expectancy / time-in-trade tính trên tập lệnh đó.">Attribution & equity</h2>
 
       <div className="stats-grid summary-grid">
         <MetricCard label="Max drawdown" value={metrics.maxDrawdown == null ? "—" : `${plain(metrics.maxDrawdown)}$`} note={metrics.maxDrawdownPct != null ? `${plain(metrics.maxDrawdownPct, 1)}% đỉnh` : null} tip={attr.formulas?.maxDrawdown} toneClass="negative" />
@@ -173,8 +168,7 @@ export default function LedgerAttribution({ attribution, username }) {
       <GroupTable title="Theo signal" rows={attr.bySignal} nameLabel="Signal" username={username} nameParam="signal" />
       <GroupTable title="Theo config / strategy" rows={attr.byStrategy} nameLabel="Config" username={username} nameParam="env" />
 
-      <h3 className="summary-section-title" style={{ fontSize: "1rem" }}>Slippage & fill quality</h3>
-      <p className="muted">{fq.note || attr.formulas?.slippage}</p>
+      <h3 className="summary-section-title" style={{ fontSize: "1rem" }} title={fq.note || attr.formulas?.slippage || undefined}>Slippage & fill quality</h3>
       <div className="stats-grid">
         <MetricCard label="Limit fill" value={fq.limitRate == null ? "—" : `${plain(fq.limitRate, 1)}%`} note={`${fq.limitCount || 0} limit / ${fq.marketCount || 0} market`} />
         <MetricCard label="Copy" value={fq.copyRate == null ? "—" : `${plain(fq.copyRate, 1)}%`} note={`${fq.copyCount || 0} lệnh`} />

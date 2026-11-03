@@ -43,8 +43,7 @@ export default function InboxPage() {
   return (
     <section className="stack">
       <header>
-        <h1>Inbox</h1>
-        <p className="muted">Chưa đọc: {unread}. Không gửi Telegram/email. entry_touched ≠ fill.</p>
+        <h1 title={`Chưa đọc: ${unread}. Không gửi Telegram/email. entry_touched ≠ fill.`}>Inbox</h1>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
       <ul className="stack">

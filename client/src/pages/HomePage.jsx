@@ -773,7 +773,18 @@ export default function HomePage() {
         <div className="modal-backdrop" onClick={() => setPeek(null)}>
           <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="bot-peek-title" onClick={(event) => event.stopPropagation()}>
             <header>
-              <h2 id="bot-peek-title">{peekTitle(peek)}</h2>
+              <h2
+                id="bot-peek-title"
+                title={
+                  peek.kind === "profit"
+                    ? "Income theo user/ví, ngày UTC. Cùng nguồn lệnh /income, không tách theo account-config."
+                    : peek.kind === "profit-all"
+                      ? "Income ngày UTC theo phạm vi đang chọn. Mỗi user một ví, cùng lệnh /income."
+                      : undefined
+                }
+              >
+                {peekTitle(peek)}
+              </h2>
               <button type="button" className="ghost" onClick={() => setPeek(null)}>Đóng</button>
             </header>
             {peekError ? <p className="form-error">{peekError}</p> : null}
@@ -886,7 +897,6 @@ export default function HomePage() {
             ) : null}
             {peek.kind === "profit" && peekData ? (
               <>
-                <p className="muted">Income của user {peekData.username || peek.username}, ví {peekData.env || "—"}. Ngày UTC {peekData.to || peekData.from}. Cùng nguồn lệnh /income, không tách theo account-config.</p>
                 {incomeDay(peekData) ? (
                   <p>
                     Profit {money(incomeDay(peekData).profit)} · fee {money(incomeDay(peekData).fee)} · funding {money(incomeDay(peekData).funding)} · ref {money(incomeDay(peekData).rebate)}
@@ -901,7 +911,6 @@ export default function HomePage() {
             ) : null}
             {peek.kind === "profit-all" && peekData ? (
               <>
-                <p className="muted">Income ngày UTC {peekData.from}, đúng phạm vi đang chọn. Mỗi user một ví, cùng lệnh /income.</p>
                 {(peekData.rows || []).length ? (
                   <div className="table-wrap">
                     <table>
