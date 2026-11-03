@@ -1,9 +1,29 @@
 :root {
+  /* Shared density: keep rem at 16px for chart geometry and compact labels. */
+  --font-body: 14px;
+  --font-control: 13px;
+  --font-title: 20px;
+  --font-section: 16px;
+  --control-height: 32px;
+  --ease: 180ms ease;
+  --radius-card: 12px;
+  --radius-control: 8px;
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  scroll-padding-top: 72px;
+}
+
+/* Skin packs — chọn qua data-theme trên <html>; mặc định vàng tối */
+:root,
+:root[data-theme="gold"] {
   color-scheme: dark;
-  /* Fintech dark — Minimalism/Swiss (ui-ux-pro-max); gold trust, no AI purple */
   --bg: #0f172a;
   --surface: #161e2e;
   --surface-2: #1e293b;
+  --input-bg: #0b1220;
   --line: #334155;
   --border: var(--line);
   --text: #f8fafc;
@@ -15,19 +35,103 @@
   --warn: #fbbf24;
   --ink: #0f172a;
   --ring: #f59e0b;
-  --ease: 180ms ease;
-  /* Shared density: keep rem at 16px for chart geometry and compact labels. */
-  --font-body: 14px;
-  --font-control: 13px;
-  --font-title: 20px;
-  --font-section: 16px;
-  --control-height: 32px;
-  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-  scroll-padding-top: 72px;
+  --glow-a: color-mix(in srgb, var(--accent) 14%, transparent);
+  --glow-b: color-mix(in srgb, #38bdf8 8%, transparent);
+  --chart-1: #34d399;
+  --chart-2: #f59e0b;
+  --chart-3: #38bdf8;
+  --chart-4: #a78bfa;
+  --chart-5: #14b8a6;
+  --chart-grid: rgba(100, 116, 139, 0.28);
+  --chart-text: #94a3b8;
+  --card: var(--surface);
+}
+
+:root[data-theme="ocean"] {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --surface: #121a2b;
+  --surface-2: #1a2438;
+  --input-bg: #080e1a;
+  --line: #2a3a52;
+  --border: var(--line);
+  --text: #e8eef8;
+  --muted: #8fa3bf;
+  --accent: #38bdf8;
+  --accent-2: #7dd3fc;
+  --danger: #fb7185;
+  --ok: #2dd4bf;
+  --warn: #fbbf24;
+  --ink: #0b1220;
+  --ring: #38bdf8;
+  --glow-a: color-mix(in srgb, var(--accent) 16%, transparent);
+  --glow-b: color-mix(in srgb, #818cf8 10%, transparent);
+  --chart-1: #2dd4bf;
+  --chart-2: #38bdf8;
+  --chart-3: #818cf8;
+  --chart-4: #fbbf24;
+  --chart-5: #fb7185;
+  --chart-grid: rgba(56, 189, 248, 0.18);
+  --chart-text: #8fa3bf;
+  --card: var(--surface);
+}
+
+:root[data-theme="oled"] {
+  color-scheme: dark;
+  --bg: #05070c;
+  --surface: #0c1018;
+  --surface-2: #141a24;
+  --input-bg: #03050a;
+  --line: #243044;
+  --border: var(--line);
+  --text: #f1f5f9;
+  --muted: #8b9cb3;
+  --accent: #34d399;
+  --accent-2: #6ee7b7;
+  --danger: #f87171;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --ink: #052e1c;
+  --ring: #34d399;
+  --glow-a: color-mix(in srgb, var(--accent) 12%, transparent);
+  --glow-b: color-mix(in srgb, #22d3ee 7%, transparent);
+  --chart-1: #4ade80;
+  --chart-2: #22d3ee;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #f87171;
+  --chart-grid: rgba(52, 211, 153, 0.16);
+  --chart-text: #8b9cb3;
+  --card: var(--surface);
+}
+
+:root[data-theme="day"] {
+  color-scheme: light;
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-2: #e8eef6;
+  --input-bg: #ffffff;
+  --line: #cbd5e1;
+  --border: var(--line);
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #0284c7;
+  --accent-2: #0ea5e9;
+  --danger: #dc2626;
+  --ok: #059669;
+  --warn: #d97706;
+  --ink: #ffffff;
+  --ring: #0284c7;
+  --glow-a: color-mix(in srgb, var(--accent) 10%, transparent);
+  --glow-b: color-mix(in srgb, #6366f1 6%, transparent);
+  --chart-1: #059669;
+  --chart-2: #0284c7;
+  --chart-3: #d97706;
+  --chart-4: #7c3aed;
+  --chart-5: #db2777;
+  --chart-grid: rgba(100, 116, 139, 0.22);
+  --chart-text: #64748b;
+  --card: var(--surface);
 }
 
 * { box-sizing: border-box; }
@@ -37,9 +141,14 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(920px 460px at 6% -12%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 55%),
-    radial-gradient(700px 380px at 92% 0%, color-mix(in srgb, #38bdf8 8%, transparent) 0%, transparent 50%),
+    radial-gradient(920px 460px at 6% -12%, var(--glow-a) 0%, transparent 55%),
+    radial-gradient(700px 380px at 92% 0%, var(--glow-b) 0%, transparent 50%),
     var(--bg);
+  transition: background-color var(--ease), color var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { transition: none; }
 }
 
 button, input, select, textarea {
@@ -112,9 +221,9 @@ label {
 
 input, select {
   width: 100%;
-  background: #0b1220;
+  background: var(--input-bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 6px 10px;
   min-height: var(--control-height);
   line-height: 18px;
@@ -210,7 +319,7 @@ a.link-btn:hover { background: var(--surface-2); }
   gap: 12px;
   padding: 18px 14px;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 88%, #020617);
+  background: color-mix(in srgb, var(--surface) 88%, var(--bg));
 }
 
 .brand-link {
@@ -258,6 +367,26 @@ a.link-btn:hover { background: var(--surface-2); }
   display: grid;
   gap: 8px;
   padding: 8px 10px 0;
+}
+
+.theme-switcher {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-control);
+}
+
+.theme-switcher-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.theme-switcher select {
+  width: 100%;
+  min-height: var(--control-height);
+  cursor: pointer;
 }
 
 .dash-block { margin-top: 16px; display: grid; gap: 10px; }

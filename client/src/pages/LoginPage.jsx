@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
+import { ThemeSwitcher } from "../theme.jsx";
 
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -56,6 +57,7 @@ export default function LoginPage() {
         <button type="submit" disabled={submitting}>
           {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
         </button>
+        <ThemeSwitcher />
         <p className="auth-switch muted">
           Chưa có tài khoản? <Link to="/register">Đăng ký</Link>
         </p>

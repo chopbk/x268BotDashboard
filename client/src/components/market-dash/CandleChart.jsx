@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createChart } from "lightweight-charts";
+import { readCssColor, useTheme } from "../../theme.jsx";
 
 /**
  * Nến + EMA20/50/200 + markers entry/SL/TP.
@@ -7,29 +8,35 @@ import { createChart } from "lightweight-charts";
 export default function CandleChart({ candles = [], ema = null, levels = null }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (!ref.current) return undefined;
+    const surface = readCssColor("--surface", "#161e2e");
+    const textColor = readCssColor("--chart-text", "#a8a8b4");
+    const line = readCssColor("--line", "#334155");
+    const upColor = readCssColor("--ok", "#91d6b4");
+    const downColor = readCssColor("--danger", "#f3a5ad");
     const chart = createChart(ref.current, {
       layout: {
-        background: { color: "#161e2e" },
-        textColor: "#a8a8b4",
+        background: { color: surface },
+        textColor,
       },
       grid: {
-        vertLines: { color: "#334155" },
-        horzLines: { color: "#334155" },
+        vertLines: { color: line },
+        horzLines: { color: line },
       },
-      rightPriceScale: { borderColor: "#334155" },
-      timeScale: { borderColor: "#334155" },
+      rightPriceScale: { borderColor: line },
+      timeScale: { borderColor: line },
       width: ref.current.clientWidth,
       height: 280,
     });
     const series = chart.addCandlestickSeries({
-      upColor: "#91d6b4",
-      downColor: "#f3a5ad",
+      upColor,
+      downColor,
       borderVisible: false,
-      wickUpColor: "#91d6b4",
-      wickDownColor: "#f3a5ad",
+      wickUpColor: upColor,
+      wickDownColor: downColor,
     });
     chartRef.current = { chart, series, emaLines: [] };
 
@@ -43,7 +50,7 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
       chart.remove();
       chartRef.current = null;
     };
-  }, []);
+  }, [theme]);
 
   useEffect(() => {
     const ctx = chartRef.current;
@@ -69,9 +76,9 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
     if (ema && data.length) {
       const last = data[data.length - 1];
       const colors = [
-        { key: "ema20", color: "#6ea8fe", value: ema.ema20 },
-        { key: "ema50", color: "#e6c07b", value: ema.ema50 },
-        { key: "ema200", color: "#c678dd", value: ema.ema200 },
+        { key: "ema20", color: readCssColor("--chart-3", "#6ea8fe"), value: ema.ema20 },
+        { key: "ema50", color: readCssColor("--chart-2", "#e6c07b"), value: ema.ema50 },
+        { key: "ema200", color: readCssColor("--chart-4", "#c678dd"), value: ema.ema200 },
       ];
       for (const row of colors) {
         if (row.value == null) continue;
@@ -94,7 +101,7 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
     if (levels?.entry != null) {
       ctx.series.createPriceLine({
         price: levels.entry,
-        color: "#f8fafc",
+        color: readCssColor("--text", "#f8fafc"),
         lineWidth: 1,
         lineStyle: 2,
         axisLabelVisible: true,
@@ -104,7 +111,7 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
     if (levels?.stopLoss != null) {
       ctx.series.createPriceLine({
         price: levels.stopLoss,
-        color: "#f3a5ad",
+        color: readCssColor("--danger", "#f3a5ad"),
         lineWidth: 1,
         lineStyle: 2,
         title: "SL",
@@ -113,7 +120,7 @@ export default function CandleChart({ candles = [], ema = null, levels = null })
     if (levels?.takeProfit != null) {
       ctx.series.createPriceLine({
         price: levels.takeProfit,
-        color: "#91d6b4",
+        color: readCssColor("--ok", "#91d6b4"),
         lineWidth: 1,
         lineStyle: 2,
         title: "TP",

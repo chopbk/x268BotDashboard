@@ -5,12 +5,12 @@
 import { topNotionalGroups } from "../charts/rankNotional.js";
 
 const COLORS = [
-  "var(--ok, #22a06b)",
-  "var(--accent, #3b82f6)",
-  "#f59e0b",
-  "#a855f7",
-  "#14b8a6",
-  "var(--muted, #94a3b8)",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--muted)",
 ];
 
 export function colorForIndex(index) {

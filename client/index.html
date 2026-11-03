@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Web Bot</title>
+    <script>
+      (function () {
+        try {
+          var allowed = { gold: 1, ocean: 1, oled: 1, day: 1 };
+          var theme = localStorage.getItem("web-bot-theme");
+          if (!allowed[theme]) theme = "gold";
+          document.documentElement.setAttribute("data-theme", theme);
+          document.documentElement.style.colorScheme = theme === "day" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "gold");
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

@@ -120,6 +120,14 @@ tiêu đề trang 20px, tiêu đề khối 16px, control desktop 32px. Giữ roo
 lớn hơn nội dung. Config Lab, Market/Smart Money và Terminal dùng cùng token
 cho tiêu đề; bảng chuyên dụng giữ cỡ chữ nhỏ riêng.
 
+### Theme / skin
+
+Bốn pack trên `<html data-theme>`: `gold` (mặc định), `ocean`, `oled`, `day`.
+Đổi qua `ThemeSwitcher` (sidenav + login); lưu `localStorage` key `web-bot-theme`.
+Component dùng `var(--bg|--surface|--accent|--ok|--danger|--chart-*)`; chart canvas
+đọc màu đã resolve qua `readCssColor` trong `client/src/theme.jsx`. Không hardcode
+palette trong CSS màn riêng.
+
 Thiết bị pointer coarse dùng input 16px (tránh zoom khi focus trên iOS),
 control chính tối thiểu 40px; không kéo giãn checkbox/switch hoặc icon nội tuyến.
 Khi sửa CSS chung, build client và kiểm tra desktop + viewport hẹp: toolbar

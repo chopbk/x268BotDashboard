@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart } from "lightweight-charts";
 import { api } from "../../api";
+import { readCssColor, useTheme } from "../../theme.jsx";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h"];
 
@@ -27,6 +28,7 @@ export default function TerminalChart({
   const [error, setError] = useState("");
   const [quality, setQuality] = useState("missing");
   const [loading, setLoading] = useState(false);
+  const { theme } = useTheme();
 
   const symbol = market?.symbol || market?.instrumentId || "";
   const marketKey = [
@@ -38,16 +40,20 @@ export default function TerminalChart({
   useEffect(() => {
     if (!hostRef.current) return undefined;
     // lightweight-charts chỉ nhận màu hex/rgb — không parse CSS var (crash trắng cả Terminal).
+    const textColor = readCssColor("--chart-text", "#94a3b8");
+    const gridColor = readCssColor("--chart-grid", "rgba(80,80,100,0.25)");
+    const upColor = readCssColor("--ok", "#5a9e6f");
+    const downColor = readCssColor("--danger", "#c45c5c");
     let chart;
     try {
       chart = createChart(hostRef.current, {
         layout: {
           background: { color: "transparent" },
-          textColor: "#94a3b8",
+          textColor,
         },
         grid: {
-          vertLines: { color: "rgba(80,80,100,0.25)" },
-          horzLines: { color: "rgba(80,80,100,0.25)" },
+          vertLines: { color: gridColor },
+          horzLines: { color: gridColor },
         },
         rightPriceScale: { borderVisible: false },
         timeScale: { borderVisible: false },
@@ -56,18 +62,18 @@ export default function TerminalChart({
         crosshair: { mode: 0 },
       });
       const series = chart.addCandlestickSeries({
-        upColor: "#5a9e6f",
-        downColor: "#c45c5c",
+        upColor,
+        downColor,
         borderVisible: false,
-        wickUpColor: "#5a9e6f",
-        wickDownColor: "#c45c5c",
+        wickUpColor: upColor,
+        wickDownColor: downColor,
       });
       const volume = chart.addHistogramSeries({
         priceFormat: { type: "volume" },
         priceScaleId: "",
         scaleMargins: { top: 0.8, bottom: 0 },
       });
-      chartRef.current = { chart, series, volume, priceLines: [], markers: [] };
+      chartRef.current = { chart, series, volume, priceLines: [], markers: [], upColor, downColor };
     } catch (err) {
       console.error("[TerminalChart] createChart", err);
       setError(err?.message || "Không khởi tạo được chart");
@@ -89,7 +95,7 @@ export default function TerminalChart({
       }
       chartRef.current = null;
     };
-  }, [height]);
+  }, [height, theme]);
 
   useEffect(() => {
     const ctx = chartRef.current;
@@ -110,11 +116,13 @@ export default function TerminalChart({
         setQuality(data?.provenance?.quality || (data?.candles?.length ? "fresh" : "missing"));
         const candles = data?.candles || [];
         ctx.series.setData(candles);
+        const up = ctx.upColor || readCssColor("--ok", "#5a9e6f");
+        const down = ctx.downColor || readCssColor("--danger", "#c45c5c");
         ctx.volume.setData(
           candles.map((c) => ({
             time: c.time,
             value: c.volume || 0,
-            color: c.close >= c.open ? "rgba(90,158,111,0.35)" : "rgba(196,92,92,0.35)",
+            color: c.close >= c.open ? `${up}59` : `${down}59`,
           }))
         );
         ctx.chart.timeScale().fitContent();

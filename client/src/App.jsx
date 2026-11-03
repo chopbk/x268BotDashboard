@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { GuardProvider } from "./navigation";
 import { AuthProvider, useAuth } from "./auth";
+import { ThemeSwitcher } from "./theme.jsx";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
@@ -156,6 +157,7 @@ function Shell({ children }) {
           {hasPermission(user, USERS_MANAGE) ? <NavLink to="/admin/users">User</NavLink> : null}
         </nav>
         <div className="who">
+          <ThemeSwitcher />
           {hasPermission(user, USERS_EDIT) ? <NavLink to="/profile">{user?.name}</NavLink> : <span>{user?.name}</span>}
           <span className="role">{user?.role}</span>
           <button type="button" className="ghost" onClick={onLogout}>Đăng xuất</button>
