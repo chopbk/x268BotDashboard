@@ -1806,3 +1806,83 @@ button.linkish:hover { background: none; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Strategy analytics `/analytics` */
+.sa-page { gap: 14px; }
+.sa-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.sa-header h1 { margin: 0 0 4px; }
+.sa-header-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.sa-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.sa-controls label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 140px;
+}
+.sa-controls select,
+.sa-controls input {
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line, var(--border));
+  background: var(--bg, var(--surface));
+  color: var(--text);
+  font: inherit;
+}
+.sa-control-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sa-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  font-size: 0.92rem;
+}
+.sa-banner.ok {
+  border-color: color-mix(in srgb, var(--ok, #5a9e6f) 45%, var(--line));
+  background: color-mix(in srgb, var(--ok, #5a9e6f) 12%, transparent);
+}
+.sa-banner.warn {
+  border-color: color-mix(in srgb, #c4a35a 45%, var(--line));
+  background: color-mix(in srgb, #c4a35a 12%, transparent);
+}
+.sa-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.sa-kpi { display: grid; gap: 4px; padding: 12px 14px; min-width: 0; }
+.sa-kpi-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.sa-kpi-value {
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.sa-kpi.positive .sa-kpi-value { color: var(--ok); }
+.sa-kpi.negative .sa-kpi-value { color: var(--danger); }
+.sa-alerts ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; }
+.sa-breakdowns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.sa-breakdown h3 { margin: 0 0 8px; font-size: 1rem; }
+.sa-breakdown .table-wrap { overflow: auto; max-height: 320px; }
+@media (max-width: 960px) {
+  .sa-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

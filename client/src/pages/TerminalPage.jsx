@@ -108,6 +108,8 @@ export default function TerminalPage() {
   const [protectionNotice, setProtectionNotice] = useState(null);
   const [workspaceRevision, setWorkspaceRevision] = useState(null);
   const [drawMode, setDrawMode] = useState(null);
+  /** Cột phải quant: Plan | Ticket | Risk — tránh xếp chồng cuộn dài. */
+  const [sideTool, setSideTool] = useState("plan");
 
   useEffect(() => {
     setPrefs(loadPrefs(user?.id || user?.username));
@@ -1127,6 +1129,8 @@ export default function TerminalPage() {
               className="term-primary"
               onClick={() => {
                 setTicketOpen(true);
+                setSideTool("ticket");
+                persistWorkspace({ showWorkspace: true });
                 go((q) => {
                   if (!q.get("selected") && rows[0]) q.set("selected", rows[0].key);
                   q.set("panelTab", "trade");
@@ -1248,218 +1252,245 @@ export default function TerminalPage() {
       {tab === "positions" && !perms.canPositions ? <p className="muted">Cần quyền positions.view để xem vị thế đang mở.</p> : null}
 
       {tab === "positions" && perms.canPositions ? (
-        <>
-          <TerminalSummary summary={summary} bookLabel={bookLabel} />
-          {prefs.showWorkspace !== false ? (
-            <div className="term-quant-workspace">
-              <TerminalWatchlist
-                items={prefs.watchlist || []}
-                selectedSymbol={marketIdentity?.symbol || ""}
-                positions={rows}
-                onSelect={selectMarket}
-                onAddSymbol={(item) => {
-                  const watchlist = [...(prefs.watchlist || []).filter((w) => w.symbol !== item.symbol), item];
-                  persistWorkspace({ watchlist });
-                  selectMarket(item);
-                }}
-                onRemove={(sym) => {
-                  persistWorkspace({
-                    watchlist: (prefs.watchlist || []).filter((w) => w.symbol !== sym),
-                  });
-                }}
-              />
-              <div className="term-quant-center">
-                <div className="term-chart-modes" role="toolbar" aria-label="Chế độ chart">
-                  {[
-                    { id: null, label: "Xem" },
-                    { id: "entry", label: "Entry" },
-                    { id: "stopLoss", label: "SL" },
-                    { id: "takeProfit", label: "TP" },
-                    { id: "hline", label: "H-line" },
-                  ].map((mode) => (
-                    <button
-                      key={String(mode.id)}
-                      type="button"
-                      className={drawMode === mode.id ? "active" : ""}
-                      onClick={() => setDrawMode(mode.id)}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => persistWorkspace({ showWorkspace: false })}
-                    title="Ẩn workspace chart"
-                  >
-                    Ẩn
-                  </button>
-                </div>
-                <TerminalChart
-                  market={marketIdentity}
-                  timeframe={prefs.timeframe || "15m"}
-                  onTimeframeChange={(tf) => {
-                    setTradeDraft((prev) => ({ ...prev, timeframe: tf }));
-                    persistWorkspace({ timeframe: tf });
+        <div className="term-desk">
+          <div className="term-analysis">
+            <div className="term-zone-label">
+              <span>Phân tích</span>
+              {prefs.showWorkspace === false ? (
+                <button type="button" className="ghost" onClick={() => persistWorkspace({ showWorkspace: true })}>
+                  Hiện chart
+                </button>
+              ) : (
+                <button type="button" className="ghost" onClick={() => persistWorkspace({ showWorkspace: false })} title="Thu gọn để ưu tiên sổ vị thế">
+                  Thu chart
+                </button>
+              )}
+            </div>
+            {prefs.showWorkspace !== false ? (
+              <div className="term-quant-workspace">
+                <TerminalWatchlist
+                  items={prefs.watchlist || []}
+                  selectedSymbol={marketIdentity?.symbol || ""}
+                  positions={rows}
+                  onSelect={selectMarket}
+                  onAddSymbol={(item) => {
+                    const watchlist = [...(prefs.watchlist || []).filter((w) => w.symbol !== item.symbol), item];
+                    persistWorkspace({ watchlist });
+                    selectMarket(item);
                   }}
-                  levels={chartLevels}
-                  drawings={prefs.drawings || []}
-                  drawMode={drawMode}
-                  onDrawingsChange={(next) => persistWorkspace({ drawings: next })}
-                  onLevelDrag={(patch) => {
-                    setTradeDraft((prev) => ({ ...prev, ...patch }));
-                    setTradePreview(null);
-                    setDirty(true);
+                  onRemove={(sym) => {
+                    persistWorkspace({
+                      watchlist: (prefs.watchlist || []).filter((w) => w.symbol !== sym),
+                    });
                   }}
-                  height={prefs.chartHeight || 280}
                 />
-              </div>
-              <div className="term-quant-right">
-                <TradePlanPanel
-                  market={marketIdentity}
-                  account={selectedRow?.account || account}
-                  draft={{ ...tradeDraft, timeframe: prefs.timeframe }}
-                  onDraftChange={(next) => {
-                    setTradeDraft(next);
-                    setDirty(true);
-                  }}
-                  plan={tradePlan}
-                  onPlanChange={setTradePlan}
-                  preview={tradePreview}
-                  onPreviewChange={setTradePreview}
-                  canPreview={perms.canCreateOrder || perms.canOpen}
-                  protection={protectionNotice}
-                />
-                {(perms.canCreateOrder || ticketOpen) ? (
-                  <OrderTicket
-                    accounts={payload?.accounts || []}
-                    defaultAccount={selectedRow?.account || account}
-                    defaultSymbol={marketIdentity?.symbol || ""}
-                    draft={tradeDraft}
-                    preview={tradePreview}
-                    onDraftChange={(next) => {
-                      setTradeDraft((prev) => ({ ...prev, ...next }));
+                <div className="term-quant-center">
+                  <div className="term-chart-modes" role="toolbar" aria-label="Chế độ chart">
+                    {[
+                      { id: null, label: "Xem" },
+                      { id: "entry", label: "Entry" },
+                      { id: "stopLoss", label: "SL" },
+                      { id: "takeProfit", label: "TP" },
+                      { id: "hline", label: "H-line" },
+                    ].map((mode) => (
+                      <button
+                        key={String(mode.id)}
+                        type="button"
+                        className={drawMode === mode.id ? "active" : ""}
+                        onClick={() => setDrawMode(mode.id)}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                  <TerminalChart
+                    market={marketIdentity}
+                    timeframe={prefs.timeframe || "15m"}
+                    onTimeframeChange={(tf) => {
+                      setTradeDraft((prev) => ({ ...prev, timeframe: tf }));
+                      persistWorkspace({ timeframe: tf });
+                    }}
+                    levels={chartLevels}
+                    drawings={prefs.drawings || []}
+                    drawMode={drawMode}
+                    onDrawingsChange={(next) => persistWorkspace({ drawings: next })}
+                    onLevelDrag={(patch) => {
+                      setTradeDraft((prev) => ({ ...prev, ...patch }));
                       setTradePreview(null);
                       setDirty(true);
                     }}
-                    canCreate={perms.canCreateOrder}
-                    onPlaced={onTradePlaced}
+                    height={Math.min(prefs.chartHeight || 220, 280)}
+                  />
+                </div>
+                <div className="term-quant-right">
+                  <div className="term-side-tabs" role="tablist" aria-label="Công cụ giao dịch">
+                    {[
+                      { id: "plan", label: "Kế hoạch" },
+                      { id: "ticket", label: "Lệnh", show: perms.canCreateOrder || ticketOpen },
+                      { id: "risk", label: "Risk" },
+                    ].filter((item) => item.show !== false).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={sideTool === item.id}
+                        className={sideTool === item.id ? "active" : ""}
+                        onClick={() => setSideTool(item.id)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  {sideTool === "plan" ? (
+                    <TradePlanPanel
+                      market={marketIdentity}
+                      account={selectedRow?.account || account}
+                      draft={{ ...tradeDraft, timeframe: prefs.timeframe }}
+                      onDraftChange={(next) => {
+                        setTradeDraft(next);
+                        setDirty(true);
+                      }}
+                      plan={tradePlan}
+                      onPlanChange={setTradePlan}
+                      preview={tradePreview}
+                      onPreviewChange={setTradePreview}
+                      canPreview={perms.canCreateOrder || perms.canOpen}
+                      protection={protectionNotice}
+                    />
+                  ) : null}
+                  {sideTool === "ticket" && (perms.canCreateOrder || ticketOpen) ? (
+                    <OrderTicket
+                      accounts={payload?.accounts || []}
+                      defaultAccount={selectedRow?.account || account}
+                      defaultSymbol={marketIdentity?.symbol || ""}
+                      draft={tradeDraft}
+                      preview={tradePreview}
+                      onDraftChange={(next) => {
+                        setTradeDraft((prev) => ({ ...prev, ...next }));
+                        setTradePreview(null);
+                        setDirty(true);
+                      }}
+                      canCreate={perms.canCreateOrder}
+                      onPlaced={onTradePlaced}
+                    />
+                  ) : null}
+                  {sideTool === "risk" ? (
+                    <RiskCockpit
+                      account={selectedRow?.account || account}
+                      canManage={perms.canRiskManage}
+                      selectedSymbol={(params.get("symbol") || "").toUpperCase()}
+                      onSelectSymbol={(symbol) => setFilter("symbol", symbol || "")}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="muted term-analysis-collapsed">Chart thu gọn — ưu tiên sổ vị thế bên dưới.</p>
+            )}
+          </div>
+
+          <div className="term-book">
+            <div className="term-zone-label"><span>Sổ vị thế</span></div>
+            <TerminalSummary summary={summary} bookLabel={bookLabel} />
+            <div
+              className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""} ${showPanel && overlay ? "with-overlay" : ""}`}
+              style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 480}px` } : undefined}
+            >
+              <div className="term-main">
+                {!payload ? (
+                  <div className="term-skeleton" aria-busy="true">
+                    <div /><div /><div /><div />
+                  </div>
+                ) : null}
+                {payload && !rows.length && !stale ? <p className="muted">Không có vị thế trong bộ lọc.</p> : null}
+                {payload && !rows.length && stale ? <p className="term-warn-text">Chưa có dữ liệu xác minh. Không coi đây là hết vị thế.</p> : null}
+                {rows.length ? (
+                  <PositionTable
+                    rows={rows}
+                    sort={sort}
+                    onSort={toggleSort}
+                    selectedKey={selected}
+                    expanded={expanded}
+                    columns={prefs.columns || DEFAULT_COLUMNS}
+                    density={prefs.density}
+                    stale={stale}
+                    canClose={perms.canClose}
+                    canOpen={perms.canOpen}
+                    canTpsl={perms.canTpsl}
+                    onSelect={selectRow}
+                    onToggleExpand={(key) => {
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      });
+                    }}
+                    onClose={(row) => askClose(row, { orderType: "MARKET", percent: 100 })}
+                    onTpsl={(row) => askTpsl(row, { tab: "tpsl" })}
+                    onMenu={onRowMenu}
                   />
                 ) : null}
-                <RiskCockpit
-                  account={selectedRow?.account || account}
-                  canManage={perms.canRiskManage}
-                  selectedSymbol={(params.get("symbol") || "").toUpperCase()}
-                  onSelectSymbol={(symbol) => setFilter("symbol", symbol || "")}
-                />
               </div>
-            </div>
-          ) : (
-            <p className="muted">
-              Workspace chart đang ẩn.{" "}
-              <button type="button" className="ghost" onClick={() => persistWorkspace({ showWorkspace: true })}>
-                Hiện lại
-              </button>
-            </p>
-          )}
-          <div
-            className={`term-workspace ${showPanel && !overlay ? "with-panel" : ""} ${showPanel && overlay ? "with-overlay" : ""}`}
-            style={showPanel && !overlay ? { "--term-panel-w": `${prefs.panelWidth || 480}px` } : undefined}
-          >
-            <div className="term-main">
-              {!payload ? (
-                <div className="term-skeleton" aria-busy="true">
-                  <div /><div /><div /><div />
-                </div>
+              {showPanel && !overlay ? (
+                <div
+                  className="term-resize"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Kéo để đổi độ rộng panel"
+                  onPointerDown={startPanelResize}
+                />
               ) : null}
-              {payload && !rows.length && !stale ? <p className="muted">Không có vị thế trong bộ lọc.</p> : null}
-              {payload && !rows.length && stale ? <p className="term-warn-text">Chưa có dữ liệu xác minh. Không coi đây là hết vị thế.</p> : null}
-              {rows.length ? (
-                <PositionTable
-                  rows={rows}
-                  sort={sort}
-                  onSort={toggleSort}
-                  selectedKey={selected}
-                  expanded={expanded}
-                  columns={prefs.columns || DEFAULT_COLUMNS}
-                  density={prefs.density}
-                  stale={stale}
+              {showPanel ? (
+                <DetailPanel
+                  key={`${selectedRow.key}|${audience}`}
+                  row={selectedRow}
+                  audience={audience}
+                  panelTab={panelTab}
+                  onPanelTab={(id) => go((q) => {
+                    q.set("panelTab", id);
+                    if (id !== "overview") q.delete("ai");
+                  }, { replace: true })}
+                  monitorId={monitorId}
+                  onSelectMonitor={setMonitorId}
+                  accounts={payload?.accounts}
                   canClose={perms.canClose}
                   canOpen={perms.canOpen}
                   canTpsl={perms.canTpsl}
-                  onSelect={selectRow}
-                  onToggleExpand={(key) => {
-                    setExpanded((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(key)) next.delete(key);
-                      else next.add(key);
-                      return next;
-                    });
+                  canOrders={perms.canOrders}
+                  canCreateOrder={perms.canCreateOrder}
+                  mutation={mutation}
+                  onCloseRequest={askClose}
+                  onOpenRequest={askOpen}
+                  onTpslRequest={askTpsl}
+                  onReverseRequest={askReverse}
+                  onDirtyChange={setDirty}
+                  onClosePanel={closePanel}
+                  onApplyProtect={(r, patch) => askTpsl(r, { tab: "tpsl", ...patch })}
+                  width={prefs.panelWidth}
+                  overlay={overlay}
+                  aiOpen={aiOpen}
+                  onAiOpen={() => go((q) => {
+                    q.set("panelTab", "overview");
+                    q.set("ai", "1");
+                  }, { replace: true })}
+                  onAiClose={() => go((q) => q.delete("ai"), { replace: true })}
+                  tradeDraft={tradeDraft}
+                  tradePreview={tradePreview}
+                  onTradeDraftChange={(next) => {
+                    setTradeDraft((prev) => ({ ...prev, ...next }));
+                    setTradePreview(null);
+                    setDirty(true);
                   }}
-                  onClose={(row) => askClose(row, { orderType: "MARKET", percent: 100 })}
-                  onTpsl={(row) => askTpsl(row, { tab: "tpsl" })}
-                  onMenu={onRowMenu}
+                  onTradePlaced={onTradePlaced}
                 />
               ) : null}
             </div>
-            {showPanel && !overlay ? (
-              <div
-                className="term-resize"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Kéo để đổi độ rộng panel"
-                onPointerDown={startPanelResize}
-              />
-            ) : null}
-            {showPanel ? (
-              <DetailPanel
-                key={`${selectedRow.key}|${audience}`}
-                row={selectedRow}
-                audience={audience}
-                panelTab={panelTab}
-                onPanelTab={(id) => go((q) => {
-                  q.set("panelTab", id);
-                  if (id !== "overview") q.delete("ai");
-                }, { replace: true })}
-                monitorId={monitorId}
-                onSelectMonitor={setMonitorId}
-                accounts={payload?.accounts}
-                canClose={perms.canClose}
-                canOpen={perms.canOpen}
-                canTpsl={perms.canTpsl}
-                canOrders={perms.canOrders}
-                canCreateOrder={perms.canCreateOrder}
-                mutation={mutation}
-                onCloseRequest={askClose}
-                onOpenRequest={askOpen}
-                onTpslRequest={askTpsl}
-                onReverseRequest={askReverse}
-                onDirtyChange={setDirty}
-                onClosePanel={closePanel}
-                onApplyProtect={(r, patch) => askTpsl(r, { tab: "tpsl", ...patch })}
-                width={prefs.panelWidth}
-                overlay={overlay}
-                aiOpen={aiOpen}
-                onAiOpen={() => go((q) => {
-                  q.set("panelTab", "overview");
-                  q.set("ai", "1");
-                }, { replace: true })}
-                onAiClose={() => go((q) => q.delete("ai"), { replace: true })}
-                tradeDraft={tradeDraft}
-                tradePreview={tradePreview}
-                onTradeDraftChange={(next) => {
-                  setTradeDraft((prev) => ({ ...prev, ...next }));
-                  setTradePreview(null);
-                  setDirty(true);
-                }}
-                onTradePlaced={onTradePlaced}
-              />
+            {ticketOpen && !selected ? (
+              <p className="muted">Chọn tài khoản/vị thế hoặc mở panel Giao dịch → Mở để đặt lệnh.</p>
             ) : null}
           </div>
-          {ticketOpen && !selected ? (
-            <p className="muted">Chọn tài khoản/vị thế hoặc mở panel Giao dịch → Mở để đặt lệnh.</p>
-          ) : null}
-        </>
+        </div>
       ) : null}
 
       {tab === "position-history" && perms.canHistory ? (
