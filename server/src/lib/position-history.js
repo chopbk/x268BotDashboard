@@ -11,6 +11,23 @@ const LIST_CACHE_MS = 90 * 1000;
 const listHistoryCache = new Map();
 const HISTORY_ACCOUNT_CONCURRENCY = 5;
 const HISTORY_ACCOUNT_GAP_MS = 40;
+/** Một account treo (proxy/API) không được giữ cả request tới requestTimeout 90s. */
+const HISTORY_ACCOUNT_TIMEOUT_MS = 12_000;
+
+function withTimeout(promise, ms, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            const err = new Error(`${label} timeout ${ms}ms`);
+            err.code = "ETIMEDOUT";
+            reject(err);
+        }, ms);
+    });
+    return Promise.race([
+        Promise.resolve(promise).finally(() => clearTimeout(timer)),
+        timeout,
+    ]);
+}
 const SNAPSHOT_KEYS = [
     "openType", "tpType", "slType", "trailingOn", "trailingType", "hold", "tpCount", "tpPrices",
     "slPriceOpen", "leverage", "costAmount", "entryPrice", "isCopy", "isLimit", "isPaper", "signal",
@@ -544,21 +561,23 @@ async function listBinanceLiveHistory(selected, owners, window, query, errors) {
         HISTORY_ACCOUNT_CONCURRENCY,
         async (username) => {
             try {
-                const adapter = await getExchangeAdapter(username);
-                if (!adapter.capabilities().history) {
-                    return { username, rows: [], unsupported: true };
-                }
-                if (typeof adapter.fetchPositionHistory !== "function") {
-                    return { username, rows: [], unsupported: true };
-                }
-                const rows = await adapter.fetchPositionHistory({
-                    startTime: window.from.getTime(),
-                    endTime: window.to.getTime(),
-                    limit: 100,
-                    // Tab list: income REALIZED_PNL — tránh N×userTrades vượt proxy timeout.
-                    mode: "list",
-                });
-                return { username, rows: Array.isArray(rows) ? rows : [] };
+                return await withTimeout((async () => {
+                    const adapter = await getExchangeAdapter(username);
+                    if (!adapter.capabilities().history) {
+                        return { username, rows: [], unsupported: true };
+                    }
+                    if (typeof adapter.fetchPositionHistory !== "function") {
+                        return { username, rows: [], unsupported: true };
+                    }
+                    const rows = await adapter.fetchPositionHistory({
+                        startTime: window.from.getTime(),
+                        endTime: window.to.getTime(),
+                        limit: 100,
+                        // Tab list: income REALIZED_PNL — tránh N×userTrades vượt proxy timeout.
+                        mode: "list",
+                    });
+                    return { username, rows: Array.isArray(rows) ? rows : [] };
+                })(), HISTORY_ACCOUNT_TIMEOUT_MS, `history:${username}`);
             } catch (error) {
                 console.error("[listPositionHistory]", username, error.message);
                 return { username, rows: [], error: error.message || "Không lấy được positionHistory" };
