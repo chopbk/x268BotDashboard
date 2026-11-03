@@ -187,7 +187,12 @@ export default function MarketPage({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [briefFocus, setBriefFocus] = useState(null);
+  const [showContextCards, setShowContextCards] = useState(false);
+  const [showScoreDeep, setShowScoreDeep] = useState(false);
+
+  useEffect(() => {
+    setShowScoreDeep(false);
+  }, [view, symbol]);
 
   const patchParams = useCallback(
     (patch, { replace = false } = {}) => {
@@ -497,26 +502,37 @@ export default function MarketPage({
     <div className="mkt-page">
       <header className="mkt-header">
         <div>
-          <TitleTag>
-            {embedded ? "Kỹ thuật · Futures theo volume24h" : "Thị trường · Futures theo volume24h"}
-          </TitleTag>
-          <p className="mkt-sub">
-            {view === "location"
-              ? "Vị trí giá so với hỗ trợ/kháng cự, setup kỹ thuật — không phải lệnh mua/bán."
-              : "Scoring Long/Short độc lập trên 5m–1d (chỉ nến đóng). Điểm market-v1 không phải xác suất thắng."}
-          </p>
-          <p className="mkt-meta-line" aria-label="Nguồn phạm vi cập nhật chất lượng">
-            <span>Nguồn: Binance USDM cache · {overview?.formulaVersion || "market-v1"}</span>
-            <span>
-              Phạm vi: Top {top}
-              {view === "location" ? ` · khung ${analysisTf}` : ""} · universe {overview?.universe?.count ?? "—"}
-              {overview?.universe?.version != null ? ` (v${overview.universe.version})` : ""}
-            </span>
-            <span>Cập nhật: {when(ctx?.asOf || overview?.universe?.refreshedAt)}</span>
-            <span>
-              Chất lượng: {qualityLabel(ctx?.quality)} · {coverage.label || "—"}
-            </span>
-          </p>
+          {embedded ? null : (
+            <TitleTag>Thị trường · Futures theo volume24h</TitleTag>
+          )}
+          {embedded ? (
+            <p className="mkt-sub mkt-sub-compact">
+              {view === "location"
+                ? `Vị trí & setup · khung ${analysisTf} · Top ${top}`
+                : `Điểm đa khung · Top ${top}`}
+              {" · "}
+              {qualityLabel(ctx?.quality)} · cập nhật {when(ctx?.asOf || overview?.universe?.refreshedAt)}
+            </p>
+          ) : (
+            <>
+              <p className="mkt-sub">
+                {view === "location"
+                  ? "Vị trí giá so với hỗ trợ/kháng cự, setup kỹ thuật — không phải lệnh mua/bán."
+                  : "Scoring Long/Short độc lập trên 5m–1d (chỉ nến đóng). Điểm market-v1 không phải xác suất thắng."}
+              </p>
+              <p className="mkt-meta-line" aria-label="Nguồn phạm vi cập nhật chất lượng">
+                <span>Nguồn: Binance USDM · {overview?.formulaVersion || "market-v1"}</span>
+                <span>
+                  Top {top}
+                  {view === "location" ? ` · ${analysisTf}` : ""} · {overview?.universe?.count ?? "—"} coin
+                </span>
+                <span>{when(ctx?.asOf || overview?.universe?.refreshedAt)}</span>
+                <span>
+                  {qualityLabel(ctx?.quality)} · {coverage.label || "—"}
+                </span>
+              </p>
+            </>
+          )}
         </div>
         <div className="mkt-meta">
           <button type="button" className="ghost" disabled={refreshing} onClick={onRefresh}>
@@ -545,89 +561,81 @@ export default function MarketPage({
         </div>
       ) : null}
 
-      <div className="mkt-context-cards" id="mkt-context">
-        {ctx?.btc4h && ctx.btc4h.quality !== "missing" ? (
-          <button
-            type="button"
-            className={`mkt-ctx-card ${briefFocus === "btc4h" ? "active" : ""}`}
-            onClick={() => setBriefFocus("btc4h")}
-          >
-            <span className="mkt-ctx-label">BTC 4h</span>
-            <strong>
-              {ctx.btc4h.value?.structureLabel || ctx.btc4h.value?.structureBias || "—"}
-              {ctx.btc4h.value?.regime ? ` · ${ctx.btc4h.value.regime}` : ""}
-            </strong>
-            <span className="muted">
-              {qualityLabel(ctx.btc4h.quality)} · {when(ctx.btc4h.asOf)}
-            </span>
-          </button>
-        ) : (
-          <div className="mkt-ctx-card mkt-ctx-missing">
-            <span className="mkt-ctx-label">BTC 4h</span>
-            <strong>Thiếu dữ liệu</strong>
-            <span className="muted">{ctx?.btc4h?.reason || "không có snapshot BTC"}</span>
+      <div className="mkt-context-block" id="mkt-context">
+        {briefStatements.length ? (
+          <div className="mkt-brief" role="region" aria-label="Tóm tắt bối cảnh">
+            {briefStatements.map((s) => (
+              <p key={s.id} className="mkt-brief-item">
+                {s.text}
+              </p>
+            ))}
           </div>
+        ) : (
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+            Chưa có tóm tắt bối cảnh — collector đang thu thập.
+          </p>
         )}
-        {ctx?.breadth?.value ? (
-          <button
-            type="button"
-            className={`mkt-ctx-card ${briefFocus === "breadth" ? "active" : ""}`}
-            onClick={() => setBriefFocus("breadth")}
-          >
-            <span className="mkt-ctx-label">Độ rộng 1h</span>
-            <strong>
-              L {ctx.breadth.value.leanLong}/{ctx.breadth.value.universeTotal} · S {ctx.breadth.value.leanShort}/
-              {ctx.breadth.value.universeTotal}
-            </strong>
-            <span className="muted">
-              thiếu {ctx.breadth.value.missing ?? "—"}/{ctx.breadth.value.universeTotal} ·{" "}
-              {qualityLabel(ctx.breadth.quality)}
-            </span>
-          </button>
-        ) : null}
-        {ctx?.volatility && ctx.volatility.quality !== "missing" ? (
-          <button
-            type="button"
-            className={`mkt-ctx-card ${briefFocus === "volatility" ? "active" : ""}`}
-            onClick={() => setBriefFocus("volatility")}
-          >
-            <span className="mkt-ctx-label">Biến động</span>
-            <strong>ATR% BTC 4h {fmtPctSafe(ctx.volatility.value?.atrPct)}</strong>
-            <span className="muted">không gắn nhãn cực đoan · {qualityLabel(ctx.volatility.quality)}</span>
-          </button>
-        ) : null}
-        {ctx?.setupCounts && ctx.setupCounts.quality !== "missing" ? (
-          <button
-            type="button"
-            className={`mkt-ctx-card ${briefFocus === "setups" ? "active" : ""}`}
-            onClick={() => setBriefFocus("setups")}
-          >
-            <span className="mkt-ctx-label">Setup · {ctx.setupCounts.value?.analysisTf || analysisTf}</span>
-            <strong>
-              {ctx.setupCounts.value?.active ?? "—"} active · {ctx.setupCounts.value?.inEntry ?? "—"} in-entry
-            </strong>
-            <span className="muted">{ctx.setupCounts.value?.scope || "universe"}</span>
-          </button>
+        <button
+          type="button"
+          className="mkt-ctx-toggle ghost"
+          onClick={() => setShowContextCards((v) => !v)}
+          aria-expanded={showContextCards}
+        >
+          {showContextCards ? "Ẩn số chi tiết" : "Hiện số chi tiết (BTC · độ rộng · ATR · setup)"}
+        </button>
+        {showContextCards ? (
+          <div className="mkt-context-cards">
+            {ctx?.btc4h && ctx.btc4h.quality !== "missing" ? (
+              <div className="mkt-ctx-card">
+                <span className="mkt-ctx-label">BTC 4h</span>
+                <strong>
+                  {ctx.btc4h.value?.structureLabel || ctx.btc4h.value?.structureBias || "—"}
+                  {ctx.btc4h.value?.regime ? ` · ${ctx.btc4h.value.regime}` : ""}
+                </strong>
+                <span className="muted">
+                  {qualityLabel(ctx.btc4h.quality)} · {when(ctx.btc4h.asOf)}
+                </span>
+              </div>
+            ) : (
+              <div className="mkt-ctx-card mkt-ctx-missing">
+                <span className="mkt-ctx-label">BTC 4h</span>
+                <strong>Thiếu dữ liệu</strong>
+                <span className="muted">{ctx?.btc4h?.reason || "không có snapshot BTC"}</span>
+              </div>
+            )}
+            {ctx?.breadth?.value ? (
+              <div className="mkt-ctx-card">
+                <span className="mkt-ctx-label">Độ rộng 1h</span>
+                <strong>
+                  L {ctx.breadth.value.leanLong}/{ctx.breadth.value.universeTotal} · S{" "}
+                  {ctx.breadth.value.leanShort}/{ctx.breadth.value.universeTotal}
+                </strong>
+                <span className="muted">
+                  thiếu {ctx.breadth.value.missing ?? "—"}/{ctx.breadth.value.universeTotal}
+                </span>
+              </div>
+            ) : null}
+            {ctx?.volatility && ctx.volatility.quality !== "missing" ? (
+              <div className="mkt-ctx-card">
+                <span className="mkt-ctx-label">Biến động</span>
+                <strong>ATR% BTC 4h {fmtPctSafe(ctx.volatility.value?.atrPct)}</strong>
+                <span className="muted">{qualityLabel(ctx.volatility.quality)}</span>
+              </div>
+            ) : null}
+            {ctx?.setupCounts && ctx.setupCounts.quality !== "missing" ? (
+              <div className="mkt-ctx-card">
+                <span className="mkt-ctx-label">
+                  Setup · {ctx.setupCounts.value?.analysisTf || analysisTf}
+                </span>
+                <strong>
+                  {ctx.setupCounts.value?.active ?? "—"} active · {ctx.setupCounts.value?.inEntry ?? "—"}{" "}
+                  trong vùng
+                </strong>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
-
-      {briefStatements.length ? (
-        <div className="mkt-brief" role="region" aria-label="Tóm tắt bối cảnh">
-          {briefStatements.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`mkt-brief-item ${briefFocus === s.id ? "active" : ""}`}
-              onClick={() => {
-                setBriefFocus(s.id);
-                document.getElementById("mkt-context")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-              }}
-            >
-              {s.text}
-            </button>
-          ))}
-        </div>
-      ) : null}
 
       <div className="mkt-filters">
         <label>
@@ -893,67 +901,49 @@ export default function MarketPage({
                     Đóng
                   </button>
                 </div>
-                <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
-                  {detail.composite
-                    ? `${statusLabel(detail.composite.status)} · L${fmt(detail.composite.compositeLong)} / S${fmt(detail.composite.compositeShort)} · ${style}`
-                    : "Chưa có composite"}
-                  {" · "}
-                  {detail.snapshot?.qualityOverall || "—"}
-                  {" · "}
-                  {detail.snapshot?.formulaVersion}
+                <p className="muted mkt-detail-summary">
+                  {view === "location" && dc
+                    ? `${dc.positioning?.structureLabel || "—"} · ${dc.analysisTf || analysisTf}`
+                    : detail.composite
+                      ? `${statusLabel(detail.composite.status)} · L${fmt(detail.composite.compositeLong)} / S${fmt(detail.composite.compositeShort)}`
+                      : "Chưa có điểm tổng hợp"}
+                  {detail.flow?.bias ? ` · dòng tiền ${detail.flow.bias}` : ""}
                 </p>
                 <div className="mkt-detail-links">
+                  {view === "location" ? (
+                    <button
+                      type="button"
+                      className="mkt-inline-link"
+                      onClick={() => patchParams({ view: "scores" })}
+                    >
+                      Xem điểm đa khung
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="mkt-inline-link"
+                      onClick={() => patchParams({ view: "location" })}
+                    >
+                      Xem vị trí &amp; setup
+                    </button>
+                  )}
                   {canFlow ? (
                     <Link to={`/market?tab=flow&flowTab=overview&symbol=${encodeURIComponent(symbol)}`}>
-                      Xem dòng tiền
+                      Dòng tiền
                     </Link>
                   ) : null}
                   {canTerminal ? (
                     <Link to={`/terminal?symbol=${encodeURIComponent(symbol)}`}>Terminal</Link>
                   ) : null}
-                  <Link to={`/signal-search?tab=history&symbol=${encodeURIComponent(symbol)}`}>
-                    Lịch sử signal
-                  </Link>
                 </div>
 
-                {dc ? (
+                {view === "location" && dc ? (
                   <section className="mkt-decision" aria-label="Luận điểm quyết định">
-                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>
-                      Định vị · {dc.analysisTf || analysisTf}
-                      <span className="muted"> · {qualityLabel(dc.quality)}</span>
-                    </h3>
-                    <p className="muted" style={{ fontSize: 12, margin: "0 0 6px" }}>
-                      Giá {fmtMarketPrice(dc.positioning?.price, detailSymbolInfo)} · nguồn{" "}
-                      {dc.positioning?.priceSource || "—"} ·{" "}
-                      {dc.positioning?.priceFresh ? "tươi" : "stale/unknown"} ·{" "}
-                      {dc.positioning?.structureLabel || "—"}
-                      {dc.positioning?.htfLabel ? ` / HTF ${dc.positioning.htfLabel}` : ""}
+                    <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>
+                      Bảng bên trái đã có giá, hành động, entry/S–R. Dưới đây chỉ phần giải thích thêm.
                     </p>
-                    <div className="mkt-ruler" aria-hidden="true">
-                      <span>Hỗ trợ</span>
-                      <span className="mkt-ruler-bar" />
-                      <span>Kháng cự</span>
-                    </div>
-                    <ul className="mkt-sig-list">
-                      <li>
-                        <span>Hỗ trợ</span>
-                        <span className="muted">
-                          {dc.positioning?.support
-                            ? `[${fmtMarketPrice(dc.positioning.support.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.support.high, detailSymbolInfo)}] · ${fmtPctSafe(dc.positioning.support.distancePct)}`
-                            : "—"}
-                        </span>
-                      </li>
-                      <li>
-                        <span>Kháng cự</span>
-                        <span className="muted">
-                          {dc.positioning?.resistance
-                            ? `[${fmtMarketPrice(dc.positioning.resistance.low, detailSymbolInfo)}–${fmtMarketPrice(dc.positioning.resistance.high, detailSymbolInfo)}] · ${fmtPctSafe(dc.positioning.resistance.distancePct)}`
-                            : "—"}
-                        </span>
-                      </li>
-                    </ul>
 
-                    <h3 style={{ margin: "10px 0 4px", fontSize: 13 }}>Kịch bản</h3>
+                    <h3 className="mkt-detail-h">Kịch bản &amp; trigger</h3>
                     {(dc.scenarios || []).length ? (
                       <ul className="mkt-sig-list">
                         {dc.scenarios.map((sc) => (
@@ -961,18 +951,10 @@ export default function MarketPage({
                             <span className={sc.side === "long" ? "mkt-long" : "mkt-short"}>
                               {sc.side} · {sc.type} · {sc.entryState}
                             </span>
-                            <span className="muted">
-                              entry [{fmtMarketPrice(sc.entryLow, detailSymbolInfo)}–
-                              {fmtMarketPrice(sc.entryHigh, detailSymbolInfo)}] · invalidation{" "}
-                              {fmtMarketPrice(sc.invalidationLevel, detailSymbolInfo)}
-                              {sc.expiresAt
-                                ? ` · hết ${when(sc.expiresAt)}`
-                                : sc.expiresAtIndex != null
-                                  ? ` · hết bar #${sc.expiresAtIndex}`
-                                  : ""}
-                            </span>
                             <span className="muted" style={{ fontSize: 11 }}>
-                              Trigger: {sc.trigger?.description || sc.type} · {sc.entryNote}
+                              {sc.trigger?.description || sc.type}
+                              {sc.entryNote ? ` · ${sc.entryNote}` : ""}
+                              {sc.expiresAt ? ` · hết ${when(sc.expiresAt)}` : ""}
                             </span>
                           </li>
                         ))}
@@ -981,15 +963,13 @@ export default function MarketPage({
                       <p className="muted" style={{ fontSize: 12 }}>{dc.note || "Chưa có setup active."}</p>
                     )}
 
-                    <h3 style={{ margin: "10px 0 4px", fontSize: 13 }}>Bằng chứng</h3>
+                    <h3 className="mkt-detail-h">Bằng chứng</h3>
                     {(dc.evidence || []).length ? (
                       <ul className="mkt-sig-list">
                         {dc.evidence.map((e) => (
                           <li key={e.id}>
                             <span>{e.text}</span>
-                            <span className="muted">
-                              {e.source} · {when(e.asOf)} · {e.version || ""}
-                            </span>
+                            <span className="muted">{e.source}</span>
                           </li>
                         ))}
                       </ul>
@@ -997,15 +977,13 @@ export default function MarketPage({
                       <p className="muted" style={{ fontSize: 12 }}>Chưa có bằng chứng đủ từ snapshot.</p>
                     )}
 
-                    <h3 style={{ margin: "10px 0 4px", fontSize: 13 }}>Phản biện</h3>
+                    <h3 className="mkt-detail-h">Phản biện</h3>
                     {(dc.conflicts || []).length ? (
                       <ul className="mkt-sig-list">
                         {dc.conflicts.map((c) => (
                           <li key={c.id}>
                             <span>{c.text}</span>
-                            <span className="muted">
-                              {c.source} · {when(c.asOf)}
-                            </span>
+                            <span className="muted">{c.source}</span>
                           </li>
                         ))}
                       </ul>
@@ -1015,148 +993,156 @@ export default function MarketPage({
                   </section>
                 ) : null}
 
-                {view === "location" && (detail.signalEntries || []).length ? (
-                  <section className="mkt-signals">
-                    <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Entry signal (tách khỏi setup)</h3>
-                    <ul className="mkt-sig-list">
-                      {detail.signalEntries.slice(0, 8).map((e) => (
-                        <li key={e.id}>
-                          <span>
-                            {e.source} · {e.side}
-                            {e.missingEntry ? " · thiếu giá entry" : ` · ${e.priceRelation}/${e.validity}`}
-                          </span>
-                          <span className="muted">{e.openTime || "—"}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ) : null}
-
                 <section
                   id="mkt-signals-panel"
                   className={`mkt-signals ${focusSignals ? "mkt-signals-focus" : ""}`}
                 >
-                  <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>
-                    Signal đáng chú ý · {SIGNAL_HOURS}h
+                  <h3 className="mkt-detail-h">
+                    Signal · {SIGNAL_HOURS}h
                     {symbolSignals?.count ? (
-                      <span className="muted"> · {symbolSignals.count} tín hiệu</span>
+                      <span className="muted"> · {symbolSignals.count}</span>
                     ) : null}
                   </h3>
+                  {view === "location" && (detail.signalEntries || []).length ? (
+                    <ul className="mkt-sig-list">
+                      {detail.signalEntries.slice(0, 5).map((e) => (
+                        <li key={e.id}>
+                          <span>
+                            Kênh {e.source} · {e.side}
+                            {e.missingEntry ? " · thiếu entry" : ` · ${e.priceRelation}/${e.validity}`}
+                          </span>
+                          <span className="muted">{relTime(e.openTime) || e.openTime || "—"}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   {!signalMap ? (
                     <p className="muted" style={{ fontSize: 12 }}>Đang tải signal…</p>
                   ) : notableForSymbol.length ? (
                     <ul className="mkt-sig-list">
-                      {notableForSymbol.map((row) => (
+                      {notableForSymbol.slice(0, view === "location" ? 4 : 8).map((row) => (
                         <li key={row.id || `${row.signal}-${row.openTime}`}>
                           <span className={row.side === "LONG" ? "mkt-long" : row.side === "SHORT" ? "mkt-short" : ""}>
                             {row.signal || "—"} · {row.side || "—"}
                           </span>
                           <span className="muted">
-                            {row.type || "—"} · {row.status || "—"} · {relTime(row.openTime) || when(row.openTime)}
+                            {row.status || "—"} · {relTime(row.openTime) || when(row.openTime)}
                             {row.matchLean ? " · khớp lean" : ""}
                           </span>
                         </li>
                       ))}
                     </ul>
-                  ) : (
+                  ) : !(view === "location" && (detail.signalEntries || []).length) ? (
                     <p className="muted" style={{ fontSize: 12 }}>
-                      Không có signal gần đây cho {symbol} trong {SIGNAL_HOURS} giờ.
+                      Không có signal gần đây cho {symbol}.
                     </p>
-                  )}
+                  ) : null}
                 </section>
 
-                <div className="mkt-matrix">
-                  {TIMEFRAMES.map((tf) => {
-                    const cell = cellLabel(detail.snapshot?.timeframes?.[tf] ? {
-                      bias: detail.snapshot.timeframes[tf].bias,
-                      lead: detail.snapshot.timeframes[tf].bias === "long"
-                        ? detail.snapshot.timeframes[tf].longScore
-                        : detail.snapshot.timeframes[tf].bias === "short"
-                          ? detail.snapshot.timeframes[tf].shortScore
-                          : Math.max(detail.snapshot.timeframes[tf].longScore ?? 0, detail.snapshot.timeframes[tf].shortScore ?? 0),
-                      longScore: detail.snapshot.timeframes[tf].longScore,
-                      shortScore: detail.snapshot.timeframes[tf].shortScore,
-                      quality: detail.snapshot.timeframes[tf].quality?.overall,
-                    } : null);
-                    return (
-                      <button
-                        key={tf}
-                        type="button"
-                        className={`mkt-matrix-item ${timeframe === tf ? "active" : ""}`}
-                        onClick={() => patchParams({ tf })}
-                      >
-                        <span className="tf">{tf}</span>
-                        <span className={`score ${cell.cls}`}>{cell.text}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {view === "scores" || showScoreDeep ? (
+                  <>
+                    <div className="mkt-matrix">
+                      {TIMEFRAMES.map((tf) => {
+                        const cell = cellLabel(detail.snapshot?.timeframes?.[tf] ? {
+                          bias: detail.snapshot.timeframes[tf].bias,
+                          lead: detail.snapshot.timeframes[tf].bias === "long"
+                            ? detail.snapshot.timeframes[tf].longScore
+                            : detail.snapshot.timeframes[tf].bias === "short"
+                              ? detail.snapshot.timeframes[tf].shortScore
+                              : Math.max(detail.snapshot.timeframes[tf].longScore ?? 0, detail.snapshot.timeframes[tf].shortScore ?? 0),
+                          longScore: detail.snapshot.timeframes[tf].longScore,
+                          shortScore: detail.snapshot.timeframes[tf].shortScore,
+                          quality: detail.snapshot.timeframes[tf].quality?.overall,
+                        } : null);
+                        return (
+                          <button
+                            key={tf}
+                            type="button"
+                            className={`mkt-matrix-item ${timeframe === tf ? "active" : ""}`}
+                            onClick={() => patchParams({ tf })}
+                          >
+                            <span className="tf">{tf}</span>
+                            <span className={`score ${cell.cls}`}>{cell.text}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                <h3 style={{ margin: "8px 0 4px", fontSize: 13 }}>Breakdown {timeframe || "15m"}</h3>
-                {breakdownRows.length ? (
-                  <table className="mkt-break">
-                    <thead>
-                      <tr>
-                        <th>Nhóm</th>
-                        <th>Giá trị</th>
-                        <th className="num">Long</th>
-                        <th className="num">Short</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {breakdownRows.map((r) => (
-                        <tr key={r.id}>
-                          <td>{r.id}</td>
-                          <td title={r.condition}>{fmt(typeof r.value === "number" ? r.value : null) === "—" ? String(r.value ?? "—") : fmt(r.value)}</td>
-                          <td className={`num ${r.long > 0 ? "mkt-long" : r.long < 0 ? "mkt-short" : ""}`}>{fmt(r.long, 1)}</td>
-                          <td className={`num ${r.short > 0 ? "mkt-long" : r.short < 0 ? "mkt-short" : ""}`}>{fmt(r.short, 1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    <h3 className="mkt-detail-h">Breakdown {timeframe || "15m"}</h3>
+                    {breakdownRows.length ? (
+                      <table className="mkt-break">
+                        <thead>
+                          <tr>
+                            <th>Nhóm</th>
+                            <th>Giá trị</th>
+                            <th className="num">Long</th>
+                            <th className="num">Short</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {breakdownRows.map((r) => (
+                            <tr key={r.id}>
+                              <td>{r.id}</td>
+                              <td title={r.condition}>{fmt(typeof r.value === "number" ? r.value : null) === "—" ? String(r.value ?? "—") : fmt(r.value)}</td>
+                              <td className={`num ${r.long > 0 ? "mkt-long" : r.long < 0 ? "mkt-short" : ""}`}>{fmt(r.long, 1)}</td>
+                              <td className={`num ${r.short > 0 ? "mkt-long" : r.short < 0 ? "mkt-short" : ""}`}>{fmt(r.short, 1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12 }}>Chưa có breakdown.</p>
+                    )}
+
+                    {detail.strongest ? (
+                      <p style={{ fontSize: 12 }}>
+                        Mạnh nhất: <strong>{detail.strongest.id}</strong> +{fmt(detail.strongest.points, 1)} ({detail.strongest.side})
+                      </p>
+                    ) : null}
+                    {detail.weakest ? (
+                      <p style={{ fontSize: 12 }}>
+                        Điểm trừ: <strong>{detail.weakest.id}</strong> {fmt(detail.weakest.points, 1)} ({detail.weakest.side})
+                      </p>
+                    ) : null}
+
+                    <details className="mkt-fold">
+                      <summary>Lịch sử score</summary>
+                      <ul className="mkt-hist">
+                        {(history?.rows || []).slice(0, 12).map((h, i) => {
+                          const c = h.composites?.[style];
+                          return (
+                            <li key={`${h.calculatedAt}-${i}`}>
+                              <span>{when(h.calculatedAt)}</span>
+                              <span>
+                                L{fmt(c?.compositeLong)} / S{fmt(c?.compositeShort)} · {statusLabel(c?.status)}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {!history?.rows?.length ? <li className="muted">Chưa có lịch sử</li> : null}
+                      </ul>
+                    </details>
+                  </>
                 ) : (
-                  <p className="muted" style={{ fontSize: 12 }}>Chưa có breakdown (warming/missing).</p>
+                  <button
+                    type="button"
+                    className="ghost mkt-ctx-toggle"
+                    onClick={() => setShowScoreDeep(true)}
+                  >
+                    Hiện điểm khung / breakdown
+                  </button>
                 )}
 
-                {detail.strongest ? (
-                  <p style={{ fontSize: 12 }}>
-                    Mạnh nhất: <strong>{detail.strongest.id}</strong> +{fmt(detail.strongest.points, 1)} ({detail.strongest.side})
-                  </p>
-                ) : null}
-                {detail.weakest ? (
-                  <p style={{ fontSize: 12 }}>
-                    Điểm trừ: <strong>{detail.weakest.id}</strong> {fmt(detail.weakest.points, 1)} ({detail.weakest.side})
-                  </p>
-                ) : null}
-
                 {detail.flow ? (
-                  <div className="mkt-banner" style={{ marginTop: 8 }}>
-                    <strong>Dòng tiền (Smart Money)</strong>
+                  <details className="mkt-fold" open={view === "scores"}>
+                    <summary>Dòng tiền (Smart Money)</summary>
                     <div className="muted" style={{ fontSize: 12 }}>
                       Bias {detail.flow.bias || "—"} · OI {detail.flow.openInterest?.value ?? "—"} · Funding{" "}
                       {detail.flow.funding?.rate ?? "—"} · {when(detail.flow.collectedAt)}
                     </div>
                     <div className="muted" style={{ fontSize: 11 }}>{detail.flow.note}</div>
-                  </div>
-                ) : (
-                  <p className="muted" style={{ fontSize: 12 }}>Chưa có snapshot Smart Money cho symbol.</p>
-                )}
-
-                <h3 style={{ margin: "12px 0 4px", fontSize: 13 }}>Lịch sử score</h3>
-                <ul className="mkt-hist">
-                  {(history?.rows || []).slice(0, 12).map((h, i) => {
-                    const c = h.composites?.[style];
-                    return (
-                      <li key={`${h.calculatedAt}-${i}`}>
-                        <span>{when(h.calculatedAt)}</span>
-                        <span>
-                          L{fmt(c?.compositeLong)} / S{fmt(c?.compositeShort)} · {statusLabel(c?.status)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                  {!history?.rows?.length ? <li className="muted">Chưa có lịch sử</li> : null}
-                </ul>
+                  </details>
+                ) : null}
               </>
             )}
           </aside>

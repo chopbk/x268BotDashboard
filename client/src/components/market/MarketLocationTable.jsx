@@ -222,8 +222,6 @@ const MarketLocationTable = forwardRef(function MarketLocationTable(
                   <span className={actionClass(decision?.action)}>
                     {decision?.actionLabel || "—"}
                   </span>
-                  {" · "}
-                  {entry.text !== "—" ? entry.text : setup.text}
                 </div>
               </td>
               <td className="num">

@@ -19,6 +19,16 @@
 }
 .mkt-meta-line span:first-child::before { content: none; margin: 0; }
 
+.mkt-sub-compact {
+  margin: 0;
+  font-size: var(--font-control);
+  line-height: 1.4;
+}
+.mkt-context-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .mkt-context-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -34,12 +44,8 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  cursor: pointer;
 }
-.mkt-ctx-card.active {
-  outline: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-}
-.mkt-ctx-card.mkt-ctx-missing { cursor: default; opacity: 0.75; }
+.mkt-ctx-card.mkt-ctx-missing { opacity: 0.75; }
 .mkt-ctx-label {
   font-size: var(--font-caption);
   text-transform: uppercase;
@@ -47,25 +53,49 @@
   opacity: 0.7;
 }
 .mkt-ctx-card strong { font-size: var(--font-control); font-weight: 600; }
+.mkt-ctx-toggle {
+  align-self: start;
+  font-size: var(--font-caption);
+  opacity: 0.8;
+}
 .mkt-brief {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 .mkt-brief-item {
-  text-align: left;
+  margin: 0;
+  font-size: var(--font-control);
+  line-height: 1.45;
+  opacity: 0.92;
+}
+.mkt-detail-summary {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.mkt-detail-h {
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+.mkt-inline-link {
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: var(--font-control);
-  line-height: 1.45;
-  padding: 4px 0;
+  font-size: 12px;
+  text-decoration: underline;
   cursor: pointer;
-  opacity: 0.88;
+  padding: 0;
 }
-.mkt-brief-item:hover,
-.mkt-brief-item.active { text-decoration: underline; opacity: 1; }
+.mkt-fold {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.mkt-fold summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
 
 .mkt-summary {
   display: flex;
