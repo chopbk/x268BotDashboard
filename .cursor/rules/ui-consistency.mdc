@@ -1,0 +1,69 @@
+---
+description: Chuẩn hiển thị chung cho mọi màn web-bot; áp dụng khi tạo hoặc sửa UI
+alwaysApply: true
+---
+
+# Giữ giao diện nhất quán
+
+Áp dụng khi tạo/sửa page, component, CSS, modal, form, bảng hoặc biểu đồ trong client.
+Nguồn chuẩn là `client/src/styles.css`; xem thêm phần Mật độ giao diện trong
+`docs/development.md`. Đọc CSS chung và CSS màn liên quan trước khi sửa.
+
+## Typography và control
+
+| Vai trò | Token bắt buộc | Giá trị desktop hiện tại |
+|---|---|---|
+| Nội dung | `var(--font-body)` | 14px |
+| Nút, input, select, bộ lọc | `var(--font-control)` | 13px |
+| Tiêu đề trang | `var(--font-title)` | 20px |
+| Tiêu đề khối/panel/dialog | `var(--font-section)` | 16px |
+| Chiều cao tối thiểu form control | `var(--control-height)` | 32px |
+
+- Tái sử dụng style/component có sẵn cho button, `.ghost`, `.link-btn`, card,
+  page header, filter và table. Dùng token thay vì chép giá trị px tương đương.
+- Không tự tạo bộ font/size riêng cho từng màn; không dùng inline font-size/padding
+  cho control tiêu chuẩn. CSS riêng chỉ xử lý bố cục hoặc biến thể có lý do rõ ràng.
+- Giữ root font-size 16px. Không dùng zoom, scale hoặc giảm root để thu nhỏ UI.
+- Nút thường và ghost/link trong cùng hàng cần cùng chiều cao; tính cả line-height,
+  padding và border. Dùng min-height, không ép height làm cắt nhãn nhiều dòng.
+- Nhãn phụ/bảng chuyên dụng đã gọn (thường 11–13px), icon nội tuyến và nhãn chart
+  được giữ kích thước riêng; không thu nhỏ đồng loạt. KPI có thể lớn hơn nội dung.
+- Ngoại lệ mới phải có lý do ở CSS/component và mô tả trong bàn giao/PR; không
+  biến ngoại lệ thành chuẩn riêng cho cả màn. Không cần xin phép cho lựa chọn thường lệ.
+
+## Spacing, màu và bố cục
+
+- Ưu tiên chuẩn sẵn có: gap 8–12px, card padding 14px 16px, ô bảng 8px 10px;
+  đọc biến thể hiện tại trước khi override. Không tăng padding để làm nút nổi bật.
+- Dùng token màu `--bg`, `--surface`, `--surface-2`, `--line`, `--text`, `--muted`,
+  `--accent`, `--danger`, `--ok`, `--warn`; giữ ý nghĩa trạng thái hiện tại.
+- Toolbar/filter được wrap; flex/grid con có min-width: 0 khi cần. Bảng rộng cuộn
+  trong container, không làm cả trang tràn ngang. Không giấu thông tin bằng overflow
+  hidden chỉ để che lỗi layout. Nhãn quan trọng không bị cắt mất nghĩa.
+- Giữ hover, disabled, selected và focus-visible. Không xóa outline mà thiếu thay thế.
+
+## Responsive và thiết bị cảm ứng
+
+- Kế thừa breakpoint và rule pointer coarse trong styles.css. Input cảm ứng dùng
+  16px để tránh iOS zoom khi focus; control chính có vùng bấm tối thiểu 40px.
+- Không để CSS riêng ghi đè ngược các rule này. Không kéo giãn checkbox, switch,
+  range hoặc icon nhỏ theo rule dành cho input văn bản/nút chính.
+- Màn hẹp phải đọc được tiêu đề, thao tác được filter/form, cuộn bảng và đóng modal;
+  không thu nhỏ toàn trang để nhét nội dung desktop vào mobile.
+
+## Kiểm tra trước bàn giao UI
+
+1. Rà cascade/specificity và các màn dùng chung selector vừa sửa; tránh sửa toàn cục
+   chỉ để giải quyết một màn. Giữ logic dữ liệu và hành vi giao dịch hiện có.
+2. Chạy `npm --prefix client run build` khi sửa runtime UI.
+3. Kiểm tra browser ở desktop và màn hẹp khoảng 390px: cỡ chữ/control, wrap,
+   tràn ngang, nhãn dài, bảng, form/switch, modal và focus liên quan thay đổi.
+   Viewport hẹp không thay thế kiểm tra pointer coarse nếu sửa rule cảm ứng.
+4. Với CSS chung, kiểm tra đại diện Tổng quan, danh sách/Config Lab, Signal,
+   Terminal, Thị trường, Báo cáo/Analytics và một màn quản trị/form.
+5. Báo đúng phạm vi đã kiểm tra và giới hạn còn lại; không ghi đã kiểm tra mọi màn
+   hoặc mọi trạng thái nếu chỉ build hoặc dùng fixture. Không thao tác lệnh/config thật
+   chỉ để kiểm thử giao diện.
+
+Thay đổi chỉ docs/rule không cần build hoặc browser test; kiểm tra token/đường dẫn
+tham chiếu khớp source. Commit/push/deploy theo rule hoàn tất hiện có của repo.

@@ -111,6 +111,9 @@ Không lưu config thật chỉ để test giao diện. Giữ cả route mới v
 
 ## Mật độ giao diện
 
+Rule bắt buộc: [ui-consistency.mdc](../.cursor/rules/ui-consistency.mdc),
+được tham chiếu từ AGENTS.md để áp dụng cho cả Cursor và Codex.
+
 Token chung trong `client/src/styles.css`: nội dung 14px, nút/bộ lọc 13px,
 tiêu đề trang 20px, tiêu đề khối 16px, control desktop 32px. Giữ root 16px
 để không co nhỏ thêm nhãn biểu đồ và các kích thước dùng rem. KPI được phép

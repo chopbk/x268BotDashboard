@@ -11,6 +11,13 @@ Web UI cho bot, gồm client React/Vite và server Express/MongoDB.
 - Khi đổi tính năng, route hoặc nguồn dữ liệu, cập nhật tài liệu liên quan cùng thay đổi.
   Không đưa secret, tài khoản thật hoặc tên signal riêng vào ví dụ/tài liệu.
 
+## Quy tắc bắt buộc với giao diện
+
+- Khi tạo hoặc sửa UI, đọc và tuân thủ `.cursor/rules/ui-consistency.mdc`.
+- Dùng token typography/control và style chung trong `client/src/styles.css`;
+  không tạo cỡ chữ/nút riêng cho từng màn. Giữ responsive và vùng bấm cảm ứng.
+- Kiểm tra các màn chịu ảnh hưởng theo checklist trong rule trước khi bàn giao.
+
 ## Quy tắc bắt buộc với auth và phân quyền
 
 Trước khi sửa bất kỳ phần nào liên quan đăng ký, đăng nhập, cookie/JWT, user, role,
