@@ -1,10 +1,17 @@
 :root {
   /* Shared density: keep rem at 16px for chart geometry and compact labels. */
+  /* Density: Data-Dense Dashboard + Financial Trust (ui-ux-pro-max) */
   --font-body: 14px;
   --font-control: 13px;
   --font-title: 20px;
   --font-section: 16px;
+  --font-caption: 12px;
   --control-height: 32px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --table-cell-y: 8px;
+  --table-cell-x: 10px;
   --ease: 180ms ease;
   --radius-card: 12px;
   --radius-control: 8px;
@@ -239,10 +246,15 @@ input:focus-visible, select:focus-visible {
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   background: var(--accent);
   border: 0;
-  border-radius: 8px;
-  padding: 7px 10px;
+  border-radius: var(--radius-control);
+  padding: 6px 12px;
+  min-height: var(--control-height);
   line-height: 18px;
   font-weight: 650;
   font-size: var(--font-control);
@@ -262,7 +274,8 @@ a:focus-visible,
 }
 
 button.ghost {
-  padding: 6px 9px;
+  padding: 6px 12px;
+  min-height: var(--control-height);
   background: transparent;
   border: 1px solid var(--line);
   color: var(--text);
@@ -273,9 +286,11 @@ button.ghost:hover { background: var(--surface-2); }
 a.link-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  padding: 6px 12px;
+  min-height: var(--control-height);
   line-height: 18px;
   font-size: var(--font-control);
   transition: background var(--ease);
@@ -416,7 +431,7 @@ a.link-btn:hover { background: var(--surface-2); }
 }
 .dash-attn-critical .dash-sev { color: var(--danger); }
 .dash-attn-high .dash-sev { color: var(--warn, #e0a106); }
-.dash-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.dash-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .dash-cache-meta { margin: 0 0 12px; font-size: 0.85rem; }
 .dash-series {
   display: grid;
@@ -839,8 +854,11 @@ tr.row-active td { background: rgba(76, 141, 255, 0.08); }
   font-size: 0.82rem;
 }
 
-.row-actions { display: flex; gap: 6px; }
-.row-actions button, .inline-edit button { padding: 6px 10px; }
+.row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.row-actions button, .inline-edit button {
+  padding: 6px 12px;
+  min-height: var(--control-height);
+}
 
 button.danger {
   background: transparent;
@@ -1028,7 +1046,7 @@ table { width: 100%; border-collapse: collapse; font-size: var(--font-control); 
 
 th, td {
   text-align: left;
-  padding: 8px 10px;
+  padding: var(--table-cell-y) var(--table-cell-x);
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
@@ -1379,11 +1397,11 @@ td.negative { color: var(--danger); }
 .pos-alert { background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .pos-child td { color: var(--muted); font-size: 0.82rem; }
 .pos-table { width: max-content; min-width: 100%; border-collapse: collapse; }
-.pos-table th, .pos-table td { padding: 8px 10px; text-align: left; white-space: nowrap; vertical-align: middle; font-size: var(--font-body); }
+.pos-table th, .pos-table td { padding: var(--table-cell-y) var(--table-cell-x); text-align: left; white-space: nowrap; vertical-align: middle; font-size: var(--font-body); }
 .pos-inline { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .pos-sub td { padding-top: 0; border-top: 0; }
 .pos-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
-.pos-actions button.ghost { padding: 4px 8px; white-space: nowrap; }
+.pos-actions button.ghost { padding: 4px 10px; min-height: 28px; white-space: nowrap; }
 .pos-close-form { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pos-close-form input {
   width: 96px;
@@ -1690,29 +1708,30 @@ button.linkish:hover { background: none; }
 .order-ticket-confirm-dl dd { margin: 0; }
 
 .orders-tab { padding: 0; min-width: 0; }
-.orders-table { font-size: 0.88rem; }
-.orders-table-compact { font-size: 0.78rem; }
+.orders-table { font-size: var(--font-control); }
+.orders-table-compact { font-size: var(--font-caption); }
 .orders-table-compact th,
 .orders-table-compact td {
-  padding: 3px 6px;
-  line-height: 1.25;
+  padding: 4px 8px;
+  line-height: 1.3;
   white-space: nowrap;
   vertical-align: middle;
 }
-.orders-table-compact .order-kind { padding: 0 4px; font-size: 0.68rem; }
-.orders-table-compact .order-status { padding: 0 4px; font-size: 0.72rem; }
+.orders-table-compact .order-kind { padding: 0 4px; font-size: var(--font-caption); }
+.orders-table-compact .order-status { padding: 0 4px; font-size: var(--font-caption); }
 .orders-table-compact .order-monitor {
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: var(--font-caption);
 }
 .orders-table-compact .orders-actions { width: 1%; }
 .orders-table-compact .order-cancel-btn,
 .orders-table-compact .pos-case-actions .ghost {
-  padding: 2px 6px;
-  font-size: 0.74rem;
+  padding: 4px 8px;
+  min-height: 28px;
+  font-size: var(--font-caption);
 }
 .orders-table tr.clickable { cursor: pointer; }
 .orders-table tr.clickable:hover { background: var(--hover); }
@@ -2039,7 +2058,8 @@ button.linkish:hover { background: none; }
   }
   .page-head button, .history-tabs button, .mkt-hub-tabs button,
   .lab-save-actions button, .lab-filterbar button, .lab-create-fields button,
-  .login-card button, .sidenav nav a, a.link-btn {
-    min-height: 40px;
+  .login-card button, .sidenav nav a, a.link-btn,
+  body main button:not(.chip-btn):not(.perf-linkish):not(.ghost-link) {
+    min-height: var(--control-height);
   }
 }

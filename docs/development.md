@@ -114,11 +114,13 @@ Không lưu config thật chỉ để test giao diện. Giữ cả route mới v
 Rule bắt buộc: [ui-consistency.mdc](../.cursor/rules/ui-consistency.mdc),
 được tham chiếu từ AGENTS.md để áp dụng cho cả Cursor và Codex.
 
-Token chung trong `client/src/styles.css`: nội dung 14px, nút/bộ lọc 13px,
-tiêu đề trang 20px, tiêu đề khối 16px, control desktop 32px. Giữ root 16px
-để không co nhỏ thêm nhãn biểu đồ và các kích thước dùng rem. KPI được phép
-lớn hơn nội dung. Config Lab, Market/Smart Money và Terminal dùng cùng token
-cho tiêu đề; bảng chuyên dụng giữ cỡ chữ nhỏ riêng.
+Token chung trong `client/src/styles.css` (profile **Data-Dense + Financial Trust**
+theo ui-ux-pro-max): nội dung 14px, nút/bộ lọc 13px, caption/bảng gọn 12px,
+tiêu đề trang 20px, tiêu đề khối 16px, control desktop 32px (cảm ứng 40px).
+Gap hành động tối thiểu 8px (`--space-2`); ô bảng `8×10` (`--table-cell-*`).
+Nút thường/ghost/link-btn cùng `min-height: var(--control-height)`. Giữ root 16px.
+KPI được phép lớn hơn nội dung. Config Lab, Market/Smart Money và Terminal dùng
+cùng token cho tiêu đề; bảng Terminal compact dùng `--font-caption`, không nhỏ hơn 12px.
 
 ### Theme / skin
 

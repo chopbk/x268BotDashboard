@@ -15,9 +15,12 @@ Nguồn chuẩn là `client/src/styles.css`; xem thêm phần Mật độ giao d
 |---|---|---|
 | Nội dung | `var(--font-body)` | 14px |
 | Nút, input, select, bộ lọc | `var(--font-control)` | 13px |
+| Nhãn phụ / bảng compact | `var(--font-caption)` | 12px |
 | Tiêu đề trang | `var(--font-title)` | 20px |
 | Tiêu đề khối/panel/dialog | `var(--font-section)` | 16px |
 | Chiều cao tối thiểu form control | `var(--control-height)` | 32px |
+| Gap hành động / toolbar | `var(--space-2)` | 8px |
+| Ô bảng | `var(--table-cell-y/x)` | 8px / 10px |
 
 - Tái sử dụng style/component có sẵn cho button, `.ghost`, `.link-btn`, card,
   page header, filter và table. Dùng token thay vì chép giá trị px tương đương.
@@ -33,8 +36,10 @@ Nguồn chuẩn là `client/src/styles.css`; xem thêm phần Mật độ giao d
 
 ## Spacing, màu và bố cục
 
-- Ưu tiên chuẩn sẵn có: gap 8–12px, card padding 14px 16px, ô bảng 8px 10px;
+- Profile mật độ: Data-Dense Dashboard + font IBM Plex (Financial Trust).
+  Ưu tiên token `--space-2/3`, card padding 14px 16px, ô bảng `--table-cell-*`;
   đọc biến thể hiện tại trước khi override. Không tăng padding để làm nút nổi bật.
+  Không dùng chữ nhỏ hơn `--font-caption` (12px) cho nhãn có nghĩa.
 - Dùng token màu `--bg`, `--surface`, `--surface-2`, `--line`, `--text`, `--muted`,
   `--accent`, `--danger`, `--ok`, `--warn`; giữ ý nghĩa trạng thái hiện tại.
 - Toolbar/filter được wrap; flex/grid con có min-width: 0 khi cần. Bảng rộng cuộn
