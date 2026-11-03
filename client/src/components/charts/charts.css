@@ -23,11 +23,11 @@
   min-height: 200px;
 }
 
+/* Titles full-width above actions — tránh mode tabs ép subtitle xuống từng token trong lưới 2 cột. */
 .dv-shell-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: space-between;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -35,24 +35,30 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  flex: 1;
 }
 
 .dv-shell-titles h2 {
   margin: 0;
   font-size: 1rem;
   line-height: 1.35;
+  overflow-wrap: break-word;
 }
 
 .dv-shell-sub {
   margin: 0;
   font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .dv-shell-summary {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .dv-shell-actions {
@@ -60,6 +66,8 @@
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .dv-shell-body {

@@ -442,27 +442,33 @@ export default function TradePerformancePage({ mode = "overview" }) {
   const audienceScope = audience === "others" ? "others" : "mine";
 
   function update(values, { replace = false } = {}) {
-    const next = new URLSearchParams(params);
-    Object.entries(values).forEach(([key, value]) => {
-      if (value === "" || value == null || value === false) next.delete(key);
-      else next.set(key, String(value));
-    });
-    if (
-      !Object.hasOwn(values, "page")
-      && !Object.hasOwn(values, "trade")
-      && !Object.hasOwn(values, "listDay")
-      && !Object.hasOwn(values, "listSignal")
-      && !Object.hasOwn(values, "listEnv")
-      && !Object.hasOwn(values, "listSymbol")
-    ) next.set("page", "1");
-    if (onReports) {
-      next.set("tab", isOverview ? "overview" : "performance");
-      next.delete("view");
-    } else {
-      next.set("view", "performance");
-    }
-    next.set("analytics", "1");
-    setParams(next, { replace });
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      Object.entries(values).forEach(([key, value]) => {
+        if (value === "" || value == null || value === false) next.delete(key);
+        else next.set(key, String(value));
+      });
+      if (
+        !Object.hasOwn(values, "page")
+        && !Object.hasOwn(values, "trade")
+        && !Object.hasOwn(values, "listDay")
+        && !Object.hasOwn(values, "listSignal")
+        && !Object.hasOwn(values, "listEnv")
+        && !Object.hasOwn(values, "listSymbol")
+      ) next.set("page", "1");
+      if (onReports) {
+        // Tôn trọng tab overview|performance đã có / được set trong values.
+        // Tránh ghi đè bằng isOverview stale khi user vừa đổi tab (Link) hoặc chọn chart → danh sách.
+        const requested = Object.hasOwn(values, "tab") ? values.tab : next.get("tab");
+        if (requested === "overview" || requested === "performance") next.set("tab", requested);
+        else next.set("tab", isOverview ? "overview" : "performance");
+        next.delete("view");
+      } else {
+        next.set("view", "performance");
+      }
+      next.set("analytics", "1");
+      return next;
+    }, { replace });
   }
 
   function tradesTabHref(extra = {}) {
@@ -535,14 +541,47 @@ export default function TradePerformancePage({ mode = "overview" }) {
     else if (tab === "config") next.listEnv = listEnv === value ? "" : value;
     else if (tab === "symbol") next.listSymbol = listSymbol === value ? "" : value;
     else if (tab === "user") {
-      update({ username: value, scope: "", env: "", listSignal: "", listEnv: "", listSymbol: "", listDay: "", trade: "", tradeUser: "", page: "1" });
+      update({
+        username: value,
+        scope: "",
+        env: "",
+        listSignal: "",
+        listEnv: "",
+        listSymbol: "",
+        listDay: "",
+        trade: "",
+        tradeUser: "",
+        page: "1",
+        ...(onReports && isOverview ? { tab: "performance" } : {}),
+      });
       return;
     } else if (tab === "side") {
-      update({ side: side === value ? "" : value, listSignal: "", listEnv: "", listSymbol: "", page: "1" });
+      const nextSide = side === value ? "" : value;
+      update({
+        side: nextSide,
+        listSignal: "",
+        listEnv: "",
+        listSymbol: "",
+        page: "1",
+        ...(onReports && isOverview && nextSide ? { tab: "performance" } : {}),
+      });
       return;
     }
     setGroupTab(tab);
+    const selected = next.listSignal || next.listEnv || next.listSymbol;
+    if (onReports && isOverview && selected) next.tab = "performance";
     update(next);
+  }
+
+  function selectChartDay(day) {
+    const nextDay = listDay === day ? "" : day;
+    update({
+      listDay: nextDay,
+      page: "1",
+      trade: "",
+      tradeUser: "",
+      ...(onReports && isOverview && nextDay ? { tab: "performance" } : {}),
+    });
   }
 
   async function softRefresh() {
@@ -947,11 +986,11 @@ export default function TradePerformancePage({ mode = "overview" }) {
             </div>
           ) : null}
 
-          {!loading && !error && stats && stats.total === 0 ? (
+          {isOverview && !loading && !error && stats && stats.total === 0 ? (
             <div className="card empty">Không có giao dịch khớp bộ lọc. Thử đổi kỳ, sổ Live/Paper hoặc xóa bớt lọc.</div>
           ) : null}
 
-          {stats && stats.total > 0 ? (
+          {isOverview && stats && stats.total > 0 ? (
             <>
               <div className="perf-kpi-grid">
                 <Kpi
@@ -980,7 +1019,6 @@ export default function TradePerformancePage({ mode = "overview" }) {
                 />
               </div>
 
-              {isOverview ? (
               <>
               <div className="dv-chart-grid two">
                 <div className={`dv-group-collapsible${groupChartOpen ? "" : " collapsed"}`}>
@@ -1026,7 +1064,7 @@ export default function TradePerformancePage({ mode = "overview" }) {
                     <PnlCalendar
                       series={data?.series || []}
                       selectedDay={listDay}
-                      onSelectDay={(day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })}
+                      onSelectDay={selectChartDay}
                       subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · ngày đóng · UTC · 0 lệnh = không có bản ghi trong tập lọc (đã xác nhận). Coverage thiếu snapshot: chưa xác minh.`}
                     />
                   ) : (
@@ -1034,9 +1072,7 @@ export default function TradePerformancePage({ mode = "overview" }) {
                       series={dayChartSeries}
                       selectedDay={daySelectable ? listDay : ""}
                       timeField={data?.timeField}
-                      onSelectDay={daySelectable
-                        ? (day) => update({ listDay: day, page: "1", trade: "", tradeUser: "" })
-                        : undefined}
+                      onSelectDay={daySelectable ? selectChartDay : undefined}
                       subtitle={`${data?.rangeLabel || "Kỳ UTC"} · USDT · PnL lũy kế lệnh từ 0 · UTC · bucket ${dayBuckets.label}${daySelectable ? "" : " (kỳ >90 ngày — tắt lọc ngày; chọn kỳ ≤90 để lọc bảng theo ngày)"}`}
                     />
                   )}
@@ -1107,7 +1143,7 @@ export default function TradePerformancePage({ mode = "overview" }) {
                 <p className="muted">
                   {groupRows.length}/{rawGroupRows.length} nhóm
                   {resultFilterNote ? ` · lọc kết quả: ${resultFilterNote}` : " · chưa lọc kết quả nhóm"}.
-                  Bấm nhóm/ngày trên chart chỉ lọc bảng lệnh bên dưới — KPI và chart nền giữ nguyên (sổ {book === "paper" ? "Paper" : "Live"}).
+                  Bấm nhóm/ngày trên chart mở tab Hiệu quả lệnh với selection — KPI và chart nền giữ trên Tổng quan (sổ {book === "paper" ? "Paper" : "Live"}).
                   {(groupTab === "user" || groupTab === "config")
                     ? " PnL Static = profit lệnh account_statics; Income DB = trading income futures_profits (gần /i) cùng kỳ UTC."
                     : ""}
@@ -1135,8 +1171,11 @@ export default function TradePerformancePage({ mode = "overview" }) {
                 {" "}để xem danh sách lệnh theo lựa chọn. KPI/chart nền giữ trên Tổng quan.
               </p>
               </>
-              ) : (
-              <>
+            </>
+          ) : null}
+
+          {!isOverview && !loading && !error ? (
+            <>
               {chartSelection ? (
                 <div className="dv-selection-bar card" aria-label="Lựa chọn biểu đồ từ Tổng quan">
                   <span className="muted">Đang lọc bảng theo chart:</span>
@@ -1262,8 +1301,6 @@ export default function TradePerformancePage({ mode = "overview" }) {
                   </div>
                 ) : null}
               </section>
-              </>
-              )}
             </>
           ) : null}
 

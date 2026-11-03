@@ -55,11 +55,11 @@ export default function AccountLedgerPage() {
 
   function patchParams(values) {
     const next = new URLSearchParams(searchParams);
-    if (!next.get("tab")) next.set("tab", "ledger");
     Object.entries(values).forEach(([key, value]) => {
       if (value === "" || value == null || value === false) next.delete(key);
       else next.set(key, String(value === true ? "1" : value));
     });
+    next.set("tab", "ledger");
     setSearchParams(next, { replace: true });
   }
 
