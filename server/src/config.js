@@ -25,6 +25,11 @@ const config = {
     /** Peer tinyproxy — public GET Binance; signed vẫn direct. Trống = hydrate từ peer_proxy_config. */
     binancePeerProxies: process.env.BINANCE_PEER_PROXIES || "",
     binancePeerProxySelfIp: process.env.BINANCE_PEER_PROXY_SELF_IP || "",
+    /**
+     * Map hostname heartbeat → IPv4 khi bot chưa gửi hostIp.
+     * Ví dụ: chopbk:45.32.252.50,vultr:45.76.149.189
+     */
+    heartbeatHostIps: process.env.HEARTBEAT_HOST_IPS || "",
 };
 
 module.exports = config;

@@ -10,10 +10,49 @@ const { loadProfileMaps, enrichProcessRow } = require("./process-admin");
 
 const STALE_MS = 90 * 1000;
 const CREDENTIAL_MS = 30 * 60 * 1000;
+const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
 function age(at, now) {
     const time = new Date(at).getTime();
     return Number.isFinite(time) ? now - time : null;
+}
+
+function isIpv4(value) {
+    const ip = String(value || "").trim();
+    if (!IPV4.test(ip)) return false;
+    return ip.split(".").every((part) => {
+        const n = Number(part);
+        return Number.isInteger(n) && n >= 0 && n <= 255;
+    });
+}
+
+/**
+ * Map hostname → IPv4 từ env `HEARTBEAT_HOST_IPS=chopbk:45.x.x.x,vultr:45.y.y.y`
+ * (tạm khi bot chưa ghi hostIp).
+ */
+function parseHostIpMap(raw) {
+    const map = new Map();
+    for (const part of String(raw || "").split(/[,;\n]/)) {
+        const item = part.trim();
+        if (!item) continue;
+        const match = item.match(/^([^:=]+)[=:](.+)$/);
+        if (!match) continue;
+        const host = match[1].trim().toLowerCase();
+        const ip = match[2].trim();
+        if (host && isIpv4(ip)) map.set(host, ip);
+    }
+    return map;
+}
+
+/**
+ * IP máy để nhóm UI. Ưu tiên hostIp heartbeat → host nếu đã là IPv4 → map hostname.
+ */
+function resolveHostIp(row, hostIpMap = new Map()) {
+    if (isIpv4(row?.hostIp)) return String(row.hostIp).trim();
+    if (isIpv4(row?.host)) return String(row.host).trim();
+    const hostname = String(row?.host || "").trim().toLowerCase();
+    if (hostname && hostIpMap.has(hostname)) return hostIpMap.get(hostname);
+    return "";
 }
 
 function fresh(row, now) {
@@ -65,12 +104,20 @@ function assessHealth(input = {}) {
     const profilesByEnv = input.profilesByEnv instanceof Map ? input.profilesByEnv : new Map();
     const lastCommandByEnv =
         input.lastCommandByEnv instanceof Map ? input.lastCommandByEnv : new Map();
+    const hostIpMap =
+        input.hostIpMap instanceof Map
+            ? input.hostIpMap
+            : parseHostIpMap(input.hostIpMapRaw ?? config.heartbeatHostIps);
     const processes = beats.map((row) => {
         const online = fresh(row, now);
         let status = online ? "ok" : "down";
         if (online && row.flags?.trader && row.mqttConnected === false) status = "warn";
         if (online && row.flags?.listener && row.mqttConnected === false) status = "warn";
-        const base = { ...publicBeat(row), status, ageMs: age(row.at, now) };
+        const base = {
+            ...publicBeat(row, hostIpMap),
+            status,
+            ageMs: age(row.at, now),
+        };
         return enrichProcessRow(base, profilesByEnv, lastCommandByEnv);
     });
 
@@ -146,13 +193,16 @@ function countDetail(rows) {
     return rows.map((row) => row.processName || row.key).join(", ");
 }
 
-function publicBeat(row) {
+function publicBeat(row, hostIpMap = new Map()) {
+    const host = row.host || "";
+    const hostIp = resolveHostIp(row, hostIpMap);
     return {
         key: row.key,
         processName: row.processName || "",
         pmId: row.pmId || "",
         pid: row.pid || null,
-        host: row.host || "",
+        host,
+        hostIp,
         hostId: row.hostId || "",
         botEnv: row.botEnv || "",
         profileRevision: row.profileRevision != null ? Number(row.profileRevision) : null,
@@ -257,5 +307,8 @@ module.exports = {
     deleteHeartbeatByKey,
     purgeHeartbeats,
     formatCredentialAlert,
+    parseHostIpMap,
+    resolveHostIp,
+    isIpv4,
     STALE_MS,
 };

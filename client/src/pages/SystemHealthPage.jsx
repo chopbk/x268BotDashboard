@@ -164,25 +164,40 @@ export default function SystemHealthPage() {
     return list;
   }, [data, filter]);
 
-  /** Nhóm theo IP máy (`host` từ heartbeat), không theo hostId control. */
+  /** Nhóm theo hostIp (IPv4); thiếu thì gom theo hostname với nhãn rõ. */
   const hostGroups = useMemo(() => {
     const map = new Map();
     for (const row of rows) {
-      const ip = String(row.host || "").trim() || "unknown";
-      const list = map.get(ip) || [];
+      const ip = String(row.hostIp || "").trim();
+      const hostname = String(row.host || "").trim();
+      const key = ip || (hostname ? `host:${hostname}` : "unknown");
+      const list = map.get(key) || [];
       list.push(row);
-      map.set(ip, list);
+      map.set(key, list);
     }
     return [...map.entries()]
-      .map(([ip, processes]) => {
+      .map(([key, processes]) => {
+        const ip = String(processes[0]?.hostIp || "").trim();
+        const hostnames = [
+          ...new Set(
+            processes.map((p) => String(p.host || "").trim()).filter(Boolean)
+          ),
+        ].sort((a, b) => a.localeCompare(b));
         const hostIds = [
           ...new Set(
             processes.map((p) => String(p.hostId || "").trim()).filter(Boolean)
           ),
         ].sort((a, b) => a.localeCompare(b));
-        return { ip, hostIds, processes };
+        return {
+          key,
+          ip,
+          label: ip || hostnames[0] || "unknown",
+          hostnames,
+          hostIds,
+          processes,
+        };
       })
-      .sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }, [rows]);
 
   const ramRows = useMemo(
@@ -261,20 +276,28 @@ export default function SystemHealthPage() {
           <div className="dv-chart-grid two" style={{ margin: "16px 0" }}>
             <ChartShell
               title="Process theo IP đang thế nào?"
-              subtitle={`Snapshot hiện tại · nhóm theo IP heartbeat · stale ${(staleMs / 1000) | 0}s (backend) · bấm ô để mở process · không tạo ngưỡng khác`}
+              subtitle={`Snapshot hiện tại · nhóm theo hostIp (IPv4) · stale ${(staleMs / 1000) | 0}s (backend) · bấm ô để mở process · không tạo ngưỡng khác`}
               summary={`${rows.length} process · ${hostGroups.length} IP · ${staleCount} stale`}
               empty={!rows.length ? "Chưa có heartbeat process." : ""}
               height="rank"
             >
               <div className="dv-host-grid">
                 {hostGroups.map((group) => (
-                  <article key={group.ip} className="dv-host-card">
-                    <h3>{group.ip}</h3>
-                    {group.hostIds.length ? (
-                      <p className="muted dv-host-meta">
-                        hostId: {group.hostIds.join(", ")}
-                      </p>
-                    ) : null}
+                  <article key={group.key} className="dv-host-card">
+                    <h3>{group.label}</h3>
+                    {(() => {
+                      const meta = [
+                        !group.ip && group.hostnames.length
+                          ? `hostname ${group.hostnames.join(", ")} (chưa có IP)`
+                          : group.hostnames.length && group.hostnames.some((h) => h !== group.ip)
+                            ? `hostname ${group.hostnames.join(", ")}`
+                            : null,
+                        group.hostIds.length ? `hostId ${group.hostIds.join(", ")}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return meta ? <p className="muted dv-host-meta">{meta}</p> : null;
+                    })()}
                     <div className="dv-process-tiles">
                       {group.processes.map((row) => {
                         const key = row.profileEnv || row.processName;
@@ -400,9 +423,12 @@ export default function SystemHealthPage() {
                       {driftLabel(row.drift)}
                     </td>
                     <td>
-                      {row.host || "—"}
+                      {row.hostIp || row.host || "—"}
+                      {row.hostIp && row.host && row.host !== row.hostIp ? (
+                        <span className="muted">{` · ${row.host}`}</span>
+                      ) : null}
                       {row.hostId ? (
-                        <span className="muted">{row.host ? ` · ${row.hostId}` : row.hostId}</span>
+                        <span className="muted">{` · ${row.hostId}`}</span>
                       ) : null}
                     </td>
                     <td>{row.lastCommand ? `${row.lastCommand.kind}:${row.lastCommand.status}` : "—"}</td>

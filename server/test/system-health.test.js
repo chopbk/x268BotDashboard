@@ -1,6 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { assessHealth, formatCredentialAlert, STALE_MS } = require("../src/lib/system-health");
+const {
+    assessHealth,
+    formatCredentialAlert,
+    parseHostIpMap,
+    resolveHostIp,
+    STALE_MS,
+} = require("../src/lib/system-health");
 
 const now = new Date("2026-10-08T12:00:00.000Z");
 
@@ -118,6 +124,30 @@ test("formatCredentialAlert includes process and RUN", () => {
     assert.match(text, /host=45\.32\.252\.50/);
     assert.match(text, /RUN=alice,bob/);
     assert.match(text, /-2015/);
+});
+
+test("resolveHostIp prefers hostIp then IPv4 host then hostname map", () => {
+    const map = parseHostIpMap("chopbk:45.32.252.50,vultr=45.76.149.189");
+    assert.equal(map.get("chopbk"), "45.32.252.50");
+    assert.equal(map.get("vultr"), "45.76.149.189");
+    assert.equal(resolveHostIp({ hostIp: "1.2.3.4", host: "chopbk" }, map), "1.2.3.4");
+    assert.equal(resolveHostIp({ host: "9.9.9.9" }, map), "9.9.9.9");
+    assert.equal(resolveHostIp({ host: "chopbk" }, map), "45.32.252.50");
+    assert.equal(resolveHostIp({ host: "unknown" }, map), "");
+});
+
+test("assessHealth exposes resolved hostIp for grouping", () => {
+    const health = assessHealth({
+        now,
+        heartbeats: [
+            beat({ key: "a:1", processName: "a", host: "chopbk", hostIp: "" }),
+            beat({ key: "b:1", processName: "b", host: "vultr", hostIp: "45.76.149.189" }),
+        ],
+        hostIpMapRaw: "chopbk:45.32.252.50",
+    });
+    const byName = Object.fromEntries(health.processes.map((p) => [p.processName, p.hostIp]));
+    assert.equal(byName.a, "45.32.252.50");
+    assert.equal(byName.b, "45.76.149.189");
 });
 
 test("down processes are listed so UI can offer delete-stale", () => {
